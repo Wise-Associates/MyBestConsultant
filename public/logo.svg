@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 48" fill="none">
+  <!-- Gem icon -->
+  <g transform="translate(0,4)">
+    <polygon points="20,0 36,10 36,30 20,40 4,30 4,10" fill="#0B1D51"/>
+    <polygon points="20,0 36,10 20,20" fill="#B8860B" opacity="0.9"/>
+    <polygon points="20,0 4,10 20,20" fill="#D4A017" opacity="0.75"/>
+    <polygon points="20,20 36,30 20,40 4,30" fill="#8B6508" opacity="0.85"/>
+    <polygon points="20,20 28,25 20,30 12,25" fill="#E8C040" opacity="0.55"/>
+  </g>
+  <!-- Wordmark -->
+  <text x="46" y="28" font-family="Georgia,'Times New Roman',serif" font-size="18" font-weight="700" fill="#0B1D51" letter-spacing="-0.4">My<tspan fill="#B8860B">Best</tspan>Consultant</text>
+  <!-- Tagline -->
+  <text x="46" y="41" font-family="-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif" font-size="8.5" fill="#6B7E9A" letter-spacing="0.14em">RECRUTEMENT · IA</text>
+</svg>
