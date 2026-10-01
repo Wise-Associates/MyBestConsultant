@@ -118,7 +118,9 @@ export async function testProvider(
         body: JSON.stringify({
           model,
           max_tokens: 20,
-          think: false,
+          // "think" n'existe que pour Qwen3 (TeckiA) — les autres API compatibles OpenAI
+          // (Groq, GPT-4o, autres modèles open source) le refusent (voir lib/ai/llm-router.ts).
+          ...(model.toLowerCase().includes('qwen') ? { think: false } : {}),
           messages: [{ role: 'user', content: 'Say hello' }],
         }),
         cache: 'no-store',

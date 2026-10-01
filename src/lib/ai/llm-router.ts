@@ -113,7 +113,9 @@ async function callOpenAICompat(
         // untruncated descriptions) — the model output cut off mid-property, so
         // JSON.parse threw a confusing "Expected ',' or '}'" error on the client.
         max_tokens: 4096,
-        think: false,
+        // "think" désactive le mode raisonnement de Qwen3 (TeckiA) — propriété non standard que
+        // les autres API compatibles OpenAI (Groq, GPT-4o, autres modèles open source) refusent.
+        ...(model.toLowerCase().includes('qwen') ? { think: false } : {}),
         messages: [
           ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
           ...messages,

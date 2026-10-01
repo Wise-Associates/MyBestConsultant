@@ -1,5 +1,4 @@
-// TODO: replace with the real Calendly link for MyBestConsultant / Wise Associates.
-export const CALENDLY_URL = 'https://calendly.com/mybestconsultant/presentation'
+export const CALENDLY_URL = 'https://calendly.com/f-ravelo-wise-associates/30min'
 
 // Coordonnées officielles de My Best Consultant — source unique (page Contact, mentions légales, pied de page).
 // Logo officiel (PNG transparent 600×600, hébergé sur le site) : fourni comme image de référence à la génération de l'affiche.

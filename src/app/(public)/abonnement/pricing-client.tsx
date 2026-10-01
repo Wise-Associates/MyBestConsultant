@@ -1,8 +1,11 @@
 'use client'
 
 import Link from 'next/link'
+import { useState } from 'react'
 import { Check, Sparkles, ShieldCheck } from 'lucide-react'
 import type { UserRole } from '@/types'
+import { CheckoutModal } from './checkout-modal'
+import type { PaidPlanId } from '@/lib/stripe'
 
 interface Plan {
   id: string
@@ -64,9 +67,12 @@ const PLANS: Plan[] = [
   },
 ]
 
-function PlanCard({ plan, userRole }: { plan: Plan; userRole: UserRole | null }) {
+function PlanCard({ plan, userRole, onPay }: { plan: Plan; userRole: UserRole | null; onPay: (id: PaidPlanId) => void }) {
   const isAdmin = userRole === 'admin'
   const isConnected = !!userRole && !isAdmin
+  // Paiement par carte (Stripe) : seul un recruteur connecté peut payer un plan payant pour son
+  // entreprise — un candidat/chasseur connecté, ou un visiteur non connecté, passe par /register ou /contact.
+  const canPay = userRole === 'recruiter' && plan.price !== null && plan.price > 0
 
   return (
     <div className="rounded-2xl p-8 flex flex-col relative"
@@ -95,6 +101,12 @@ function PlanCard({ plan, userRole }: { plan: Plan; userRole: UserRole | null })
           style={{ background: 'var(--color-secondary)', color: 'var(--color-text-muted)' }}>
           Compte administrateur
         </div>
+      ) : canPay ? (
+        <button type="button" onClick={() => onPay(plan.id as PaidPlanId)}
+          className="mt-4 mb-8 w-full py-3 rounded-xl font-semibold text-sm text-center transition-opacity hover:opacity-90"
+          style={{ background: plan.highlight ? 'var(--color-primary)' : 'var(--color-secondary)', color: plan.highlight ? '#fff' : 'var(--color-text)' }}>
+          {plan.cta}
+        </button>
       ) : (
         <Link href={isConnected ? '/contact' : `/register?role=recruiter&plan=${plan.id}`}
           className="mt-4 mb-8 w-full py-3 rounded-xl font-semibold text-sm text-center no-underline transition-opacity hover:opacity-90"
@@ -116,6 +128,8 @@ function PlanCard({ plan, userRole }: { plan: Plan; userRole: UserRole | null })
 }
 
 export function PricingClient({ userRole }: { userRole: UserRole | null }) {
+  const [payingPlan, setPayingPlan] = useState<PaidPlanId | null>(null)
+
   return (
     <div className="mbc-app-dark" style={{ background: 'var(--color-background)' }}>
 
@@ -138,9 +152,11 @@ export function PricingClient({ userRole }: { userRole: UserRole | null }) {
       {/* Plan cards */}
       <div className="px-4 lg:px-8 pb-14">
         <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-          {PLANS.map(plan => <PlanCard key={plan.id} plan={plan} userRole={userRole} />)}
+          {PLANS.map(plan => <PlanCard key={plan.id} plan={plan} userRole={userRole} onPay={setPayingPlan} />)}
         </div>
       </div>
+
+      {payingPlan && <CheckoutModal planId={payingPlan} onClose={() => setPayingPlan(null)} />}
 
       {/* Trust strip */}
       <div className="px-4 lg:px-8 pb-24">

@@ -234,15 +234,6 @@ export function LLMConfigClient({ initialConfig }: { initialConfig: ProviderConf
         </div>
       )}
 
-      {/* Info banner */}
-      <div className="flex items-start gap-3 p-4 rounded-xl text-sm" style={{ background: 'rgba(96,165,250,0.07)', border: '1px solid rgba(96,165,250,0.2)', color: 'rgba(255,255,255,0.6)' }}>
-        <Info className="h-4 w-4 shrink-0 mt-0.5 text-blue-400" />
-        <div>
-          Les clés API saisies ici sont prioritaires sur les variables d&apos;environnement du serveur (<code className="text-xs font-mono text-blue-300">ANTHROPIC_API_KEY</code>, <code className="text-xs font-mono text-blue-300">OPENAI_API_KEY</code>…).
-          Elles sont stockées dans Appwrite. Si tu préfères les garder dans <code className="text-xs font-mono text-blue-300">.env.local</code>, laisse ces champs vides.
-        </div>
-      </div>
-
       {/* Modèle par module */}
       <ModuleRouting cfg={cfg} set={set} />
 
