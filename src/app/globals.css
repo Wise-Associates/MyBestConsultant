@@ -241,8 +241,10 @@ body { overflow-x: clip; max-width: 100%; }
    Bandeau de page sous la barre de navigation, collé à la barre (plus d'espace au-dessus), plus bas
    surtout sur mobile. Les pages déclarent ce bandeau avec background: var(--hero-bg) : on règle sa
    couleur et son comportement ici, en un seul endroit, pour que toutes les pages restent cohérentes.
-   .mbc-app (espaces recruteur / candidat / chasseur) = fond gris ; .mbc-app-dark (abonnements, blog) = fond noir. */
-.mbc-app { --hero-bg: #5b6270; }
+   Même noir partout (recruteur / candidat / chasseur / abonnements / blog) que la barre de navigation,
+   pour un rendu uniforme — .mbc-app et .mbc-app-dark restent deux classes pour ne pas changer le
+   marquage des pages, mais utilisent désormais exactement la même couleur. */
+.mbc-app { --hero-bg: #1C1C1E; }
 .mbc-app-dark { --hero-bg: #1C1C1E; }
 .mbc-app [style*="var(--hero-bg)"],
 .mbc-app-dark [style*="var(--hero-bg)"] { border-bottom-color: rgba(255,255,255,0.14) !important; }

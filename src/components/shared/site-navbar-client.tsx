@@ -156,27 +156,16 @@ function UserDropdown({ user }: { user: NonNullable<Props['user']> }) {
 export function SiteNavbarClient({ siteName, logoUrl, navLinks, user, supportUnread = 0 }: Props) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [scrolled, setScrolled] = useState(false)
 
-  useEffect(() => {
-    const h = () => setScrolled(window.scrollY > 20)
-    window.addEventListener('scroll', h, { passive: true })
-    return () => window.removeEventListener('scroll', h)
-  }, [])
-
-  const isHomepage = pathname === '/'
-
+  // Fond noir uniforme sur toutes les pages, y compris l'accueil : plus de variation
+  // d'opacité au scroll (c'est ce qui donnait l'impression d'un header qui "change de
+  // couleur" en haut de la page d'accueil).
   const navbarStyle: React.CSSProperties = {
     position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9000,
     height: 68,
-    background: scrolled || !isHomepage
-      ? 'rgba(28,28,30,0.97)'
-      : 'rgba(28,28,30,0.72)',
+    background: 'rgba(28,28,30,0.97)',
     backdropFilter: 'blur(20px)',
-    borderBottom: scrolled || !isHomepage
-      ? '1px solid rgba(232,163,61,0.12)'
-      : '1px solid rgba(255,255,255,0.06)',
-    transition: 'background 0.35s, border-color 0.35s',
+    borderBottom: '1px solid rgba(232,163,61,0.12)',
   }
 
   return (
@@ -184,7 +173,7 @@ export function SiteNavbarClient({ siteName, logoUrl, navLinks, user, supportUnr
       {/* Spacer so content doesn't hide under the fixed navbar — same background as the
           navbar itself, otherwise the transparent gap shows the page body's own color
           through it (a stray light band on dark recruiter/admin pages). */}
-      {!isHomepage && <div style={{ height: 68, background: navbarStyle.background }} />}
+      <div style={{ height: 68, background: navbarStyle.background }} />
 
       <header style={navbarStyle}>
         <div style={{ maxWidth: 1280, margin: '0 auto', padding: '0 24px', height: '100%', display: 'flex', alignItems: 'center', gap: 32 }}>

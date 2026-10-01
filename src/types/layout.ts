@@ -139,7 +139,12 @@ export const DEFAULT_FOOTER: FooterConfig = {
   ],
   bottomText: '© 2026 MyBestConsultant.fr · Propulsé par Wise Associates',
   showSocial: true,
-  socialLinks: [{ platform: 'linkedin', url: '#' }],
+  socialLinks: [
+    { platform: 'linkedin', url: 'https://www.linkedin.com/company/mybestconsultant/' },
+    { platform: 'facebook', url: 'https://www.facebook.com/profile.php?id=61595015486903' },
+    { platform: 'instagram', url: 'https://www.instagram.com/my.best.consultant/' },
+    { platform: 'twitter', url: 'https://x.com/mybestconsultan' },
+  ],
   showLogo: true,
   showTagline: true,
   pages: 'all',
