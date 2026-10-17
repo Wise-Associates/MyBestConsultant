@@ -113,3 +113,15 @@ Core principles for production-quality frontend decisions on this project.
 - **Server Actions** call `createAdminClient()` not `createSessionClient()` for mutations.
 - **Collection attribute limit: 16.** Count before creating new attributes.
 <!-- END:frontend-architect-principles -->
+
+---
+
+<!-- BEGIN:dev-workflow -->
+# Git & Deploy Workflow
+
+- **Work on `dev` only.** One change per commit with a clear message, then `git push origin dev`. Vercel deploys `dev` as a preview wired to the DEV Appwrite project (`bestconsultant-dev`).
+- **Never touch production.** No push to `prod`, `main` or any other branch, no force push, no `vercel --prod` / `deploy` / `promote` / `rollback` / `env` / `alias` — a hook in `.claude/settings.json` blocks them. Production is released by a human through a pull request `dev` → `prod`.
+- **Undo with `git revert <sha>` then `git push origin dev`.** Never rewrite pushed history (`reset --hard` + force push).
+- **Never read or print `.env*` files.** Scripts may load them; you don't.
+- **Verify after pushing.** Wait for the preview (`vercel ls`, `vercel inspect <url> --logs`), then check the page in the browser.
+<!-- END:dev-workflow -->
