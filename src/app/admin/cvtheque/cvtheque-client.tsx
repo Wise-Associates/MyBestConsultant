@@ -70,17 +70,22 @@ export function CvthequeClient({ initialCandidates, loadError }: { initialCandid
       backgroundRepeat: 'no-repeat',
       backgroundAttachment: 'fixed',
     }}>
-      {/* Header — sticky through the search/filter row */}
-      <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
-        <div className="max-w-6xl mx-auto px-6 py-8">
+      {/* Header — scrolls away with the page */}
+      <div style={{ background: 'var(--hero-bg)' }}>
+        <div className="max-w-6xl mx-auto px-6 pt-8 pb-2">
           <div className="flex items-center gap-2 mb-1">
             <FolderSearch className="h-5 w-5" style={{ color: 'var(--color-accent, #B8860B)' }} />
             <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>CV Thèque</h1>
           </div>
-          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
             Recherchez les candidats de la base par compétence, ville ou nom
           </p>
+        </div>
+      </div>
 
+      {/* Search/filter row — only this compact bar stays pinned, and only once it fits on one line */}
+      <div className="sm:sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
+        <div className="max-w-6xl mx-auto px-6 py-4">
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1 flex items-center gap-2 px-4 rounded-2xl"
               style={{ background: 'rgba(124,58,237,0.18)', border: '1px solid rgba(124,58,237,0.4)', boxShadow: '0 4px 14px rgba(0,0,0,0.12)' }}>
