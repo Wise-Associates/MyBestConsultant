@@ -1,1 +1,1 @@
-{"version":"0.0.1","configurations":[{"name":"mybestconsultant","runtimeExecutable":"npm","runtimeArgs":["run","dev"],"port":3000}]}
+{"version":"0.0.1","configurations":[{"name":"mybestconsultant","runtimeExecutable":"npm","runtimeArgs":["run","dev"],"port":3000,"env":{"NODE_OPTIONS":"--network-family-autoselection-attempt-timeout=2000"}}]}
