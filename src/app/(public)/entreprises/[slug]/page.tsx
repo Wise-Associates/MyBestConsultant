@@ -68,7 +68,7 @@ export default async function EmployerPage({ params }: { params: Promise<{ slug:
 
   return (
     <div style={{ background: 'var(--color-background)', minHeight: '100vh' }}>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }} />
 
       {isPreview && (
         <div className="px-4 py-2.5 text-center text-xs font-semibold flex items-center justify-center gap-2 flex-wrap" style={{ background: '#fef3c7', color: '#92400e', borderBottom: '1px solid #fde68a' }}>
