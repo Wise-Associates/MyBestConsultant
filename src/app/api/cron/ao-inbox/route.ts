@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isAuthorizedCronRequest } from '@/lib/cron-auth'
 import { syncAoInbox } from '@/lib/ao/sync'
 
-// Vercel Cron (vercel.json, toutes les 5 minutes) : lit les nouveaux appels d'offres de la boîte ao@.
+// Lit les nouveaux appels d'offres de la boîte ao@. Appelé par Vercel Cron (vercel.json : une fois par jour,
+// limite du plan Hobby) et par tout planificateur externe qui envoie `Authorization: Bearer $CRON_SECRET`.
 export const maxDuration = 300
 
 export async function GET(req: NextRequest) {
