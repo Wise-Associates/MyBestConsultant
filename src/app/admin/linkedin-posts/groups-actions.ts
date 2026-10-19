@@ -2,7 +2,8 @@
 
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
-import { getLLMConfig } from '@/app/admin/llm-config/actions'
+import { getLLMConfig } from '@/lib/ai/llm-config-store'
+import { requireAdmin } from '@/lib/appwrite/auth'
 import { ID, Query } from 'node-appwrite'
 import type { Job } from '@/types'
 
@@ -28,6 +29,7 @@ Règles :
 - Si aucun groupe pertinent n'est trouvé, retourne []`
 
 export async function findLinkedInGroupsForJob(jobId: string): Promise<{ groups: SuggestedGroup[]; error?: string }> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     const doc = await databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId)

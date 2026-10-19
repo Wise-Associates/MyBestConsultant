@@ -2,7 +2,7 @@
 
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID } from '@/lib/appwrite/config'
-import { getCurrentUser } from '@/lib/appwrite/auth'
+import { getCurrentUser, requireAdmin } from '@/lib/appwrite/auth'
 import { ID, Query } from 'node-appwrite'
 import { revalidatePath } from 'next/cache'
 
@@ -43,6 +43,7 @@ function docToPost(doc: Record<string, unknown>): BlogPost {
 }
 
 export async function getAdminBlogPosts(): Promise<BlogPost[]> {
+  await requireAdmin()
   const { databases } = createAdminClient()
   const result = await databases.listDocuments(DB_ID, COL, [Query.orderDesc('$createdAt'), Query.limit(200)])
   return result.documents.map(docToPost)

@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
 import { revalidatePath } from 'next/cache'
+import { requireAdmin } from '@/lib/appwrite/auth'
 
 export interface GroupQueueItem {
   $id: string
@@ -19,6 +20,7 @@ export interface GroupQueueItem {
 }
 
 export async function getGroupQueue(): Promise<GroupQueueItem[]> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     const res = await databases.listDocuments(DB_ID, COLLECTIONS.LINKEDIN_GROUP_QUEUE, [
@@ -51,6 +53,7 @@ export async function updateGroupStatus(
   id: string,
   status: 'done' | 'skipped' | 'pending',
 ): Promise<{ ok?: boolean; error?: string }> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     await databases.updateDocument(DB_ID, COLLECTIONS.LINKEDIN_GROUP_QUEUE, id, {
@@ -65,6 +68,7 @@ export async function updateGroupStatus(
 }
 
 export async function getPendingGroupsCount(): Promise<number> {
+  await requireAdmin()
   const { databases } = createAdminClient()
   const res = await databases.listDocuments(DB_ID, COLLECTIONS.LINKEDIN_GROUP_QUEUE, [
     Query.equal('status', 'pending'),

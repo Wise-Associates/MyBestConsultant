@@ -11,16 +11,20 @@ import {
   testAnalyticsConnection,
   type AnalyticsConfig, type DashboardData, type RealtimeData,
 } from '@/lib/google-analytics'
+import { requireAdmin } from '@/lib/appwrite/auth'
 
 export async function getAnalyticsConfig(): Promise<AnalyticsConfig> {
+  await requireAdmin()
   return _getAnalyticsConfig()
 }
 
 export async function fetchDashboardData(): Promise<{ error: string } | { data: DashboardData }> {
+  await requireAdmin()
   return _fetchDashboardData()
 }
 
 export async function fetchRealtimeData(): Promise<{ error: string } | { data: RealtimeData }> {
+  await requireAdmin()
   return _fetchRealtimeData()
 }
 
@@ -34,6 +38,7 @@ async function getOrCreateAnalyticsDoc() {
 }
 
 export async function saveAnalyticsConfig(cfg: AnalyticsConfig): Promise<{ error?: string }> {
+  await requireAdmin()
   try {
     // Validate the credentials actually work before saving — a bad JSON key
     // would otherwise silently break the dashboard.

@@ -1,6 +1,9 @@
 'use server'
 
+import { requireAdmin } from '@/lib/appwrite/auth'
+
 export async function fetchGithubComponentHtml(rawUrl: string): Promise<{ html: string } | { error: string }> {
+  await requireAdmin()
   try {
     const res = await fetch(rawUrl, {
       headers: { 'Accept': 'text/html,text/plain,*/*' },

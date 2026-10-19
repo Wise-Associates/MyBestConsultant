@@ -1,4 +1,4 @@
-import { getHomepage } from '@/app/admin/pages/actions'
+import { getHomepage } from '@/lib/homepage'
 import { getSiteConfig } from '@/lib/site-config'
 import { SiteNavbar } from '@/components/shared/site-navbar'
 import { SiteFooter } from '@/components/shared/site-footer'

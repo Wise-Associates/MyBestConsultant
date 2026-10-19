@@ -7,31 +7,40 @@ import { ID, Query } from 'node-appwrite'
 import { revalidatePath } from 'next/cache'
 import {
   getLinkedInAuthUrl,
-  getLinkedInPublishConfig,
+  getLinkedInPublishConfig as readLinkedInPublishConfig,
   disconnectLinkedIn,
   saveLinkedInPublishConfig,
   postJobToLinkedIn,
   getLinkedInOrganizations,
   type LinkedInPublishConfig,
 } from '@/lib/linkedin-publish'
+import { requireAdmin } from '@/lib/appwrite/auth'
 
 // ── LinkedIn OAuth / Publish config ──────────────────────────────
 
-export { getLinkedInPublishConfig, type LinkedInPublishConfig }
+export { type LinkedInPublishConfig }
+
+export async function getLinkedInPublishConfig(): Promise<LinkedInPublishConfig | null> {
+  await requireAdmin()
+  return readLinkedInPublishConfig()
+}
 
 export async function getLinkedInConnectUrl(): Promise<string> {
+  await requireAdmin()
   const state = Math.random().toString(36).slice(2)
   return getLinkedInAuthUrl(state)
 }
 
 export async function disconnectLinkedInAction(): Promise<void> {
+  await requireAdmin()
   await disconnectLinkedIn()
   revalidatePath('/admin/linkedin')
 }
 
 export async function updateLinkedInPublishSettings(formData: FormData): Promise<{ error?: string }> {
+  await requireAdmin()
   try {
-    const cfg = await getLinkedInPublishConfig()
+    const cfg = await readLinkedInPublishConfig()
     if (!cfg) return { error: 'LinkedIn non connecté' }
     await saveLinkedInPublishConfig({
       accessToken: cfg.accessToken,
@@ -48,8 +57,9 @@ export async function updateLinkedInPublishSettings(formData: FormData): Promise
 }
 
 export async function fetchLinkedInOrgsAction(): Promise<Array<{ id: string; name: string; urn: string }>> {
+  await requireAdmin()
   try {
-    const cfg = await getLinkedInPublishConfig()
+    const cfg = await readLinkedInPublishConfig()
     if (!cfg) return []
     return getLinkedInOrganizations(cfg.accessToken)
   } catch {
@@ -58,8 +68,9 @@ export async function fetchLinkedInOrgsAction(): Promise<Array<{ id: string; nam
 }
 
 export async function testLinkedInPostAction(): Promise<{ ok?: boolean; error?: string }> {
+  await requireAdmin()
   try {
-    const cfg = await getLinkedInPublishConfig()
+    const cfg = await readLinkedInPublishConfig()
     if (!cfg) return { error: 'LinkedIn non connecté' }
     const fakeJob = {
       $id: 'test',
@@ -268,6 +279,7 @@ function postedAgoToISO(postedAgo: string): string {
 // ── Config CRUD ───────────────────────────────────────────────────
 
 export async function getLinkedInConfig(): Promise<LinkedInScrapeConfig | null> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     const result = await databases.listDocuments(DB_ID, COLLECTIONS.LINKEDIN_CONFIG, [Query.limit(1)])
@@ -293,6 +305,7 @@ export async function getLinkedInConfig(): Promise<LinkedInScrapeConfig | null> 
 }
 
 export async function saveLinkedInConfig(cfg: Omit<LinkedInScrapeConfig, '$id'>): Promise<{ error?: string }> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     const existing = await databases.listDocuments(DB_ID, COLLECTIONS.LINKEDIN_CONFIG, [Query.limit(1)])
@@ -317,6 +330,7 @@ export async function saveLinkedInConfig(cfg: Omit<LinkedInScrapeConfig, '$id'>)
 // ── Get scraped jobs ──────────────────────────────────────────────
 
 export async function getLinkedInJobs(): Promise<LinkedInJob[]> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     const result = await databases.listDocuments(DB_ID, COLLECTIONS.LINKEDIN_JOBS, [
@@ -345,6 +359,7 @@ export async function getLinkedInJobs(): Promise<LinkedInJob[]> {
 // ── Lancer le scraping (Apify) ────────────────────────────────────
 
 export async function runScrape(cfg: LinkedInScrapeConfig): Promise<ScrapeRun> {
+  await requireAdmin()
   const runId = ID.unique()
   const startedAt = new Date().toISOString()
   const token = process.env.APIFY_TOKEN
@@ -403,6 +418,7 @@ export async function checkScrapeRun(
   apifyRunId: string,
   cfg: LinkedInScrapeConfig,
 ): Promise<ScrapeRun> {
+  await requireAdmin()
   const token = process.env.APIFY_TOKEN!
   const startedAt = new Date().toISOString()
 
@@ -511,6 +527,7 @@ export async function checkScrapeRun(
 // ── Publier / ignorer ─────────────────────────────────────────────
 
 export async function publishLinkedInJob(jobId: string): Promise<{ error?: string }> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     const doc = await databases.getDocument(DB_ID, COLLECTIONS.LINKEDIN_JOBS, jobId)
@@ -528,7 +545,7 @@ export async function publishLinkedInJob(jobId: string): Promise<{ error?: strin
     await databases.updateDocument(DB_ID, COLLECTIONS.LINKEDIN_JOBS, jobId, { status: 'published' })
 
     // Auto-post sur LinkedIn si connecté
-    const liCfg = await getLinkedInPublishConfig()
+    const liCfg = await readLinkedInPublishConfig()
     if (liCfg?.autoPostOnPublish) {
       const { tryAutoPostJobToLinkedIn } = await import('@/lib/linkedin-publish')
       await tryAutoPostJobToLinkedIn({ ...newDoc, $id: newDoc.$id } as never)
@@ -545,9 +562,10 @@ export async function publishLinkedInJob(jobId: string): Promise<{ error?: strin
 }
 
 export async function publishMultipleLinkedInJobs(jobIds: string[]): Promise<{ published: number; error?: string }> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
-    const liCfg = await getLinkedInPublishConfig()
+    const liCfg = await readLinkedInPublishConfig()
     const { tryAutoPostJobToLinkedIn } = await import('@/lib/linkedin-publish')
     const { tryAutoSourceCandidates } = await import('@/lib/auto-source-candidates')
     let published = 0
@@ -583,6 +601,7 @@ export async function publishMultipleLinkedInJobs(jobIds: string[]): Promise<{ p
 }
 
 export async function ignoreLinkedInJob(jobId: string): Promise<void> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     await databases.updateDocument(DB_ID, COLLECTIONS.LINKEDIN_JOBS, jobId, { status: 'ignored' })

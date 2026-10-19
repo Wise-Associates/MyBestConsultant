@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query, ID } from 'node-appwrite'
+import { requireAdmin } from '@/lib/appwrite/auth'
 
 export type ActionResult = { ok: true } | { error: string }
 
@@ -17,6 +18,7 @@ async function getOrCreateConfigDoc() {
 }
 
 export async function updateTemplate(templateId: string): Promise<ActionResult> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     const doc = await getOrCreateConfigDoc()
@@ -29,6 +31,7 @@ export async function updateTemplate(templateId: string): Promise<ActionResult> 
 }
 
 export async function updateCustomColors(colors: Record<string, string>): Promise<ActionResult> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     const doc = await getOrCreateConfigDoc()
@@ -52,6 +55,7 @@ export async function updateCustomColors(colors: Record<string, string>): Promis
 }
 
 export async function updateSiteContent(data: Record<string, string>): Promise<ActionResult> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     const doc = await getOrCreateConfigDoc()

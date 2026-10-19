@@ -313,7 +313,7 @@ export async function retryInterviewAnalysis(sessionId: string): Promise<{ error
   const doc = await databases.getDocument(DB_ID, COLLECTIONS.INTERVIEWS, sessionId)
   if (doc.tenantId !== user.tenantId) return { error: 'Non autorisé' }
 
-  const { performInterviewAnalysis } = await import('@/app/admin/interviews/actions')
+  const { performInterviewAnalysis } = await import('@/lib/interview-analysis')
   const res = await performInterviewAnalysis(sessionId)
   if (res.error) return { error: res.error }
   revalidatePath(`/recruiter/interviews/${sessionId}`)
