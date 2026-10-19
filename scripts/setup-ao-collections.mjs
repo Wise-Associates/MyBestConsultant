@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // Crée les deux collections du module AO Offers dans un projet Appwrite (idempotent : l'existant est conservé).
 //
-//   node scripts/setup-ao-collections.mjs .env.dev            → affiche ce qui manque, ne modifie rien
-//   node scripts/setup-ao-collections.mjs .env.dev --apply    → crée ce qui manque (projet DEV)
-//   node scripts/setup-ao-collections.mjs .env --apply --prod → production (à lancer par un humain)
+//   npm run ao:setup -- .env.dev                → affiche ce qui manque, ne modifie rien
+//   npm run ao:setup -- .env.dev --apply        → crée ce qui manque (projet DEV)
+//   npm run ao:setup -- .env --prod             → simulation sur la production
+//   npm run ao:setup -- .env --prod --apply     → production (à lancer par un humain)
 //
-// Réseau sans IPv6 (connexion qui expire) : préfixer par NODE_OPTIONS=--network-family-autoselection-attempt-timeout=2000
-// (même réglage que .claude/launch.json).
+// Le script npm ajoute --network-family-autoselection-attempt-timeout=2000 (même réglage que .claude/launch.json) :
+// sans lui, la connexion à Appwrite expire sur les réseaux sans IPv6.
 // Le fichier d'environnement fournit APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, APPWRITE_API_KEY et APPWRITE_DB_ID.
 // Ensuite, ajoutez dans ce même environnement (fichier local ET variables Vercel) :
 //   APPWRITE_COLLECTION_AO_EMAILS=ao_emails
@@ -26,7 +27,7 @@ function readEnv(path) {
 
 const [file, ...flags] = process.argv.slice(2)
 if (!file) {
-  console.error('Usage : node scripts/setup-ao-collections.mjs <fichier .env> [--apply] [--prod]')
+  console.error('Usage : npm run ao:setup -- <fichier .env> [--apply] [--prod]')
   process.exit(1)
 }
 const apply = flags.includes('--apply')

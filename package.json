@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit -p .",
-    "test": "node --import tsx --test \"src/**/*.test.ts\""
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "ao:setup": "node --network-family-autoselection-attempt-timeout=2000 scripts/setup-ao-collections.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",
