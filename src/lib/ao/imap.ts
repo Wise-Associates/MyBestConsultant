@@ -37,6 +37,8 @@ export interface InboxEnvelope {
 
 export interface InboxAttachment {
   filename: string
+  /** Type MIME annoncé par l'expéditeur : sert à reconnaître le format quand le nom n'a pas d'extension. */
+  contentType: string
   content: Buffer
 }
 
@@ -51,9 +53,20 @@ export interface InboxMessage {
   attachments: InboxAttachment[]
 }
 
+// Les listes ne téléchargent que l'enveloppe de chaque message (Message-ID, taille, date) ; le contenu
+// complet n'est lu que par read(), pour les e-mails à traiter. Les UID sont envoyés au serveur sous
+// forme de plages compactes (« 4512:4980,4983 ») par imapflow, quel que soit le nombre de messages.
 export interface AoInbox {
+  /** Identifiant de génération de la boîte : s'il change, les UID connus ne sont plus valables. */
+  readonly uidValidity: string
+  /** UID que recevra le prochain message (à l'ouverture de la boîte) : tout message plus ancien a un UID inférieur. */
+  readonly uidNext: number
   /** Messages reçus depuis `since` (critère IMAP au jour près), du plus ancien au plus récent. */
-  list(since: Date): Promise<InboxEnvelope[]>
+  listSince(since: Date): Promise<InboxEnvelope[]>
+  /** Messages arrivés après l'UID `uid` (lecture incrémentale). */
+  listAfter(uid: number): Promise<InboxEnvelope[]>
+  /** Enveloppes de messages précis (nouveaux essais). */
+  listUids(uids: number[]): Promise<InboxEnvelope[]>
   /** Télécharge et décode un message. */
   read(uid: number): Promise<InboxMessage>
 }
@@ -89,21 +102,27 @@ export async function withAoInbox<T>(settings: AoInboxSettings, work: (inbox: Ao
         return id.length <= 500 ? id : `sha256:${createHash('sha256').update(id).digest('hex')}`
       }
 
+      const envelopes = async (range: Parameters<typeof client.fetch>[0]) => {
+        const list: InboxEnvelope[] = []
+        for await (const msg of client.fetch(range, { uid: true, envelope: true, size: true, internalDate: true }, { uid: true })) {
+          list.push({
+            uid: msg.uid,
+            messageId: idOf(msg.envelope?.messageId, msg.uid),
+            size: msg.size ?? 0,
+            receivedAt: new Date(msg.internalDate ?? Date.now()),
+          })
+        }
+        return list.sort((a, b) => a.uid - b.uid)
+      }
+
       return await work({
-        async list(since) {
-          const uids = (await client.search({ since }, { uid: true })) || []
-          if (!uids.length) return []
-          const envelopes: InboxEnvelope[] = []
-          for await (const msg of client.fetch(uids.join(','), { uid: true, envelope: true, size: true, internalDate: true }, { uid: true })) {
-            envelopes.push({
-              uid: msg.uid,
-              messageId: idOf(msg.envelope?.messageId, msg.uid),
-              size: msg.size ?? 0,
-              receivedAt: new Date(msg.internalDate ?? Date.now()),
-            })
-          }
-          return envelopes.sort((a, b) => a.uid - b.uid)
-        },
+        uidValidity,
+        uidNext: client.mailbox ? client.mailbox.uidNext : 1,
+        // Objet de recherche : imapflow lance SEARCH puis FETCH sur des plages compactes.
+        listSince: since => envelopes({ since }),
+        // « n:* » renvoie toujours au moins le dernier message, même déjà lu : on filtre.
+        listAfter: async uid => (await envelopes({ uid: `${uid + 1}:*` })).filter(e => e.uid > uid),
+        listUids: async uids => (uids.length ? envelopes(uids) : []),
         async read(uid) {
           const msg = await client.fetchOne(String(uid), { uid: true, source: true, envelope: true, internalDate: true }, { uid: true })
           if (!msg || !msg.source) throw new Error(`Message IMAP ${uid} introuvable`)
@@ -120,7 +139,7 @@ export async function withAoInbox<T>(settings: AoInboxSettings, work: (inbox: Ao
             // Les images intégrées au corps (logos, signatures) ne sont pas des pièces jointes utiles.
             attachments: mail.attachments
               .filter(a => !a.related)
-              .map(a => ({ filename: a.filename || 'piece-jointe', content: a.content })),
+              .map(a => ({ filename: a.filename || 'piece-jointe', contentType: a.contentType || '', content: a.content })),
           }
         },
       })
