@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { callLLM } from '@/lib/ai/llm-router'
-import { getLLMConfig } from '@/app/admin/llm-config/actions'
+import { getLLMConfig } from '@/lib/ai/llm-config-store'
+import { getCurrentUser } from '@/lib/appwrite/auth'
 import { extractTextFromFile } from '@/lib/import-file-extract'
 
 const SYSTEM = `Tu es un assistant expert en recrutement.
@@ -23,6 +24,10 @@ Réponds UNIQUEMENT avec un tableau JSON valide : [{ ... }, { ... }]
 Aucun texte avant ou après. Aucun markdown. Juste le JSON brut.`
 
 export async function POST(req: NextRequest) {
+  const user = await getCurrentUser()
+  if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+  if (user.role !== 'admin') return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+
   try {
     const form = await req.formData()
     const file = form.get('file') as File | null

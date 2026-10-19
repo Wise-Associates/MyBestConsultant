@@ -327,7 +327,7 @@ async function blendWithRecommendationScore(aiScore: number, candidateId: string
   try {
     const [{ getSubmittedRecommendations }, { getScoringWeights }, { expertiseBoost }] = await Promise.all([
       import('@/lib/appwrite/recommendations'),
-      import('@/app/admin/scoring/actions'),
+      import('@/lib/scoring-weights'),
       import('@/lib/recommendation-boost'),
     ])
     const recs = await getSubmittedRecommendations(candidateId)
