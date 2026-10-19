@@ -4,7 +4,11 @@ import * as XLSX from 'xlsx'
 import { parseOffersJson, TruncatedAnswerError } from './parse'
 import { cityKey, offerFingerprint, titleKey } from './fingerprint'
 import { DEFAULT_CLIENT_LABEL, namesToHide, revealsName, scrubContacts, toPublicOffer } from './anonymize'
-import { zipUncompressedSize } from './extract'
+import { handledUidsOf, nextCheckpoint, planRead, type Checkpoint } from './checkpoint'
+import { readAttachments } from './extractors/chain'
+import { zipFitsWithin } from './extractors/office'
+import { RetryLater, SkipAttachment, formatOf, type Attachment, type AttachmentExtractor } from './extractors/types'
+import { visionBlockFor } from './extractors/vision'
 import { batchByLength, nextStepFor } from './repo'
 import { AO_EXCEL_HEADERS, buildAoWorkbook } from './excel'
 import { EMPTY_AO_FILTERS, filterAoOffers, filtersFromSearchParams, filtersToSearchParams, type AoFilters, type AoOfferRow } from './filters'
@@ -149,13 +153,19 @@ describe('robustesse de la lecture', () => {
     assert.equal(nextStepFor(email('processing', 3, 30), now), 'abandon')
   })
 
-  it('mesure la taille décompressée d\'une archive Office sans la décompresser', () => {
-    // Classeur réécrit avec compression (SheetJS n'en met pas par défaut) : taille réelle > taille du fichier.
+  it('vérifie la taille réelle d\'une archive Office, sans croire les tailles qu\'elle annonce', () => {
+    // Classeur réécrit avec compression (SheetJS n'en met pas par défaut).
     const book = XLSX.read(buildAoWorkbook([offer()]), { type: 'buffer' })
     const xlsx = XLSX.write(book, { type: 'buffer', bookType: 'xlsx', compression: true }) as Buffer
-    const size = zipUncompressedSize(xlsx)
-    assert.ok(size > xlsx.length && size < 1_000_000, `taille lue : ${size}`)
-    assert.equal(zipUncompressedSize(Buffer.from('pas une archive')), Infinity)
+    assert.equal(zipFitsWithin(xlsx, 1_000_000), true)
+    assert.equal(zipFitsWithin(xlsx, 1_000), false)
+    // Archive qui ment : on réécrit à 1 octet chaque taille décompressée du répertoire central.
+    const lying = Buffer.from(xlsx)
+    for (let i = lying.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02])); i >= 0; i = lying.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]), i + 4)) {
+      lying.writeUInt32LE(1, i + 24)
+    }
+    assert.equal(zipFitsWithin(lying, 1_000), false)
+    assert.equal(zipFitsWithin(Buffer.from('pas une archive'), 1_000_000), false)
   })
 })
 
@@ -198,3 +208,91 @@ describe('export Excel', () => {
     assert.equal(book.Sheets['AO Offers'].H2.f, undefined) // pas de formule
   })
 })
+
+describe('point de reprise de la boîte', () => {
+  const now = new Date('2026-10-19T12:00:00Z')
+  const cp = (over: Partial<Checkpoint> = {}): Checkpoint => ({ uidValidity: '7', lastUid: 100, reconciledAt: '2026-10-19T06:00:00Z', ...over })
+
+  it('lit seulement le courrier nouveau entre deux rattrapages', () => {
+    assert.deepEqual(planRead(cp(), '7', now), { mode: 'incremental', afterUid: 100 })
+  })
+
+  it('rattrape 7 jours au premier passage, après 24 h, ou si la boîte a été reconstruite', () => {
+    for (const plan of [planRead(null, '7', now), planRead(cp({ reconciledAt: '2026-10-18T11:00:00Z' }), '7', now), planRead(cp(), '8', now), planRead(cp({ reconciledAt: null }), '7', now)]) {
+      assert.equal(plan.mode, 'reconcile')
+      if (plan.mode === 'reconcile') assert.equal(plan.since.toISOString(), '2026-10-12T12:00:00.000Z')
+    }
+  })
+
+  it('n\'avance jamais au-delà du premier message laissé pour plus tard', () => {
+    const plan = { mode: 'incremental' as const, afterUid: 100 }
+    assert.equal(nextCheckpoint(cp(), '7', plan, [101, 102, 105], new Set([101, 102, 105]), 106, now).lastUid, 105)
+    assert.equal(nextCheckpoint(cp(), '7', plan, [101, 102, 105], new Set([101, 105]), 106, now).lastUid, 101)
+    assert.equal(nextCheckpoint(cp(), '7', plan, [], new Set(), 101, now).lastUid, 100)
+  })
+
+  it('ne date le rattrapage que s\'il est allé au bout, et repart de zéro sur une nouvelle boîte', () => {
+    const plan = { mode: 'reconcile' as const, since: new Date('2026-10-12T12:00:00Z') }
+    assert.equal(nextCheckpoint(cp(), '7', plan, [90, 95], new Set([90, 95]), 101, now).reconciledAt, now.toISOString())
+    assert.equal(nextCheckpoint(cp(), '7', plan, [90, 95], new Set([90]), 101, now).reconciledAt, null)
+    assert.deepEqual(nextCheckpoint(cp(), '8', plan, [3, 4], new Set([3, 4]), 5, now), { uidValidity: '8', lastUid: 4, reconciledAt: now.toISOString() })
+  })
+
+  it('compte ensemble deux copies d\'un même message, sans bloquer le point de reprise', () => {
+    const candidates = [{ uid: 101, messageId: '<a@x>' }, { uid: 102, messageId: '<a@x>' }, { uid: 103, messageId: '<b@x>' }]
+    const handled = handledUidsOf(candidates, new Set(['<a@x>', '<b@x>']))
+    const next = nextCheckpoint(cp(), '7', { mode: 'incremental', afterUid: 100 }, candidates.map(c => c.uid), handled, 104, now)
+    assert.equal(next.lastUid, 103)
+  })
+
+  it('après un premier rattrapage sans courrier récent, ne relit pas tout l\'historique de la boîte', () => {
+    const plan = { mode: 'reconcile' as const, since: new Date('2026-10-12T12:00:00Z') }
+    const first = nextCheckpoint(null, '7', plan, [], new Set(), 4513, now)
+    assert.equal(first.lastUid, 4512)
+    assert.deepEqual(planRead(first, '7', new Date(now.getTime() + 60_000)), { mode: 'incremental', afterUid: 4512 })
+  })
+})
+
+describe('chaîne de lecture des pièces jointes', () => {
+  const file = (filename: string): Attachment => ({ filename, contentType: '', content: Buffer.from('x') })
+  const ctx = () => ({ deadline: Date.now() + 60_000, canDefer: true, reserveVisionCall: async () => true })
+  const extractor = (name: string, exts: string[], read: AttachmentExtractor['read']): AttachmentExtractor =>
+    ({ name, canRead: f => exts.some(e => f.filename.endsWith(e)), read })
+
+  it('passe à l\'extracteur suivant quand le premier ne rend rien (PDF scanné)', async () => {
+    const text = extractor('texte', ['.pdf'], async () => '')
+    const vision = extractor('vision', ['.pdf', '.png'], async () => 'Développeur Java — Paris')
+    const { parts, skipped } = await readAttachments([file('ao.pdf'), file('photo.png'), file('a.zip')], ctx(), [text, vision])
+    assert.deepEqual(parts.map(p => [p.filename, p.via]), [['ao.pdf', 'vision'], ['photo.png', 'vision']])
+    assert.deepEqual(skipped, ['a.zip (format non lu)'])
+  })
+
+  it('garde la raison de l\'abandon et continue malgré un fichier qui fait planter un lecteur', async () => {
+    const broken = extractor('texte', ['.docx'], async () => { throw new Error('zip corrompu') })
+    const refused = extractor('vision', ['.png'], async () => { throw new SkipAttachment('image de plus de 5 Mo') })
+    const ok = extractor('texte', ['.txt'], async () => 'Mission data')
+    const { parts, skipped } = await readAttachments([file('a.docx'), file('b.png'), file('c.txt')], ctx(), [broken, refused, ok])
+    assert.deepEqual(skipped, ['a.docx (illisible)', 'b.png (image de plus de 5 Mo)'])
+    assert.deepEqual(parts.map(p => p.filename), ['c.txt'])
+  })
+
+  it('fait remonter un échec passager pour que tout l\'e-mail soit repris', async () => {
+    const busy = extractor('vision', ['.png'], async () => { throw new RetryLater('saturé') })
+    await assert.rejects(readAttachments([file('photo.png')], ctx(), [busy]), RetryLater)
+  })
+
+  it('reconnaît le format par le type MIME quand le nom n\'a pas d\'extension', () => {
+    assert.equal(formatOf({ filename: 'piece-jointe', contentType: 'application/pdf' }), 'pdf')
+    assert.equal(formatOf({ filename: 'scan', contentType: 'image/JPEG; name=scan' }), 'jpg')
+    assert.equal(formatOf({ filename: 'offre.docx', contentType: 'application/octet-stream' }), 'docx')
+    assert.equal(formatOf({ filename: 'x', contentType: '' }), '')
+  })
+
+  it('prépare le bon bloc pour Claude selon le format', () => {
+    assert.equal(visionBlockFor(file('ao.PDF'))?.type, 'document')
+    const image = visionBlockFor(file('scan.jpg'))
+    assert.ok(image?.type === 'image' && image.source.type === 'base64' && image.source.media_type === 'image/jpeg')
+    assert.equal(visionBlockFor(file('ao.docx')), null)
+  })
+})
+
