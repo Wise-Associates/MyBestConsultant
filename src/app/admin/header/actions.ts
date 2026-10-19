@@ -6,6 +6,7 @@ import { Query } from 'node-appwrite'
 import { revalidatePath } from 'next/cache'
 import type { HeaderConfig, FooterConfig } from '@/types/layout'
 import { getSiteConfig, getLayoutConfig } from '@/lib/site-config'
+import { requireAdmin } from '@/lib/appwrite/auth'
 
 async function getOrCreateLayoutDoc() {
   const { databases } = createAdminClient()
@@ -15,6 +16,7 @@ async function getOrCreateLayoutDoc() {
 }
 
 export async function saveHeaderConfig(config: HeaderConfig): Promise<{ error?: string }> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     const [doc, current] = await Promise.all([getOrCreateLayoutDoc(), getLayoutConfig()])
@@ -29,6 +31,7 @@ export async function saveHeaderConfig(config: HeaderConfig): Promise<{ error?: 
 }
 
 export async function saveFooterConfig(config: FooterConfig): Promise<{ error?: string }> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     const [doc, current] = await Promise.all([getOrCreateLayoutDoc(), getLayoutConfig()])
@@ -43,6 +46,7 @@ export async function saveFooterConfig(config: FooterConfig): Promise<{ error?: 
 }
 
 export async function uploadLogo(formData: FormData): Promise<{ url: string } | { error: string }> {
+  await requireAdmin()
   try {
     const file = formData.get('file') as File
     if (!file) return { error: 'Aucun fichier reçu' }

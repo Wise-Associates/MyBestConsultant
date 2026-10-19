@@ -8,6 +8,8 @@ import type { ProviderConfig } from './types'
 import { DEFAULT_CONFIG } from './types'
 import { BUILTIN_MODEL_IDS, sanitizeOpenSourceModels, sanitizeRouting } from '@/lib/ai/models'
 import { invalidateLLMConfigCache } from '@/lib/ai/llm-router'
+import { getLLMConfig as readLLMConfig } from '@/lib/ai/llm-config-store'
+import { requireAdmin } from '@/lib/appwrite/auth'
 
 // LLM config is stored inside TEMPLATES_CONFIG's customColors JSON under __llm key
 // (avoids needing new Appwrite attributes — collection is at its 16-attr limit)
@@ -21,19 +23,10 @@ async function getOrCreateTemplatesDoc() {
   })
 }
 
+// Returns the API keys: admin only. Server-side code reads @/lib/ai/llm-config-store instead.
 export async function getLLMConfig(): Promise<ProviderConfig> {
-  try {
-    const { databases } = createAdminClient()
-    const result = await databases.listDocuments(DB_ID, COLLECTIONS.TEMPLATES_CONFIG, [Query.limit(1)])
-    if (result.documents.length === 0) return DEFAULT_CONFIG
-    const doc = result.documents[0]
-    if (!doc.customColors) return DEFAULT_CONFIG
-    const parsed = JSON.parse(doc.customColors as string)
-    if (!parsed.__llm) return DEFAULT_CONFIG
-    return { ...DEFAULT_CONFIG, ...JSON.parse(parsed.__llm) }
-  } catch {
-    return DEFAULT_CONFIG
-  }
+  await requireAdmin()
+  return readLLMConfig()
 }
 
 // Keep AI_CONFIG for activeProvider (legacy) but store full config in TEMPLATES_CONFIG
@@ -47,6 +40,7 @@ async function getOrCreateAIDoc() {
 }
 
 export async function saveLLMConfig(input: ProviderConfig): Promise<{ error?: string }> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
 
@@ -91,6 +85,14 @@ export async function testProvider(
   provider: string,
   overrides?: { model?: string; apiUrl?: string; apiKey?: string },
 ): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
+  await requireAdmin()
+  if (overrides?.apiUrl) {
+    let protocol = ''
+    try { protocol = new URL(overrides.apiUrl.trim()).protocol } catch { /* invalid URL */ }
+    if (protocol !== 'http:' && protocol !== 'https:') {
+      return { ok: false, latencyMs: 0, error: 'URL de l\'API invalide (http ou https uniquement)' }
+    }
+  }
   const start = Date.now()
   try {
     if (overrides?.model && (overrides.apiUrl || overrides.apiKey)) {

@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { ID, Query } from 'node-appwrite'
 import { revalidatePath } from 'next/cache'
+import { requireAdmin } from '@/lib/appwrite/auth'
 
 function slugify(str: string) {
   return str.toLowerCase().trim()
@@ -13,6 +14,7 @@ function slugify(str: string) {
 }
 
 export async function createTenant(formData: FormData): Promise<{ error?: string }> {
+  await requireAdmin()
   const name = (formData.get('name') as string ?? '').trim()
   const email = (formData.get('email') as string ?? '').trim()
   const firstName = (formData.get('firstName') as string ?? '').trim()

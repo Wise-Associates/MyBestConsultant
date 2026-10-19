@@ -5,11 +5,13 @@ import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { oneMonthFromNow } from '@/lib/appwrite/jobs'
 import { ID } from 'node-appwrite'
 import { revalidatePath } from 'next/cache'
+import { requireAdmin } from '@/lib/appwrite/auth'
 
 export async function updateJob(
   id: string,
   data: Partial<ExtractedJob & { isActive: boolean; expiresAt: string }>,
 ): Promise<{ ok?: boolean; error?: string }> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     const payload: Record<string, unknown> = {}
@@ -34,6 +36,7 @@ export async function updateJob(
 }
 
 export async function deleteJob(id: string): Promise<{ ok?: boolean; error?: string }> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     await databases.deleteDocument(DB_ID, COLLECTIONS.JOBS, id)
@@ -66,6 +69,7 @@ export async function createJobsFromExtracted(
   jobs: ExtractedJob[],
   tenantId: string,
 ): Promise<CreateJobsResult> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     const { tryAutoPostJobToLinkedIn } = await import('@/lib/linkedin-publish')

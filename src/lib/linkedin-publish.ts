@@ -294,7 +294,7 @@ export async function tryAutoPostJobToLinkedIn(job: Job & { $id: string }): Prom
   try {
     // Same channel resolution as the manual "Publier" button (admin/linkedin-posts),
     // so auto-post on import can never diverge from what's actually configured/working.
-    const { getLinkedInChannelConfig } = await import('@/app/admin/linkedin-posts/actions')
+    const { getLinkedInChannelConfig } = await import('@/lib/linkedin-channel-config')
     const cfg = await getLinkedInChannelConfig()
 
     let posted = false
