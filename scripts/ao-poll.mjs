@@ -162,7 +162,8 @@ async function poll() {
     body.failed ? `${body.failed} en erreur` : '',
     body.remaining ? `${body.remaining} en attente` : '',
   ].filter(Boolean)
-  console.log(`${time()} ✓ ${body.pending ? parts.join(' · ') : 'aucun nouvel e-mail'}`)
+  const mode = body.mode === 'reconcile' ? ' (rattrapage des 7 derniers jours)' : ''
+  console.log(`${time()} ✓ ${body.pending ? parts.join(' · ') : 'aucun nouvel e-mail'}${mode}`)
   for (const error of body.errors ?? []) console.log(`           ↳ ${error}`)
   return body.remaining ? BACKLOG_DELAY_MS : everyMinutes * 60_000
 }
