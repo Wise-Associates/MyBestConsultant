@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import { Suspense } from "react";
 import "./globals.css";
 import { getSiteConfig, buildCssVars } from "@/lib/site-config";
+import { NavigationProgress } from "@/components/shared/navigation-progress";
 
 // Google Fonts pour toutes les polices disponibles dans le design system
 const GOOGLE_FONTS_URL =
@@ -63,6 +65,10 @@ export default async function RootLayout({
           letterSpacing: 'var(--letter-spacing-body)',
         }}
       >
+        {/* useSearchParams needs a Suspense boundary, otherwise static pages fall back to client rendering */}
+        <Suspense fallback={null}>
+          <NavigationProgress />
+        </Suspense>
         {children}
       </body>
     </html>
