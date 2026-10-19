@@ -75,7 +75,7 @@ function readSheets(buffer: Buffer, ext: string): string[][][] {
   return wb.SheetNames.map(name => XLSX.utils.sheet_to_json<string[]>(wb.Sheets[name], { header: 1, raw: false, defval: '', blankrows: false }))
 }
 
-const parseNumber = (v: string): number | null => {
+export const parseNumber = (v: string): number | null => {
   const s = v.toLowerCase().replace(/\s/g, '').replace(/[€$]|eur(os)?|\/j(our)?|\/mois|\/an/g, '')
   const m = s.match(/(\d+(?:[.,]\d+)?)(k)?/)
   if (!m) return null
@@ -83,7 +83,7 @@ const parseNumber = (v: string): number | null => {
   return Number.isFinite(n) && n > 0 ? Math.round(n) : null
 }
 
-function contractOf(v: string): ImportContract {
+export function contractOf(v: string): ImportContract {
   const n = norm(v)
   if (/\bcdi\b/.test(n)) return 'cdi'
   if (/\bcdd\b/.test(n)) return 'cdd'
@@ -91,7 +91,7 @@ function contractOf(v: string): ImportContract {
   return 'mission'
 }
 
-function remoteOf(v: string): ImportRemote {
+export function remoteOf(v: string): ImportRemote {
   const n = norm(v)
   if (/full|100|complet|distance|remote/.test(n) && !/hybrid|partiel/.test(n)) return 'remote'
   if (/onsite|presentiel|sur site|site/.test(n) && !/hybrid/.test(n)) return 'onsite'
