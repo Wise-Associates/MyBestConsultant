@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Palette, Briefcase,
-  Building2, Users, BrainCircuit, Home, Layout, PanelTop, Network, Video, Share2, Users2, CreditCard, Radar, FolderSearch, Mic, FileText, Activity, Search, Star, LifeBuoy, Megaphone,
+  Building2, Users, BrainCircuit, Inbox, Home, Layout, PanelTop, Network, Video, Share2, Users2, CreditCard, Radar, FolderSearch, Mic, FileText, Activity, Search, Star, LifeBuoy, Megaphone,
 } from 'lucide-react'
 
 const SECTIONS = [
@@ -25,6 +25,7 @@ const SECTIONS = [
     label: 'RECRUTEMENT',
     items: [
       { href: '/admin/jobs',        label: 'Offres',        sub: 'Toutes les missions',    icon: Briefcase },
+      { href: '/admin/ao-offers',   label: 'AO Offers',     sub: "Appels d'offres reçus",  icon: Inbox },
       { href: '/admin/sourcing',    label: 'Sourcing IA',   sub: 'Repérer des candidats',  icon: Radar },
       { href: '/admin/cvtheque',    label: 'CV Thèque',     sub: 'Recherche par compétence', icon: FolderSearch },
       { href: '/admin/interviews',  label: 'Entretiens IA', sub: 'Candidats & analyses',   icon: Video },

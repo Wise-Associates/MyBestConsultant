@@ -24,8 +24,9 @@ export async function extractTextFromFile(buffer: Buffer, filename: string): Pro
   if (ext === 'pdf') {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParse = require('pdf-parse/lib/pdf-parse.js') as (buf: Buffer) => Promise<{ text: string }>
-      const data = await pdfParse(buffer)
+      const pdfParse = require('pdf-parse/lib/pdf-parse.js') as (buf: Buffer, options?: { max?: number }) => Promise<{ text: string }>
+      // 50 premières pages : le texte est de toute façon tronqué à MAX_CHARS, inutile de lire un document entier.
+      const data = await pdfParse(buffer, { max: 50 })
       return data.text.slice(0, MAX_CHARS)
     } catch {
       return buffer.toString('utf-8', 0, 5_000).replace(/[^\x20-\x7E\n]/g, ' ')
