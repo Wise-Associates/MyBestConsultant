@@ -8,7 +8,7 @@ import {
   acquireSyncLock, incrementAoSources, nextStepFor, purgeAoRecords, releaseSyncLock, settledMessageIds, updateAoEmail,
 } from './repo'
 
-// Lecture planifiée de la boîte AO (Vercel Cron toutes les 5 minutes, ou bouton « Synchroniser » de l'admin).
+// Lecture planifiée de la boîte AO (route /api/cron/ao-inbox appelée par un planificateur, ou bouton « Synchroniser » de l'admin).
 // Chaque e-mail est enregistré en base AVANT d'être traité (index unique sur le Message-ID) et son état est
 // relu juste avant chaque nouvel essai : un passage planifié et une synchronisation manuelle simultanés ne
 // traitent pas le même e-mail. Une erreur est réessayée aux passages suivants, 3 fois au plus.
