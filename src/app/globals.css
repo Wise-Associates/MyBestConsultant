@@ -271,3 +271,22 @@ body { overflow-x: clip; max-width: 100%; }
 }
 .mbc-app [style*="var(--hero-bg)"] p[style*="rgba(255,255,255,0."],
 .mbc-app-dark [style*="var(--hero-bg)"] p[style*="rgba(255,255,255,0."] { color: rgba(255,255,255,0.86) !important; }
+
+/* ── Barre de chargement des pages (NavigationProgress, dans le layout racine) ─────────────────
+   Fine barre orange (couleur de marque) en haut de l'écran pendant une navigation. Au-dessus de
+   tout, y compris la barre de navigation fixe et le PageLoader plein écran. */
+.mbc-nav-progress {
+  position: fixed; top: 0; left: 0; right: 0; height: 3px;
+  z-index: 2147483647;
+  background: #F97316;
+  box-shadow: 0 0 8px rgba(249,115,22,0.6);
+  transform-origin: left;
+  pointer-events: none;
+  opacity: 0;
+  transition: transform .2s ease, opacity .3s ease .15s;
+}
+.mbc-nav-progress[data-state="loading"] { opacity: 1; transition: transform .2s ease; }
+.mbc-nav-progress[data-state="idle"] { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .mbc-nav-progress { transition: none; }
+}
