@@ -2,7 +2,7 @@
 // Remplace Vercel Cron en local : appelle /api/cron/ao-inbox toutes les 5 minutes (lecture de la boîte AO).
 //
 //   npm run dev                       ← dans un premier terminal
-//   npm run ao:poll                   ← au premier plan : un passage tout de suite, puis toutes les 5 minutes (Ctrl+C)
+//   npm run ao:poll                   ← au premier plan : un passage tout de suite, puis toutes les N minutes (Ctrl+C)
 //   npm run ao:poll -- --once         ← un seul passage
 //   npm run ao:poll -- --every 10 --url http://localhost:3001
 //   npm run ao:poll:start             ← même chose en arrière-plan (accepte aussi --every et --url)
@@ -12,6 +12,8 @@
 // Les variables sont lues avec le chargeur de Next.js (@next/env, fourni avec `next`), dans le même ordre que
 // `npm run dev` : .env.development.local, .env.local, .env.development, .env. Le CRON_SECRET utilisé est donc
 // celui du serveur local. Aucun secret n'est affiché.
+//
+// Intervalle : --every N, sinon AO_POLL_INTERVAL_MINUTES (dans un fichier .env), sinon 5 minutes.
 import nextEnv from '@next/env'
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -28,7 +30,6 @@ const option = (name, fallback) => {
   return i >= 0 && args[i + 1] ? args[i + 1] : fallback
 }
 const once = args.includes('--once')
-const everyMinutes = Number(option('--every', '5'))
 const baseUrl = option('--url', 'http://localhost:3000').replace(/\/$/, '')
 const background = process.env.AO_POLL_BACKGROUND === '1'
 /** S'il reste des e-mails après un passage (limite atteinte), on relance plus tôt pour vider la file. */
@@ -72,12 +73,13 @@ if (command === 'status') {
   process.exit(0)
 }
 
+const { loadedEnvFiles } = nextEnv.loadEnvConfig(process.cwd(), true, { info: () => {}, error: console.error })
+const DEFAULT_INTERVAL_MINUTES = 5
+const everyMinutes = Number(option('--every', process.env.AO_POLL_INTERVAL_MINUTES || String(DEFAULT_INTERVAL_MINUTES)))
 if (!Number.isFinite(everyMinutes) || everyMinutes < 1) {
-  console.error('--every attend un nombre de minutes (1 minimum).')
+  console.error('Intervalle invalide (--every ou AO_POLL_INTERVAL_MINUTES) : un nombre de minutes, 1 minimum.')
   process.exit(1)
 }
-
-const { loadedEnvFiles } = nextEnv.loadEnvConfig(process.cwd(), true, { info: () => {}, error: console.error })
 const secret = process.env.CRON_SECRET ?? ''
 const time = () => new Date().toLocaleString('fr-FR')
 const plural = (n, word) => `${n} ${word}${n > 1 ? 's' : ''}`
