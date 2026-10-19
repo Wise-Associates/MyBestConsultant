@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { ID, Query, type Models } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
@@ -141,8 +142,70 @@ export async function listAoEmailsByIds(ids: string[]): Promise<Map<string, AoEm
 
 export async function listRecentAoEmails(limit: number): Promise<AoEmail[]> {
   const { databases } = createAdminClient()
-  const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_EMAILS, [Query.orderDesc('$createdAt'), Query.limit(limit)])
+  const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_EMAILS, [
+    Query.notEqual('status', SYNC_LOCK_STATUS),
+    Query.orderDesc('$createdAt'),
+    Query.limit(limit),
+  ])
   return res.documents.map(docToAoEmail)
+}
+
+// ── Verrou de synchronisation ────────────────────────────────────
+//
+// Une seule synchronisation à la fois (Vercel Cron, bouton admin, npm run ao:poll) : un passage qui arrive
+// pendant qu'un autre tourne est ignoré. Sur Vercel, chaque appel peut tourner sur une instance différente :
+// le verrou est donc en base. C'est un document AO_EMAILS à identifiant fixe (créé seulement s'il n'existe
+// pas : la base garantit qu'un seul passage le prend), marqué status « lock » et exclu des listes.
+// Il expire de lui-même si un passage s'arrête sans le rendre (délai dépassé, crash).
+
+const SYNC_LOCK_ID = 'ao_sync_lock'
+const SYNC_LOCK_STATUS = 'lock'
+/** Plus long que la durée maximale d'un passage (300 s sur Vercel). */
+export const SYNC_LOCK_TTL_MS = 6 * 60_000
+
+export interface SyncLock {
+  token: string
+}
+
+/** Prend le verrou ; null si une autre synchronisation le détient encore. `holder` : qui l'a pris (cron, admin…). */
+export async function acquireSyncLock(holder: string, now: Date): Promise<SyncLock | null> {
+  const { databases } = createAdminClient()
+  const token = randomUUID()
+  const create = () => databases.createDocument(DB_ID, COLLECTIONS.AO_EMAILS, SYNC_LOCK_ID, {
+    messageId: SYNC_LOCK_ID,
+    uid: 0,
+    status: SYNC_LOCK_STATUS,
+    // receivedAt sert ici de date d'expiration du verrou ; error porte le jeton du détenteur.
+    receivedAt: new Date(now.getTime() + SYNC_LOCK_TTL_MS).toISOString(),
+    fromName: holder.slice(0, 200),
+    error: token,
+  })
+  const isConflict = (err: unknown) => (err as { code?: number }).code === 409
+
+  try {
+    await create()
+    return { token }
+  } catch (err) {
+    if (!isConflict(err)) throw err
+  }
+  // Verrou présent : toujours valide → passage ignoré ; expiré → on le reprend.
+  const current = await databases.getDocument(DB_ID, COLLECTIONS.AO_EMAILS, SYNC_LOCK_ID).catch(() => null)
+  if (current && new Date(String(current.receivedAt)).getTime() > now.getTime()) return null
+  await databases.deleteDocument(DB_ID, COLLECTIONS.AO_EMAILS, SYNC_LOCK_ID).catch(() => undefined)
+  try {
+    await create()
+    return { token }
+  } catch (err) {
+    if (isConflict(err)) return null // repris au même instant par un autre passage
+    throw err
+  }
+}
+
+/** Rend le verrou, seulement s'il est toujours le nôtre (il a pu expirer et être repris entre-temps). */
+export async function releaseSyncLock(lock: SyncLock): Promise<void> {
+  const { databases } = createAdminClient()
+  const current = await databases.getDocument(DB_ID, COLLECTIONS.AO_EMAILS, SYNC_LOCK_ID).catch(() => null)
+  if (current?.error === lock.token) await databases.deleteDocument(DB_ID, COLLECTIONS.AO_EMAILS, SYNC_LOCK_ID).catch(() => undefined)
 }
 
 // ── Offres ───────────────────────────────────────────────────────

@@ -1,11 +1,11 @@
 import { COLLECTIONS } from '@/lib/appwrite/config'
 import { buildEmailContent, extractOffersFromEmail } from './extract'
 import { DUPLICATE_WINDOW_DAYS, offerFingerprint } from './fingerprint'
-import { aoInboxSettings, withAoInbox, type InboxEnvelope } from './imap'
+import { aoInboxSettings, withAoInbox, type AoInboxSettings, type InboxEnvelope } from './imap'
 import { TruncatedAnswerError } from './parse'
 import {
   MAX_ATTEMPTS, createAoEmail, createAoOffer, findAoDuplicate, findAoEmailByMessageId,
-  incrementAoSources, nextStepFor, purgeAoRecords, settledMessageIds, updateAoEmail,
+  acquireSyncLock, incrementAoSources, nextStepFor, purgeAoRecords, releaseSyncLock, settledMessageIds, updateAoEmail,
 } from './repo'
 
 // Lecture planifiée de la boîte AO (Vercel Cron toutes les 5 minutes, ou bouton « Synchroniser » de l'admin).
@@ -35,6 +35,8 @@ class PermanentError extends Error {}
 export interface AoSyncReport {
   /** false : identifiants IMAP absents, rien n'a été lu. */
   configured: boolean
+  /** true : une autre synchronisation était en cours, ce passage n'a rien fait. */
+  skipped: boolean
   /** E-mails nouveaux (ou à réessayer) trouvés dans la fenêtre lue. */
   pending: number
   processed: number
@@ -53,16 +55,36 @@ export interface AoSyncOptions {
   maxEmails?: number
   /** Temps au-delà duquel on ne commence plus de nouvel e-mail (la fonction a une durée limitée). */
   budgetMs?: number
+  /** Origine du passage, enregistrée avec le verrou (diagnostic). */
+  holder?: string
 }
 
-export async function syncAoInbox({ now = new Date(), maxEmails = 8, budgetMs = 240_000 }: AoSyncOptions = {}): Promise<AoSyncReport> {
-  const report: AoSyncReport = { configured: false, pending: 0, processed: 0, offersCreated: 0, duplicates: 0, noOffer: 0, failed: 0, remaining: 0, errors: [] }
+export async function syncAoInbox({ now = new Date(), maxEmails = 8, budgetMs = 240_000, holder = 'cron' }: AoSyncOptions = {}): Promise<AoSyncReport> {
+  const report: AoSyncReport = { configured: false, skipped: false, pending: 0, processed: 0, offersCreated: 0, duplicates: 0, noOffer: 0, failed: 0, remaining: 0, errors: [] }
   const settings = aoInboxSettings()
   if (!settings) return report
   report.configured = true
   if (!COLLECTIONS.AO_EMAILS || !COLLECTIONS.AO_OFFERS) {
     throw new Error('APPWRITE_COLLECTION_AO_EMAILS / APPWRITE_COLLECTION_AO_OFFERS non définies : créez les collections (npm run ao:setup) et ajoutez ces variables.')
   }
+  const lock = await acquireSyncLock(holder, now)
+  if (!lock) {
+    report.skipped = true
+    return report
+  }
+  try {
+    await runSync(report, settings, { now, maxEmails, budgetMs })
+  } finally {
+    await releaseSyncLock(lock)
+  }
+  return report
+}
+
+async function runSync(
+  report: AoSyncReport,
+  settings: AoInboxSettings,
+  { now, maxEmails, budgetMs }: { now: Date; maxEmails: number; budgetMs: number },
+): Promise<void> {
   const startedAt = Date.now()
   const timeLeft = () => budgetMs - (Date.now() - startedAt)
 
@@ -141,8 +163,6 @@ export async function syncAoInbox({ now = new Date(), maxEmails = 8, budgetMs = 
     }
     report.remaining = todo.length - handled
   })
-
-  return report
 }
 
 /**
