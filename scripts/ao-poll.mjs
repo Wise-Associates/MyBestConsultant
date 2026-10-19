@@ -138,8 +138,8 @@ async function poll() {
   if (!res.ok) {
     console.error(`${time()} ✗ ${res.status} ${body.error ?? ''}${body.detail ? ` : ${body.detail}` : ' — détails dans le terminal de `npm run dev`.'}`)
     if (/ETIMEDOUT|ENETUNREACH/.test(body.detail ?? '')) {
-      console.error('           ↳ Le serveur local n\'atteint pas Appwrite (réseau sans IPv6). Relancez-le avec :')
-      console.error('             NODE_OPTIONS=--network-family-autoselection-attempt-timeout=2000 npm run dev')
+      console.error('           ↳ Le serveur local n\'atteint pas Appwrite (réseau sans IPv6 ou serveur lointain).')
+      console.error('             Arrêtez `npm run dev` et relancez-le avec : npm run dev:local')
     }
     return null
   }
