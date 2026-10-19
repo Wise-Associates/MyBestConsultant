@@ -12,6 +12,7 @@
 // Ensuite, ajoutez dans ce même environnement (fichier local ET variables Vercel) :
 //   APPWRITE_COLLECTION_AO_EMAILS=ao_emails
 //   APPWRITE_COLLECTION_AO_OFFERS=ao_offers
+//   APPWRITE_COLLECTION_AO_STATE=ao_sync_state
 // Les collections n'ont aucune permission client : seules la clé API serveur et l'admin y accèdent.
 import { Client, Databases } from 'node-appwrite'
 import { readFileSync } from 'fs'
@@ -86,6 +87,23 @@ const SCHEMA = [
     ],
     indexes: [['fingerprint', 'key', ['fingerprint']], ['status', 'key', ['status']]],
   },
+  {
+    // État de la synchronisation : verrou (un seul passage à la fois), point de reprise par boîte lue,
+    // compteur quotidien des lectures par l'IA.
+    id: 'ao_sync_state',
+    name: 'AO sync state',
+    attributes: [
+      ['string', 'kind', { size: 20, required: true }],
+      ['string', 'holder', { size: 200 }],
+      ['string', 'token', { size: 36 }],
+      ['datetime', 'expiresAt', {}],
+      ['string', 'uidValidity', { size: 40 }],
+      ['integer', 'lastUid', { min: 0 }],
+      ['datetime', 'reconciledAt', {}],
+      ['integer', 'count', { min: 0 }],
+    ],
+    indexes: [],
+  },
 ]
 
 async function exists(fn) {
@@ -135,4 +153,4 @@ for (const c of SCHEMA) {
   }
 }
 console.log(apply ? 'Terminé.' : 'Rien n\'a été modifié.')
-console.log('Variables à définir : APPWRITE_COLLECTION_AO_EMAILS=ao_emails  APPWRITE_COLLECTION_AO_OFFERS=ao_offers')
+console.log('Variables à définir : APPWRITE_COLLECTION_AO_EMAILS=ao_emails  APPWRITE_COLLECTION_AO_OFFERS=ao_offers  APPWRITE_COLLECTION_AO_STATE=ao_sync_state')
