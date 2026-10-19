@@ -9,8 +9,8 @@
 // (même réglage que .claude/launch.json).
 // Le fichier d'environnement fournit APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, APPWRITE_API_KEY et APPWRITE_DB_ID.
 // Ensuite, ajoutez dans ce même environnement (fichier local ET variables Vercel) :
-//   APPWRITE_COLLECTION_AO_EMAILS=ao-emails
-//   APPWRITE_COLLECTION_AO_OFFERS=ao-offers
+//   APPWRITE_COLLECTION_AO_EMAILS=ao_emails
+//   APPWRITE_COLLECTION_AO_OFFERS=ao_offers
 // Les collections n'ont aucune permission client : seules la clé API serveur et l'admin y accèdent.
 import { Client, Databases } from 'node-appwrite'
 import { readFileSync } from 'fs'
@@ -44,7 +44,7 @@ const DB = env.APPWRITE_DB_ID
 // [type, clé, options] — 16 attributs maximum par collection (limite du projet, voir AGENTS.md).
 const SCHEMA = [
   {
-    id: 'ao-emails',
+    id: 'ao_emails',
     name: 'AO emails',
     attributes: [
       ['string', 'messageId', { size: 500, required: true }],
@@ -60,10 +60,10 @@ const SCHEMA = [
       ['integer', 'duplicateCount', { min: 0, default: 0 }],
       ['integer', 'attempts', { min: 0, default: 0 }],
     ],
-    indexes: [['messageid-unique', 'unique', ['messageId']], ['receivedat', 'key', ['receivedAt']], ['status', 'key', ['status']]],
+    indexes: [['messageid_unique', 'unique', ['messageId']], ['receivedat', 'key', ['receivedAt']], ['status', 'key', ['status']]],
   },
   {
-    id: 'ao-offers',
+    id: 'ao_offers',
     name: 'AO offers',
     attributes: [
       ['string', 'title', { size: 200, required: true }],
@@ -134,4 +134,4 @@ for (const c of SCHEMA) {
   }
 }
 console.log(apply ? 'Terminé.' : 'Rien n\'a été modifié.')
-console.log('Variables à définir : APPWRITE_COLLECTION_AO_EMAILS=ao-emails  APPWRITE_COLLECTION_AO_OFFERS=ao-offers')
+console.log('Variables à définir : APPWRITE_COLLECTION_AO_EMAILS=ao_emails  APPWRITE_COLLECTION_AO_OFFERS=ao_offers')
