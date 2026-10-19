@@ -2,10 +2,9 @@
 
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
-import { oneMonthFromNow } from '@/lib/appwrite/jobs'
-import { ID } from 'node-appwrite'
 import { revalidatePath } from 'next/cache'
 import { requireAdmin } from '@/lib/appwrite/auth'
+import { createAdminJob } from '@/lib/admin-job'
 
 export async function updateJob(
   id: string,
@@ -71,29 +70,7 @@ export async function createJobsFromExtracted(
 ): Promise<CreateJobsResult> {
   await requireAdmin()
   try {
-    const { databases } = createAdminClient()
-    const { tryAutoPostJobToLinkedIn } = await import('@/lib/linkedin-publish')
-    const { tryAutoSourceCandidates } = await import('@/lib/auto-source-candidates')
-    for (const job of jobs) {
-      const doc = await databases.createDocument(DB_ID, COLLECTIONS.JOBS, ID.unique(), {
-        tenantId,
-        title: job.title,
-        description: job.description,
-        skills: job.skills.slice(0, 10),
-        // "France" was too generic and would silently match any region/city search (it's
-        // literally a substring of "Île-de-France"), polluting results. An honest
-        // placeholder that doesn't accidentally match real place names is safer.
-        location: job.location || 'Non spécifié',
-        contractType: job.contractType || 'mission',
-        remote: job.remote || 'hybrid',
-        salary: job.salary ?? undefined,
-        companyName: job.companyName || undefined,
-        isActive: true,
-        expiresAt: oneMonthFromNow(),
-      })
-      await tryAutoPostJobToLinkedIn({ ...doc, $id: doc.$id } as never)
-      await tryAutoSourceCandidates({ ...doc, $id: doc.$id } as never)
-    }
+    for (const job of jobs) await createAdminJob(job, tenantId)
     revalidatePath('/admin/jobs')
     return { ok: true, created: jobs.length }
   } catch (err) {

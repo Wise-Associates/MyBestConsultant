@@ -111,6 +111,7 @@ Core principles for production-quality frontend decisions on this project.
 - **node-appwrite v15** — don't upgrade, server is 1.7.4.
 - **Cookies**: `mbc-session` (httpOnly) + `mbc-role` (readable by middleware). Never rename.
 - **Server Actions** call `createAdminClient()` not `createSessionClient()` for mutations.
+- **Every admin Server Action and `/api/admin/*` route checks the caller itself** (`requireAdmin()` from `@/lib/appwrite/auth`, or role check → 401/403). Server Actions are public POST endpoints: the admin layout only guards page rendering. Code outside `src/app/admin` never imports admin actions; shared reads live in `src/lib`.
 - **Collection attribute limit: 16.** Count before creating new attributes.
 <!-- END:frontend-architect-principles -->
 
@@ -125,3 +126,18 @@ Core principles for production-quality frontend decisions on this project.
 - **Never read or print `.env*` files.** Scripts may load them; you don't.
 - **Verify after pushing.** Wait for the preview (`vercel ls`, `vercel inspect <url> --logs`), then check the page in the browser.
 <!-- END:dev-workflow -->
+
+---
+
+<!-- BEGIN:ao-offers -->
+# AO Offers (appels d'offres reçus par e-mail)
+
+- Boîte `ao@wise-associates.fr` (IONOS, IMAP) lue en **lecture seule** toutes les 5 min par Vercel Cron (`/api/cron/ao-inbox`, `vercel.json`) et par le bouton « Synchroniser » de `/admin/ao-offers`. Aucun message n'est supprimé, déplacé ni marqué comme lu : le suivi est en base, par Message-ID (fenêtre relue : 7 jours).
+- Code dans `src/lib/ao/` : `imap.ts` (lecture), `extract.ts` + `prompt.ts` (IA via `callLLM`), `parse.ts` (validation zod de la réponse IA), `fingerprint.ts` (dédoublonnage : intitulé + client + ville + contrat, sur 60 jours), `anonymize.ts` (version publique), `excel.ts` (export au format `public/templates/modele-import-offres.xlsx`, ré-importable), `filters.ts` (filtres partagés page/export), `repo.ts` (Appwrite), `sync.ts` (orchestration).
+- Collections `ao-emails` (12 attributs) et `ao-offers` (**16/16 attributs : plus aucun ajout possible**), créées par `scripts/setup-ao-collections.mjs`.
+- Les offres arrivent « à valider ». Un admin publie une copie anonymisée : client (variantes du nom, sigle) et expéditeur remplacés par un libellé générique, coordonnées retirées, dans le titre, la description, la ville et les compétences ; règles réappliquées côté serveur. L'offre publique a l'identifiant fixe `ao<id de l'offre AO>` (pas de double publication). La page admin et l'export Excel gardent les vraies données (usage interne).
+- E-mails en erreur réessayés 3 fois (réponse IA tronquée ou message > 25 Mo : abandonnés tout de suite) ; pièces jointes zip > 50 Mo décompressées ignorées ; 20 offres max par e-mail ; données AO supprimées après 365 jours (les offres publiées restent).
+- Vercel Cron ne s'exécute que sur la production ; sur une preview `dev`, utiliser le bouton « Synchroniser maintenant ».
+- Variables : `AO_IMAP_*`, `APPWRITE_COLLECTION_AO_*`, `CRON_SECRET` (≥ 16 caractères) — voir `.env.example`.
+- Tests : `npm test` (node:test + tsx, fichiers `src/**/*.test.ts`) ; `npm run typecheck`.
+<!-- END:ao-offers -->
