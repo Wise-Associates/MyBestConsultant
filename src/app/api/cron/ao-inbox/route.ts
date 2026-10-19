@@ -13,8 +13,12 @@ export async function GET(req: NextRequest) {
     const report = await syncAoInbox({ budgetMs: 240_000 })
     return NextResponse.json(report)
   } catch (err) {
-    // Connexion IMAP, Appwrite ou IA indisponible : visible dans les logs Vercel, réessayé au passage suivant.
-    console.error('AO inbox sync failed', err instanceof Error ? err.message : err)
-    return NextResponse.json({ error: 'Synchronisation AO échouée' }, { status: 500 })
+    // Connexion IMAP, Appwrite ou IA indisponible : visible dans les logs, réessayé au passage suivant.
+    // Le détail n'est renvoyé qu'à l'appelant authentifié par CRON_SECRET (planificateur, npm run ao:poll).
+    // « fetch failed » cache la vraie cause réseau (ETIMEDOUT, ECONNREFUSED…) dans err.cause.
+    const cause = (err as { cause?: { code?: string } })?.cause?.code
+    const detail = `${err instanceof Error ? err.message : String(err)}${cause ? ` (${cause})` : ''}`
+    console.error('AO inbox sync failed', detail)
+    return NextResponse.json({ error: 'Synchronisation AO échouée', detail }, { status: 500 })
   }
 }
