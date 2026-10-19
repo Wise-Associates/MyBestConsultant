@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   try {
-    const report = await syncAoInbox({ budgetMs: 240_000 })
+    const report = await syncAoInbox({ budgetMs: 240_000, holder: 'cron' })
     return NextResponse.json(report)
   } catch (err) {
     // Connexion IMAP, Appwrite ou IA indisponible : visible dans les logs, réessayé au passage suivant.

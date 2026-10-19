@@ -149,10 +149,14 @@ async function poll() {
     console.error(`${time()} ✗ Boîte AO non configurée côté serveur : AO_IMAP_USER et AO_IMAP_PASSWORD.`)
     return null
   }
+  if (body.skipped) {
+    console.log(`${time()} ⏭ une synchronisation est déjà en cours (bouton admin ou autre appel) : passage ignoré`)
+    return everyMinutes * 60_000
+  }
 
   const parts = [
     `${body.processed} e-mail${body.processed > 1 ? 's' : ''} traité${body.processed > 1 ? 's' : ''}`,
-    plural(body.offersCreated, 'nouvelle offre'),
+    `${body.offersCreated} nouvelle${body.offersCreated > 1 ? 's' : ''} offre${body.offersCreated > 1 ? 's' : ''}`,
     body.duplicates ? plural(body.duplicates, 'doublon') : '',
     body.noOffer ? `${body.noOffer} sans offre` : '',
     body.failed ? `${body.failed} en erreur` : '',
