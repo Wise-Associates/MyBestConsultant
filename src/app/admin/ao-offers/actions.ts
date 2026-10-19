@@ -27,7 +27,7 @@ export async function syncAoInboxNow(): Promise<{ report?: AoSyncReport; error?:
   await requireAdmin()
   try {
     // Plus court que le passage planifié : l'admin attend la réponse.
-    const report = await syncAoInbox({ maxEmails: 5, budgetMs: 150_000 })
+    const report = await syncAoInbox({ maxEmails: 5, budgetMs: 150_000, holder: 'admin' })
     revalidatePath('/admin/ao-offers')
     return { report }
   } catch (err) {
