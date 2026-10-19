@@ -1,3 +1,4 @@
+import { COLLECTIONS } from '@/lib/appwrite/config'
 import { buildEmailContent, extractOffersFromEmail } from './extract'
 import { DUPLICATE_WINDOW_DAYS, offerFingerprint } from './fingerprint'
 import { aoInboxSettings, withAoInbox, type InboxEnvelope } from './imap'
@@ -59,6 +60,9 @@ export async function syncAoInbox({ now = new Date(), maxEmails = 8, budgetMs = 
   const settings = aoInboxSettings()
   if (!settings) return report
   report.configured = true
+  if (!COLLECTIONS.AO_EMAILS || !COLLECTIONS.AO_OFFERS) {
+    throw new Error('APPWRITE_COLLECTION_AO_EMAILS / APPWRITE_COLLECTION_AO_OFFERS non définies : créez les collections (npm run ao:setup) et ajoutez ces variables.')
+  }
   const startedAt = Date.now()
   const timeLeft = () => budgetMs - (Date.now() - startedAt)
 
