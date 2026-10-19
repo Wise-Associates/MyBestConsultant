@@ -46,6 +46,7 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, loadErr
       if (res.error || !res.report) return setNotice({ tone: 'error', text: res.error ?? 'Synchronisation impossible.' })
       const r = res.report
       if (!r.configured) return setNotice({ tone: 'error', text: 'La boîte AO n\'est pas configurée (AO_IMAP_USER / AO_IMAP_PASSWORD).' })
+      if (r.skipped) return setNotice({ tone: 'ok', text: 'Une synchronisation est déjà en cours (passage automatique) : les nouvelles offres apparaîtront à la fin. Réessayez dans quelques minutes si besoin.' })
       const parts = [
         `${r.processed} e-mail${r.processed > 1 ? 's' : ''} traité${r.processed > 1 ? 's' : ''}`,
         `${r.offersCreated} nouvelle${r.offersCreated > 1 ? 's' : ''} offre${r.offersCreated > 1 ? 's' : ''}`,
