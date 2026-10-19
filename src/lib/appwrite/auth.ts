@@ -145,6 +145,14 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
   }
 }
 
+// Server Actions are public POST endpoints: the admin layout only guards page rendering,
+// so every admin action must check the caller itself.
+export async function requireAdmin(): Promise<UserProfile> {
+  const user = await getCurrentUser()
+  if (!user || user.role !== 'admin') throw new Error('Non autorisé')
+  return user
+}
+
 // ── Register ─────────────────────────────────────────────────────
 
 export async function createUserAccountAndProfile(params: {

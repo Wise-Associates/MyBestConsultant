@@ -159,7 +159,7 @@ export async function generateInterviewSpeech(
     }
 
     if (!buffer) {
-      const { getLLMConfig } = await import('@/app/admin/llm-config/actions')
+      const { getLLMConfig } = await import('@/lib/ai/llm-config-store')
       const cfg = await getLLMConfig()
       const apiKey = cfg.openaiApiKey || process.env.OPENAI_API_KEY
       if (apiKey) {
@@ -205,7 +205,7 @@ export async function saveInterviewProgress(
   // manuellement depuis l'admin si ça échoue (clé API absente, réponse LLM invalide, etc.).
   if (status === 'completed') {
     try {
-      const { performInterviewAnalysis } = await import('@/app/admin/interviews/actions')
+      const { performInterviewAnalysis } = await import('@/lib/interview-analysis')
       const res = await performInterviewAnalysis(sessionId)
       if (res.error) console.error(`Auto-analyse échouée pour l'entretien ${sessionId}:`, res.error)
     } catch (e) { console.error(`Auto-analyse a levé une exception pour l'entretien ${sessionId}:`, e) }

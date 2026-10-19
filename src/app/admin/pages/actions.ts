@@ -9,12 +9,14 @@ import type { PageSection } from './types'
 import type { NavLink } from '@/types/layout'
 import { getLayoutConfig } from '@/lib/site-config'
 import { saveHeaderConfig } from '@/app/admin/header/actions'
+import { requireAdmin } from '@/lib/appwrite/auth'
 
 const COL = 'pages'
 
 export type ActionResult = { ok: true } | { error: string }
 
 export async function getPages() {
+  await requireAdmin()
   const { databases } = createAdminClient()
   const result = await databases.listDocuments(DB_ID, COL, [
     Query.orderDesc('$createdAt'),
@@ -24,6 +26,7 @@ export async function getPages() {
 }
 
 export async function getPublishedPages(): Promise<{ title: string; slug: string }[]> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     const result = await databases.listDocuments(DB_ID, COL, [
@@ -38,6 +41,7 @@ export async function getPublishedPages(): Promise<{ title: string; slug: string
 }
 
 export async function getPage(id: string) {
+  await requireAdmin()
   const { databases } = createAdminClient()
   return databases.getDocument(DB_ID, COL, id)
 }
@@ -48,6 +52,7 @@ export async function createPage(data: {
   slug: string
   metaDescription: string
 }): Promise<ActionResult> {
+  await requireAdmin()
   let docId: string
 
   try {
@@ -72,6 +77,7 @@ export async function savePage(
   sections: PageSection[],
   meta: { title: string; slug: string; metaDescription: string; metaKeywords: string; isPublished: boolean }
 ): Promise<ActionResult> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     await databases.updateDocument(DB_ID, COL, id, {
@@ -91,6 +97,7 @@ export async function savePage(
 }
 
 export async function deletePage(id: string): Promise<ActionResult> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     await databases.deleteDocument(DB_ID, COL, id)
@@ -102,6 +109,7 @@ export async function deletePage(id: string): Promise<ActionResult> {
 }
 
 export async function togglePublished(id: string, isPublished: boolean): Promise<ActionResult> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     await databases.updateDocument(DB_ID, COL, id, { isPublished })
@@ -113,6 +121,7 @@ export async function togglePublished(id: string, isPublished: boolean): Promise
 }
 
 export async function setHomepage(id: string): Promise<ActionResult> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     // Unset current homepage
@@ -131,6 +140,7 @@ export async function setHomepage(id: string): Promise<ActionResult> {
 }
 
 export async function unsetHomepage(id: string): Promise<ActionResult> {
+  await requireAdmin()
   try {
     const { databases } = createAdminClient()
     await databases.updateDocument(DB_ID, COL, id, { isHomepage: false })
@@ -144,6 +154,7 @@ export async function unsetHomepage(id: string): Promise<ActionResult> {
 }
 
 export async function ensureHomepage(): Promise<string> {
+  await requireAdmin()
   const { databases } = createAdminClient()
   const existing = await databases.listDocuments(DB_ID, COL, [
     Query.equal('isHomepage', true),
@@ -178,30 +189,16 @@ export async function ensureHomepage(): Promise<string> {
 }
 
 export async function getNavLinks(): Promise<NavLink[]> {
+  await requireAdmin()
   const { header } = await getLayoutConfig()
   return header.navLinks
 }
 
 export async function saveNavLinks(navLinks: NavLink[]): Promise<ActionResult> {
+  await requireAdmin()
   const { header } = await getLayoutConfig()
   const result = await saveHeaderConfig({ ...header, navLinks })
   if (result.error) return { error: result.error }
   revalidatePath('/', 'layout')
   return { ok: true }
-}
-
-export async function getHomepage() {
-  try {
-    const { databases } = createAdminClient()
-    const result = await databases.listDocuments(DB_ID, COL, [
-      Query.equal('isHomepage', true),
-      Query.equal('isPublished', true),
-      Query.limit(1),
-    ])
-    if (result.documents.length === 0) return null
-    const doc = result.documents[0]
-    return { sections: doc.sections ?? '[]' }
-  } catch {
-    return null
-  }
 }

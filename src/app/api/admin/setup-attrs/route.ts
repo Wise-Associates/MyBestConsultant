@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
+import { getCurrentUser } from '@/lib/appwrite/auth'
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)) }
 
@@ -28,6 +29,10 @@ async function ensureAttr(
 }
 
 export async function POST() {
+  const user = await getCurrentUser()
+  if (!user) return NextResponse.json({ ok: false, error: 'Non autorisé' }, { status: 401 })
+  if (user.role !== 'admin') return NextResponse.json({ ok: false, error: 'Accès refusé' }, { status: 403 })
+
   try {
     const { databases } = createAdminClient()
     const results: Record<string, boolean> = {}

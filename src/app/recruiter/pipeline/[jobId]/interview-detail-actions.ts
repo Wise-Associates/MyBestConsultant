@@ -56,7 +56,7 @@ export async function getInterviewDetailForRecruiter(id: string): Promise<{ deta
 export async function analyzeInterviewForRecruiter(id: string): Promise<{ analysis?: InterviewDetail['analysis']; error?: string }> {
   try {
     await requireOwnedInterview(id)
-    const { performInterviewAnalysis } = await import('@/app/admin/interviews/actions')
+    const { performInterviewAnalysis } = await import('@/lib/interview-analysis')
     return await performInterviewAnalysis(id)
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur' }
