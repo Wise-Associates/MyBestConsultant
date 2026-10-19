@@ -68,7 +68,7 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, loadErr
           <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>RECRUTEMENT</p>
           <h1 className="text-[28px] font-bold tracking-tight text-white">AO Offers</h1>
           <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-            Appels d&apos;offres reçus sur la boîte AO, lus automatiquement toutes les 5 minutes.
+            Appels d&apos;offres reçus sur la boîte AO, lus automatiquement.
             {recentEmails[0] ? ` Dernier e-mail : ${formatDay(recentEmails[0].receivedAt)}.` : ''}
           </p>
         </div>
