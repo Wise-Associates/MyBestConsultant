@@ -5,6 +5,7 @@ import { AlertTriangle, Ban, ExternalLink, Loader2, RotateCcw, Send, X } from 'l
 import type { AoOfferRow } from '@/lib/ao/filters'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
 import { previewAoPublication, publishAoOffer, setAoOfferStatus, type PublicationDraft, type PublicationPreview } from './actions'
+import { AoDescription } from './ao-description'
 import {
   CONTRACT_LABEL, REMOTE_LABEL, STATUS_UI, control, fieldLabel, formatAmount, formatDay, optionStyle, primaryButton, secondaryButton,
 } from './labels'
@@ -110,8 +111,8 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
           </section>
         )}
         <section>
-          <p style={fieldLabel}>Description</p>
-          <p className="text-sm whitespace-pre-wrap leading-relaxed" style={{ color: 'rgba(255,255,255,0.75)', maxWidth: '75ch' }}>{row.description || '—'}</p>
+          <p style={{ ...fieldLabel, marginBottom: 12 }}>Description</p>
+          <AoDescription text={row.description} />
         </section>
 
         {/* Actions */}
