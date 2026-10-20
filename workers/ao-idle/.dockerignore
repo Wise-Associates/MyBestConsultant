@@ -1,0 +1,6 @@
+# Le fichier .env (mot de passe IMAP, CRON_SECRET) est lu au lancement par docker compose, jamais copié dans l'image.
+.env*
+node_modules
+*.test.mjs
+README.md
+compose.yaml

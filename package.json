@@ -9,12 +9,13 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit -p .",
-    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test": "node --import tsx --test \"src/**/*.test.ts\" \"workers/ao-idle/*.test.mjs\"",
     "ao:setup": "node --network-family-autoselection-attempt-timeout=2000 scripts/setup-ao-collections.mjs",
     "ao:poll": "node scripts/ao-poll.mjs",
     "ao:poll:start": "node scripts/ao-poll.mjs start",
     "ao:poll:stop": "node scripts/ao-poll.mjs stop",
-    "ao:poll:status": "node scripts/ao-poll.mjs status"
+    "ao:poll:status": "node scripts/ao-poll.mjs status",
+    "ao:idle": "node --env-file-if-exists=.env --env-file-if-exists=.env.development --env-file-if-exists=.env.local --env-file-if-exists=.env.development.local --network-family-autoselection-attempt-timeout=2000 workers/ao-idle/index.mjs --local"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",

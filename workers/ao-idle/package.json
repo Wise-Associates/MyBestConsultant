@@ -1,0 +1,16 @@
+{
+  "name": "mybestconsultant-ao-idle",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Veilleur temps réel de la boîte AO (IMAP IDLE) : déclenche /api/cron/ao-inbox à l'arrivée d'un message.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node index.mjs",
+    "test": "node --test worker.test.mjs"
+  },
+  "dependencies": {
+    "imapflow": "2.2.5"
+  }
+}

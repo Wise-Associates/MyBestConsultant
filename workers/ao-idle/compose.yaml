@@ -1,0 +1,20 @@
+# Veilleur AO sur le serveur Hetzner. Depuis ce dossier : docker compose up -d --build (voir README.md).
+services:
+  ao-idle:
+    build: .
+    image: mybestconsultant-ao-idle
+    container_name: ao-idle
+    # Redémarre après une erreur ou un redémarrage du serveur ; `docker compose down` l'arrête pour de bon.
+    restart: unless-stopped
+    # Mot de passe IMAP, CRON_SECRET… : fichier .env du serveur (modèle : .env.example), jamais dans git ni dans l'image.
+    env_file: .env
+    # Le veilleur n'écrit rien sur le disque et n'a besoin d'aucun droit particulier.
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
