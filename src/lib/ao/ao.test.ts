@@ -12,6 +12,7 @@ import { visionBlockFor } from './extractors/vision'
 import { batchByLength, nextStepFor } from './repo'
 import { AO_EXCEL_HEADERS, buildAoWorkbook } from './excel'
 import { EMPTY_AO_FILTERS, filterAoOffers, filtersFromSearchParams, filtersToSearchParams, type AoFilters, type AoOfferRow } from './filters'
+import { descriptionForPublication } from '../description-sections'
 import type { AoEmail, AoOfferFields } from './types'
 
 const offer = (over: Partial<AoOfferFields> = {}): AoOfferFields => ({
@@ -118,6 +119,14 @@ describe('anonymisation', () => {
     assert.match(pub.description, /Durée de la mission : 6 mois renouvelables/)
     assert.match(pub.description, /Démarrage : 01\/09\/2026/)
     assert.match(pub.description, /Expérience requise : 5 ans minimum/)
+  })
+
+  it('met en forme la description à publier après l\'anonymisation, sans réintroduire de contact', () => {
+    const description = 'Contexte : refonte du SI de BNP Paribas pour les équipes de gestion des comptes.\n**Contact :** Marie Dupont\n\nMissions principales :\n- Développer les API ;'
+    const text = descriptionForPublication(toPublicOffer(offer({ description }), namesToHide('BNP Paribas')).description)
+    assert.doesNotMatch(text, /Marie|BNP/)
+    assert.match(text, /^### Contexte\nRefonte du SI de Client confidentiel/)
+    assert.match(text, /### Missions principales\n- Développer les API\n\nDurée de la mission : 6 mois renouvelables\n\nDémarrage : 01\/09\/2026\n\nExpérience requise : 5 ans minimum$/)
   })
 })
 
