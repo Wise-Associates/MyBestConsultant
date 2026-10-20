@@ -6,6 +6,7 @@ import { requireAdmin } from '@/lib/appwrite/auth'
 import { getActiveJobs } from '@/lib/appwrite/jobs'
 import { adminJobExists, createAdminJob } from '@/lib/admin-job'
 import { DEFAULT_CLIENT_LABEL, namesToHide, revealsName, toPublicOffer } from '@/lib/ao/anonymize'
+import { descriptionForPublication } from '@/lib/description-sections'
 import { cityKey, titleKey } from '@/lib/ao/fingerprint'
 import { getAoOffer, listAoEmailsByIds, updateAoOffer } from '@/lib/ao/repo'
 import type { AoOffer } from '@/lib/ao/types'
@@ -66,7 +67,13 @@ export async function previewAoPublication(id: string): Promise<{ preview?: Publ
       .map(job => ({ id: job.$id, title: job.title, location: job.location }))
     return {
       preview: {
-        draft: { ...pub, contractType: offer.contractType, remote: offer.remote, salary: offer.salary },
+        draft: {
+          ...pub,
+          // Mise en forme (sections, puces) après l'anonymisation, qui retire les lignes de contact d'après
+          // leur début de ligne. L'admin relit ce texte : il est publié tel quel, sur le site et sur LinkedIn.
+          description: descriptionForPublication(pub.description),
+          contractType: offer.contractType, remote: offer.remote, salary: offer.salary,
+        },
         similarJobs,
       },
     }
