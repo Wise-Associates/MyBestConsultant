@@ -104,6 +104,7 @@ Core principles for production-quality frontend decisions on this project.
 - **Hairlines over shadows** on the public site. Shadows acceptable in the dark admin.
 - **No glassmorphism. No gradient blobs.** Consulting-grade = precision, not decoration.
 - **Template CSS vars** drive ALL visual decisions on the public site: `var(--color-primary)`, `var(--font-heading)`, etc.
+- **Admin (dark back-office)**: pages, cards and charts use the `--admin-*` tokens from `globals.css` (Tailwind: `bg-admin-bg`, `bg-admin-panel`, `bg-admin-panel-raised`, `border-admin-line`, `text-admin-fg`, `text-admin-fg-muted`, `bg-admin-track`; inline: `var(--admin-panel)`…). Chart and stat cards = `admin-panel` background + `admin-line` hairline, no shadow; bar and donut tracks = `admin-track`. Never use the public-site tokens (`--color-surface`, `--color-text`…) in the admin: they follow the customised site theme. `--admin-fg-subtle` is for icons and decoration only (contrast below 4.5:1), never text.
 
 ## Appwrite (Self-hosted 1.7.4)
 

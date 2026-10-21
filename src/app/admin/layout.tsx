@@ -22,7 +22,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <>
     <VerifyEmailBanner verified={user.emailVerification} />
-    <div className="h-screen flex" style={{ background: '#0F1117' }}>
+    <div className="h-screen flex" style={{ background: 'var(--admin-bg)' }}>
 
       {/* ── SIDEBAR ─────────────────────────────────────────────── */}
       <aside className="w-[240px] shrink-0 hidden lg:flex flex-col fixed top-0 left-0 h-screen z-30" style={{
@@ -72,7 +72,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
         {/* Topbar */}
         <header className="h-[64px] flex items-center justify-between px-6 shrink-0" style={{
-          background: '#13151E',
+          background: 'var(--admin-header)',
           borderBottom: '1px solid rgba(255,255,255,0.07)',
         }}>
           {/* Mobile brand */}
