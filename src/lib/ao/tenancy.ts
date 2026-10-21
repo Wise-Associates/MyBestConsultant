@@ -24,11 +24,16 @@ export function lockIdFor(tenantId: string): string {
   return `lock_${tenantKey(tenantId)}`
 }
 
-export type DailyCounter = 'vision' | 'tables'
+/**
+ * Préfixe de chaque compteur quotidien (un caractère, distinct pour chacun). Tests de connexion des boîtes : par
+ * organisation (c), par boîte visée toutes organisations confondues (m), pour toute la plateforme (g).
+ */
+const COUNTER_PREFIX = { vision: 'v', tables: 't', mailboxTests: 'c', mailboxTarget: 'm', mailboxTestsAll: 'g' } as const
+export type DailyCounter = keyof typeof COUNTER_PREFIX
 
-/** Compteur quotidien (jour UTC) d'une organisation. */
-export function counterIdFor(counter: DailyCounter, tenantId: string, now: Date): string {
-  return `${counter[0]}_${tenantKey(tenantId)}_${now.toISOString().slice(0, 10).replaceAll('-', '')}`
+/** Compteur quotidien (jour UTC) d'une organisation, ou d'une autre clé (boîte visée, « plateforme ») : 27 caractères. */
+export function counterIdFor(counter: DailyCounter, key: string, now: Date): string {
+  return `${COUNTER_PREFIX[counter]}_${tenantKey(key)}_${now.toISOString().slice(0, 10).replaceAll('-', '')}`
 }
 
 /**

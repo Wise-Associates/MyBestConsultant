@@ -113,7 +113,8 @@ const SCHEMA = [
       ['datetime', 'reconciledAt', {}],
       ['integer', 'count', { min: 0 }],
     ],
-    indexes: [],
+    // Places des limites quotidiennes (state.ts : takeDailySlot) comptées par holder ; purge par kind.
+    indexes: [['holder', 'key', ['holder']], ['kind', 'key', ['kind']]],
   },
   {
     // Boîtes lues : celles de la plateforme (tenantId « admin ») et celles des organisations (src/lib/ao/sources.ts).
