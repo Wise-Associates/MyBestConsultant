@@ -80,7 +80,8 @@ const IMPORT_LIMITS: SheetLimits = { maxRows: MAX_SHEET_ROWS + 16, maxCols: 256 
  * fichier de quelques Ko déclarant des millions de cellules occupe le serveur pendant des minutes.
  */
 export function readSheets(buffer: Buffer, ext: string, limits: SheetLimits = IMPORT_LIMITS): string[][][] {
-  const options = { sheetRows: limits.maxRows, nodim: true }
+  // dateNF : une date Excel au format court régional (code 14) s'afficherait « 10/30/26 » (format américain de SheetJS).
+  const options = { sheetRows: limits.maxRows, nodim: true, dateNF: 'dd/mm/yyyy' }
   let wb: XLSX.WorkBook
   if (['csv', 'tsv', 'txt'].includes(ext)) {
     const text = decode(limits.maxTextBytes ? buffer.subarray(0, limits.maxTextBytes) : buffer)

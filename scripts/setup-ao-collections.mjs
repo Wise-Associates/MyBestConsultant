@@ -53,6 +53,11 @@ const SCHEMA = [
       ['integer', 'uid', { required: true, min: 0 }],
       ['string', 'fromAddress', { size: 320 }],
       ['string', 'fromName', { size: 200 }],
+      // Expéditeur du message d'origine, « Nom <adresse> » (src/lib/ao/origin.ts) ; date limite de réponse et clients
+      // cités (masqués à la publication) : sur l'e-mail, ao_offers étant à 16/16 attributs.
+      ['string', 'origin', { size: 530 }],
+      ['string', 'deadline', { size: 100 }],
+      ['string', 'citedClients', { size: 200, array: true }],
       ['string', 'subject', { size: 500 }],
       ['datetime', 'receivedAt', {}],
       ['string', 'attachments', { size: 255, array: true }],
