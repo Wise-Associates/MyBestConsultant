@@ -330,7 +330,9 @@ export async function listAoOfferDetails(offerIds: string[]): Promise<Map<string
 export async function purgeAoRecords(before: Date, maxDeletes = 100): Promise<number> {
   const { databases } = createAdminClient()
   let deleted = 0
-  for (const collection of [COLLECTIONS.AO_OFFER_DETAILS, COLLECTIONS.AO_OFFERS, COLLECTIONS.AO_EMAILS]) {
+  // Commentaires : fonction facultative, purgés seulement si leur collection est configurée (sans elle, rien à purger).
+  const collections = [COLLECTIONS.AO_COMMENTS, COLLECTIONS.AO_OFFER_DETAILS, COLLECTIONS.AO_OFFERS, COLLECTIONS.AO_EMAILS].filter(Boolean)
+  for (const collection of collections) {
     const res = await databases.listDocuments(DB_ID, collection, [Query.lessThan('$createdAt', before.toISOString()), Query.limit(maxDeletes - deleted)])
     for (const doc of res.documents) {
       // 404 : déjà supprimé par le passage d'une autre organisation, lancé en même temps.
