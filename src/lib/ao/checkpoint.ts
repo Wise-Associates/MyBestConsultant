@@ -64,6 +64,20 @@ export function nextCheckpoint(
 }
 
 /**
+ * Ordre de traitement d'un passage : le courrier nouveau d'abord, puis les e-mails à réessayer, chacun par
+ * UID croissant et chaque Message-ID une seule fois (copie, renvoi). Les e-mails en attente de l'IA (crédits
+ * épuisés) sont réessayés à chaque passage sans limite d'essais : passés en premier, ils retiendraient le
+ * courrier nouveau, alors qu'un e-mail sans pièce jointe scannée peut encore être traité.
+ */
+export function processingOrder<T extends { uid: number; messageId: string }>(candidates: T[], retries: T[]): T[] {
+  const byUid = (a: T, b: T) => a.uid - b.uid
+  const fresh = [...new Map(candidates.map(e => [e.messageId, e])).values()].sort(byUid)
+  const freshIds = new Set(fresh.map(e => e.messageId))
+  const again = [...new Map(retries.filter(e => !freshIds.has(e.messageId)).map(e => [e.messageId, e])).values()].sort(byUid)
+  return [...fresh, ...again]
+}
+
+/**
  * UID des messages listés qui n'ont plus besoin d'être relus, à partir des Message-ID pris en charge :
  * deux copies d'un même message (UID différents, même Message-ID) comptent ensemble, sinon la copie
  * écartée bloquerait le point de reprise.

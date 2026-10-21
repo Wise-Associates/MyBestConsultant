@@ -29,7 +29,8 @@ export interface SheetParseResult {
 
 export const MAX_SHEET_ROWS = 5000
 
-const norm = (s: unknown) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\(.*?\)/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim()
+/** Libellé normalisé pour comparer des en-têtes : minuscules, sans accents, sans parenthèses ni ponctuation. */
+export const norm = (s: unknown) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\(.*?\)/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim()
 
 const HEADERS: Record<'title' | 'company' | 'location' | 'contract' | 'remote' | 'salary' | 'skills' | 'description' | 'duration' | 'start' | 'experience', string[]> = {
   title: ['titre du poste', 'titre', 'poste', 'intitule du poste', 'intitule', 'job title', 'title', 'offre', 'libelle'],
@@ -60,19 +61,47 @@ function decode(buffer: Buffer): string {
   return utf8.includes('�') ? buffer.toString('latin1') : utf8.replace(/^﻿/, '')
 }
 
-/** Lit un classeur (xlsx, xls) ou un CSV/TSV (séparateur « ; », « , » ou tabulation détecté automatiquement). */
-function readSheets(buffer: Buffer, ext: string): string[][][] {
+export interface SheetLimits {
+  /** Lignes lues au plus par feuille (en-tête compris). */
+  maxRows: number
+  /** Colonnes lues au plus par feuille. */
+  maxCols: number
+  /** Octets lus au plus dans un CSV/TSV (aucune limite si absent). */
+  maxTextBytes?: number
+}
+
+/** Bornes de l'import en masse : MAX_SHEET_ROWS lignes, plus les 15 lignes où l'en-tête est cherché. */
+const IMPORT_LIMITS: SheetLimits = { maxRows: MAX_SHEET_ROWS + 16, maxCols: 256 }
+
+/**
+ * Lit un classeur (xlsx, xls) ou un CSV/TSV (séparateur « ; », « , » ou tabulation détecté automatiquement) :
+ * une liste de lignes par feuille, cellules en texte tel qu'affiché. Aussi utilisé par AO Offers (src/lib/ao/spreadsheet.ts).
+ * La taille annoncée par le fichier n'est pas crue (`nodim`) et la lecture est bornée (`limits`) : sans cela, un
+ * fichier de quelques Ko déclarant des millions de cellules occupe le serveur pendant des minutes.
+ */
+export function readSheets(buffer: Buffer, ext: string, limits: SheetLimits = IMPORT_LIMITS): string[][][] {
+  const options = { sheetRows: limits.maxRows, nodim: true }
   let wb: XLSX.WorkBook
   if (['csv', 'tsv', 'txt'].includes(ext)) {
-    const text = decode(buffer)
+    const text = decode(limits.maxTextBytes ? buffer.subarray(0, limits.maxTextBytes) : buffer)
     const first = text.split(/\r?\n/, 1)[0] ?? ''
     const count = (c: string) => first.split(c).length - 1
     const FS = count(';') > count(',') && count(';') >= count('\t') ? ';' : count('\t') > count(',') ? '\t' : ','
-    wb = XLSX.read(text, { type: 'string', FS, raw: true } as XLSX.ParsingOptions)
+    wb = XLSX.read(text, { type: 'string', FS, raw: true, ...options } as XLSX.ParsingOptions)
   } else {
-    wb = XLSX.read(buffer, { type: 'buffer' })
+    wb = XLSX.read(buffer, { type: 'buffer', ...options })
   }
-  return wb.SheetNames.map(name => XLSX.utils.sheet_to_json<string[]>(wb.Sheets[name], { header: 1, raw: false, defval: '', blankrows: false }))
+  return wb.SheetNames.map(name => {
+    const sheet = wb.Sheets[name]
+    // sheet_to_json parcourt toute la plage de la feuille, cellules vides comprises : on la ramène aux bornes.
+    if (sheet['!ref']) {
+      const range = XLSX.utils.decode_range(sheet['!ref'])
+      range.e.r = Math.min(range.e.r, range.s.r + limits.maxRows - 1)
+      range.e.c = Math.min(range.e.c, range.s.c + limits.maxCols - 1)
+      sheet['!ref'] = XLSX.utils.encode_range(range)
+    }
+    return XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, raw: false, defval: '', blankrows: false })
+  })
 }
 
 export const parseNumber = (v: string): number | null => {

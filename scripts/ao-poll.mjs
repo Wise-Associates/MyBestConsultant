@@ -165,7 +165,9 @@ async function poll() {
   const mode = body.mode === 'reconcile' ? ' (rattrapage des 7 derniers jours)' : ''
   console.log(`${time()} ✓ ${body.pending ? parts.join(' · ') : 'aucun nouvel e-mail'}${mode}`)
   for (const error of body.errors ?? []) console.log(`           ↳ ${error}`)
-  return body.remaining ? BACKLOG_DELAY_MS : everyMinutes * 60_000
+  // IA indisponible (crédits épuisés, clé refusée) : relancer plus tôt ne changerait rien.
+  if (body.aiUnavailable) console.log('           ↳ IA indisponible : les e-mails attendent (crédits à recharger ou clé à ajouter dans Config IA).')
+  return body.remaining && !body.aiUnavailable ? BACKLOG_DELAY_MS : everyMinutes * 60_000
 }
 
 const stopHint = background ? 'npm run ao:poll:stop pour arrêter' : 'Ctrl+C pour arrêter'
