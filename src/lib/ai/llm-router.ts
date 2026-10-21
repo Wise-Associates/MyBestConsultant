@@ -81,6 +81,8 @@ async function loadRuntimeConfig(): Promise<RuntimeConfig> {
 }
 
 async function callClaude(messages: LLMMessage[], systemPrompt: string | undefined, model: string, apiKey: string): Promise<string> {
+  // Claude est le dernier recours de pickPrimary, même sans clé : échec explicite plutôt qu'une erreur du SDK.
+  if (!apiKey) throw new LLMNotConfiguredError('Claude non configuré (clé manquante dans /admin/llm-config)')
   const client = new Anthropic({ apiKey })
   const response = await client.messages.create({
     model,
@@ -90,6 +92,41 @@ async function callClaude(messages: LLMMessage[], systemPrompt: string | undefin
   })
   const block = response.content[0]
   return block.type === 'text' ? block.text : ''
+}
+
+/**
+ * Réponse d'erreur HTTP d'une API compatible OpenAI. Le statut et le corps permettent aux appelants de
+ * distinguer des crédits épuisés ou une clé refusée d'une saturation passagère (src/lib/ao/ai-failures.ts).
+ */
+export class LLMHttpError extends Error {
+  constructor(readonly status: number, readonly body: string) {
+    super(`LLM API error ${status}: ${body}`)
+  }
+}
+
+/**
+ * Modèle injoignable (réseau) ou sans réponse dans le délai. `timedOut` distingue les deux : une requête
+ * restée sans réponse a pu être traitée, donc facturée ; une requête qui n'a pas pu partir, non.
+ */
+export class LLMUnreachableError extends Error {
+  constructor(readonly timedOut: boolean, reason: string) {
+    super(`Modèle IA injoignable (${reason})`)
+  }
+}
+
+/** Modèle choisi mais pas configuré (clé ou URL manquante, modèle désactivé) : aucun appel n'a été fait. */
+export class LLMNotConfiguredError extends Error {}
+
+/**
+ * Le modèle choisi et tous ses replis ont échoué. Le message reste celui du premier modèle (ce que les
+ * appelants affichaient déjà) ; `failures` garde l'erreur de chacun, pour savoir si tous ont échoué sans
+ * frais (crédits épuisés, service en panne) ou si l'un d'eux a pu être facturé (src/lib/ao/ai-failures.ts).
+ */
+export class LLMChainError extends Error {
+  constructor(readonly failures: { provider: string; error: unknown }[]) {
+    const first = failures[0]?.error
+    super(first instanceof Error ? first.message : String(first), { cause: first })
+  }
 }
 
 async function callOpenAICompat(
@@ -122,10 +159,16 @@ async function callOpenAICompat(
         ],
       }),
     })
+  } catch (err) {
+    // Le message de fetch peut recopier l'en-tête refusé, donc la clé (valeur avec un retour à la ligne) :
+    // seule la nature de l'échec est gardée.
+    const code = (err as { cause?: { code?: string } })?.cause?.code
+    const reason = controller.signal.aborted ? 'pas de réponse après 55 s' : code ?? (err instanceof Error ? err.name : 'réseau')
+    throw new LLMUnreachableError(controller.signal.aborted, reason)
   } finally {
     clearTimeout(timeout)
   }
-  if (!res.ok) throw new Error(`LLM API error ${res.status}: ${await res.text()}`)
+  if (!res.ok) throw new LLMHttpError(res.status, await res.text())
   const data = await res.json()
   const msg = data.choices?.[0]?.message
   // qwen3 thinking mode returns content="" with answer in reasoning — accept either
@@ -152,8 +195,8 @@ async function tryCall(
 ): Promise<string> {
   if (isCustomId(provider)) {
     const m = findCustom(cfg, provider)
-    if (!m) throw new Error(`Modèle ${provider} introuvable ou désactivé (voir /admin/llm-config)`)
-    if (!m.apiUrl) throw new Error(`Modèle « ${m.label} » : URL de l'API manquante (voir /admin/llm-config)`)
+    if (!m) throw new LLMNotConfiguredError(`Modèle ${provider} introuvable ou désactivé (voir /admin/llm-config)`)
+    if (!m.apiUrl) throw new LLMNotConfiguredError(`Modèle « ${m.label} » : URL de l'API manquante (voir /admin/llm-config)`)
     return callOpenAICompat(messages, systemPrompt, m.model, m.apiUrl, m.apiKey)
   }
   switch (provider) {
@@ -162,7 +205,7 @@ async function tryCall(
     case 'teckia':
       // An empty apiUrl becomes a relative URL server-side ("fetch failed", not a
       // real HTTP error) — fail fast with a message that actually explains why.
-      if (!cfg.teckiaApiUrl) throw new Error('TeckiA non configuré (URL manquante dans /admin/llm-config)')
+      if (!cfg.teckiaApiUrl) throw new LLMNotConfiguredError('TeckiA non configuré (URL manquante dans /admin/llm-config)')
       return callOpenAICompat(messages, systemPrompt, cfg.teckiaModel, cfg.teckiaApiUrl, cfg.teckiaApiKey)
     case 'claude':
     default:
@@ -205,15 +248,18 @@ export async function callLLM(
     // Auto-fallback chain : d'abord le modèle par défaut (si le module avait son propre modèle),
     // puis les autres modèles configurés — un modèle indisponible ne coupe pas le service.
     const fallbacks = fallbackOrder(cfg, primary, id => isAvailable(id, cfg))
+    const failures: { provider: string; error: unknown }[] = [{ provider: primary, error: primaryErr }]
 
     for (const fallback of fallbacks) {
       try {
         const content = await tryCall(fallback, cfg, messages, systemPrompt)
         return { content, provider: fallback }
-      } catch { continue }
+      } catch (fallbackErr) {
+        failures.push({ provider: fallback, error: fallbackErr })
+      }
     }
 
-    // All providers failed — throw the original error
-    throw primaryErr
+    // Tous en échec : message du modèle choisi, détail de chaque modèle dans `failures`.
+    throw new LLMChainError(failures)
   }
 }

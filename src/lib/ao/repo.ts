@@ -1,14 +1,13 @@
 import { ID, Query, type Models } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
+import { MAX_ATTEMPTS } from './attempts'
 import type { AoOfferRow } from './filters'
 import type { AoEmail, AoEmailStatus, AoOffer, AoOfferFields, AoOfferStatus } from './types'
 
 // Accès aux collections AO_EMAILS et AO_OFFERS (clé API serveur : aucune permission côté client).
 // À n'appeler que depuis le traitement planifié ou des actions admin vérifiées.
 
-/** Nombre d'essais avant d'abandonner un e-mail en erreur. */
-export const MAX_ATTEMPTS = 3
 /** Un traitement interrompu (délai dépassé) reste « processing » : on le reprend après ce délai. */
 const STALE_PROCESSING_MS = 15 * 60_000
 
@@ -63,7 +62,7 @@ export function docToAoOffer(d: Models.Document): AoOffer {
 
 /**
  * Que faire d'un e-mail déjà enregistré : le laisser (terminé, ou en cours dans un autre passage),
- * le réessayer (erreur, ou traitement interrompu), ou l'abandonner (3 essais sans succès).
+ * le réessayer (erreur, ou traitement interrompu), ou l'abandonner (MAX_ATTEMPTS essais sans succès).
  */
 export function nextStepFor(email: AoEmail, now: Date): 'skip' | 'retry' | 'abandon' {
   const interrupted = email.status === 'processing' && now.getTime() - new Date(email.updatedAt).getTime() > STALE_PROCESSING_MS
@@ -107,6 +106,17 @@ export async function settledMessageIds(messageIds: string[], now: Date): Promis
   return settled
 }
 
+/** E-mail AO par identifiant ; null s'il n'existe pas (toute autre erreur est remontée). */
+export async function getAoEmail(id: string): Promise<AoEmail | null> {
+  const { databases } = createAdminClient()
+  try {
+    return docToAoEmail(await databases.getDocument(DB_ID, COLLECTIONS.AO_EMAILS, id))
+  } catch (err) {
+    if ((err as { code?: number }).code === 404) return null
+    throw err
+  }
+}
+
 export async function findAoEmailByMessageId(messageId: string): Promise<AoEmail | null> {
   const { databases } = createAdminClient()
   const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_EMAILS, [Query.equal('messageId', messageId), Query.limit(1)])
@@ -147,7 +157,7 @@ export async function listRecentAoEmails(limit: number): Promise<AoEmail[]> {
 
 /**
  * E-mails à réessayer (erreur, ou traitement interrompu) : relus par UID lors d'un passage incrémental.
- * Les e-mails abandonnés (3 essais) sont exclus ; un traitement interrompu au 3e essai est clos par le
+ * Les e-mails abandonnés (MAX_ATTEMPTS essais) sont exclus ; un traitement interrompu au dernier essai est clos par le
  * rattrapage quotidien.
  */
 export async function listRetryableAoEmails(now: Date, limit = 50): Promise<AoEmail[]> {
