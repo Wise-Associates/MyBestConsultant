@@ -1,5 +1,5 @@
 // Consigne d'extraction des appels d'offres, partagée par l'import manuel (/api/admin/extract-jobs)
-// et par la lecture automatique de la boîte ao@ (AO Offers).
+// et par la lecture automatique des boîtes d'appels d'offres (AO Offers : plateforme et organisations).
 
 export const AO_EXTRACTION_PROMPT = `Tu es un assistant expert en recrutement.
 Tu reçois le texte brut d'un ou plusieurs appels d'offres / offres de mission.

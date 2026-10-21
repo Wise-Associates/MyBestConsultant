@@ -6,7 +6,8 @@ import { batchByLength } from './repo'
 import { canUseAoSourcing, PLATFORM_NAME, PLATFORM_TENANT_ID } from './tenancy'
 
 // Boîtes de réception lues par AO Offers (collection AO_SOURCES, sans permission client) : celles de la plateforme
-// (ao@wise-associates.fr…) et celles que chaque organisation configure. Le mot de passe y est chiffré (credentials.ts)
+// (aujourd'hui ao@wise-associates.fr) et celles que chaque organisation configure, à n'importe quelle adresse
+// (recrutement@…, jobs@…) : seuls le serveur, l'identifiant, le mot de passe et le dossier comptent. Le mot de passe y est chiffré (credentials.ts)
 // et n'est jamais renvoyé au navigateur.
 
 export interface AoSource {
