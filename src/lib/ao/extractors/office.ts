@@ -6,12 +6,17 @@ import { SkipAttachment, formatOf, type AttachmentExtractor } from './types'
 // word-extractor, SheetJS, officeparser via extractTextFromFile). Un PDF scanné ne rend aucun texte :
 // l'extracteur suivant (vision.ts) prend alors le relais.
 
-/** Formats pour lesquels extractTextFromFile a un vrai lecteur (les autres renverraient du binaire). */
-const READABLE = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'tsv', 'txt', 'md', 'pptx', 'rtf', 'odt', 'ods', 'odp'])
+/**
+ * Formats pour lesquels extractTextFromFile a un vrai lecteur (les autres renverraient du binaire). Pas d'ODS :
+ * ses cellules « répétées » sont développées pendant la lecture, sans limite (1 Ko peut annoncer des millions de cellules).
+ */
+const READABLE = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'tsv', 'txt', 'md', 'pptx', 'rtf', 'odt', 'odp'])
 /** Formats Office et OpenDocument : des archives zip, vérifiées avant lecture (bombes de décompression). */
-const ZIP_FORMATS = new Set(['docx', 'xlsx', 'pptx', 'odt', 'ods', 'odp'])
+const ZIP_FORMATS = new Set(['docx', 'xlsx', 'pptx', 'odt', 'odp'])
+/** Début de toute archive zip : les lecteurs reconnaissent le format au contenu, quelle que soit l'extension. */
+const ZIP_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04])
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
-const MAX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
+export const MAX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
 /** En dessous, un PDF est considéré comme scanné (en-têtes de page seuls, espaces). */
 const MIN_PDF_TEXT_CHARS = 20
 
@@ -21,7 +26,8 @@ export const officeTextExtractor: AttachmentExtractor = {
   async read(file) {
     const format = formatOf(file)
     if (file.content.length > MAX_ATTACHMENT_BYTES) throw new SkipAttachment('plus de 10 Mo')
-    if (ZIP_FORMATS.has(format) && !zipFitsWithin(file.content, MAX_UNCOMPRESSED_BYTES)) {
+    const isZip = ZIP_FORMATS.has(format) || file.content.subarray(0, 4).equals(ZIP_MAGIC)
+    if (isZip && !zipFitsWithin(file.content, MAX_UNCOMPRESSED_BYTES)) {
       throw new SkipAttachment('archive illisible ou trop volumineuse une fois décompressée')
     }
     // extractTextFromFile choisit son lecteur d'après l'extension : on la complète si le nom n'en a pas.

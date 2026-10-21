@@ -16,6 +16,18 @@ export interface ExtractionContext {
   canDefer: boolean
   /** Réserve une lecture par l'IA (limites par e-mail et par jour) ; false si le budget est épuisé. */
   reserveVisionCall(): Promise<boolean>
+  /** Rend une lecture réservée que les services ont refusée pour raison de compte (rien n'a été facturé). */
+  releaseVisionCall(): Promise<void>
+  /** État partagé par tous les e-mails d'un passage. */
+  pass: PassState
+}
+
+export interface PassState {
+  /**
+   * Cause, si la lecture des images et PDF scannés s'est révélée impossible pendant ce passage (crédits
+   * épuisés…) : les e-mails suivants qui en ont besoin attendent aussitôt, sans nouvel appel ni réservation.
+   */
+  visionUnavailable: string | null
 }
 
 /** Fichier volontairement non lu, avec la raison affichée à l'admin (format, taille, configuration…). */
@@ -28,6 +40,20 @@ export class SkipAttachment extends Error {}
 export class RetryLater extends Error {
   constructor(message: string, readonly countsAsAttempt = true) {
     super(message)
+  }
+}
+
+/**
+ * Aucun service d'IA ne peut faire le travail, et tous ont refusé sans frais : crédits épuisés, clé refusée,
+ * aucune clé de repli, service saturé ou injoignable (ai-failures.ts). L'e-mail n'y est pour rien : il est
+ * repris à chaque synchronisation sans user sa reprise, jusqu'au retour du service ou des crédits.
+ * `reason` : la cause seule (« Claude : crédits épuisés »), pour composer un message à partir de plusieurs.
+ * `stage` : 'vision' (lecture des images / PDF scannés : les e-mails sans scan restent traitables) ou
+ * 'text' (extraction des offres : plus aucun e-mail ne peut l'être, le passage s'arrête).
+ */
+export class AiUnavailable extends RetryLater {
+  constructor(readonly reason: string, readonly stage: 'vision' | 'text' = 'vision') {
+    super(`En attente de l'IA (${reason}) : l'e-mail sera repris automatiquement à la prochaine synchronisation.`, false)
   }
 }
 
