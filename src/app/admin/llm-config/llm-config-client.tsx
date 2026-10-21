@@ -25,15 +25,15 @@ const GPT4O_PRICING = [
 // ── Pricing reference table ──────────────────────────────────────────
 function PricingRef({ rows }: { rows: { model: string; input: number; output: number }[] }) {
   return (
-    <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--admin-line)' }}>
-      <div className="grid grid-cols-3 px-3 py-2 text-[11px] font-semibold" style={{ color: 'var(--admin-fg-muted)', background: 'var(--admin-panel)', borderBottom: '1px solid var(--admin-line)' }}>
+    <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="grid grid-cols-3 px-3 py-2 text-[11px] font-semibold" style={{ color: 'rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <span>Modèle</span><span className="text-right">Input /1M</span><span className="text-right">Output /1M</span>
       </div>
       {rows.map(r => (
-        <div key={r.model} className="grid grid-cols-3 px-3 py-2 text-xs" style={{ borderBottom: '1px solid var(--admin-line)', color: 'var(--admin-fg-muted)' }}>
+        <div key={r.model} className="grid grid-cols-3 px-3 py-2 text-xs" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.6)' }}>
           <span className="font-mono text-[11px]">{r.model}</span>
-          <span className="text-right text-admin-fg">${r.input.toFixed(2)}</span>
-          <span className="text-right text-admin-fg">${r.output.toFixed(2)}</span>
+          <span className="text-right text-white/80">${r.input.toFixed(2)}</span>
+          <span className="text-right text-white/80">${r.output.toFixed(2)}</span>
         </div>
       ))}
     </div>
@@ -64,43 +64,43 @@ function ProviderCard({
 
   return (
     <div className="rounded-2xl overflow-hidden transition-all"
-      style={{ border: active ? '1px solid rgba(184,134,11,0.4)' : '1px solid var(--admin-line)', background: active ? 'rgba(184,134,11,0.05)' : 'var(--admin-panel)' }}>
+      style={{ border: active ? '1px solid rgba(184,134,11,0.4)' : '1px solid rgba(255,255,255,0.08)', background: active ? 'rgba(184,134,11,0.05)' : 'rgba(255,255,255,0.03)' }}>
       <div className="flex items-start gap-4 p-5">
-        <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 text-admin-fg" style={{ background: iconBg }}>
+        <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 text-white" style={{ background: iconBg }}>
           <Icon className="h-5 w-5" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-semibold text-admin-fg">{name}</h3>
+            <h3 className="font-semibold text-white">{name}</h3>
             {active && (
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#B8860B', color: 'white' }}>ACTIF</span>
             )}
           </div>
-          <p className="text-sm mt-0.5" style={{ color: 'var(--admin-fg-muted)' }}>{description}</p>
+          <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>{description}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button onClick={runTest} disabled={testing}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
-            style={{ border: '1px solid var(--admin-line-strong)', color: 'var(--admin-fg-muted)', background: 'var(--admin-panel-raised)' }}>
+            style={{ border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.6)', background: 'rgba(255,255,255,0.05)' }}>
             {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TestTube className="h-3.5 w-3.5" />}
             Tester
           </button>
           {!active && (
             <button onClick={onSelect}
               className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all"
-              style={{ background: 'var(--admin-hover)', color: 'var(--admin-fg)' }}>
+              style={{ background: 'rgba(255,255,255,0.1)', color: 'white' }}>
               Activer
             </button>
           )}
           <button onClick={() => setExpanded(v => !v)}
-            className="p-1.5 rounded-lg transition-all" style={{ color: 'var(--admin-fg-muted)', background: 'var(--admin-panel-raised)' }}>
+            className="p-1.5 rounded-lg transition-all" style={{ color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.05)' }}>
             {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
         </div>
       </div>
 
       {testResult && (
-        <div className={`mx-5 mb-3 px-4 py-3 rounded-xl flex items-center gap-3 text-sm ${testResult.ok ? 'text-emerald-700' : 'text-red-700'}`}
+        <div className={`mx-5 mb-3 px-4 py-3 rounded-xl flex items-center gap-3 text-sm ${testResult.ok ? 'text-emerald-400' : 'text-red-400'}`}
           style={{ background: testResult.ok ? 'rgba(52,211,153,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${testResult.ok ? 'rgba(52,211,153,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
           {testResult.ok
             ? <><CheckCircle2 className="h-4 w-4 shrink-0" /> Connexion OK — {testResult.latencyMs}ms</>
@@ -109,7 +109,7 @@ function ProviderCard({
       )}
 
       {expanded && children && (
-        <div className="px-5 pb-5 pt-2" style={{ borderTop: '1px solid var(--admin-line)' }}>
+        <div className="px-5 pb-5 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
           {children}
         </div>
       )}
@@ -140,14 +140,14 @@ function CostEstimator({ cfg }: { cfg: ProviderConfig }) {
   const margin = cfg.billingEnabled ? baseCost * (cfg.markupPercent / 100) : 0
 
   return (
-    <div className="rounded-2xl p-6 space-y-5" style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
+    <div className="rounded-2xl p-6 space-y-5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
       <div className="flex items-center gap-3">
         <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(245,158,11,0.15)' }}>
-          <DollarSign className="h-4 w-4 text-amber-700" />
+          <DollarSign className="h-4 w-4 text-amber-400" />
         </div>
         <div>
-          <h3 className="font-semibold text-admin-fg">Estimateur de coûts mensuels</h3>
-          <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>Basé sur le pricing du fournisseur actif</p>
+          <h3 className="font-semibold text-white">Estimateur de coûts mensuels</h3>
+          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>Basé sur le pricing du fournisseur actif</p>
         </div>
       </div>
       <div className="grid grid-cols-3 gap-5">
@@ -157,25 +157,25 @@ function CostEstimator({ cfg }: { cfg: ProviderConfig }) {
           { label: 'Entretiens IA', value: interviews, set: setInterviews },
         ].map(({ label, value, set }) => (
           <div key={label}>
-            <label className="text-xs mb-2 block" style={{ color: 'var(--admin-fg-muted)' }}>{label} / mois</label>
+            <label className="text-xs mb-2 block" style={{ color: 'rgba(255,255,255,0.45)' }}>{label} / mois</label>
             <input type="range" min={0} max={500} value={value} onChange={e => set(Number(e.target.value))}
               className="w-full accent-amber-400" />
-            <p className="text-base font-bold text-admin-fg mt-1 text-center">{value}</p>
+            <p className="text-base font-bold text-white mt-1 text-center">{value}</p>
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-3 gap-4 pt-4" style={{ borderTop: '1px solid var(--admin-line)' }}>
-        <div className="text-center p-3 rounded-xl" style={{ background: 'var(--admin-panel)' }}>
-          <p className="text-xs mb-1" style={{ color: 'var(--admin-fg-muted)' }}>Tokens estimés</p>
-          <p className="text-xl font-bold text-admin-fg">{(totalInputM * 1000).toFixed(0)}K</p>
+      <div className="grid grid-cols-3 gap-4 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+        <div className="text-center p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)' }}>
+          <p className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>Tokens estimés</p>
+          <p className="text-xl font-bold text-white">{(totalInputM * 1000).toFixed(0)}K</p>
         </div>
-        <div className="text-center p-3 rounded-xl" style={{ background: 'var(--admin-panel)' }}>
-          <p className="text-xs mb-1" style={{ color: 'var(--admin-fg-muted)' }}>Coût API</p>
-          <p className="text-xl font-bold text-admin-fg">${baseCost.toFixed(2)}</p>
+        <div className="text-center p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)' }}>
+          <p className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>Coût API</p>
+          <p className="text-xl font-bold text-white">${baseCost.toFixed(2)}</p>
         </div>
-        <div className="text-center p-3 rounded-xl" style={{ background: cfg.billingEnabled ? 'rgba(52,211,153,0.08)' : 'var(--admin-panel)' }}>
-          <p className="text-xs mb-1" style={{ color: 'var(--admin-fg-muted)' }}>{cfg.billingEnabled ? `Marge +${cfg.markupPercent}%` : 'Marge désactivée'}</p>
-          <p className="text-xl font-bold" style={{ color: cfg.billingEnabled ? '#047857' : 'var(--admin-fg-muted)' }}>
+        <div className="text-center p-3 rounded-xl" style={{ background: cfg.billingEnabled ? 'rgba(52,211,153,0.08)' : 'rgba(255,255,255,0.04)' }}>
+          <p className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>{cfg.billingEnabled ? `Marge +${cfg.markupPercent}%` : 'Marge désactivée'}</p>
+          <p className="text-xl font-bold" style={{ color: cfg.billingEnabled ? '#34d399' : 'rgba(255,255,255,0.3)' }}>
             {cfg.billingEnabled ? `+$${margin.toFixed(2)}` : '—'}
           </p>
         </div>
@@ -204,7 +204,7 @@ export function LLMConfigClient({ initialConfig }: { initialConfig: ProviderConf
     })
   }
 
-  const S = { color: 'var(--admin-fg)' }
+  const S = { color: 'rgba(255,255,255,0.87)' }
 
   return (
     <div className="min-h-full p-8 max-w-3xl mx-auto space-y-8" style={S}>
@@ -212,9 +212,9 @@ export function LLMConfigClient({ initialConfig }: { initialConfig: ProviderConf
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'var(--admin-fg-muted)' }}>INTELLIGENCE</p>
-          <h1 className="text-[28px] font-bold tracking-tight text-admin-fg">Configuration IA</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
+          <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>INTELLIGENCE</p>
+          <h1 className="text-[28px] font-bold tracking-tight text-white">Configuration IA</h1>
+          <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
             Clés API, modèles et pricing — utilisés pour tous les modules du site.
           </p>
         </div>
@@ -228,7 +228,7 @@ export function LLMConfigClient({ initialConfig }: { initialConfig: ProviderConf
       </div>
 
       {status === 'error' && (
-        <div className="flex items-center gap-3 p-4 rounded-xl text-sm text-red-700"
+        <div className="flex items-center gap-3 p-4 rounded-xl text-sm text-red-400"
           style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
           <AlertCircle className="h-4 w-4 shrink-0" />{errMsg}
         </div>
@@ -239,7 +239,7 @@ export function LLMConfigClient({ initialConfig }: { initialConfig: ProviderConf
 
       {/* Providers */}
       <div className="space-y-4">
-        <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--admin-fg-muted)' }}>Fournisseurs LLM</h2>
+        <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.3)' }}>Fournisseurs LLM</h2>
 
         {/* Claude */}
         <ProviderCard id="claude" active={cfg.activeProvider === 'claude'} onSelect={() => set('activeProvider', 'claude')}
@@ -253,7 +253,7 @@ export function LLMConfigClient({ initialConfig }: { initialConfig: ProviderConf
             <TextInput value={cfg.claudeModel} onChange={v => set('claudeModel', v)} mono placeholder="claude-sonnet-4-6" />
           </Row>
           <div className="pt-3 pb-1">
-            <p className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: 'var(--admin-fg-muted)' }}>
+            <p className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
               <Info className="h-3 w-3" /> Pricing officiel Anthropic ($/1M tokens — référence)
             </p>
             <PricingRef rows={CLAUDE_PRICING} />
@@ -278,7 +278,7 @@ export function LLMConfigClient({ initialConfig }: { initialConfig: ProviderConf
             <TextInput value={cfg.gpt4oModel} onChange={v => set('gpt4oModel', v)} mono placeholder="gpt-4o" />
           </Row>
           <div className="pt-3 pb-1">
-            <p className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: 'var(--admin-fg-muted)' }}>
+            <p className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
               <Info className="h-3 w-3" /> Pricing officiel OpenAI ($/1M tokens — référence)
             </p>
             <PricingRef rows={GPT4O_PRICING} />
@@ -318,31 +318,31 @@ export function LLMConfigClient({ initialConfig }: { initialConfig: ProviderConf
       <OpenSourceModels cfg={cfg} set={set} />
 
       {/* Billing */}
-      <div className="rounded-2xl p-6 space-y-4" style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
+      <div className="rounded-2xl p-6 space-y-4" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(245,158,11,0.15)' }}>
-              <DollarSign className="h-4 w-4 text-amber-700" />
+              <DollarSign className="h-4 w-4 text-amber-400" />
             </div>
             <div>
-              <h3 className="font-semibold text-admin-fg">Tarification variable</h3>
-              <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>Refacturer le coût IA avec marge aux recruteurs</p>
+              <h3 className="font-semibold text-white">Tarification variable</h3>
+              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>Refacturer le coût IA avec marge aux recruteurs</p>
             </div>
           </div>
           <button onClick={() => set('billingEnabled', !cfg.billingEnabled)}>
             {cfg.billingEnabled
-              ? <ToggleRight className="h-8 w-8 text-amber-700" />
-              : <ToggleLeft className="h-8 w-8" style={{ color: 'var(--admin-fg-muted)' }} />}
+              ? <ToggleRight className="h-8 w-8 text-amber-400" />
+              : <ToggleLeft className="h-8 w-8" style={{ color: 'rgba(255,255,255,0.3)' }} />}
           </button>
         </div>
         {cfg.billingEnabled && (
-          <div style={{ borderTop: '1px solid var(--admin-line)', paddingTop: '1rem' }}>
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '1rem' }}>
             <Row label="Marge appliquée">
               <div className="flex items-center gap-3">
                 <input type="range" min={0} max={100} value={cfg.markupPercent}
                   onChange={e => set('markupPercent', Number(e.target.value))}
                   className="w-32 accent-amber-400" />
-                <span className="text-sm font-bold w-12 text-right text-admin-fg">{cfg.markupPercent}%</span>
+                <span className="text-sm font-bold w-12 text-right text-white">{cfg.markupPercent}%</span>
               </div>
             </Row>
           </div>

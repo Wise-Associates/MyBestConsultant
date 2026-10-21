@@ -22,7 +22,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <>
     <VerifyEmailBanner verified={user.emailVerification} />
-    <div className="h-screen flex" style={{ background: 'var(--admin-bg)' }}>
+    <div className="h-screen flex" style={{ background: '#0F1117' }}>
 
       {/* ── SIDEBAR ─────────────────────────────────────────────── */}
       <aside className="w-[240px] shrink-0 hidden lg:flex flex-col fixed top-0 left-0 h-screen z-30" style={{
@@ -48,7 +48,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         {/* User footer */}
         <div className="p-3" style={{ borderTop: '1px solid #e8eaf0' }}>
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl" style={{ background: 'rgba(11,29,81,0.04)', border: '1px solid rgba(11,29,81,0.07)' }}>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 text-admin-fg"
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 text-white"
               style={{ background: 'linear-gradient(135deg, #0B1D51 0%, #1a3a8f 100%)' }}>
               {initials}
             </div>
@@ -72,25 +72,25 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
         {/* Topbar */}
         <header className="h-[64px] flex items-center justify-between px-6 shrink-0" style={{
-          background: 'var(--admin-header)',
-          borderBottom: '1px solid var(--admin-line)',
+          background: '#13151E',
+          borderBottom: '1px solid rgba(255,255,255,0.07)',
         }}>
           {/* Mobile brand */}
           <div className="lg:hidden flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-md flex items-center justify-center text-admin-fg text-xs font-black"
+            <div className="w-7 h-7 rounded-md flex items-center justify-center text-white text-xs font-black"
               style={{ background: 'linear-gradient(135deg, #B8860B 0%, #DAA520 100%)' }}>M</div>
-            <span className="text-admin-fg font-bold text-sm">Admin</span>
+            <span className="text-white font-bold text-sm">Admin</span>
           </div>
           {/* Desktop: empty left side - breadcrumb could go here */}
           <div className="hidden lg:block" />
 
           {/* Right actions */}
           <div className="flex items-center gap-2">
-            <button className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:bg-admin-panel-raised"
-              style={{ color: 'var(--admin-fg-muted)', border: '1px solid var(--admin-line)' }}>
+            <button className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:bg-white/8"
+              style={{ color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.07)' }}>
               <Bell className="h-4 w-4" />
             </button>
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-admin-fg text-xs font-bold"
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold"
               style={{ background: 'linear-gradient(135deg, #0B1D51 0%, #1a3a8f 100%)' }}>
               {initials}
             </div>
@@ -98,7 +98,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </header>
 
         {/* Main content */}
-        <main className="flex-1 overflow-y-auto" style={{ color: 'var(--admin-fg)' }}>
+        <main className="flex-1 overflow-y-auto" style={{ color: 'rgba(255,255,255,0.87)' }}>
           {children}
         </main>
       </div>

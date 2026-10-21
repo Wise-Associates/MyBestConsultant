@@ -26,7 +26,7 @@ export function ScoringWeightsClient({ initialWeights }: { initialWeights: Scori
         <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: '#0B1D51' }}>
           <Star className="h-5 w-5" style={{ color: '#B8860B' }} /> Pondération du score de matching
         </h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
+        <p className="text-sm mt-1" style={{ color: '#8a90a8' }}>
           Ajustez le poids des recommandations candidat dans le score de matching IA (screening des candidatures).
         </p>
       </div>
@@ -47,7 +47,7 @@ export function ScoringWeightsClient({ initialWeights }: { initialWeights: Scori
           onChange={e => setWeights({ recommendationWeight: Number(e.target.value) / 100 })}
           className="w-full"
         />
-        <p className="text-xs leading-relaxed" style={{ color: 'var(--admin-fg-muted)' }}>
+        <p className="text-xs leading-relaxed" style={{ color: '#8a90a8' }}>
           Quand un candidat a au moins une recommandation soumise, son score de matching final est calculé comme :{' '}
           <strong>{100 - percent}%</strong> score IA (CV vs offre) + <strong>{percent}%</strong> note moyenne des
           recommandations (converties sur 100). Les candidats sans recommandation ne sont pas pénalisés — seul le
@@ -62,7 +62,7 @@ export function ScoringWeightsClient({ initialWeights }: { initialWeights: Scori
           {isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> Enregistrement…</> : 'Enregistrer'}
         </button>
         {saved && (
-          <span className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: '#047857' }}>
+          <span className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: '#10b981' }}>
             <CheckCircle2 className="h-4 w-4" /> Enregistré
           </span>
         )}
