@@ -77,6 +77,26 @@ export async function releaseSyncLock(lock: SyncLock): Promise<void> {
   if (current?.token === lock.token) await databases.deleteDocument(DB_ID, COLLECTIONS.AO_STATE, lock.id).catch(() => undefined)
 }
 
+const fullReadId = (sourceId: string) => `full_${createHash('sha1').update(sourceId).digest('hex').slice(0, 16)}`
+
+/**
+ * Lecture complète d'une boîte (checkpoint.ts : FULL_READ_DAYS) : un document marque qu'elle est en cours, d'un passage
+ * à l'autre, jusqu'à ce qu'un rattrapage aille au bout. Sous le verrou de l'organisation de la boîte.
+ */
+export async function isFullReadPending(sourceId: string): Promise<boolean> {
+  return (await getOrNull(fullReadId(sourceId))) !== null
+}
+
+export async function startFullRead(sourceId: string): Promise<void> {
+  const { databases } = createAdminClient()
+  await databases.createDocument(DB_ID, COLLECTIONS.AO_STATE, fullReadId(sourceId), { kind: 'flag' }).catch(err => { if (codeOf(err) !== 409) throw err })
+}
+
+export async function endFullRead(sourceId: string): Promise<void> {
+  const { databases } = createAdminClient()
+  await databases.deleteDocument(DB_ID, COLLECTIONS.AO_STATE, fullReadId(sourceId)).catch(err => { if (codeOf(err) !== 404) throw err })
+}
+
 /** Identifiant Appwrite stable d'une boîte lue (serveur + compte + dossier), 33 caractères. */
 export function checkpointIdFor(source: string): string {
   return `cp_${createHash('sha1').update(source).digest('hex').slice(0, 30)}`

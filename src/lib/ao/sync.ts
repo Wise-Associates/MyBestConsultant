@@ -11,12 +11,12 @@ import { emailDeadline } from './dates'
 import { TruncatedAnswerError } from './parse'
 import {
   createAoEmail, createAoOffer, findAoDuplicate, findAoEmailByMessageId,
-  incrementAoSources, listRetryableAoEmails, nextStepFor, purgeAoRecords, saveAoOfferDetails, settledMessageIds, updateAoEmail,
+  hasAoEmails, incrementAoSources, listRetryableAoEmails, nextStepFor, purgeAoRecords, saveAoOfferDetails, settledMessageIds, updateAoEmail,
 } from './repo'
 import { MAX_ATTEMPTS, attemptsAfterFailure, canDeferEmail } from './attempts'
 import { MAX_TABLE_ROWS } from './spreadsheet'
 import {
-  acquireSyncLock, checkpointIdFor, getCheckpoint, purgeDailyState, releaseDailyVisionCall, releaseSyncLock, saveCheckpoint, takeDailyTableOffers, takeDailyVisionCall,
+  acquireSyncLock, checkpointIdFor, endFullRead, getCheckpoint, isFullReadPending, purgeDailyState, startFullRead, releaseDailyVisionCall, releaseSyncLock, saveCheckpoint, takeDailyTableOffers, takeDailyVisionCall,
 } from './state'
 import { getAoSource, listEnabledSources, loadOrganizations, recordSourceError, recordSourceSync, type AoOrganization, type AoSource } from './sources'
 import { lockIdFor } from './tenancy'
@@ -269,10 +269,17 @@ async function readMailbox(
   { now, maxEmails, timeLeft }: { now: Date; maxEmails: number; timeLeft: () => number },
 ): Promise<void> {
   const checkpointId = checkpointIdFor(run.source.$id)
-  const checkpoint = await getCheckpoint(checkpointId)
+  let checkpoint = await getCheckpoint(checkpointId)
+  // Boîte sans aucun e-mail suivi (nouvelle, ou historique effacé) : lecture complète, pas seulement les 7 derniers
+  // jours ; l'ancien point de reprise est ignoré (il dirait que tout a déjà été lu).
+  if (!(await hasAoEmails(run.source.$id)) && !(await isFullReadPending(run.source.$id))) {
+    await startFullRead(run.source.$id)
+    checkpoint = null
+  }
+  const fullRead = await isFullReadPending(run.source.$id)
 
   await withAoInbox(settings, Math.min(MAILBOX_HARD_LIMIT_MS, Math.max(timeLeft(), 0)), async inbox => {
-    const plan = planRead(checkpoint, inbox.uidValidity, now)
+    const plan = planRead(checkpoint, inbox.uidValidity, now, fullRead)
     // Plusieurs boîtes par passage : un seul rattrapage suffit pour que le compte rendu le signale.
     if (report.mode !== 'reconcile') report.mode = plan.mode
     const candidates = plan.mode === 'reconcile' ? await inbox.listSince(plan.since) : await inbox.listAfter(plan.afterUid)
@@ -300,7 +307,10 @@ async function readMailbox(
     }
     report.remaining += todo.filter(e => !handledIds.has(e.messageId)).length
     const handledUids = handledUidsOf(candidates, handledIds)
-    await saveCheckpoint(checkpointId, nextCheckpoint(checkpoint, inbox.uidValidity, plan, candidates.map(c => c.uid), handledUids, inbox.uidNext, now))
+    const next = nextCheckpoint(checkpoint, inbox.uidValidity, plan, candidates.map(c => c.uid), handledUids, inbox.uidNext, now)
+    await saveCheckpoint(checkpointId, next)
+    // Rattrapage allé au bout : la lecture complète est terminée, les passages suivants reprennent le rythme normal.
+    if (fullRead && next.reconciledAt) await endFullRead(run.source.$id)
   })
 }
 
