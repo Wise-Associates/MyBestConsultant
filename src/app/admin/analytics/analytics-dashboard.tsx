@@ -36,13 +36,13 @@ function KpiCard({ icon: Icon, label, value, sub, color }: {
   icon: React.ElementType; label: string; value: string; sub?: string; color: string
 }) {
   return (
-    <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-5">
+    <div className="rounded-xl border border-admin-line bg-admin-panel p-5">
       <div className={`inline-flex p-2.5 rounded-lg mb-4 ${color}`}>
         <Icon className="h-4 w-4" />
       </div>
       <div className="text-2xl font-bold text-white mb-1">{value}</div>
       <div className="text-sm font-medium text-white/70">{label}</div>
-      {sub && <div className="text-xs text-white/30 mt-0.5">{sub}</div>}
+      {sub && <div className="text-xs text-admin-fg-muted mt-0.5">{sub}</div>}
     </div>
   )
 }
@@ -50,7 +50,7 @@ function KpiCard({ icon: Icon, label, value, sub, color }: {
 // ── Horizontal bar list (traffic sources, devices) ──────────────────
 function BarList({ items, colorClass }: { items: { label: string; value: number; icon?: React.ElementType }[]; colorClass: string }) {
   const max = Math.max(1, ...items.map(i => i.value))
-  if (items.length === 0) return <p className="text-sm text-white/25 py-4 text-center">Aucune donnée sur cette période.</p>
+  if (items.length === 0) return <p className="text-sm text-admin-fg-muted py-4 text-center">Aucune donnée sur cette période.</p>
   return (
     <div className="space-y-3">
       {items.map((item, i) => {
@@ -64,7 +64,7 @@ function BarList({ items, colorClass }: { items: { label: string; value: number;
               </span>
               <span className="text-xs font-semibold text-white/80">{fmtNum(item.value)}</span>
             </div>
-            <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+            <div className="h-1.5 rounded-full bg-admin-track overflow-hidden">
               <div className={`h-full rounded-full ${colorClass}`} style={{ width: `${Math.max(3, (item.value / max) * 100)}%` }} />
             </div>
           </div>
@@ -76,7 +76,7 @@ function BarList({ items, colorClass }: { items: { label: string; value: number;
 
 // ── Daily trend mini bar chart ──────────────────────────────────────
 function TrendChart({ data }: { data: DashboardData['dailyTrend'] }) {
-  if (data.length === 0) return <p className="text-sm text-white/25 py-4 text-center">Pas encore de données.</p>
+  if (data.length === 0) return <p className="text-sm text-admin-fg-muted py-4 text-center">Pas encore de données.</p>
   const max = Math.max(1, ...data.map(d => d.users))
   return (
     <div className="flex items-end gap-2 h-32 pt-2">
@@ -116,7 +116,7 @@ function SetupScreen({ onConnected, existingPropertyId, embedded = false }: { on
   }
 
   const content = (
-        <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-6 space-y-6">
+        <div className="rounded-xl border border-admin-line bg-admin-panel p-6 space-y-6">
           <div>
             <div className="text-sm font-semibold text-white/80 mb-3">Étape 1 — Créer un accès technique (une fois)</div>
             <ol className="space-y-2.5 text-sm text-white/50 list-decimal list-inside">
@@ -172,7 +172,7 @@ function SetupScreen({ onConnected, existingPropertyId, embedded = false }: { on
   if (embedded) return <div className="px-6 py-6">{content}</div>
 
   return (
-    <div className="min-h-full bg-[#0A0C10] text-white px-8 py-10">
+    <div className="min-h-full bg-admin-bg text-white px-8 py-10">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center gap-2 mb-1">
           <Activity className="h-5 w-5 text-blue-400" />
@@ -240,7 +240,7 @@ export function AnalyticsDashboard({ isConfigured, initialPropertyId, initialRes
 
   if (!result) {
     return (
-      <div className="min-h-full bg-[#0A0C10] text-white flex items-center justify-center py-24">
+      <div className="min-h-full bg-admin-bg text-white flex items-center justify-center py-24">
         <Loader2 className="h-6 w-6 animate-spin text-white/30" />
       </div>
     )
@@ -248,7 +248,7 @@ export function AnalyticsDashboard({ isConfigured, initialPropertyId, initialRes
 
   if ('error' in result) {
     return (
-      <div className="min-h-full bg-[#0A0C10] text-white px-8 py-10">
+      <div className="min-h-full bg-admin-bg text-white px-8 py-10">
         <div className="max-w-lg mx-auto text-center py-16">
           <AlertCircle className="h-8 w-8 text-red-400 mx-auto mb-4" />
           <div className="text-lg font-semibold mb-2">Connexion à Google Analytics impossible</div>
@@ -266,9 +266,9 @@ export function AnalyticsDashboard({ isConfigured, initialPropertyId, initialRes
   const rt = realtime ?? d.realtime
 
   return (
-    <div className="min-h-full bg-[#0A0C10] text-white">
+    <div className="min-h-full bg-admin-bg text-white">
       {/* Header */}
-      <div className="border-b border-white/[0.07] px-8 py-6">
+      <div className="border-b border-admin-line px-8 py-6">
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -296,7 +296,7 @@ export function AnalyticsDashboard({ isConfigured, initialPropertyId, initialRes
       <div className="px-8 py-8 space-y-8">
 
         {/* ── REALTIME HERO ── */}
-        <div className="rounded-2xl border border-white/[0.07] p-6 relative overflow-hidden"
+        <div className="rounded-2xl border border-admin-line p-6 relative overflow-hidden"
           style={{ background: 'linear-gradient(135deg, rgba(37,99,235,0.1), rgba(124,58,237,0.06))' }}>
           <div className="flex items-center justify-between flex-wrap gap-6">
             <div>
@@ -355,11 +355,11 @@ export function AnalyticsDashboard({ isConfigured, initialPropertyId, initialRes
 
         {/* ── TREND + SOURCES ── */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          <div className="lg:col-span-3 rounded-xl border border-white/[0.07] bg-white/[0.03] p-5">
+          <div className="lg:col-span-3 rounded-xl border border-admin-line bg-admin-panel p-5">
             <div className="text-sm font-semibold text-white/60 uppercase tracking-widest mb-4">Utilisateurs — 7 derniers jours</div>
             <TrendChart data={d.dailyTrend} />
           </div>
-          <div className="lg:col-span-2 rounded-xl border border-white/[0.07] bg-white/[0.03] p-5">
+          <div className="lg:col-span-2 rounded-xl border border-admin-line bg-admin-panel p-5">
             <div className="text-sm font-semibold text-white/60 uppercase tracking-widest mb-4">Sources de trafic</div>
             <BarList colorClass="bg-gradient-to-r from-blue-600 to-blue-400" items={d.trafficSources.map(s => ({ label: s.source, value: s.sessions }))} />
           </div>
@@ -367,12 +367,12 @@ export function AnalyticsDashboard({ isConfigured, initialPropertyId, initialRes
 
         {/* ── TOP PAGES + DEVICES ── */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          <div className="lg:col-span-3 rounded-xl border border-white/[0.07] bg-white/[0.03] overflow-hidden">
+          <div className="lg:col-span-3 rounded-xl border border-admin-line bg-admin-panel overflow-hidden">
             <div className="px-5 py-4 border-b border-white/[0.06]">
               <div className="text-sm font-semibold text-white/60 uppercase tracking-widest">Pages les plus vues (7j)</div>
             </div>
             <div className="divide-y divide-white/[0.05]">
-              {d.topPages.length === 0 && <p className="text-sm text-white/25 py-8 text-center">Aucune donnée sur cette période.</p>}
+              {d.topPages.length === 0 && <p className="text-sm text-admin-fg-muted py-8 text-center">Aucune donnée sur cette période.</p>}
               {d.topPages.map((p, i) => (
                 <div key={i} className="flex items-center justify-between px-5 py-3">
                   <span className="text-sm text-white/70 truncate flex items-center gap-2">
@@ -384,7 +384,7 @@ export function AnalyticsDashboard({ isConfigured, initialPropertyId, initialRes
               ))}
             </div>
           </div>
-          <div className="lg:col-span-2 rounded-xl border border-white/[0.07] bg-white/[0.03] p-5">
+          <div className="lg:col-span-2 rounded-xl border border-admin-line bg-admin-panel p-5">
             <div className="text-sm font-semibold text-white/60 uppercase tracking-widest mb-4">Appareils (7j)</div>
             <BarList colorClass="bg-gradient-to-r from-violet-600 to-violet-400"
               items={d.devices.map(dv => ({ label: DEVICE_LABEL[dv.device] || dv.device, value: dv.users, icon: DEVICE_ICON[dv.device] }))} />
@@ -402,8 +402,8 @@ export function AnalyticsDashboard({ isConfigured, initialPropertyId, initialRes
       {/* ── Settings modal ── */}
       {showSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: 'rgba(0,0,0,0.6)' }} onClick={() => setShowSettings(false)}>
-          <div className="max-w-2xl w-full max-h-[85vh] overflow-y-auto rounded-2xl border border-white/10 bg-[#0A0C10]" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.07]">
+          <div className="max-w-2xl w-full max-h-[85vh] overflow-y-auto rounded-2xl border border-white/10 bg-admin-bg" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-admin-line">
               <div className="text-base font-semibold text-white">Reconfigurer Google Analytics</div>
               <button onClick={() => setShowSettings(false)} className="text-white/40 hover:text-white transition-colors"><X className="h-4 w-4" /></button>
             </div>
