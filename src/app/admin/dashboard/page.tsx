@@ -65,17 +65,11 @@ export default function AdminDashboard() {
   const dateStr = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
   return (
-    <div style={{
-      minHeight: '100%',
-      backgroundColor: 'var(--color-background)',
-      backgroundImage: `linear-gradient(rgba(11,29,81,0.55), rgba(11,29,81,0.55)), url('/recruiter-bg.jpg')`,
-      backgroundSize: 'cover',
-      backgroundPosition: 'top center',
-      backgroundRepeat: 'no-repeat',
-      backgroundAttachment: 'fixed',
-    }}>
+    // Fond et cartes du back-office (tokens --admin-* de globals.css) : la même surface que les autres pages de
+    // l'admin, et non celle du site public, que le thème personnalisé fait varier.
+    <div style={{ minHeight: '100%', background: 'var(--admin-bg)' }}>
       {/* Header */}
-      <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
+      <div className="sticky top-0 z-20" style={{ background: 'var(--admin-bg)', borderBottom: '1px solid var(--admin-line)' }}>
         <div className="max-w-6xl mx-auto px-6 py-8 flex flex-wrap items-center justify-between gap-6">
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -85,7 +79,7 @@ export default function AdminDashboard() {
               </span>
             </div>
             <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>Vue d&apos;ensemble</h1>
-            <p className="text-sm mt-0.5 capitalize" style={{ color: 'rgba(255,255,255,0.5)' }}>{dateStr}</p>
+            <p className="text-sm mt-0.5 capitalize" style={{ color: 'var(--admin-fg-muted)' }}>{dateStr}</p>
           </div>
           <div className="flex items-center gap-2">
             <Link href="/admin/design"
@@ -111,18 +105,18 @@ export default function AdminDashboard() {
           {STATS.map(s => (
             <Link key={s.label} href={s.href}
               className="group relative overflow-hidden rounded-3xl p-5 no-underline transition-all duration-300 hover:-translate-y-1"
-              style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 10px 30px -10px rgba(11,29,81,0.14)' }}>
+              style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
               <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full transition-transform duration-500 group-hover:scale-125"
                 style={{ background: `radial-gradient(circle, ${s.color}38, transparent 70%)` }} />
               <div className="relative flex items-start justify-between mb-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${s.color}18`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)' }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${s.color}18` }}>
                   <s.icon className="h-5 w-5" style={{ color: s.color }} />
                 </div>
-                <ChevronRight className="h-4 w-4 transition-colors" style={{ color: 'var(--color-text-muted)', opacity: 0.4 }} />
+                <ChevronRight className="h-4 w-4 transition-colors" style={{ color: 'var(--admin-fg-subtle)' }} />
               </div>
-              <div className="relative text-2xl font-bold mb-0.5" style={{ color: 'var(--color-text)' }}>{s.value}</div>
-              <div className="relative text-sm font-semibold" style={{ color: 'var(--color-text)' }}>{s.label}</div>
-              <div className="relative text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{s.sub}</div>
+              <div className="relative text-2xl font-bold mb-0.5" style={{ color: 'var(--admin-fg)' }}>{s.value}</div>
+              <div className="relative text-sm font-semibold" style={{ color: 'var(--admin-fg)' }}>{s.label}</div>
+              <div className="relative text-xs mt-0.5" style={{ color: 'var(--admin-fg-muted)' }}>{s.sub}</div>
             </Link>
           ))}
         </div>
@@ -133,21 +127,21 @@ export default function AdminDashboard() {
           {/* Quick actions — 3/5 */}
           <div className="lg:col-span-3">
             <div className="flex items-center gap-2 mb-4">
-              <Zap className="h-4 w-4" style={{ color: 'var(--color-text-muted)' }} />
-              <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>Accès rapide</h2>
+              <Zap className="h-4 w-4" style={{ color: 'var(--admin-fg-muted)' }} />
+              <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--admin-fg-muted)' }}>Accès rapide</h2>
             </div>
             <div className="grid grid-cols-2 gap-3">
               {QUICK_ACTIONS.map(a => (
                 <Link key={a.label} href={a.href}
                   className="group relative overflow-hidden rounded-3xl p-5 no-underline transition-all duration-300 hover:-translate-y-1"
-                  style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 10px 30px -10px rgba(11,29,81,0.14)' }}>
+                  style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
                   <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full transition-transform duration-500 group-hover:scale-125"
                     style={{ background: `radial-gradient(circle, ${a.color}38, transparent 70%)` }} />
-                  <div className="relative w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: `${a.color}18`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)' }}>
+                  <div className="relative w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: `${a.color}18` }}>
                     <a.icon className="h-5 w-5" style={{ color: a.color }} />
                   </div>
-                  <div className="relative font-semibold text-sm" style={{ color: 'var(--color-text)' }}>{a.label}</div>
-                  <div className="relative text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{a.desc}</div>
+                  <div className="relative font-semibold text-sm" style={{ color: 'var(--admin-fg)' }}>{a.label}</div>
+                  <div className="relative text-xs mt-0.5" style={{ color: 'var(--admin-fg-muted)' }}>{a.desc}</div>
                 </Link>
               ))}
             </div>
@@ -156,11 +150,11 @@ export default function AdminDashboard() {
           {/* Activity — 2/5 */}
           <div className="lg:col-span-2">
             <div className="flex items-center gap-2 mb-4">
-              <Activity className="h-4 w-4" style={{ color: 'var(--color-text-muted)' }} />
-              <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>Activité récente</h2>
+              <Activity className="h-4 w-4" style={{ color: 'var(--admin-fg-muted)' }} />
+              <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--admin-fg-muted)' }}>Activité récente</h2>
             </div>
-            <div className="rounded-3xl overflow-hidden" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 10px 30px -10px rgba(11,29,81,0.14)' }}>
-              <div className="divide-y" style={{ borderColor: 'var(--color-border)' }}>
+            <div className="rounded-3xl overflow-hidden" style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
+              <div className="divide-y" style={{ borderColor: 'var(--admin-line)' }}>
                 {[
                   { msg: 'Site configuré', time: "À l'instant", color: '#10b981' },
                   { msg: 'Moteur IA actif', time: 'Il y a 1 min', color: '#2563eb' },
@@ -169,13 +163,13 @@ export default function AdminDashboard() {
                 ].map((item, i) => (
                   <div key={i} className="flex items-center gap-3 px-4 py-3">
                     <span className="w-2 h-2 rounded-full shrink-0" style={{ background: item.color }} />
-                    <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>{item.msg}</span>
-                    <span className="text-xs shrink-0" style={{ color: 'var(--color-text-muted)' }}>{item.time}</span>
+                    <span className="text-sm flex-1 truncate" style={{ color: 'var(--admin-fg)' }}>{item.msg}</span>
+                    <span className="text-xs shrink-0" style={{ color: 'var(--admin-fg-muted)' }}>{item.time}</span>
                   </div>
                 ))}
               </div>
-              <div className="px-4 py-3 text-center" style={{ borderTop: '1px solid var(--color-border)' }}>
-                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Aucune autre activité</span>
+              <div className="px-4 py-3 text-center" style={{ borderTop: '1px solid var(--admin-line)' }}>
+                <span className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>Aucune autre activité</span>
               </div>
             </div>
           </div>
@@ -184,18 +178,18 @@ export default function AdminDashboard() {
         {/* Modules status */}
         <div>
           <div className="flex items-center gap-2 mb-4">
-            <TrendingUp className="h-4 w-4" style={{ color: 'var(--color-text-muted)' }} />
-            <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>État des modules</h2>
+            <TrendingUp className="h-4 w-4" style={{ color: 'var(--admin-fg-muted)' }} />
+            <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--admin-fg-muted)' }}>État des modules</h2>
           </div>
-          <div className="rounded-3xl overflow-hidden" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 10px 30px -10px rgba(11,29,81,0.14)' }}>
-            <div className="divide-y" style={{ borderColor: 'var(--color-border)' }}>
+          <div className="rounded-3xl overflow-hidden" style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
+            <div className="divide-y" style={{ borderColor: 'var(--admin-line)' }}>
               {MODULES.map(m => {
                 const s = STATUS_STYLE[m.status as keyof typeof STATUS_STYLE]
                 return (
                   <div key={m.name} className="flex items-center justify-between px-5 py-3.5">
                     <div>
-                      <span className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>{m.name}</span>
-                      <span className="text-xs ml-3" style={{ color: 'var(--color-text-muted)' }}>{m.desc}</span>
+                      <span className="text-sm font-semibold" style={{ color: 'var(--admin-fg)' }}>{m.name}</span>
+                      <span className="text-xs ml-3" style={{ color: 'var(--admin-fg-muted)' }}>{m.desc}</span>
                     </div>
                     <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold" style={{ background: s.bg, color: s.color }}>
                       {s.label}
