@@ -14,7 +14,7 @@ import {
   CONTRACT_LABEL, ENGAGEMENT_LABEL, REMOTE_LABEL, STATUS_UI, control, fieldLabel, formatAmount, formatDay, optionStyle, primaryButton, secondaryButton,
 } from './labels'
 
-export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () => void }) {
+export function AoOfferPanel({ row, onClose, onCommentsChanged }: { row: AoOfferRow; onClose: () => void; onCommentsChanged: () => void }) {
   const [preview, setPreview] = useState<PublicationPreview | null>(null)
   const [draft, setDraft] = useState<PublicationDraft | null>(null)
   const [skillsText, setSkillsText] = useState('')
@@ -127,7 +127,7 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
             </div>
           </section>
         )}
-        <Comments offerId={row.$id} />
+        <Comments offerId={row.$id} onChanged={onCommentsChanged} />
         <Sourcing offerId={row.$id} />
         <Originals emailId={row.emailId} attachments={row.attachments} />
         <section>
@@ -361,7 +361,7 @@ const commentDate = (iso: string) => new Date(iso).toLocaleString('fr-FR', { dat
  * Commentaires internes de l'offre (suivi, relances, contexte) : chargés à l'ouverture du panneau, du plus ancien au
  * plus récent ; chacun peut supprimer les siens. Ctrl+Entrée (⌘+Entrée) ajoute le commentaire.
  */
-function Comments({ offerId }: { offerId: string }) {
+function Comments({ offerId, onChanged }: { offerId: string; onChanged: () => void }) {
   const [comments, setComments] = useState<AoCommentView[] | null>(null)
   const [draft, setDraft] = useState('')
   const [error, setError] = useState('')
@@ -381,6 +381,7 @@ function Comments({ offerId }: { offerId: string }) {
     const added = res.comment
     setComments(list => [...(list ?? []), added])
     setDraft('')
+    onChanged()
   })
   const remove = (id: string) => startTransition(async () => {
     setError('')
@@ -388,6 +389,7 @@ function Comments({ offerId }: { offerId: string }) {
     if (res.error) return setError(res.error)
     setComments(list => list?.filter(c => c.id !== id) ?? null)
     setConfirmId(null)
+    onChanged()
   })
 
   return (

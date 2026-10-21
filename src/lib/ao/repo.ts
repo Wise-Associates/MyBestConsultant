@@ -352,7 +352,10 @@ export async function purgeAoRecords(before: Date, maxDeletes = 100): Promise<nu
  */
 export async function listAoOfferRows(sourceIds: string[], max = 2000): Promise<AoOfferRow[]> {
   const offers = await listAoOffers(max)
-  const [emails, details] = await Promise.all([listAoEmailsByIds(offers.map(o => o.emailId)), listAoOfferDetails(offers.map(o => o.$id))])
+  const offerIds = offers.map(o => o.$id)
+  // Import différé : comments.ts est réservé au serveur (server-only) et ce module est aussi chargé par les tests.
+  const { countAoComments } = await import('./comments')
+  const [emails, details, comments] = await Promise.all([listAoEmailsByIds(offers.map(o => o.emailId)), listAoOfferDetails(offerIds), countAoComments(offerIds)])
   const scope = new Set(sourceIds)
   return offers.filter(offer => scope.has(emails.get(offer.emailId)?.sourceId ?? '')).map(offer => {
     const email = emails.get(offer.emailId)
@@ -369,6 +372,7 @@ export async function listAoOfferRows(sourceIds: string[], max = 2000): Promise<
       forwardedBy: email && origin && origin.address !== email.fromAddress.trim().toLowerCase() ? email.fromName || email.fromAddress : '',
       deadline: email?.deadline ?? '',
       attachments: email?.attachments ?? [],
+      commentCount: comments.get(offer.$id) ?? 0,
       subject: email?.subject ?? '',
       receivedAt: email?.receivedAt ?? offer.createdAt,
     }

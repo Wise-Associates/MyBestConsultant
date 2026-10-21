@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { HoverCard } from '@/components/ui/hover-card'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
-import { AlertCircle, BarChart3, CheckCircle2, Copy, Download, Inbox, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
+import { AlertCircle, BarChart3, CheckCircle2, Copy, Download, Inbox, MessageSquare, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
 import { EMPTY_AO_FILTERS, filterAoOffers, filtersToSearchParams, type AoFilters, type AoOfferRow } from '@/lib/ao/filters'
 import { MAX_ATTEMPTS } from '@/lib/ao/attempts'
 import type { AoSyncReport } from '@/lib/ao/sync'
@@ -309,7 +309,15 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
                 style={{ borderBottom: '1px solid var(--admin-line)' }}>
                 <td className={cell('received')} title={formatDay(r.receivedAt)} style={{ color: 'var(--admin-fg-muted)', fontVariantNumeric: 'tabular-nums' }}>{shortDay(r.receivedAt)}</td>
                 <td className={cell('offer')}>
-                  <button type="button" onClick={() => setSelectedId(r.$id)} title={r.title} className="block w-full truncate text-left font-medium text-admin-fg hover:underline">{r.title}</button>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <button type="button" onClick={() => setSelectedId(r.$id)} title={r.title} className="min-w-0 truncate text-left font-medium text-admin-fg hover:underline">{r.title}</button>
+                    {r.commentCount > 0 && (
+                      <span className="inline-flex items-center gap-1 shrink-0 text-xs" style={{ color: 'var(--admin-fg-muted)' }} title={`${r.commentCount} commentaire${r.commentCount > 1 ? 's' : ''}`}>
+                        <MessageSquare size={12} aria-hidden="true" />
+                        <span className="sr-only">Commentaires : </span>{r.commentCount}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs truncate" title={`${r.companyName || 'Client non précisé'} · ${r.senderName || r.senderAddress}`} style={{ color: 'var(--admin-fg-muted)' }}>{r.companyName || 'Client non précisé'} · {r.senderName || r.senderAddress}</p>
                 </td>
                 <td className={cell('city')} title={r.location || undefined}>{r.location || '—'}</td>
@@ -372,7 +380,7 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
         </div>
       )}
 
-      {selected && <AoOfferPanel row={selected} onClose={() => setSelectedId(null)} />}
+      {selected && <AoOfferPanel row={selected} onClose={() => setSelectedId(null)} onCommentsChanged={() => router.refresh()} />}
     </div>
   )
 }
