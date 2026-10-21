@@ -103,7 +103,7 @@ export async function retryAoEmail(id: string): Promise<{ report?: AoSyncReport;
   } catch (err) {
     return { error: `Traitement immédiat impossible (${errorOf(err)}) : l'e-mail est remis en file pour la prochaine synchronisation.` }
   } finally {
-    revalidatePath('/admin/ao-offers')
+    revalidatePath('/admin/candidats')
   }
 }
 
@@ -192,7 +192,7 @@ export async function publishAoOffer(id: string, input: PublicationDraft): Promi
       }
       // L'offre existe déjà (publication simultanée, ou erreur pendant la diffusion) : elle reste publiée.
     }
-    revalidatePath('/admin/ao-offers')
+    revalidatePath('/admin/candidats')
     revalidatePath('/admin/jobs')
     return { jobId }
   } catch (err) {
@@ -208,7 +208,7 @@ export async function setAoOfferStatus(id: string, status: 'to_review' | 'ignore
     if (!offer) return { error: 'Offre introuvable.' }
     if (offer.status === 'published') return { error: 'Une offre publiée se gère depuis « Offres ».' }
     await updateAoOffer(id, { status })
-    revalidatePath('/admin/ao-offers')
+    revalidatePath('/admin/candidats')
     return {}
   } catch (err) {
     return { error: errorOf(err) }

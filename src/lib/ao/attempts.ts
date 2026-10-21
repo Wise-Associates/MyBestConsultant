@@ -19,7 +19,7 @@ export function attemptsAfterFailure(attempts: number, { final, countsAsAttempt 
 }
 
 /**
- * Relance demandée par un admin (bouton « Réessayer » de /admin/ao-offers) : tout e-mail en erreur, même
+ * Relance demandée par un admin (bouton « Réessayer » de /admin/candidats) : tout e-mail en erreur, même
  * abandonné ou enregistré avant une règle plus souple, repart de zéro (un essai et une reprise) à la prochaine
  * synchronisation. null s'il n'est pas en erreur (traité entre-temps, ou en cours dans un passage).
  */
