@@ -305,8 +305,15 @@ describe('point de reprise de la boîte', () => {
     assert.deepEqual(planRead(cp(), '7', now), { mode: 'incremental', afterUid: 100 })
   })
 
-  it('rattrape 7 jours au premier passage, après 24 h, ou si la boîte a été reconstruite', () => {
-    for (const plan of [planRead(null, '7', now), planRead(cp({ reconciledAt: '2026-10-18T11:00:00Z' }), '7', now), planRead(cp(), '8', now), planRead(cp({ reconciledAt: null }), '7', now)]) {
+  it('lit toute la boîte (365 jours) tant que sa lecture complète n\'est pas terminée, même sur plusieurs passages', () => {
+    for (const plan of [planRead(null, '7', now, true), planRead(cp(), '7', now, true), planRead(cp({ reconciledAt: null, lastUid: 40 }), '7', now, true)]) {
+      assert.equal(plan.mode, 'reconcile')
+      if (plan.mode === 'reconcile') assert.equal(plan.since.toISOString(), '2025-10-19T12:00:00.000Z')
+    }
+  })
+
+  it('rattrape 7 jours après 24 h, si la boîte a été reconstruite, ou si un rattrapage est resté inachevé', () => {
+    for (const plan of [planRead(cp({ reconciledAt: '2026-10-18T11:00:00Z' }), '7', now), planRead(cp(), '8', now), planRead(cp({ reconciledAt: null }), '7', now)]) {
       assert.equal(plan.mode, 'reconcile')
       if (plan.mode === 'reconcile') assert.equal(plan.since.toISOString(), '2026-10-12T12:00:00.000Z')
     }
