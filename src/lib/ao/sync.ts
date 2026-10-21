@@ -15,7 +15,7 @@ import {
 import { MAX_ATTEMPTS, attemptsAfterFailure, canDeferEmail } from './attempts'
 import { MAX_TABLE_ROWS } from './spreadsheet'
 import {
-  acquireSyncLock, checkpointIdFor, getCheckpoint, releaseDailyVisionCall, releaseSyncLock, saveCheckpoint, takeDailyTableOffers, takeDailyVisionCall,
+  acquireSyncLock, checkpointIdFor, getCheckpoint, purgeDailyState, releaseDailyVisionCall, releaseSyncLock, saveCheckpoint, takeDailyTableOffers, takeDailyVisionCall,
 } from './state'
 import { getAoSource, listEnabledSources, loadOrganizations, recordSourceError, recordSourceSync, type AoOrganization, type AoSource } from './sources'
 import { lockIdFor } from './tenancy'
@@ -135,7 +135,10 @@ export async function syncAoInbox({ now = new Date(), maxEmails = 25, budgetMs =
   const startedAt = Date.now()
   const timeLeft = () => budgetMs - (Date.now() - startedAt)
   // La conservation ne dépend d'aucune organisation : elle est appliquée par les passages planifiés.
-  if (!tenantId) await purgeAoRecords(new Date(now.getTime() - RETENTION_DAYS * DAY_MS))
+  if (!tenantId) {
+    await purgeAoRecords(new Date(now.getTime() - RETENTION_DAYS * DAY_MS))
+    await purgeDailyState(new Date(now.getTime() - 7 * DAY_MS))
+  }
 
   const sources = await listEnabledSources(tenantId)
   report.configured = sources.length > 0

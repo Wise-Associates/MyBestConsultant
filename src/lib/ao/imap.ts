@@ -47,6 +47,8 @@ export interface AoInbox {
   readonly uidValidity: string
   /** UID que recevra le prochain message (à l'ouverture de la boîte) : tout message plus ancien a un UID inférieur. */
   readonly uidNext: number
+  /** Nombre de messages du dossier ouvert (affiché par le test de connexion). */
+  readonly messageCount: number
   /** Messages reçus depuis `since` (critère IMAP au jour près), du plus ancien au plus récent. */
   listSince(since: Date): Promise<InboxEnvelope[]>
   /** Messages arrivés après l'UID `uid` (lecture incrémentale). */
@@ -132,6 +134,7 @@ async function openAndWork<T>(client: ImapFlow, settings: AoInboxSettings, work:
       return await work({
         uidValidity,
         uidNext: client.mailbox ? client.mailbox.uidNext : 1,
+        messageCount: client.mailbox ? client.mailbox.exists : 0,
         // Objet de recherche : imapflow lance SEARCH puis FETCH sur des plages compactes.
         listSince: since => envelopes({ since }),
         // « n:* » renvoie toujours au moins le dernier message, même déjà lu : on filtre.
