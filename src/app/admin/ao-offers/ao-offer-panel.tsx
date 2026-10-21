@@ -5,7 +5,7 @@ import { AlertTriangle, Ban, Download, ExternalLink, Loader2, Paperclip, RotateC
 import type { AoOfferRow } from '@/lib/ao/filters'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
 import {
-  previewAoPublication, publishAoOffer, setAoOfferStatus, sourceAoOfferCandidates, storedAoOfferMatches,
+  aoOfferSourcing, previewAoPublication, publishAoOffer, setAoOfferStatus,
   type PublicationDraft, type PublicationPreview, type SourcedCandidate, type SourcingResult,
 } from './actions'
 import { AoDescription } from './ao-description'
@@ -125,7 +125,7 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
             </div>
           </section>
         )}
-        <Sourcing offerId={row.$id} published={published} />
+        <Sourcing offerId={row.$id} />
         <Originals emailId={row.emailId} attachments={row.attachments} />
         <section>
           <p style={{ ...fieldLabel, marginBottom: 12 }}>Description</p>
@@ -261,44 +261,43 @@ function Originals({ emailId, attachments }: { emailId: string; attachments: str
   )
 }
 
-const ORIGIN_LABEL: Record<SourcedCandidate['origin'], string> = { live: 'Base candidats', pool: 'Base candidats', vivier: 'Vivier', application: 'Candidature' }
+const ORIGIN_LABEL: Record<SourcedCandidate['origin'], string> = { pool: 'Base candidats', vivier: 'Vivier', application: 'Candidature' }
 
 /**
- * « Sourcing » : candidats les mieux notés pour cette offre, avec la raison donnée par l'IA. Offre publiée : le matching
- * enregistré à la publication est lu tout de suite (sans appel d'IA), « Recalculer » le refait. Offre non publiée :
- * calcul à la demande (un appel d'IA, plusieurs CV lus : environ une minute), rien n'est enregistré.
+ * « Sourcing » : les 5 meilleurs candidats notés 65 ou plus, avec la raison donnée par l'IA. Le résultat enregistré est
+ * lu à l'ouverture (matching de la publication, ou dernier calcul à la demande) : aucun appel d'IA tant qu'on ne clique
+ * pas sur « Trouver des candidats » / « Recalculer » (un appel d'IA, environ une minute).
  */
-function Sourcing({ offerId, published }: { offerId: string; published: boolean }) {
+function Sourcing({ offerId }: { offerId: string }) {
   const [result, setResult] = useState<SourcingResult | null>(null)
+  const [computing, setComputing] = useState(false)
   const [pending, startTransition] = useTransition()
   useEffect(() => {
-    if (!published) return
-    startTransition(async () => setResult(await storedAoOfferMatches(offerId)))
-  }, [offerId, published])
+    startTransition(async () => setResult(await aoOfferSourcing(offerId)))
+  }, [offerId])
   const run = () => startTransition(async () => {
-    setResult(published ? await storedAoOfferMatches(offerId, true) : await sourceAoOfferCandidates(offerId))
+    setComputing(true)
+    setResult(await aoOfferSourcing(offerId, true))
+    setComputing(false)
   })
   const candidates = result?.candidates
-  const label = pending ? (result || !published ? 'Analyse des CV…' : 'Lecture du matching…') : published ? 'Recalculer' : candidates ? 'Relancer le sourcing' : 'Trouver des candidats'
+  const computed = !!result?.computedAt
   return (
     <section>
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <p style={{ ...fieldLabel, marginBottom: 0 }}>Sourcing : candidats correspondants</p>
+        <p style={{ ...fieldLabel, marginBottom: 0 }}>Sourcing : meilleurs candidats</p>
         <button type="button" onClick={run} disabled={pending} style={{ ...secondaryButton, fontSize: 13 }}>
           {pending ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />}
-          {label}
+          {computing ? 'Analyse des CV…' : pending ? 'Lecture…' : computed ? 'Recalculer' : 'Trouver des candidats'}
         </button>
       </div>
       <div aria-live="polite">
         {result?.error && <p role="alert" className="text-sm mt-2" style={{ color: '#b91c1c' }}>{result.error}</p>}
-        {!published && !result && (
-          <p className="text-xs mt-2" style={{ color: 'var(--admin-fg-muted)' }}>À la publication, le matching est calculé et enregistré automatiquement ; d&apos;ici là, il est calculé à la demande.</p>
-        )}
-        {candidates && (
+        {result && !result.error && (
           <p className="text-xs mt-2" style={{ color: 'var(--admin-fg-muted)' }}>
-            {published
-              ? (result?.computedAt ? `Matching enregistré le ${formatDay(result.computedAt)}` : 'Matching de la base pas encore calculé') + ` : ${candidates.length} meilleurs candidats (score de 0 à 100).`
-              : `${candidates.length} meilleurs candidats parmi ${result?.scanned ?? 0} CV analysés (score de 0 à 100).`}
+            {!computed
+              ? 'Pas encore calculé pour cette offre (calculé automatiquement à sa publication).'
+              : `Calculé le ${formatDay(result.computedAt!)}${result.scanned ? ` sur ${result.scanned} CV` : ''} : ${candidates?.length ? `${candidates.length} candidat${candidates.length > 1 ? 's' : ''} noté${candidates.length > 1 ? 's' : ''} 65 ou plus (5 au plus).` : 'aucun candidat noté 65 ou plus.'}`}
           </p>
         )}
         {candidates && candidates.length > 0 && (
@@ -311,7 +310,7 @@ function Sourcing({ offerId, published }: { offerId: string; published: boolean 
                     {c.name || 'Candidat sans nom'}
                     <span className="ml-2 text-xs font-normal" style={{ color: 'var(--admin-fg-muted)' }}>{ORIGIN_LABEL[c.origin]}</span>
                   </span>
-                  <span className="block text-xs mt-0.5" style={{ color: 'var(--admin-fg-muted)' }}>{c.reason || 'Analyse en attente.'}</span>
+                  <span className="block text-xs mt-0.5" style={{ color: 'var(--admin-fg-muted)' }}>{c.reason}</span>
                 </span>
               </li>
             ))}
