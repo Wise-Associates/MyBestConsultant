@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { MAX_ATTEMPTS } from './attempts'
 import type { AoOfferRow } from './filters'
+import { parseSender } from './origin'
 import type { AoEmail, AoEmailStatus, AoOffer, AoOfferFields, AoOfferStatus } from './types'
 
 // Accès aux collections AO_EMAILS et AO_OFFERS (clé API serveur : aucune permission côté client).
@@ -22,6 +23,9 @@ export function docToAoEmail(d: Models.Document): AoEmail {
     uid: num(doc.uid),
     fromAddress: str(doc.fromAddress),
     fromName: str(doc.fromName),
+    origin: str(doc.origin),
+    deadline: str(doc.deadline),
+    citedClients: Array.isArray(doc.citedClients) ? (doc.citedClients as string[]) : [],
     subject: str(doc.subject),
     receivedAt: str(doc.receivedAt) || d.$createdAt,
     attachments: Array.isArray(doc.attachments) ? (doc.attachments as string[]) : [],
@@ -187,9 +191,12 @@ export async function findAoDuplicate(fingerprint: string, since: Date): Promise
 
 export async function createAoOffer(fields: AoOfferFields, meta: { fingerprint: string; emailId: string }): Promise<AoOffer> {
   const { databases } = createAdminClient()
+  // Attributs listés un à un : une offre lue dans un e-mail porte aussi sa date limite (ExtractedOffer), qu'Appwrite
+  // refuserait ici (attribut inconnu) ; elle est enregistrée sur l'e-mail.
+  const { title, companyName, location, contractType, remote, salary, skills, description, duration, startDate, experience } = fields
   const doc = await databases.createDocument(DB_ID, COLLECTIONS.AO_OFFERS, ID.unique(), {
-    ...fields,
-    salary: fields.salary ?? null,
+    title, companyName, location, contractType, remote, skills, description, duration, startDate, experience,
+    salary: salary ?? null,
     fingerprint: meta.fingerprint,
     emailId: meta.emailId,
     status: 'to_review',
@@ -261,10 +268,16 @@ export async function listAoOfferRows(max = 2000): Promise<AoOfferRow[]> {
   const emails = await listAoEmailsByIds(offers.map(o => o.emailId))
   return offers.map(offer => {
     const email = emails.get(offer.emailId)
+    // E-mail transféré : l'expéditeur affiché (et filtré) est celui du message d'origine ; le collaborateur qui l'a
+    // transféré est indiqué à part. E-mails lus avant l'enregistrement de l'origine : l'expéditeur de l'e-mail.
+    const origin = parseSender(email?.origin ?? '')
+    const sender = origin ?? { name: email?.fromName ?? '', address: email?.fromAddress ?? '' }
     return {
       ...offer,
-      senderAddress: email?.fromAddress ?? '',
-      senderName: email?.fromName ?? '',
+      senderAddress: sender.address,
+      senderName: sender.name,
+      forwardedBy: email && origin && origin.address !== email.fromAddress.trim().toLowerCase() ? email.fromName || email.fromAddress : '',
+      deadline: email?.deadline ?? '',
       subject: email?.subject ?? '',
       receivedAt: email?.receivedAt ?? offer.createdAt,
     }

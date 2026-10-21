@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import * as XLSX from 'xlsx'
-import { parseOffersJson, TruncatedAnswerError } from './parse'
+import { emailDeadline, parseOffersJson, TruncatedAnswerError } from './parse'
 import { cityKey, offerFingerprint, titleKey } from './fingerprint'
 import { DEFAULT_CLIENT_LABEL, namesToHide, revealsName, scrubContacts, toPublicOffer } from './anonymize'
 import Anthropic from '@anthropic-ai/sdk'
@@ -14,15 +14,16 @@ import { AiUnavailable, RetryLater, SkipAttachment, formatOf, type Attachment, t
 import { readWithFallback, visionBlockFor, type VisionReader } from './extractors/vision'
 import { openAiContentPart, transcribeWithOpenAI } from './extractors/vision-openai'
 import { batchByLength, nextStepFor } from './repo'
+import { citedClients, companyFromDomain, formatSender, originalSender, parseSender, senderCompany, type Sender } from './origin'
 import { attemptsAfterFailure, manualRetryPatch } from './attempts'
 import { AO_EXCEL_HEADERS, buildAoWorkbook } from './excel'
 import { buildEmailContent } from './extract'
 import { MAX_TABLE_ROWS, readTableAttachment, tableOffersOf } from './spreadsheet'
 import { EMPTY_AO_FILTERS, filterAoOffers, filtersFromSearchParams, filtersToSearchParams, type AoFilters, type AoOfferRow } from './filters'
 import { descriptionForPublication } from '../description-sections'
-import type { AoEmail, AoOfferFields } from './types'
+import type { AoEmail, ExtractedOffer } from './types'
 
-const offer = (over: Partial<AoOfferFields> = {}): AoOfferFields => ({
+const offer = (over: Partial<ExtractedOffer> = {}): ExtractedOffer => ({
   title: 'Développeur Fullstack React (H/F)',
   companyName: 'BNP Paribas',
   location: 'Paris 15e (75015)',
@@ -33,11 +34,27 @@ const offer = (over: Partial<AoOfferFields> = {}): AoOfferFields => ({
   description: 'Au sein de BNP Paribas, vous développerez de nouvelles fonctionnalités.',
   duration: '6 mois renouvelables',
   startDate: '01/09/2026',
+  deadline: '30/10/2026',
+  endClient: '',
   experience: '5 ans minimum',
   ...over,
 })
 
 describe('parseOffersJson', () => {
+  it('garde la date limite de réponse à part de la date de démarrage', () => {
+    const { offers } = parseOffersJson('[{"title":"Data engineer","startDate":"","deadline":"30/10/2026","endClient":"BNP Paribas"}]')
+    assert.equal(offers[0].deadline, '30/10/2026')
+    assert.equal(offers[0].endClient, 'BNP Paribas')
+    assert.equal(offers[0].startDate, '')
+  })
+
+  it('garde sur l\'e-mail la date limite la plus proche de ses offres', () => {
+    assert.equal(emailDeadline(['', '15/11/2026', '30/10/2026', '2026-11-02']), '30/10/2026')
+    assert.equal(emailDeadline(['fin octobre', '31.10.26']), '31.10.26')
+    assert.equal(emailDeadline(['fin octobre', 'ASAP']), 'fin octobre')
+    assert.equal(emailDeadline(['', '  ']), '')
+  })
+
   it('lit un tableau entouré de texte ou de balises markdown', () => {
     const { offers } = parseOffersJson('Voici :\n```json\n[{"title":"Chef de projet","contractType":"freelance","remote":"remote","salary":"600 €/j","skills":"Java, Spring; Kafka"}]\n```')
     assert.equal(offers.length, 1)
@@ -98,19 +115,24 @@ describe('anonymisation', () => {
   })
 
   it('masque le client quelles que soient la casse, les accents, la forme juridique ou le sigle', () => {
-    const names = namesToHide('Société Générale SA (SG)')
+    const names = namesToHide(['Société Générale SA (SG)'])
     const out = scrubContacts('SOCIETE GENERALE recrute ; la Société-Générale et SG cherchent. Le SGBD reste.', names, 'Grand compte – Banque')
     assert.equal(out, 'Grand compte – Banque recrute ; la Grand compte – Banque et Grand compte – Banque cherchent. Le SGBD reste.')
   })
 
   it('masque aussi l\'expéditeur (nom de deux mots ou plus, domaine) mais pas une messagerie publique', () => {
-    const names = namesToHide('', { name: 'Marie Dupont', address: 'marie@esn-conseil.fr' })
+    const names = namesToHide([], { name: 'Marie Dupont', address: 'marie@esn-conseil.fr' })
     assert.equal(scrubContacts('Envoyé par Marie Dupont pour ESN Conseil.', names, 'X'), 'Envoyé par X pour X.')
-    assert.deepEqual(namesToHide('', { name: 'Recrutement', address: 'ao.client@gmail.com' }), [])
+    assert.deepEqual(namesToHide([], { name: 'Recrutement', address: 'ao.client@gmail.com' }), [])
+  })
+
+  it('masque aussi l\'expéditeur d\'origine d\'un e-mail transféré', () => {
+    const names = namesToHide([], { name: 'Camille Martin', address: 'c.martin@wise-associates.fr' }, { name: 'Dupont, Marie', address: 'marie.dupont@client-exemple.co.uk' })
+    assert.equal(scrubContacts('Envoyé par Marie Dupont (Dupont, Marie) pour Client Exemple.', names, 'X'), 'Envoyé par X (X) pour X.')
   })
 
   it('détecte un libellé qui révèle le client', () => {
-    const names = namesToHide('BNP Paribas')
+    const names = namesToHide(['BNP Paribas'])
     assert.equal(revealsName('Groupe bnp-paribas', names), true)
     assert.equal(revealsName('Grand compte – Banque', names), false)
   })
@@ -118,7 +140,7 @@ describe('anonymisation', () => {
   it('produit la version publique : titre, description, ville et compétences nettoyés', () => {
     const pub = toPublicOffer(
       offer({ title: 'Dev React BNP Paribas', location: 'Siège BNP Paribas, Paris', skills: ['React', 'Outils BNP Paribas'] }),
-      namesToHide('BNP Paribas'),
+      namesToHide(['BNP Paribas']),
     )
     assert.equal(pub.companyName, DEFAULT_CLIENT_LABEL)
     for (const text of [pub.title, pub.description, pub.location, ...pub.skills]) assert.doesNotMatch(text, /BNP/i)
@@ -130,7 +152,7 @@ describe('anonymisation', () => {
 
   it('met en forme la description à publier après l\'anonymisation, sans réintroduire de contact', () => {
     const description = 'Contexte : refonte du SI de BNP Paribas pour les équipes de gestion des comptes.\n**Contact :** Marie Dupont\n\nMissions principales :\n- Développer les API ;'
-    const text = descriptionForPublication(toPublicOffer(offer({ description }), namesToHide('BNP Paribas')).description)
+    const text = descriptionForPublication(toPublicOffer(offer({ description }), namesToHide(['BNP Paribas'])).description)
     assert.doesNotMatch(text, /Marie|BNP/)
     assert.match(text, /^### Contexte\nRefonte du SI de Client confidentiel/)
     assert.match(text, /### Missions principales\n- Développer les API\n\nDurée de la mission : 6 mois renouvelables\n\nDémarrage : 01\/09\/2026\n\nExpérience requise : 5 ans minimum$/)
@@ -157,7 +179,7 @@ describe('robustesse de la lecture', () => {
 
   const now = new Date('2026-10-19T12:00:00Z')
   const email = (status: AoEmail['status'], attempts: number, minutesAgo: number): AoEmail => ({
-    $id: 'e', messageId: 'm', uid: 1, fromAddress: '', fromName: '', subject: '', receivedAt: '', attachments: [],
+    $id: 'e', messageId: 'm', uid: 1, fromAddress: '', fromName: '', origin: '', deadline: '', citedClients: [], subject: '', receivedAt: '', attachments: [],
     status, error: '', offerCount: 0, duplicateCount: 0, attempts, updatedAt: new Date(now.getTime() - minutesAgo * 60_000).toISOString(),
   })
 
@@ -217,7 +239,7 @@ describe('robustesse de la lecture', () => {
 describe('filtres', () => {
   const row = (over: Partial<AoOfferRow> = {}): AoOfferRow => ({
     ...offer(), $id: 'o1', createdAt: '2026-10-10T08:00:00.000Z', fingerprint: 'f', emailId: 'e1', status: 'to_review',
-    jobId: null, sourceCount: 1, senderAddress: 'ao@esn.fr', senderName: 'ESN Conseil', subject: 'AO React', receivedAt: '2026-10-10T08:00:00.000Z',
+    jobId: null, sourceCount: 1, senderAddress: 'ao@esn.fr', senderName: 'ESN Conseil', forwardedBy: '', subject: 'AO React', receivedAt: '2026-10-10T08:00:00.000Z',
     ...over,
   })
   const rows = [row(), row({ $id: 'o2', location: 'Lyon', contractType: 'cdi', salary: 55000, status: 'published', receivedAt: '2026-10-15T08:00:00.000Z' })]
@@ -610,6 +632,22 @@ describe('tableaux d\'offres joints (lecture directe, sans IA)', () => {
     assert.equal(table?.offers[1].description, 'Pipelines Spark.', 'une seule colonne de description : texte repris tel quel')
   })
 
+  it('lit une colonne « date limite » comme la date limite de réponse, pas comme le démarrage', () => {
+    const rows = [['Intitulé', 'Lieu', 'Date limite de réponse', 'Démarrage'], ['Développeur Java', 'Lyon', '30/10/2026', 'ASAP']]
+    const [o] = tableOffersOf([rows])!.offers
+    assert.equal(o.deadline, '30/10/2026')
+    assert.equal(o.startDate, 'ASAP')
+  })
+
+  it('lit une date Excel au format court régional en jour/mois/année', () => {
+    const sheet = XLSX.utils.aoa_to_sheet([['Intitulé', 'Lieu', 'Date limite'], ['Développeur Java', 'Lyon', '']])
+    sheet.C2 = { t: 'n', v: (Date.UTC(2026, 9, 30) - Date.UTC(1899, 11, 30)) / 86_400_000, z: 'm/d/yy' } // code 14
+    const book = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(book, sheet, 'AO')
+    const content = XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+    assert.equal(readTableAttachment({ filename: 'suivi.xlsx', contentType: '', content })?.offers[0].deadline, '30/10/2026')
+  })
+
   it('ne reconnaît pas un tableau qui n\'est pas une liste d\'offres : l\'IA le lira', () => {
     assert.equal(tableOffersOf([[['Nom', 'Prénom', 'E-mail'], ['Dupont', 'Jean', 'j@example.test']]]), null)
     assert.equal(tableOffersOf([[['Intitulé'], ['Seul un titre : pas assez pour être sûr']]]), null)
@@ -689,5 +727,120 @@ describe('tableaux d\'offres joints (lecture directe, sans IA)', () => {
     assert.equal(content.text, '')
     assert.deepEqual(content.tableOffers.map(o => o.title), [offer().title, 'Data engineer'])
     assert.deepEqual(content.attachments, ['suivi.xlsx'])
+  })
+})
+
+describe('expéditeur d\'origine', () => {
+  // Corps d'un AO reçu par un client, transféré à la boîte AO par un collaborateur (Outlook, en français).
+  const forwardedByUs = [
+    'Bonjour, ci-dessous un AO reçu ce matin.',
+    '',
+    'Camille Martin',
+    'Wise Associates',
+    '',
+    'De : Dupont, Marie <marie.dupont@sopra-steria.com>',
+    'Envoyé : lundi 20 octobre 2026 09:12',
+    'À : Camille Martin <c.martin@wise-associates.fr>',
+    'Objet : AO - Chef de projet MOA',
+    '',
+    '30/10/2026',
+    'Mission longue',
+    '480,00',
+    'Paris',
+    '5 ans et plus',
+  ].join('\n')
+  const us = { fromName: 'Camille Martin', fromAddress: 'c.martin@wise-associates.fr' }
+
+  it('retrouve l\'expéditeur du message transféré, pas notre collaborateur', () => {
+    assert.deepEqual(originalSender({ ...us, text: forwardedByUs }), { name: 'Dupont, Marie', address: 'marie.dupont@sopra-steria.com' })
+  })
+
+  it('lit une adresse renvoyée seule à la ligne après « De : »', () => {
+    const text = 'De : Marie Dupont (Direction des achats)\n<marie.dupont@client-exemple.fr>\nEnvoyé : lundi'
+    assert.deepEqual(originalSender({ ...us, text }), { name: 'Marie Dupont Direction des achats', address: 'marie.dupont@client-exemple.fr' })
+  })
+
+  it('remonte au message le plus ancien d\'une chaîne de transferts', () => {
+    const text = [
+      '---------- Forwarded message ---------',
+      'From: ESN Conseil <ao@esn-conseil.fr>',
+      'Date: Mon, Oct 20, 2026 at 10:00 AM',
+      'Subject: Fwd: AO Data',
+      '',
+      '-------- Message transféré --------',
+      '*De :* Achats Client Exemple [mailto:achats@client-exemple.fr]',
+      '*Objet :* AO Data engineer',
+    ].join('\n')
+    assert.deepEqual(originalSender({ ...us, text }), { name: 'Achats Client Exemple', address: 'achats@client-exemple.fr' })
+  })
+
+  it('lit l\'introduction d\'une réponse (« … a écrit : ») et les chevrons encodés', () => {
+    const reply = 'Voir ci-dessous.\n\nLe lun. 20 oct. 2026 à 10:12, Marie Martin <marie.martin@client-exemple.fr> a écrit :\n> AO Java'
+    assert.deepEqual(originalSender({ ...us, text: reply }), { name: 'Marie Martin', address: 'marie.martin@client-exemple.fr' })
+    const html = 'De : Marie Dupont &lt;marie.dupont@client-exemple.fr&gt;'
+    assert.deepEqual(originalSender({ ...us, text: html }), { name: 'Marie Dupont', address: 'marie.dupont@client-exemple.fr' })
+  })
+
+  it('lit vite un corps construit pour ralentir la recherche d\'en-têtes', () => {
+    const traps = ['Bonjour\n' + '\n'.repeat(1_000_000) + 'Merci', 'De : ' + 'a'.repeat(1_000_000), 'From' + ' \n'.repeat(500_000) + ':']
+    for (const text of traps) {
+      const started = Date.now()
+      assert.equal(originalSender({ ...us, text }), null)
+      assert.ok(Date.now() - started < 1_000, `${Date.now() - started} ms`)
+    }
+  })
+
+  it('enregistre l\'expéditeur d\'origine sous la forme « Nom <adresse> » et le relit', () => {
+    const sender = { name: 'Dupont, Marie', address: 'marie.dupont@sopra-steria.com' }
+    assert.equal(formatSender(sender), 'Dupont, Marie <marie.dupont@sopra-steria.com>')
+    assert.deepEqual(parseSender(formatSender(sender)), sender)
+    assert.deepEqual(parseSender(formatSender({ name: '', address: 'ao@esn-conseil.fr' })), { name: '', address: 'ao@esn-conseil.fr' })
+    assert.equal(parseSender(''), null)
+  })
+
+  it('garde l\'expéditeur de l\'e-mail s\'il n\'y a pas de transfert, et rien s\'il vient de chez nous', () => {
+    const direct = { fromName: 'ESN Conseil', fromAddress: 'AO@esn-conseil.fr', text: 'De : 3 à 5 ans d\'expérience\nMission longue' }
+    assert.deepEqual(originalSender(direct), { name: 'ESN Conseil', address: 'ao@esn-conseil.fr' })
+    assert.equal(originalSender({ ...us, text: 'AO saisi à la main : chef de projet à Lyon.' }), null)
+  })
+})
+
+describe('client d\'une offre AO', () => {
+  const sopra: Sender = { name: 'Dupont, Marie', address: 'marie.dupont@sopra-steria.com' }
+
+  it('nomme l\'entreprise d\'après le domaine, sauf messagerie grand public ou chez nous', () => {
+    assert.equal(companyFromDomain('marie.dupont@sopra-steria.com'), 'Sopra Steria')
+    assert.equal(companyFromDomain('achats@bnp.fr'), 'BNP')
+    assert.equal(companyFromDomain('rh@mail.client-exemple.co.uk'), 'Client Exemple')
+    assert.equal(companyFromDomain('ao.client@gmail.com'), '')
+    assert.equal(companyFromDomain('achats@orange.com'), 'Orange', 'orange.fr est grand public, orange.com une entreprise')
+    assert.equal(companyFromDomain('x@orange.fr'), '')
+    assert.equal(companyFromDomain('rh@caisse-des-depots.fr'), 'Caisse des Depots')
+    assert.equal(companyFromDomain('c.martin@wise-associates.fr'), '')
+    assert.equal(companyFromDomain(''), '')
+  })
+
+  it('préfère le nom lu par l\'IA dans la signature, sinon le domaine', () => {
+    assert.equal(senderCompany(sopra, ['Sopra Steria Group', '', 'Sopra Steria Group', 'BNP Paribas']), 'Sopra Steria Group')
+    assert.equal(senderCompany(sopra, ['', 'Wise Associates']), 'Sopra Steria', 'jamais notre propre nom')
+    assert.equal(senderCompany(sopra, []), 'Sopra Steria', 'offres lues dans un tableau, sans IA')
+    assert.equal(senderCompany({ name: 'Recrutement', address: 'ao.client@gmail.com' }, []), null, 'entreprise inconnue : chaque offre garde son client')
+  })
+
+  it('borne le nom tiré d\'un domaine à la taille du champ client', () => {
+    assert.ok(senderCompany({ name: '', address: `a@${'b'.repeat(250)}.fr` }, [])!.length <= 200)
+  })
+
+  it('garde les clients cités par l\'appel d\'offres pour les masquer à la publication', () => {
+    // Une ESN écrit directement : son nom devient le client, celui qu'elle cite ne doit pas être publié pour autant.
+    const extracted = [offer({ companyName: 'ESN Conseil', endClient: 'BNP Paribas', title: 'Développeur React - BNP Paribas' }), offer({ companyName: '', endClient: '' })]
+    const cited = citedClients(extracted)
+    assert.deepEqual(cited, ['ESN Conseil', 'BNP Paribas'])
+    const pub = toPublicOffer({ ...extracted[0], companyName: 'ESN Conseil' }, namesToHide(['ESN Conseil', ...cited], { name: '', address: 'ao@esn-conseil.fr' }))
+    assert.ok(!/BNP|ESN/i.test(JSON.stringify(pub)), JSON.stringify(pub))
+  })
+
+  it('laisse le client lu dans l\'offre quand l\'expéditeur d\'origine est inconnu', () => {
+    assert.equal(senderCompany(null, ['BNP Paribas']), null)
   })
 })
