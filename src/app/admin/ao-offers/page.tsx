@@ -1,9 +1,7 @@
 import { requireAdmin } from '@/lib/appwrite/auth'
-import { listSources } from '@/lib/ao/sources'
-import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
-import { listAoOfferRows, listRecentAoEmails } from '@/lib/ao/repo'
 import type { AoOfferRow } from '@/lib/ao/filters'
 import type { AoEmail } from '@/lib/ao/types'
+import { loadPlatformAoView } from '@/lib/ao/platform-view'
 import { AoOffersDashboard, type MailboxIssue } from './ao-offers-dashboard'
 
 // La synchronisation manuelle (Server Action de cette page) lit et analyse jusqu'à 5 e-mails.
@@ -17,10 +15,10 @@ export default async function AdminAoOffersPage() {
   let mailboxIssues: MailboxIssue[] = []
   let loadError = ''
   try {
-    // Boîtes de la plateforme seulement : celles des organisations ont leur propre page (ADR 0005).
-    const sources = await listSources(PLATFORM_TENANT_ID)
-    const ids = sources.map(s => s.$id)
-    ;[rows, emails] = await Promise.all([listAoOfferRows(ids), listRecentAoEmails(ids, 50)])
+    const view = await loadPlatformAoView()
+    rows = view.rows
+    emails = view.recentEmails
+    const sources = view.sources
     const enabled = sources.filter(s => s.enabled)
     inboxConfigured = enabled.length > 0
     mailboxIssues = enabled.filter(s => s.lastError).map(s => ({ label: s.label, error: s.lastError, at: s.lastSyncAt }))
