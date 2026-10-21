@@ -10,6 +10,8 @@ import { parseSender } from '@/lib/ao/origin'
 import { getAoSource } from '@/lib/ao/sources'
 import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 import { loadPlatformAoView } from '@/lib/ao/platform-view'
+import { createAoComment, deleteAoComment, getAoComment, listAoComments, type AoComment } from '@/lib/ao/comments'
+import { canDeleteComment, parseCommentBody } from '@/lib/ao/comment-input'
 import type { AoOfferRow } from '@/lib/ao/filters'
 import { descriptionForPublication } from '@/lib/description-sections'
 import { cityKey, titleKey } from '@/lib/ao/fingerprint'
@@ -289,5 +291,76 @@ export async function aoOfferSourcing(id: string, recompute = false): Promise<So
     return { candidates: kept, computedAt: record.at, scanned: record.scanned }
   } catch (err) {
     return { error: `Sourcing impossible : ${errorOf(err)}` }
+  }
+}
+
+// ── Commentaires ────────────────────────────────────────────────
+
+/** Commentaire tel qu'affiché : `mine` permet de proposer la suppression à son auteur seulement. */
+export interface AoCommentView {
+  id: string
+  authorName: string
+  body: string
+  createdAt: string
+  mine: boolean
+}
+
+/** Message d'erreur d'une action sur les commentaires ; la collection manquante a déjà son message complet. */
+function commentsError(err: unknown, action: string): string {
+  const message = errorOf(err)
+  return message.startsWith('Commentaires indisponibles') ? message : `${action} : ${message}`
+}
+
+const toCommentView = (c: AoComment, userId: string): AoCommentView => ({
+  id: c.$id, authorName: c.authorName || 'Utilisateur', body: c.body, createdAt: c.createdAt, mine: canDeleteComment(c, userId),
+})
+
+/** Commentaires d'une offre AO de la plateforme, du plus ancien au plus récent. */
+export async function listAoOfferComments(offerId: string): Promise<{ comments?: AoCommentView[]; error?: string }> {
+  const user = await requireAdmin()
+  const parsed = DocumentId.safeParse(offerId)
+  if (!parsed.success) return { error: 'Offre introuvable : rechargez la page.' }
+  try {
+    if (!(await platformOffer(parsed.data))) return { error: 'Offre introuvable : rechargez la page.' }
+    return { comments: (await listAoComments(parsed.data)).map(c => toCommentView(c, user.userId)) }
+  } catch (err) {
+    return { error: commentsError(err, 'Commentaires illisibles') }
+  }
+}
+
+export async function addAoOfferComment(offerId: string, body: string): Promise<{ comment?: AoCommentView; error?: string }> {
+  const user = await requireAdmin()
+  const parsed = DocumentId.safeParse(offerId)
+  if (!parsed.success) return { error: 'Offre introuvable : rechargez la page.' }
+  const text = parseCommentBody(body)
+  if (!text.ok) return { error: text.error }
+  try {
+    if (!(await platformOffer(parsed.data))) return { error: 'Offre introuvable : rechargez la page.' }
+    const comment = await createAoComment({
+      offerId: parsed.data,
+      tenantId: PLATFORM_TENANT_ID,
+      authorId: user.userId,
+      authorName: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email,
+      body: text.body,
+    })
+    return { comment: toCommentView(comment, user.userId) }
+  } catch (err) {
+    return { error: commentsError(err, 'Commentaire non enregistré') }
+  }
+}
+
+/** Supprime un commentaire : son auteur seulement, sur une offre de la plateforme. */
+export async function deleteAoOfferComment(commentId: string): Promise<{ error?: string }> {
+  const user = await requireAdmin()
+  const parsed = DocumentId.safeParse(commentId)
+  if (!parsed.success) return { error: 'Commentaire introuvable : rechargez la page.' }
+  try {
+    const comment = await getAoComment(parsed.data)
+    if (!comment || comment.tenantId !== PLATFORM_TENANT_ID || !(await platformOffer(comment.offerId))) return { error: 'Commentaire introuvable : rechargez la page.' }
+    if (!canDeleteComment(comment, user.userId)) return { error: 'Seul l\'auteur d\'un commentaire peut le supprimer.' }
+    await deleteAoComment(comment.$id)
+    return {}
+  } catch (err) {
+    return { error: commentsError(err, 'Suppression impossible') }
   }
 }
