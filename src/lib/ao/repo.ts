@@ -256,6 +256,17 @@ export async function listAoOffers(max = 2000): Promise<AoOffer[]> {
   return offers
 }
 
+/**
+ * Supprime une offre AO et ses détails (assistance / forfait, technologies, sourcing). L'e-mail reste enregistré :
+ * l'offre n'est pas recréée par la synchronisation suivante.
+ */
+export async function deleteAoOfferAndDetails(offerId: string): Promise<void> {
+  const { databases } = createAdminClient()
+  const ignoreMissing = (err: unknown) => { if ((err as { code?: number }).code !== 404) throw err }
+  await databases.deleteDocument(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, offerId).catch(ignoreMissing)
+  await databases.deleteDocument(DB_ID, COLLECTIONS.AO_OFFERS, offerId).catch(ignoreMissing)
+}
+
 // ── Détails des offres (assistance / forfait, technologies) ─────
 
 /** Enregistre les détails d'une offre (document de même identifiant ; mis à jour s'il existe déjà). */
