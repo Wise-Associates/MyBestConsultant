@@ -9,6 +9,8 @@ import { DEFAULT_CLIENT_LABEL, namesToHide, revealsName, toPublicOffer } from '@
 import { parseSender } from '@/lib/ao/origin'
 import { getAoSource } from '@/lib/ao/sources'
 import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
+import { loadPlatformAoView } from '@/lib/ao/platform-view'
+import type { AoOfferRow } from '@/lib/ao/filters'
 import { descriptionForPublication } from '@/lib/description-sections'
 import { cityKey, titleKey } from '@/lib/ao/fingerprint'
 import { manualRetryPatch } from '@/lib/ao/attempts'
@@ -55,14 +57,19 @@ async function platformOffer(id: string): Promise<AoOffer | null> {
   return offer && (await platformEmail(offer.emailId)) ? offer : null
 }
 
-export async function syncAoInboxNow(): Promise<{ report?: AoSyncReport; error?: string }> {
+/**
+ * Un petit passage du bouton « Synchroniser maintenant » : la page les enchaîne jusqu'à ce que la boîte soit lue
+ * (sync-loop.ts) et le tableau se met à jour après chacun (revalidatePath). Peu d'e-mails par passage : les offres
+ * apparaissent au fil de l'eau. Boîtes de la plateforme seulement : celles des organisations ont leurs passages.
+ */
+export async function syncAoInboxNow(): Promise<{ report?: AoSyncReport; rows?: AoOfferRow[]; recentEmails?: AoEmail[]; error?: string }> {
   await requireAdmin()
   try {
-    // Plus court que le passage planifié : l'admin attend la réponse.
-    // Boîtes de la plateforme seulement : celles des organisations sont lues par leurs passages planifiés.
-    const report = await syncAoInbox({ maxEmails: 5, budgetMs: 150_000, holder: 'admin', tenantId: PLATFORM_TENANT_ID })
-    revalidatePath('/admin/ao-offers')
-    return { report }
+    const report = await syncAoInbox({ maxEmails: 2, budgetMs: 120_000, holder: 'admin', tenantId: PLATFORM_TENANT_ID })
+    // Données à jour renvoyées avec le compte rendu : la page les affiche tout de suite. Un rafraîchissement de la page
+    // (revalidatePath, router.refresh) serait abandonné par Next.js au profit du passage suivant, lancé aussitôt.
+    const { rows, recentEmails } = await loadPlatformAoView()
+    return { report, rows, recentEmails }
   } catch (err) {
     return { error: `Synchronisation impossible : ${errorOf(err)}` }
   }
