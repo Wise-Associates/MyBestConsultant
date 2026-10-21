@@ -16,14 +16,14 @@ import { ImageUpload } from '@/components/page-builder/image-upload'
 import type { HomepageContent } from '@/lib/site-config'
 
 // ── Styles ────────────────────────────────────────────────────────────
-const inp = "bg-white/[0.06] border-white/[0.1] text-white/80 placeholder:text-white/25 focus:border-white/30 focus:ring-0 rounded-lg text-sm h-9"
-const ta  = "bg-white/[0.06] border-white/[0.1] text-white/80 placeholder:text-white/25 focus:border-white/30 focus:ring-0 rounded-lg text-sm resize-none"
+const inp = "bg-admin-panel-raised border-admin-line text-admin-fg placeholder:text-admin-fg-subtle focus:border-admin-line-strong focus:ring-0 rounded-lg text-sm h-9"
+const ta  = "bg-admin-panel-raised border-admin-line text-admin-fg placeholder:text-admin-fg-subtle focus:border-admin-line-strong focus:ring-0 rounded-lg text-sm resize-none"
 
 // ── Content tab helpers ─────────────────────────────────────────────────
 function ContentSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 22 }}>
-      <p style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 600, marginBottom: 10 }}>
+      <p style={{ fontSize: 9, color: 'var(--admin-fg-muted)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 600, marginBottom: 10 }}>
         {title}
       </p>
       <div className="space-y-2.5">{children}</div>
@@ -34,7 +34,7 @@ function ContentSection({ title, children }: { title: string; children: React.Re
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <Label style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 4, display: 'block' }}>{label}</Label>
+      <Label style={{ fontSize: 10, color: 'var(--admin-fg-muted)', marginBottom: 4, display: 'block' }}>{label}</Label>
       {children}
     </div>
   )
@@ -66,8 +66,8 @@ export const DEFAULT_SCENE: SceneCfg = {
 const SCENE_META = [
   { key: 'hero',      color: '#818cf8', label: '01 — Hero',       defaultEyebrow: "Recrutement propulsé par l'IA",  defaultImg: 'https://images.pexels.com/photos/1323550/pexels-photo-1323550.jpeg?auto=compress&cs=tinysrgb&w=1200', defaultTitle: 'Votre prochaine | grande opportunité',          defaultSub: 'La plateforme qui connecte les meilleurs talents aux missions qui comptent.', defaultCtaP: 'Publier une offre', defaultCtaS: 'Trouver une mission', defaultAlign: 'center' as const },
   { key: 'talent',    color: '#38bdf8', label: '02 — Talents',     defaultEyebrow: '15 000+ consultants',           defaultImg: 'https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=1200', defaultTitle: 'Les talents | qui font bouger les lignes',      defaultSub: "Consultants senior, freelances d'élite — tous présélectionnés.",              defaultCtaP: 'Explorer',          defaultCtaS: '',                   defaultAlign: 'left'   as const },
-  { key: 'companies', color: '#34d399', label: '03 — Entreprises', defaultEyebrow: '380+ entreprises partenaires',  defaultImg: 'https://images.pexels.com/photos/1486785/pexels-photo-1486785.jpeg?auto=compress&cs=tinysrgb&w=1200', defaultTitle: 'Les meilleures | entreprises vous cherchent',   defaultSub: "McKinsey, BNP Paribas, Accenture — publiez vos missions en 60 secondes.",     defaultCtaP: 'Je recrute',        defaultCtaS: '',                   defaultAlign: 'right'  as const },
-  { key: 'ai',        color: '#fbbf24', label: '04 — IA',          defaultEyebrow: 'Intelligence artificielle',     defaultImg: 'https://images.pexels.com/photos/8386440/pexels-photo-8386440.jpeg?auto=compress&cs=tinysrgb&w=1200', defaultTitle: 'Screening CV | en 8 secondes',                 defaultSub: "L'IA analyse votre profil, score /100, entretien virtuel automatisé.",        defaultCtaP: 'Voir comment',      defaultCtaS: '',                   defaultAlign: 'center' as const },
+  { key: 'companies', color: '#047857', label: '03 — Entreprises', defaultEyebrow: '380+ entreprises partenaires',  defaultImg: 'https://images.pexels.com/photos/1486785/pexels-photo-1486785.jpeg?auto=compress&cs=tinysrgb&w=1200', defaultTitle: 'Les meilleures | entreprises vous cherchent',   defaultSub: "McKinsey, BNP Paribas, Accenture — publiez vos missions en 60 secondes.",     defaultCtaP: 'Je recrute',        defaultCtaS: '',                   defaultAlign: 'right'  as const },
+  { key: 'ai',        color: '#b45309', label: '04 — IA',          defaultEyebrow: 'Intelligence artificielle',     defaultImg: 'https://images.pexels.com/photos/8386440/pexels-photo-8386440.jpeg?auto=compress&cs=tinysrgb&w=1200', defaultTitle: 'Screening CV | en 8 secondes',                 defaultSub: "L'IA analyse votre profil, score /100, entretien virtuel automatisé.",        defaultCtaP: 'Voir comment',      defaultCtaS: '',                   defaultAlign: 'center' as const },
   { key: 'portal',    color: '#f472b6', label: '05 — Portail',     defaultEyebrow: 'Choisissez votre voie',         defaultImg: 'https://images.pexels.com/photos/3225517/pexels-photo-3225517.jpeg?auto=compress&cs=tinysrgb&w=1200', defaultTitle: 'Prêt à entrer | dans un nouveau monde ?',       defaultSub: '',                                                                            defaultCtaP: 'Je suis recruteur', defaultCtaS: 'Je suis consultant', defaultAlign: 'center' as const },
 ]
 
@@ -104,9 +104,9 @@ function rv<K extends keyof SceneCfg>(s: SceneCfg, key: K, fallback: SceneCfg[K]
 function F({ label, children, hint }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <Label className="text-[10px] text-white/30 uppercase tracking-widest">{label}</Label>
+      <Label className="text-[10px] text-admin-fg-muted uppercase tracking-widest">{label}</Label>
       {children}
-      {hint && <p className="text-[10px] text-white/20">{hint}</p>}
+      {hint && <p className="text-[10px] text-admin-fg-muted">{hint}</p>}
     </div>
   )
 }
@@ -117,8 +117,8 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
     <button onClick={onClick}
       className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all border ${
         active
-          ? 'bg-white/[0.12] border-white/20 text-white'
-          : 'bg-transparent border-white/[0.08] text-white/30 hover:text-white/50 hover:border-white/15'
+          ? 'bg-admin-hover border-admin-line-strong text-admin-fg'
+          : 'bg-transparent border-admin-line text-admin-fg-muted hover:text-admin-fg-muted hover:border-admin-line-strong'
       }`}>
       {children}
     </button>
@@ -134,7 +134,7 @@ function Slider({ value, onChange, min = 0, max = 100, step = 5 }: {
       <input type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(Number(e.target.value))}
         className="flex-1 h-1 accent-white/60 cursor-pointer" />
-      <span className="text-[11px] text-white/40 w-8 text-right tabular-nums">{value}%</span>
+      <span className="text-[11px] text-admin-fg-muted w-8 text-right tabular-nums">{value}%</span>
     </div>
   )
 }
@@ -222,7 +222,7 @@ function SceneBlock({
       style={{ minHeight: minH, background: `rgb(${rgb})` }}
     >
       {scene.videoUrl && (
-        <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 3, display: 'flex', alignItems: 'center', gap: 4, padding: '2px 6px', borderRadius: 99, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', fontSize: 9 }}>
+        <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 3, display: 'flex', alignItems: 'center', gap: 4, padding: '2px 6px', borderRadius: 99, background: 'rgba(0,0,0,0.5)', border: '1px solid var(--admin-line)', color: 'var(--admin-fg-muted)', fontSize: 9 }}>
           <Film size={8} /> vidéo
         </div>
       )}
@@ -289,7 +289,7 @@ function SceneEditor({ scene, meta, onChange }: {
     <div className="space-y-4 p-3">
       {/* Media */}
       <div>
-        <p className="text-[9px] text-white/20 uppercase tracking-widest font-semibold mb-2">Média</p>
+        <p className="text-[9px] text-admin-fg-muted uppercase tracking-widest font-semibold mb-2">Média</p>
         <div className="space-y-3">
           <ImageUpload label="Image de fond" value={scene.imgUrl} onChange={v => onChange('imgUrl', v)} />
           <F label="Vidéo .mp4 (priorité sur l'image)" hint="URL directe vers un .mp4 hébergé">
@@ -300,7 +300,7 @@ function SceneEditor({ scene, meta, onChange }: {
 
       {/* Overlay */}
       <div>
-        <p className="text-[9px] text-white/20 uppercase tracking-widest font-semibold mb-2">Overlay</p>
+        <p className="text-[9px] text-admin-fg-muted uppercase tracking-widest font-semibold mb-2">Overlay</p>
         <div className="space-y-2">
           <F label="Couleur d'overlay">
             <div className="flex gap-1.5 flex-wrap">
@@ -319,7 +319,7 @@ function SceneEditor({ scene, meta, onChange }: {
 
       {/* Texte */}
       <div>
-        <p className="text-[9px] text-white/20 uppercase tracking-widest font-semibold mb-2">Texte</p>
+        <p className="text-[9px] text-admin-fg-muted uppercase tracking-widest font-semibold mb-2">Texte</p>
         <div className="space-y-2.5">
           <F label="Accroche (eyebrow)">
             <Input value={scene.eyebrow} onChange={e => onChange('eyebrow', e.target.value)} placeholder={meta.defaultEyebrow} className={inp} />
@@ -335,7 +335,7 @@ function SceneEditor({ scene, meta, onChange }: {
 
       {/* Mise en page */}
       <div>
-        <p className="text-[9px] text-white/20 uppercase tracking-widest font-semibold mb-2">Mise en page</p>
+        <p className="text-[9px] text-admin-fg-muted uppercase tracking-widest font-semibold mb-2">Mise en page</p>
         <div className="space-y-2.5">
           <F label="Alignement du contenu">
             <div className="flex gap-1.5">
@@ -343,7 +343,7 @@ function SceneEditor({ scene, meta, onChange }: {
                 const Icon = a === 'left' ? AlignLeft : a === 'center' ? AlignCenter : AlignRight
                 return (
                   <button key={a} onClick={() => onChange('align', a)}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border text-xs font-semibold transition-all ${rv(scene, 'align', 'center') === a ? 'bg-white/[0.12] border-white/20 text-white' : 'border-white/[0.08] text-white/30 hover:text-white/50'}`}>
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border text-xs font-semibold transition-all ${rv(scene, 'align', 'center') === a ? 'bg-admin-hover border-admin-line-strong text-admin-fg' : 'border-admin-line text-admin-fg-muted hover:text-admin-fg-muted'}`}>
                     <Icon className="h-3.5 w-3.5" />
                     {{ left: 'Gauche', center: 'Centre', right: 'Droite' }[a]}
                   </button>
@@ -374,7 +374,7 @@ function SceneEditor({ scene, meta, onChange }: {
 
       {/* CTAs */}
       <div>
-        <p className="text-[9px] text-white/20 uppercase tracking-widest font-semibold mb-2">Boutons</p>
+        <p className="text-[9px] text-admin-fg-muted uppercase tracking-widest font-semibold mb-2">Boutons</p>
         <div className="space-y-2">
           <F label="Bouton principal">
             <Input value={scene.ctaPrimary} onChange={e => onChange('ctaPrimary', e.target.value)} placeholder={meta.defaultCtaP} className={inp} />
@@ -404,7 +404,7 @@ function FullPreview({ scenes, global: g, cssVars, activeScene, onSceneClick, de
       width: WIDTHS[device], maxWidth: WIDTHS[device],
       margin: '0 auto',
       transition: 'width 0.3s ease',
-      boxShadow: device !== 'desktop' ? '0 0 0 1px rgba(255,255,255,0.06),0 8px 40px rgba(0,0,0,0.6)' : 'none',
+      boxShadow: device !== 'desktop' ? '0 0 0 1px var(--admin-line),0 8px 40px rgba(0,0,0,0.6)' : 'none',
       borderRadius: device !== 'desktop' ? 16 : 0,
       overflow: 'hidden',
       background: '#01040a',
@@ -542,18 +542,18 @@ export function HomepageEditor({ initialConfig, initialCssVars, pageId }: { init
   const curMeta = activeScene !== null ? SCENE_META[activeScene] : null
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0A0C10', color: '#fff', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--admin-panel)', color: 'var(--admin-fg)', overflow: 'hidden' }}>
 
       {/* ── TOP BAR ── */}
-      <header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', height: 48, borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', height: 48, borderBottom: '1px solid var(--admin-line)', flexShrink: 0 }}>
         <Film size={16} color="#818cf8" />
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.6)' }}>Éditeur immersif</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--admin-fg-muted)' }}>Éditeur immersif</span>
 
         {/* Device switcher */}
-        <div style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', marginLeft: 8 }}>
+        <div style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 10, background: 'var(--admin-panel)', border: '1px solid var(--admin-line)', marginLeft: 8 }}>
           {([['desktop', Monitor], ['tablet', Tablet], ['mobile', Smartphone]] as [Device, React.ElementType][]).map(([d, Icon]) => (
             <button key={d} onClick={() => setDevice(d)}
-              style={{ padding: '5px 8px', borderRadius: 8, background: device === d ? 'rgba(255,255,255,0.1)' : 'transparent', color: device === d ? '#fff' : 'rgba(255,255,255,0.25)', border: 'none', cursor: 'pointer', display: 'flex', transition: 'all 0.15s' }}>
+              style={{ padding: '5px 8px', borderRadius: 8, background: device === d ? 'var(--admin-hover)' : 'transparent', color: device === d ? 'var(--admin-fg)' : 'var(--admin-fg-subtle)', border: 'none', cursor: 'pointer', display: 'flex', transition: 'all 0.15s' }}>
               <Icon size={14} />
             </button>
           ))}
@@ -562,26 +562,26 @@ export function HomepageEditor({ initialConfig, initialCssVars, pageId }: { init
         <div style={{ flex: 1 }} />
 
         {saveStatus === 'error' && (
-          <span style={{ fontSize: 11, color: '#f87171', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 11, color: '#b91c1c', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             ✗ {errorMsg}
           </span>
         )}
 
         <a href={`/admin/pages/${pageId}`}
-          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.07)', fontSize: 11, color: 'rgba(255,255,255,0.3)', textDecoration: 'none', transition: 'color 0.15s' }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px solid var(--admin-line)', fontSize: 11, color: 'var(--admin-fg-muted)', textDecoration: 'none', transition: 'color 0.15s' }}>
           <Plus size={12} /> Sections additionnelles
         </a>
 
         <a href="/" target="_blank" rel="noopener noreferrer"
-          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.07)', fontSize: 11, color: 'rgba(255,255,255,0.3)', textDecoration: 'none', transition: 'color 0.15s' }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px solid var(--admin-line)', fontSize: 11, color: 'var(--admin-fg-muted)', textDecoration: 'none', transition: 'color 0.15s' }}>
           <Eye size={12} /> Aperçu live
         </a>
 
         <Button onClick={save} disabled={isPending} size="sm"
           className={`gap-1.5 font-semibold text-sm px-4 h-8 ${
             saveStatus === 'ok'    ? 'bg-emerald-500 hover:bg-emerald-400 text-white' :
-            saveStatus === 'error' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-                                     'bg-white text-black hover:bg-white/90'
+            saveStatus === 'error' ? 'bg-red-500/20 text-red-700 border border-red-500/30' :
+                                     'bg-admin-fg text-white hover:bg-admin-fg/90'
           }`}>
           {isPending         ? <Loader2 size={13} className="animate-spin" /> :
            saveStatus==='ok' ? <Check size={13} /> : <Save size={13} />}
@@ -593,13 +593,13 @@ export function HomepageEditor({ initialConfig, initialCssVars, pageId }: { init
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
         {/* ── LEFT PANEL ── */}
-        <aside style={{ width: 300, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#0c0e14' }}>
+        <aside style={{ width: 300, flexShrink: 0, borderRight: '1px solid var(--admin-line)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--admin-panel)' }}>
 
           {/* Tab switcher */}
-          <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--admin-line)', flexShrink: 0 }}>
             {([['content', '📝 Contenu'], ['scenes', '🎬 Scènes'], ['global', '⚙️ Site']] as const).map(([t, lbl]) => (
               <button key={t} onClick={() => setTab(t)}
-                style={{ flex: 1, padding: '10px 0', fontSize: 11, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', color: tab === t ? '#fff' : 'rgba(255,255,255,0.3)', borderBottom: tab === t ? '2px solid #818cf8' : '2px solid transparent', transition: 'all 0.15s' }}>
+                style={{ flex: 1, padding: '10px 0', fontSize: 11, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', color: tab === t ? 'var(--admin-fg)' : 'var(--admin-fg-muted)', borderBottom: tab === t ? '2px solid #818cf8' : '2px solid transparent', transition: 'all 0.15s' }}>
                 {lbl}
               </button>
             ))}
@@ -609,7 +609,7 @@ export function HomepageEditor({ initialConfig, initialCssVars, pageId }: { init
             {/* CONTENT TAB — text for the 5 live homepage sections (hero/mission/about/features/testimonials) */}
             {tab === 'content' && (
               <div style={{ padding: 12 }}>
-                <p style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', padding: '0 0 12px', lineHeight: 1.6 }}>
+                <p style={{ fontSize: 9, color: 'var(--admin-fg-muted)', padding: '0 0 12px', lineHeight: 1.6 }}>
                   Textes réellement affichés sur la page d&apos;accueil publique. Les images, icônes et
                   cartes de fonctionnalités restent gérées dans le code.
                 </p>
@@ -653,7 +653,7 @@ export function HomepageEditor({ initialConfig, initialCssVars, pageId }: { init
             {/* SCENES TAB */}
             {tab === 'scenes' && (
               <div>
-                <p style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)', padding: '8px 12px 4px', lineHeight: 1.6 }}>
+                <p style={{ fontSize: 9, color: 'var(--admin-fg-muted)', padding: '8px 12px 4px', lineHeight: 1.6 }}>
                   Cliquez sur une scène dans le preview pour la sélectionner. Laissez un champ vide = valeur par défaut.
                 </p>
                 {SCENE_META.map((meta, i) => {
@@ -661,22 +661,22 @@ export function HomepageEditor({ initialConfig, initialCssVars, pageId }: { init
                   const isActive = activeScene === i
                   return (
                     <div key={i} id={`scene-panel-${i}`}
-                      style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.15s', background: isActive ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
+                      style={{ borderBottom: '1px solid var(--admin-line)', transition: 'background 0.15s', background: isActive ? 'var(--admin-panel)' : 'transparent' }}>
                       {/* Scene header */}
                       <button
                         onClick={() => { setActiveScene(i); toggleExpand(i) }}
                         style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', borderLeft: `3px solid ${isActive ? meta.color : 'transparent'}`, transition: 'all 0.15s' }}>
                         {/* Mini thumbnail */}
-                        <div style={{ width: 44, height: 28, borderRadius: 6, overflow: 'hidden', flexShrink: 0, border: `1px solid ${isActive ? meta.color + '55' : 'rgba(255,255,255,0.1)'}` }}>
+                        <div style={{ width: 44, height: 28, borderRadius: 6, overflow: 'hidden', flexShrink: 0, border: `1px solid ${isActive ? meta.color + '55' : 'var(--admin-line)'}` }}>
                           <SceneBlock scene={scenes[i]} meta={meta} idx={i} compact device="desktop" />
                         </div>
                         <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-                          <p style={{ fontSize: 11, fontWeight: 600, color: isActive ? '#fff' : 'rgba(255,255,255,0.55)', margin: 0 }}>{meta.label}</p>
-                          <p style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <p style={{ fontSize: 11, fontWeight: 600, color: isActive ? 'var(--admin-fg)' : 'var(--admin-fg-muted)', margin: 0 }}>{meta.label}</p>
+                          <p style={{ fontSize: 9, color: 'var(--admin-fg-muted)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {(scenes[i]?.title || meta.defaultTitle).replace('|', '·').slice(0, 40)}
                           </p>
                         </div>
-                        {expanded ? <ChevronUp size={12} color="rgba(255,255,255,0.25)" /> : <ChevronDown size={12} color="rgba(255,255,255,0.25)" />}
+                        {expanded ? <ChevronUp size={12} color="var(--admin-fg-muted)" /> : <ChevronDown size={12} color="var(--admin-fg-muted)" />}
                       </button>
 
                       {/* Expanded editor */}
@@ -700,8 +700,8 @@ export function HomepageEditor({ initialConfig, initialCssVars, pageId }: { init
                 {/* Identité */}
                 <div style={{ marginBottom: 20 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                    <Settings2 size={12} color="rgba(255,255,255,0.25)" />
-                    <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 600 }}>Identité</span>
+                    <Settings2 size={12} color="var(--admin-fg-muted)" />
+                    <span style={{ fontSize: 9, color: 'var(--admin-fg-muted)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 600 }}>Identité</span>
                   </div>
                   <div className="space-y-2.5">
                     <F label="Nom du site"><Input value={global.siteName} onChange={e => setGlobal(p => ({ ...p, siteName: e.target.value }))} className={inp} /></F>
@@ -713,8 +713,8 @@ export function HomepageEditor({ initialConfig, initialCssVars, pageId }: { init
                 {/* Stats */}
                 <div style={{ marginBottom: 20 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                    <BarChart2 size={12} color="rgba(255,255,255,0.25)" />
-                    <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 600 }}>Stats</span>
+                    <BarChart2 size={12} color="var(--admin-fg-muted)" />
+                    <span style={{ fontSize: 9, color: 'var(--admin-fg-muted)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 600 }}>Stats</span>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <F label="Missions"><Input value={global.statsJobs} onChange={e => setGlobal(p => ({ ...p, statsJobs: e.target.value }))} className={inp} placeholder="2 400+" /></F>
@@ -726,8 +726,8 @@ export function HomepageEditor({ initialConfig, initialCssVars, pageId }: { init
                 {/* CTAs */}
                 <div style={{ marginBottom: 20 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                    <Type size={12} color="rgba(255,255,255,0.25)" />
-                    <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 600 }}>Boutons navbar</span>
+                    <Type size={12} color="var(--admin-fg-muted)" />
+                    <span style={{ fontSize: 9, color: 'var(--admin-fg-muted)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 600 }}>Boutons navbar</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <F label="Recruteur"><Input value={global.heroCtaRecruiter} onChange={e => setGlobal(p => ({ ...p, heroCtaRecruiter: e.target.value }))} className={inp} /></F>
@@ -738,8 +738,8 @@ export function HomepageEditor({ initialConfig, initialCssVars, pageId }: { init
                 {/* Footer */}
                 <div style={{ marginBottom: 20 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                    <Type size={12} color="rgba(255,255,255,0.25)" />
-                    <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 600 }}>Footer</span>
+                    <Type size={12} color="var(--admin-fg-muted)" />
+                    <span style={{ fontSize: 9, color: 'var(--admin-fg-muted)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 600 }}>Footer</span>
                   </div>
                   <F label="Texte copyright"><Input value={global.footerText} onChange={e => setGlobal(p => ({ ...p, footerText: e.target.value }))} className={inp} /></F>
                 </div>
@@ -747,8 +747,8 @@ export function HomepageEditor({ initialConfig, initialCssVars, pageId }: { init
                 {/* Contact */}
                 <div style={{ marginBottom: 20 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                    <Mail size={12} color="rgba(255,255,255,0.25)" />
-                    <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 600 }}>Contact</span>
+                    <Mail size={12} color="var(--admin-fg-muted)" />
+                    <span style={{ fontSize: 9, color: 'var(--admin-fg-muted)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 600 }}>Contact</span>
                   </div>
                   <F label="Email de contact" hint="Lien « Nous contacter » affiché sur l'accueil (ouvre le client mail du visiteur)">
                     <Input type="email" value={global.contactEmail} onChange={e => setGlobal(p => ({ ...p, contactEmail: e.target.value }))} className={inp} placeholder="contact@mybestconsultant.fr" />
@@ -758,8 +758,8 @@ export function HomepageEditor({ initialConfig, initialCssVars, pageId }: { init
                 {/* SEO / Google Ads */}
                 <div style={{ marginBottom: 20 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                    <BarChart2 size={12} color="rgba(255,255,255,0.25)" />
-                    <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 600 }}>SEO &amp; Google Ads</span>
+                    <BarChart2 size={12} color="var(--admin-fg-muted)" />
+                    <span style={{ fontSize: 9, color: 'var(--admin-fg-muted)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 600 }}>SEO &amp; Google Ads</span>
                   </div>
                   <F label="ID de suivi Google (Ads / Analytics)" hint="Format G-XXXXXXX ou AW-XXXXXXXXX. Laissez vide tant que vous n'avez pas de compte — le suivi ne s'active qu'avec un ID renseigné.">
                     <Input value={global.googleTagId} onChange={e => setGlobal(p => ({ ...p, googleTagId: e.target.value }))} className={inp} placeholder="G-XXXXXXXXXX" />
@@ -769,12 +769,12 @@ export function HomepageEditor({ initialConfig, initialCssVars, pageId }: { init
                 {/* Logos partenaires */}
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                    <Building2 size={12} color="rgba(255,255,255,0.25)" />
-                    <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 600 }}>
+                    <Building2 size={12} color="var(--admin-fg-muted)" />
+                    <span style={{ fontSize: 9, color: 'var(--admin-fg-muted)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 600 }}>
                       Logos partenaires (&quot;Ils nous ont fait confiance&quot;)
                     </span>
                   </div>
-                  <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginBottom: 10 }}>
+                  <p style={{ fontSize: 10, color: 'var(--admin-fg-muted)', marginBottom: 10 }}>
                     Bandeau défilant sous la page d&apos;accueil — ajoutez autant de logos que nécessaire.
                   </p>
                   <div className="space-y-2 mb-2.5">
@@ -784,14 +784,14 @@ export function HomepageEditor({ initialConfig, initialCssVars, pageId }: { init
                           <ImageUpload label={`Logo ${i + 1}`} value={url} onChange={v => setTrustedLogos(prev => prev.map((u, j) => j === i ? v : u))} />
                         </div>
                         <button onClick={() => setTrustedLogos(prev => prev.filter((_, j) => j !== i))}
-                          style={{ padding: 6, borderRadius: 8, color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>
+                          style={{ padding: 6, borderRadius: 8, color: 'var(--admin-fg-muted)', flexShrink: 0 }}>
                           <X size={14} />
                         </button>
                       </div>
                     ))}
                   </div>
                   <button onClick={() => setTrustedLogos(prev => [...prev, ''])}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'rgba(255,255,255,0.4)', padding: '6px 10px', borderRadius: 8, border: '1px dashed rgba(255,255,255,0.15)' }}>
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--admin-fg-muted)', padding: '6px 10px', borderRadius: 8, border: '1px dashed var(--admin-line-strong)' }}>
                     <Plus size={12} />Ajouter un logo
                   </button>
                 </div>
@@ -801,16 +801,16 @@ export function HomepageEditor({ initialConfig, initialCssVars, pageId }: { init
         </aside>
 
         {/* ── RIGHT: live preview (scrollable) ── */}
-        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#050709' }}>
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--admin-panel-raised)' }}>
           {/* Preview header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
-            <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)', textTransform: 'uppercase', letterSpacing: '0.15em' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderBottom: '1px solid var(--admin-line)', flexShrink: 0 }}>
+            <span style={{ fontSize: 9, color: 'var(--admin-fg-muted)', textTransform: 'uppercase', letterSpacing: '0.15em' }}>
               Preview · Cliquez une section pour l&apos;éditer
             </span>
             <div style={{ flex: 1 }} />
             {activeScene !== null && (
-              <span style={{ fontSize: 10, color: SCENE_META[activeScene].color, fontWeight: 600 }}>
-                ● {SCENE_META[activeScene].label} sélectionnée
+              <span style={{ fontSize: 10, color: 'var(--admin-fg-muted)', fontWeight: 600 }}>
+                <span style={{ color: SCENE_META[activeScene].color }}>●</span> {SCENE_META[activeScene].label} sélectionnée
               </span>
             )}
           </div>
