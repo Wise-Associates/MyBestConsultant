@@ -17,16 +17,17 @@ const PLAN_AMOUNTS: Record<PlanId, { monthly: number; annual: number }> = {
   max: { monthly: 120, annual: 120 * 12 },
 }
 const STATUS_CFG: Record<SubStatus, { label: string; color: string }> = {
-  active: { label: 'Actif', color: '#34d399' },
-  trialing: { label: 'Essai', color: '#60a5fa' },
-  past_due: { label: 'Paiement en retard', color: '#f59e0b' },
-  suspended: { label: 'Suspendu', color: '#f87171' },
-  cancelled: { label: 'Résilié', color: 'rgba(255,255,255,0.4)' },
-  refunded: { label: 'Remboursé', color: '#a78bfa' },
+  active: { label: 'Actif', color: '#047857' },
+  trialing: { label: 'Essai', color: '#1d4ed8' },
+  past_due: { label: 'Paiement en retard', color: '#b45309' },
+  suspended: { label: 'Suspendu', color: '#b91c1c' },
+  // Hex et non token : la couleur sert aussi de teinte de fond (`${color}18`).
+  cancelled: { label: 'Résilié', color: '#6B6B70' },
+  refunded: { label: 'Remboursé', color: '#6d28d9' },
 }
 
-const fieldLabel: CSSProperties = { fontSize: 9, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 4 }
-const inputStyle: CSSProperties = { width: '100%', height: 36, borderRadius: 8, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)', fontSize: 13, padding: '0 10px', outline: 'none' }
+const fieldLabel: CSSProperties = { fontSize: 9, color: 'var(--admin-fg-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 4 }
+const inputStyle: CSSProperties = { width: '100%', height: 36, borderRadius: 8, background: 'var(--admin-panel-raised)', border: '1px solid var(--admin-line)', color: 'var(--admin-fg)', fontSize: 13, padding: '0 10px', outline: 'none' }
 
 // ── Edit modal ──────────────────────────────────────────────────────
 function EditModal({ sub, onClose, onSaved }: { sub: Subscriber; onClose: () => void; onSaved: (s: Subscriber) => void }) {
@@ -62,17 +63,17 @@ function EditModal({ sub, onClose, onSaved }: { sub: Subscriber; onClose: () => 
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(1,4,18,0.88)', backdropFilter: 'blur(8px)' }}>
-      <div style={{ width: '90vw', maxWidth: 420, borderRadius: 20, overflow: 'hidden', background: '#0c0e14', border: '1px solid rgba(255,255,255,0.09)', boxShadow: '0 40px 120px rgba(0,0,0,0.8)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+      <div style={{ width: '90vw', maxWidth: 420, borderRadius: 20, overflow: 'hidden', background: 'var(--admin-panel)', border: '1px solid var(--admin-line)', boxShadow: '0 40px 120px rgba(0,0,0,0.8)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 20px', borderBottom: '1px solid var(--admin-line)' }}>
           <div style={{ width: 32, height: 32, borderRadius: 10, background: 'linear-gradient(135deg,rgba(11,29,81,0.9),rgba(22,36,102,0.9))', border: '1px solid rgba(184,134,11,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <CreditCard size={15} color="#B8860B" />
           </div>
           <div>
-            <p style={{ fontWeight: 700, fontSize: 14, color: '#fff', margin: 0 }}>Gérer l&apos;abonnement</p>
-            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: 0 }}>{sub.companyName}</p>
+            <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--admin-fg)', margin: 0 }}>Gérer l&apos;abonnement</p>
+            <p style={{ fontSize: 11, color: 'var(--admin-fg-muted)', margin: 0 }}>{sub.companyName}</p>
           </div>
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} style={{ padding: 8, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', display: 'flex' }}>
+          <button onClick={onClose} style={{ padding: 8, borderRadius: 8, background: 'var(--admin-panel-raised)', border: 'none', cursor: 'pointer', color: 'var(--admin-fg-muted)', display: 'flex' }}>
             <X size={16} />
           </button>
         </div>
@@ -81,9 +82,9 @@ function EditModal({ sub, onClose, onSaved }: { sub: Subscriber; onClose: () => 
           <div>
             <p style={fieldLabel}>Formule</p>
             <select value={plan} onChange={e => applyPlanDefaults(e.target.value as PlanId | '')} style={{ ...inputStyle, cursor: 'pointer' }}>
-              <option value="" style={{ background: '#0a0c10' }}>Aucune</option>
+              <option value="" style={{ background: 'var(--admin-panel)' }}>Aucune</option>
               {(Object.entries(PLAN_LABELS) as [PlanId, string][]).map(([id, label]) => (
-                <option key={id} value={id} style={{ background: '#0a0c10' }}>{label}</option>
+                <option key={id} value={id} style={{ background: 'var(--admin-panel)' }}>{label}</option>
               ))}
             </select>
           </div>
@@ -92,17 +93,17 @@ function EditModal({ sub, onClose, onSaved }: { sub: Subscriber; onClose: () => 
             <div>
               <p style={fieldLabel}>Statut</p>
               <select value={status} onChange={e => setStatus(e.target.value as SubStatus | '')} style={{ ...inputStyle, cursor: 'pointer' }}>
-                <option value="" style={{ background: '#0a0c10' }}>—</option>
+                <option value="" style={{ background: 'var(--admin-panel)' }}>—</option>
                 {(Object.entries(STATUS_CFG) as [SubStatus, typeof STATUS_CFG['active']][]).map(([id, cfg]) => (
-                  <option key={id} value={id} style={{ background: '#0a0c10' }}>{cfg.label}</option>
+                  <option key={id} value={id} style={{ background: 'var(--admin-panel)' }}>{cfg.label}</option>
                 ))}
               </select>
             </div>
             <div>
               <p style={fieldLabel}>Périodicité</p>
               <select value={period} onChange={e => applyPeriod(e.target.value as BillingPeriod)} style={{ ...inputStyle, cursor: 'pointer' }}>
-                <option value="monthly" style={{ background: '#0a0c10' }}>Mensuel</option>
-                <option value="annual" style={{ background: '#0a0c10' }}>Annuel</option>
+                <option value="monthly" style={{ background: 'var(--admin-panel)' }}>Mensuel</option>
+                <option value="annual" style={{ background: 'var(--admin-panel)' }}>Annuel</option>
               </select>
             </div>
           </div>
@@ -114,15 +115,15 @@ function EditModal({ sub, onClose, onSaved }: { sub: Subscriber; onClose: () => 
 
           {error && (
             <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-              <AlertCircle size={15} color="#f87171" />
-              <p style={{ fontSize: 12, color: '#f87171', margin: 0 }}>{error}</p>
+              <AlertCircle size={15} color="#b91c1c" />
+              <p style={{ fontSize: 12, color: '#b91c1c', margin: 0 }}>{error}</p>
             </div>
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: 8, padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+        <div style={{ display: 'flex', gap: 8, padding: '14px 20px', borderTop: '1px solid var(--admin-line)' }}>
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} style={{ padding: '10px 16px', borderRadius: 10, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 13, cursor: 'pointer' }}>
+          <button onClick={onClose} style={{ padding: '10px 16px', borderRadius: 10, background: 'transparent', border: 'none', color: 'var(--admin-fg-muted)', fontSize: 13, cursor: 'pointer' }}>
             Annuler
           </button>
           <button onClick={save} disabled={isPending}
@@ -199,38 +200,38 @@ export function SubscriptionsDashboard({ initialSubscribers, loadError }: { init
   }
 
   return (
-    <div className="min-h-full p-8 space-y-6" style={{ color: 'rgba(255,255,255,0.87)' }}>
+    <div className="min-h-full p-8 space-y-6" style={{ color: 'var(--admin-fg)' }}>
 
       <div>
-        <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>FACTURATION</p>
-        <h1 className="text-[28px] font-bold tracking-tight text-white">Abonnements</h1>
-        <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
+        <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'var(--admin-fg-muted)' }}>FACTURATION</p>
+        <h1 className="text-[28px] font-bold tracking-tight text-admin-fg">Abonnements</h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
           Gestion manuelle des abonnements recruteurs — {stats.total} abonné{stats.total > 1 ? 's' : ''}
         </p>
       </div>
 
       {loadError && (
         <div className="flex items-center gap-3 p-4 rounded-xl" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-          <AlertCircle className="h-4 w-4 shrink-0" style={{ color: '#f87171' }} />
-          <p className="text-sm" style={{ color: '#f87171' }}>{loadError}</p>
+          <AlertCircle className="h-4 w-4 shrink-0" style={{ color: '#b91c1c' }} />
+          <p className="text-sm" style={{ color: '#b91c1c' }}>{loadError}</p>
         </div>
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Abonnés', value: stats.total, icon: Users, accent: '#B8860B' },
-          { label: 'Actifs', value: stats.active, icon: TrendingUp, accent: '#34d399' },
-          { label: 'Suspendus / résiliés', value: stats.suspended, icon: Ban, accent: '#f87171' },
-          { label: 'MRR estimé', value: `${stats.mrr} €`, icon: CreditCard, accent: '#60a5fa' },
+          { label: 'Actifs', value: stats.active, icon: TrendingUp, accent: '#047857' },
+          { label: 'Suspendus / résiliés', value: stats.suspended, icon: Ban, accent: '#b91c1c' },
+          { label: 'MRR estimé', value: `${stats.mrr} €`, icon: CreditCard, accent: '#1d4ed8' },
         ].map(s => (
           <div key={s.label} className="rounded-2xl p-5 flex items-center gap-4"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
             <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${s.accent}18` }}>
               <s.icon className="h-5 w-5" style={{ color: s.accent }} />
             </div>
             <div>
-              <p className="text-2xl font-bold text-white">{s.value}</p>
-              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>{s.label}</p>
+              <p className="text-2xl font-bold text-admin-fg">{s.value}</p>
+              <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>{s.label}</p>
             </div>
           </div>
         ))}
@@ -238,45 +239,45 @@ export function SubscriptionsDashboard({ initialSubscribers, loadError }: { init
 
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[220px]">
-          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,255,255,0.3)' }} />
+          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--admin-fg-muted)' }} />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher par entreprise, recruteur…"
             className="w-full text-sm"
-            style={{ height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.85)', padding: '0 12px 0 36px', outline: 'none' }} />
+            style={{ height: 40, borderRadius: 10, background: 'var(--admin-panel)', border: '1px solid var(--admin-line)', color: 'var(--admin-fg)', padding: '0 12px 0 36px', outline: 'none' }} />
         </div>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as SubStatus | 'all')}
-          style={{ height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.7)', padding: '0 12px', fontSize: 13, cursor: 'pointer' }}>
-          <option value="all" style={{ background: '#0a0c10' }}>Tous les statuts</option>
+          style={{ height: 40, borderRadius: 10, background: 'var(--admin-panel)', border: '1px solid var(--admin-line)', color: 'var(--admin-fg)', padding: '0 12px', fontSize: 13, cursor: 'pointer' }}>
+          <option value="all" style={{ background: 'var(--admin-panel)' }}>Tous les statuts</option>
           {(Object.entries(STATUS_CFG) as [SubStatus, typeof STATUS_CFG['active']][]).map(([id, cfg]) => (
-            <option key={id} value={id} style={{ background: '#0a0c10' }}>{cfg.label}</option>
+            <option key={id} value={id} style={{ background: 'var(--admin-panel)' }}>{cfg.label}</option>
           ))}
         </select>
       </div>
 
       {rowError && (
         <div className="flex items-center gap-3 p-4 rounded-xl" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-          <AlertCircle className="h-4 w-4 shrink-0" style={{ color: '#f87171' }} />
-          <p className="text-sm" style={{ color: '#f87171' }}>{rowError}</p>
+          <AlertCircle className="h-4 w-4 shrink-0" style={{ color: '#b91c1c' }} />
+          <p className="text-sm" style={{ color: '#b91c1c' }}>{rowError}</p>
         </div>
       )}
 
-      <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
-        <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-          <h2 className="font-semibold text-sm text-white">Comptes recruteurs</h2>
-          <span className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>{filtered.length} résultat{filtered.length > 1 ? 's' : ''}</span>
+      <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--admin-line)' }}>
+        <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'var(--admin-panel)', borderBottom: '1px solid var(--admin-line)' }}>
+          <h2 className="font-semibold text-sm text-admin-fg">Comptes recruteurs</h2>
+          <span className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>{filtered.length} résultat{filtered.length > 1 ? 's' : ''}</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <tr style={{ borderBottom: '1px solid var(--admin-line)' }}>
                 {['Entreprise', 'Recruteur', 'Formule', 'Statut', 'Montant', ''].map((h, i) => (
-                  <th key={i} className="text-left px-6 py-3 text-xs font-medium whitespace-nowrap" style={{ color: 'rgba(255,255,255,0.3)' }}>{h}</th>
+                  <th key={i} className="text-left px-6 py-3 text-xs font-medium whitespace-nowrap" style={{ color: 'var(--admin-fg-muted)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-20" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                  <td colSpan={6} className="text-center py-20" style={{ color: 'var(--admin-fg-muted)' }}>
                     <Users className="h-10 w-10 mx-auto mb-3 opacity-20" />
                     <p>Aucun abonné ne correspond à ces filtres</p>
                   </td>
@@ -285,19 +286,19 @@ export function SubscriptionsDashboard({ initialSubscribers, loadError }: { init
                 const statusCfg = s.status ? STATUS_CFG[s.status] : null
                 const isPending = pendingIds.has(s.tenantId)
                 return (
-                  <tr key={s.tenantId} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <tr key={s.tenantId} style={{ borderBottom: '1px solid var(--admin-line)' }}>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <Building2 className="h-3.5 w-3.5 shrink-0" style={{ color: 'rgba(255,255,255,0.3)' }} />
-                        <span className="font-medium text-white">{s.companyName}</span>
+                        <Building2 className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--admin-fg-muted)' }} />
+                        <span className="font-medium text-admin-fg">{s.companyName}</span>
                       </div>
                     </td>
                     <td className="px-4 py-4">
-                      <p style={{ color: 'rgba(255,255,255,0.7)' }}>{s.recruiterName}</p>
-                      <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>{s.recruiterEmail}</p>
+                      <p style={{ color: 'var(--admin-fg)' }}>{s.recruiterName}</p>
+                      <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>{s.recruiterEmail}</p>
                     </td>
-                    <td className="px-4 py-4" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                      {s.plan ? PLAN_LABELS[s.plan] : <span style={{ color: 'rgba(255,255,255,0.2)' }}>—</span>}
+                    <td className="px-4 py-4" style={{ color: 'var(--admin-fg-muted)' }}>
+                      {s.plan ? PLAN_LABELS[s.plan] : <span style={{ color: 'var(--admin-fg-muted)' }}>—</span>}
                     </td>
                     <td className="px-4 py-4">
                       {statusCfg ? (
@@ -305,23 +306,23 @@ export function SubscriptionsDashboard({ initialSubscribers, loadError }: { init
                           style={{ background: `${statusCfg.color}18`, color: statusCfg.color, border: `1px solid ${statusCfg.color}30` }}>
                           {statusCfg.label}
                         </span>
-                      ) : <span style={{ color: 'rgba(255,255,255,0.2)' }}>—</span>}
+                      ) : <span style={{ color: 'var(--admin-fg-muted)' }}>—</span>}
                     </td>
-                    <td className="px-4 py-4" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                    <td className="px-4 py-4" style={{ color: 'var(--admin-fg-muted)' }}>
                       {s.amount != null ? `${s.amount} € / ${s.period === 'annual' ? 'an' : 'mois'}` : '—'}
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => handleFreeMonth(s)} disabled={isPending} title="Offrir un mois gratuit"
-                          style={{ padding: 7, borderRadius: 8, border: 'none', display: 'flex', background: 'rgba(255,255,255,0.05)', color: '#B8860B', cursor: isPending ? 'default' : 'pointer', opacity: isPending ? 0.5 : 1 }}>
+                          style={{ padding: 7, borderRadius: 8, border: 'none', display: 'flex', background: 'var(--admin-panel-raised)', color: '#B8860B', cursor: isPending ? 'default' : 'pointer', opacity: isPending ? 0.5 : 1 }}>
                           <Gift size={14} />
                         </button>
                         <button onClick={() => toggleSuspend(s)} disabled={isPending} title={s.status === 'suspended' ? 'Réactiver' : 'Suspendre'}
-                          style={{ padding: 7, borderRadius: 8, border: 'none', display: 'flex', background: 'rgba(255,255,255,0.05)', color: s.status === 'suspended' ? '#34d399' : '#f59e0b', cursor: isPending ? 'default' : 'pointer', opacity: isPending ? 0.5 : 1 }}>
+                          style={{ padding: 7, borderRadius: 8, border: 'none', display: 'flex', background: 'var(--admin-panel-raised)', color: s.status === 'suspended' ? '#047857' : '#f59e0b', cursor: isPending ? 'default' : 'pointer', opacity: isPending ? 0.5 : 1 }}>
                           {isPending ? <Loader2 size={14} className="animate-spin" /> : s.status === 'suspended' ? <Power size={14} /> : <PowerOff size={14} />}
                         </button>
                         <button onClick={() => setEditing(s)} title="Modifier l'abonnement"
-                          style={{ padding: 7, borderRadius: 8, border: 'none', display: 'flex', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}>
+                          style={{ padding: 7, borderRadius: 8, border: 'none', display: 'flex', background: 'var(--admin-panel-raised)', color: 'var(--admin-fg-muted)', cursor: 'pointer' }}>
                           <Edit2 size={14} />
                         </button>
                       </div>
