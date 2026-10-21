@@ -8,9 +8,10 @@ import { adminJobExists, createAdminJob } from '@/lib/admin-job'
 import { DEFAULT_CLIENT_LABEL, namesToHide, revealsName, toPublicOffer } from '@/lib/ao/anonymize'
 import { descriptionForPublication } from '@/lib/description-sections'
 import { cityKey, titleKey } from '@/lib/ao/fingerprint'
-import { getAoOffer, listAoEmailsByIds, updateAoOffer } from '@/lib/ao/repo'
+import { manualRetryPatch } from '@/lib/ao/attempts'
+import { getAoEmail, getAoOffer, listAoEmailsByIds, updateAoEmail, updateAoOffer } from '@/lib/ao/repo'
 import type { AoOffer } from '@/lib/ao/types'
-import { syncAoInbox, type AoSyncReport } from '@/lib/ao/sync'
+import { syncAoEmail, syncAoInbox, type AoSyncReport } from '@/lib/ao/sync'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
 
 // Les offres publiées depuis AO Offers sont rattachées à l'admin, comme l'import manuel d'appels d'offres.
@@ -33,6 +34,38 @@ export async function syncAoInboxNow(): Promise<{ report?: AoSyncReport; error?:
     return { report }
   } catch (err) {
     return { error: `Synchronisation impossible : ${errorOf(err)}` }
+  }
+}
+
+/** Identifiant de document Appwrite (36 caractères au plus, lettres, chiffres, « . », « _ », « - »). */
+const DocumentId = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,35}$/)
+
+/**
+ * Bouton « Réessayer » d'un e-mail non traité : il est remis en file, quels que soient ses essais déjà comptés,
+ * puis traité tout de suite (même traitement et même verrou qu'une synchronisation). Si ce traitement immédiat
+ * échoue ou qu'une synchronisation est en cours, il reste en file pour la suivante.
+ */
+export async function retryAoEmail(id: string): Promise<{ report?: AoSyncReport; error?: string }> {
+  await requireAdmin()
+  const parsed = DocumentId.safeParse(id)
+  if (!parsed.success) return { error: 'Identifiant d\'e-mail invalide.' }
+  let email
+  try {
+    email = await getAoEmail(parsed.data)
+    if (!email) return { error: 'E-mail introuvable : rechargez la page.' }
+    const patch = manualRetryPatch(email)
+    if (!patch) return { error: 'Cet e-mail n\'est plus en erreur : rechargez la page.' }
+    await updateAoEmail(email.$id, patch)
+  } catch (err) {
+    return { error: `Relance impossible : ${errorOf(err)}` }
+  }
+  try {
+    // Plus court que le passage planifié : l'admin attend la réponse.
+    return { report: await syncAoEmail(email, { budgetMs: 150_000, holder: 'admin' }) }
+  } catch (err) {
+    return { error: `Traitement immédiat impossible (${errorOf(err)}) : l'e-mail est remis en file pour la prochaine synchronisation.` }
+  } finally {
+    revalidatePath('/admin/ao-offers')
   }
 }
 

@@ -15,7 +15,8 @@ const URL = /\b(?:https?:\/\/|www\.)[^\s)>\]]+/gi
 // Numéros français (01 23 45 67 89, +33 6 12 34 56 78, 0612345678) et internationaux (+44 20 7946 0958).
 const PHONE = /(?:(?:\+|00)33\s?\(?0?\)?\s?|\b0)[1-9](?:[\s.-]?\d{2}){4}\b|(?:\+|00)\d{2,3}(?:[\s.-]?\d{2,4}){3,5}/g
 // Lignes de contact typiques des appels d'offres : « Contact : Marie Dupont », « Tél. : … », « Réf. interne … ».
-const CONTACT_LINE = /^\s*[-*•]?\s*\**\s*(contact|interlocut\w*|responsable du recrutement|recruteur|t[ée]l(?:[ée]phone)?\.?|mobile|portable|e-?mail|courriel|mail|r[ée]f(?:[ée]rence)?\.?\s*interne)\b.*$/gim
+// Préfixe « ### » admis : les tableaux joints donnent une section titrée par colonne (spreadsheet.ts).
+const CONTACT_LINE = /^\s*(?:#{1,6}\s*)?[-*•]?\s*\**\s*(contact|interlocut\w*|responsable du recrutement|recruteur|t[ée]l(?:[ée]phone)?\.?|mobile|portable|e-?mail|courriel|mail|r[ée]f(?:[ée]rence)?\.?\s*interne)\b.*$/gim
 
 /** Messageries grand public et notre propre domaine : leur nom n'identifie pas l'expéditeur. */
 const NON_IDENTIFYING_DOMAINS = new Set([

@@ -100,17 +100,42 @@ export async function saveCheckpoint(id: string, checkpoint: Checkpoint): Promis
   }
 }
 
+const visionCounterId = (now: Date) => `vision_${now.toISOString().slice(0, 10)}`
+
 /**
  * Compte une lecture par l'IA pour la journée (UTC) ; false si `limit` est atteinte. Appelé sous le
  * verrou de synchronisation : pas d'écritures concurrentes sur le compteur.
  */
 export async function takeDailyVisionCall(now: Date, limit: number): Promise<boolean> {
+  return takeDaily(visionCounterId(now), 1, limit)
+}
+
+/**
+ * Compte `amount` offres lues dans des tableaux joints pour la journée (UTC) ; false si `limit` serait dépassée.
+ * Sous le verrou de synchronisation, comme takeDailyVisionCall.
+ */
+export async function takeDailyTableOffers(now: Date, amount: number, limit: number): Promise<boolean> {
+  return takeDaily(`tables_${now.toISOString().slice(0, 10)}`, amount, limit)
+}
+
+/** Compteur quotidien (document à identifiant fixe de AO_STATE) : ajoute `amount` si `limit` n'est pas dépassée. */
+async function takeDaily(id: string, amount: number, limit: number): Promise<boolean> {
   const { databases } = createAdminClient()
-  const id = `vision_${now.toISOString().slice(0, 10)}`
   const current = await getOrNull(id)
   const used = Number(current?.count ?? 0)
-  if (used >= limit) return false
-  if (current) await databases.updateDocument(DB_ID, COLLECTIONS.AO_STATE, id, { count: used + 1 })
-  else await databases.createDocument(DB_ID, COLLECTIONS.AO_STATE, id, { kind: 'counter', count: 1 })
+  if (used + amount > limit) return false
+  if (current) await databases.updateDocument(DB_ID, COLLECTIONS.AO_STATE, id, { count: used + amount })
+  else await databases.createDocument(DB_ID, COLLECTIONS.AO_STATE, id, { kind: 'counter', count: amount })
   return true
+}
+
+/**
+ * Rend une lecture comptée par takeDailyVisionCall avec le même `now` (même journée), quand aucun service
+ * ne l'a facturée. Sous le verrou de synchronisation, comme takeDailyVisionCall.
+ */
+export async function releaseDailyVisionCall(now: Date): Promise<void> {
+  const { databases } = createAdminClient()
+  const id = visionCounterId(now)
+  const used = Number((await getOrNull(id))?.count ?? 0)
+  if (used > 0) await databases.updateDocument(DB_ID, COLLECTIONS.AO_STATE, id, { count: used - 1 })
 }
