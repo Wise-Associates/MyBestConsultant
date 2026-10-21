@@ -26,6 +26,31 @@ interface Props {
 
 type Notice = { tone: 'ok' | 'error'; text: string } | null
 
+/**
+ * Colonnes du tableau des offres : largeur fixe (l'offre prend le reste) et écran à partir duquel la colonne s'affiche.
+ * Calibrées pour la zone de contenu à côté du menu de 240 px : les colonnes visibles laissent toujours 280 px environ
+ * à l'offre, sans défilement horizontal. Toute colonne masquée reste lisible dans le panneau de détail.
+ */
+const TABLE_COLUMNS = [
+  { key: 'received', label: 'Reçue le', width: 92, show: 'hidden sm:table-cell' },
+  { key: 'offer', label: 'Offre', width: undefined, show: '' },
+  { key: 'city', label: 'Ville', width: 100, show: 'hidden 2xl:table-cell' },
+  { key: 'seniority', label: 'Séniorité', width: 88, show: 'hidden xl:table-cell' },
+  { key: 'engagement', label: 'AT / Forfait', title: 'Assistance technique (AT) ou forfait', width: 92, show: 'hidden xl:table-cell' },
+  { key: 'deadline', label: 'Date limite', width: 108, show: 'hidden md:table-cell' },
+  { key: 'tjm', label: 'TJM', title: 'TJM ou salaire', width: 88, show: 'hidden sm:table-cell' },
+  { key: 'skills', label: 'Compétences', width: 210, show: 'hidden min-[1400px]:table-cell' },
+  { key: 'sources', label: 'Sources', title: 'Nombre d’e-mails ayant apporté cette offre', width: 80, show: 'hidden 2xl:table-cell' },
+  { key: 'status', label: 'Statut', width: 96, show: '' },
+] as const satisfies readonly { key: string; label: string; title?: string; width: number | undefined; show: string }[]
+
+type ColumnKey = (typeof TABLE_COLUMNS)[number]['key']
+const cell = (key: ColumnKey) => `${TABLE_COLUMNS.find(c => c.key === key)!.show} px-3 py-3 truncate`
+/** Libellé court dans le tableau ; le libellé complet est en infobulle et dans le panneau. */
+const ENGAGEMENT_SHORT = { assistance: 'AT', forfait: 'Forfait', '': '—' } as const
+/** Date courte du tableau (21/10/26) ; la date complète est en infobulle. */
+const shortDay = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+
 export interface MailboxIssue {
   label: string
   error: string
@@ -192,66 +217,65 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, mailbox
           <h2 className="font-semibold text-sm text-admin-fg">Offres extraites</h2>
           <span className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>{filtered.length} résultat{filtered.length > 1 ? 's' : ''} sur {rows.length}</span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--admin-line)' }}>
-                {['Reçue le', 'Offre', 'Ville', 'Séniorité', 'Assistance / Forfait', 'Date limite', 'TJM / salaire', 'Compétences', 'Sources', 'Statut'].map(h => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-medium whitespace-nowrap" style={{ color: 'var(--admin-fg-muted)' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="text-center py-20" style={{ color: 'var(--admin-fg-muted)' }}>
-                    <Inbox className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                    <p>{rows.length === 0 ? 'Aucune offre reçue pour l\'instant. Les appels d\'offres envoyés à la boîte AO apparaîtront ici.' : 'Aucune offre ne correspond à ces filtres.'}</p>
-                  </td>
-                </tr>
-              ) : filtered.map(r => (
-                <tr key={r.$id} onClick={() => setSelectedId(r.$id)} className="cursor-pointer hover:bg-admin-panel"
-                  style={{ borderBottom: '1px solid var(--admin-line)' }}>
-                  <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--admin-fg-muted)', fontVariantNumeric: 'tabular-nums' }}>{formatDay(r.receivedAt)}</td>
-                  {/* Une ligne chacun (texte complet au survol et dans le panneau) : toutes les lignes ont la même hauteur. */}
-                  <td className="px-4 py-3 min-w-[240px] max-w-[360px]">
-                    <button type="button" onClick={() => setSelectedId(r.$id)} title={r.title} className="block w-full truncate text-left font-medium text-admin-fg hover:underline">{r.title}</button>
-                    <p className="text-xs truncate" title={`${r.companyName || 'Client non précisé'} · ${r.senderName || r.senderAddress}`} style={{ color: 'var(--admin-fg-muted)' }}>{r.companyName || 'Client non précisé'} · {r.senderName || r.senderAddress}</p>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">{r.location || '—'}</td>
-                  <td className="px-4 py-3 whitespace-nowrap" title={r.experience || undefined}>{SENIORITY_SHORT[seniorityOf(r.experience)]}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{ENGAGEMENT_LABEL[r.engagement]}</td>
-                  <td className="px-4 py-3 whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>{r.deadline || '—'}</td>
-                  <td className="px-4 py-3 whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAmount(r.salary, r.contractType)}</td>
-                  <td className="px-4 py-3">
-                    {/* Deux compétences sur une ligne ; les autres dans une carte au survol (ligne de hauteur constante). */}
-                    <div className="flex items-center gap-1 flex-nowrap">
-                      {r.skills.slice(0, 2).map(s => (
-                        <span key={s} title={s} className="text-[11px] px-2 py-0.5 rounded-md whitespace-nowrap truncate max-w-[130px]" style={{ background: 'var(--admin-panel-raised)', color: 'var(--admin-fg)' }}>{s}</span>
-                      ))}
-                      {r.skills.length > 2 && (
-                        <HoverCard label={`+${r.skills.length - 2}`} ariaLabel={`Voir les ${r.skills.length} compétences`}>
-                          <span className="block font-semibold mb-1.5">Compétences</span>
-                          <span className="flex flex-wrap gap-1">
-                            {r.skills.map(s => <span key={s} className="px-2 py-0.5 rounded-md" style={{ background: 'var(--admin-panel-raised)' }}>{s}</span>)}
-                          </span>
-                        </HoverCard>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    {r.sourceCount > 1
-                      ? <span className="inline-flex items-center gap-1 text-xs" style={{ color: '#1d4ed8' }} title="Reçue dans plusieurs e-mails"><Copy size={12} />{r.sourceCount}</span>
-                      : <span style={{ color: 'var(--admin-fg-muted)' }}>1</span>}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <span className="text-xs font-medium px-2 py-1 rounded-md" style={{ color: STATUS_UI[r.status].color, background: 'var(--admin-panel-raised)' }}>{STATUS_UI[r.status].label}</span>
-                  </td>
-                </tr>
+        {/* Pas de défilement horizontal : largeurs fixes (sur les en-têtes, lues par table-fixed), une ligne par cellule (texte complet au survol), colonnes
+            secondaires masquées sur les écrans étroits (toutes restent dans le panneau de détail). */}
+        <table className="w-full table-fixed text-sm">
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--admin-line)' }}>
+              {TABLE_COLUMNS.map(c => (
+                <th key={c.key} title={'title' in c ? c.title : undefined} className={`${c.show} text-left px-3 py-3 text-xs font-medium truncate`} style={{ color: 'var(--admin-fg-muted)', width: c.width }}>{c.label}</th>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={TABLE_COLUMNS.length} className="text-center py-20" style={{ color: 'var(--admin-fg-muted)' }}>
+                  <Inbox className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                  <p>{rows.length === 0 ? 'Aucune offre reçue pour l\'instant. Les appels d\'offres envoyés à la boîte AO apparaîtront ici.' : 'Aucune offre ne correspond à ces filtres.'}</p>
+                </td>
+              </tr>
+            ) : filtered.map(r => (
+              <tr key={r.$id} onClick={() => setSelectedId(r.$id)} className="cursor-pointer hover:bg-admin-panel"
+                style={{ borderBottom: '1px solid var(--admin-line)' }}>
+                <td className={cell('received')} title={formatDay(r.receivedAt)} style={{ color: 'var(--admin-fg-muted)', fontVariantNumeric: 'tabular-nums' }}>{shortDay(r.receivedAt)}</td>
+                <td className={cell('offer')}>
+                  <button type="button" onClick={() => setSelectedId(r.$id)} title={r.title} className="block w-full truncate text-left font-medium text-admin-fg hover:underline">{r.title}</button>
+                  <p className="text-xs truncate" title={`${r.companyName || 'Client non précisé'} · ${r.senderName || r.senderAddress}`} style={{ color: 'var(--admin-fg-muted)' }}>{r.companyName || 'Client non précisé'} · {r.senderName || r.senderAddress}</p>
+                </td>
+                <td className={cell('city')} title={r.location || undefined}>{r.location || '—'}</td>
+                <td className={cell('seniority')} title={r.experience || undefined}>{SENIORITY_SHORT[seniorityOf(r.experience)]}</td>
+                <td className={cell('engagement')} title={r.engagement ? ENGAGEMENT_LABEL[r.engagement] : undefined}>{ENGAGEMENT_SHORT[r.engagement]}</td>
+                <td className={cell('deadline')} title={r.deadline || undefined} style={{ fontVariantNumeric: 'tabular-nums' }}>{r.deadline || '—'}</td>
+                <td className={cell('tjm')} style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAmount(r.salary, r.contractType)}</td>
+                <td className={cell('skills')}>
+                  {/* Deux compétences ; les autres dans une carte au survol (ligne de hauteur constante). */}
+                  <div className="flex items-center gap-1 flex-nowrap">
+                    {r.skills.slice(0, 2).map(s => (
+                      <span key={s} title={s} className="text-[11px] px-1.5 py-0.5 rounded-md whitespace-nowrap truncate max-w-[76px]" style={{ background: 'var(--admin-panel-raised)', color: 'var(--admin-fg)' }}>{s}</span>
+                    ))}
+                    {r.skills.length > 2 && (
+                      <HoverCard label={`+${r.skills.length - 2}`} ariaLabel={`Voir les ${r.skills.length} compétences`}>
+                        <span className="block font-semibold mb-1.5">Compétences</span>
+                        <span className="flex flex-wrap gap-1">
+                          {r.skills.map(s => <span key={s} className="px-2 py-0.5 rounded-md" style={{ background: 'var(--admin-panel-raised)' }}>{s}</span>)}
+                        </span>
+                      </HoverCard>
+                    )}
+                  </div>
+                </td>
+                <td className={cell('sources')}>
+                  {r.sourceCount > 1
+                    ? <span className="inline-flex items-center gap-1 text-xs" style={{ color: '#1d4ed8' }} title="Reçue dans plusieurs e-mails"><Copy size={12} />{r.sourceCount}</span>
+                    : <span style={{ color: 'var(--admin-fg-muted)' }}>1</span>}
+                </td>
+                <td className={cell('status')}>
+                  <span className="text-xs font-medium px-2 py-1 rounded-md" style={{ color: STATUS_UI[r.status].color, background: 'var(--admin-panel-raised)' }}>{STATUS_UI[r.status].label}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {/* E-mails en erreur */}
