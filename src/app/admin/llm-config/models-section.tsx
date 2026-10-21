@@ -14,9 +14,9 @@ import {
 type SetCfg = <K extends keyof ProviderConfig>(key: K, value: ProviderConfig[K]) => void
 type TestResult = { ok: boolean; latencyMs: number; error?: string }
 
-const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }
-const btn = { border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.6)', background: 'rgba(255,255,255,0.05)' }
-const selectStyle = { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)' }
+const card = { background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }
+const btn = { border: '1px solid var(--admin-line-strong)', color: 'var(--admin-fg-muted)', background: 'var(--admin-panel-raised)' }
+const selectStyle = { background: 'var(--admin-panel-raised)', border: '1px solid var(--admin-line-strong)', color: 'var(--admin-fg)' }
 
 const BUILTIN_LABEL: Record<string, string> = { claude: 'Claude', gpt4o: 'GPT-4o', teckia: 'TeckiA' }
 
@@ -41,8 +41,8 @@ function testOverridesFor(id: string, cfg: ProviderConfig) {
 function TestBadge({ result }: { result: TestResult | null }) {
   if (!result) return null
   return result.ok
-    ? <span className="inline-flex items-center gap-1 text-xs text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" />OK · {result.latencyMs} ms</span>
-    : <span className="inline-flex items-center gap-1 text-xs text-red-400 max-w-[260px] truncate" title={result.error}><AlertCircle className="h-3.5 w-3.5 shrink-0" />{result.error ?? 'Échec'}</span>
+    ? <span className="inline-flex items-center gap-1 text-xs text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />OK · {result.latencyMs} ms</span>
+    : <span className="inline-flex items-center gap-1 text-xs text-red-700 max-w-[260px] truncate" title={result.error}><AlertCircle className="h-3.5 w-3.5 shrink-0" />{result.error ?? 'Échec'}</span>
 }
 
 function useTester(cfg: ProviderConfig) {
@@ -78,28 +78,28 @@ export function ModuleRouting({ cfg, set }: { cfg: ProviderConfig; set: SetCfg }
     <div className="rounded-2xl p-6 space-y-4" style={card}>
       <div className="flex items-center gap-3">
         <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(96,165,250,0.15)' }}>
-          <Route className="h-4 w-4 text-blue-400" />
+          <Route className="h-4 w-4 text-blue-700" />
         </div>
         <div>
-          <h3 className="font-semibold text-white">Modèle par module</h3>
-          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>Choisissez quel modèle alimente chaque module IA de la plateforme</p>
+          <h3 className="font-semibold text-admin-fg">Modèle par module</h3>
+          <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>Choisissez quel modèle alimente chaque module IA de la plateforme</p>
         </div>
       </div>
 
-      <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--admin-line)' }}>
         {AI_MODULES.map(m => {
           const assigned = cfg.moduleRouting[m.id]
           const effective = assigned && (BUILTIN_LABEL[assigned] || enabledCustom.some(c => c.id === assigned)) ? assigned : cfg.activeProvider
           return (
-            <div key={m.id} className="flex items-center justify-between gap-4 flex-wrap px-4 py-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <div key={m.id} className="flex items-center justify-between gap-4 flex-wrap px-4 py-3.5" style={{ borderBottom: '1px solid var(--admin-line)' }}>
               <div className="min-w-[180px]">
-                <p className="text-sm font-medium text-white/85">{m.label}</p>
-                <p className="text-[11px] text-white/35 mt-0.5">{m.description}</p>
+                <p className="text-sm font-medium text-admin-fg">{m.label}</p>
+                <p className="text-[11px] text-admin-fg-muted mt-0.5">{m.description}</p>
               </div>
               <div className="flex items-center gap-2.5 flex-wrap">
                 <TestBadge result={results[`${m.id}:${effective}`] ?? null} />
                 <select value={assigned && effective === assigned ? assigned : 'default'} onChange={e => assign(m.id, e.target.value)}
-                  className="px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-white/20 max-w-[280px]" style={selectStyle}>
+                  className="px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-admin-line-strong max-w-[280px]" style={selectStyle}>
                   <option value="default" style={{ color: '#000' }}>Modèle par défaut — {modelName(cfg.activeProvider, cfg)}</option>
                   <optgroup label="Modèles intégrés">
                     {(['claude', 'gpt4o', 'teckia'] as const).map(id => <option key={id} value={id} style={{ color: '#000' }}>{modelName(id, cfg)}</option>)}
@@ -120,8 +120,8 @@ export function ModuleRouting({ cfg, set }: { cfg: ProviderConfig; set: SetCfg }
         })}
       </div>
 
-      <div className="flex items-start gap-2.5 text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>
-        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-blue-400" />
+      <div className="flex items-start gap-2.5 text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
+        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-blue-700" />
         <span>
           Le changement est actif <strong>dès l&apos;enregistrement</strong>, sans redéploiement ni coupure de service. Si le modèle choisi ne répond pas,
           la plateforme bascule automatiquement sur le modèle par défaut puis sur un autre modèle disponible.
@@ -186,14 +186,14 @@ export function OpenSourceModels({ cfg, set }: { cfg: ProviderConfig; set: SetCf
     <div className="space-y-4">
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.3)' }}>Modèles open source</h2>
-          <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--admin-fg-muted)' }}>Modèles open source</h2>
+          <p className="text-xs mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
             Llama, Mistral, Qwen, DeepSeek, Gemma… via un serveur privé ou un hébergeur (API compatible OpenAI).
           </p>
         </div>
         {!adding && (
           <button type="button" onClick={startAdd} disabled={cfg.openSourceModels.length >= MODEL_LIMITS.maxModels}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-40" style={{ background: 'rgba(255,255,255,0.1)', color: 'white' }}>
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-40" style={{ background: 'var(--admin-hover)', color: 'var(--admin-fg)' }}>
             <Plus className="h-4 w-4" />Ajouter un modèle
           </button>
         )}
@@ -201,9 +201,9 @@ export function OpenSourceModels({ cfg, set }: { cfg: ProviderConfig; set: SetCf
 
       {adding && (
         <div className="rounded-2xl p-5 space-y-4" style={{ ...card, border: '1px solid rgba(184,134,11,0.35)' }}>
-          <p className="text-sm font-semibold text-white">Nouveau modèle open source</p>
+          <p className="text-sm font-semibold text-admin-fg">Nouveau modèle open source</p>
           <div>
-            <p className="text-[11px] mb-2" style={{ color: 'rgba(255,255,255,0.4)' }}>1. Famille de modèle</p>
+            <p className="text-[11px] mb-2" style={{ color: 'var(--admin-fg-muted)' }}>1. Famille de modèle</p>
             <div className="flex flex-wrap gap-2">
               {OS_PRESETS.map(p => (
                 <button key={p.id} type="button" onClick={() => pickPreset(p.id, p.models[hostId] ? hostId : Object.keys(p.models)[0])}
@@ -215,14 +215,14 @@ export function OpenSourceModels({ cfg, set }: { cfg: ProviderConfig; set: SetCf
             </div>
           </div>
           <div>
-            <p className="text-[11px] mb-2" style={{ color: 'rgba(255,255,255,0.4)' }}>2. Hébergeur</p>
+            <p className="text-[11px] mb-2" style={{ color: 'var(--admin-fg-muted)' }}>2. Hébergeur</p>
             <div className="flex flex-wrap gap-2">
               {OS_HOSTS.map(h => (
                 <button key={h.id} type="button" onClick={() => pickPreset(presetId === 'custom' ? OS_PRESETS[0].id : presetId, h.id)}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium" style={hostId === h.id ? { background: '#B8860B', color: 'white' } : btn} title={h.hint}>{h.label}</button>
               ))}
             </div>
-            <p className="text-[11px] mt-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>{host.hint}</p>
+            <p className="text-[11px] mt-1.5" style={{ color: 'var(--admin-fg-muted)' }}>{host.hint}</p>
           </div>
           <div className="space-y-1">
             <Row label="Nom affiché"><TextInput value={draft.label} onChange={v => setDraft(d => ({ ...d, label: v }))} placeholder="Llama 3.3 70B" /></Row>
@@ -235,14 +235,14 @@ export function OpenSourceModels({ cfg, set }: { cfg: ProviderConfig; set: SetCf
             <button type="button" onClick={add} disabled={!draft.label.trim() || !draft.model.trim() || !draft.apiUrl.trim()}
               className="px-5 py-2 rounded-lg text-sm font-semibold disabled:opacity-40" style={{ background: '#B8860B', color: 'white' }}>Ajouter à la liste</button>
           </div>
-          <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.3)' }}>Pensez à cliquer sur « Enregistrer » en haut de page pour valider.</p>
+          <p className="text-[11px]" style={{ color: 'var(--admin-fg-muted)' }}>Pensez à cliquer sur « Enregistrer » en haut de page pour valider.</p>
         </div>
       )}
 
       {cfg.openSourceModels.length === 0 && !adding ? (
         <div className="rounded-2xl p-8 text-center" style={card}>
-          <Cpu className="h-7 w-7 mx-auto mb-2" style={{ color: 'rgba(255,255,255,0.25)' }} />
-          <p className="text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>Aucun modèle open source pour l&apos;instant. Ajoutez-en un pour l&apos;utiliser en complément de Claude.</p>
+          <Cpu className="h-7 w-7 mx-auto mb-2" style={{ color: 'var(--admin-fg-muted)' }} />
+          <p className="text-sm" style={{ color: 'var(--admin-fg-muted)' }}>Aucun modèle open source pour l&apos;instant. Ajoutez-en un pour l&apos;utiliser en complément de Claude.</p>
         </div>
       ) : (
         cfg.openSourceModels.map(m => {
@@ -251,18 +251,18 @@ export function OpenSourceModels({ cfg, set }: { cfg: ProviderConfig; set: SetCf
           const expanded = openId === m.id
           return (
             <div key={m.id} className="rounded-2xl overflow-hidden"
-              style={{ border: isDefault ? '1px solid rgba(184,134,11,0.4)' : '1px solid rgba(255,255,255,0.08)', background: isDefault ? 'rgba(184,134,11,0.05)' : 'rgba(255,255,255,0.03)', opacity: m.enabled ? 1 : 0.6 }}>
+              style={{ border: isDefault ? '1px solid rgba(184,134,11,0.4)' : '1px solid var(--admin-line)', background: isDefault ? 'rgba(184,134,11,0.05)' : 'var(--admin-panel)', opacity: m.enabled ? 1 : 0.6 }}>
               <div className="flex items-start gap-4 p-5">
-                <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 text-white" style={{ background: 'linear-gradient(135deg,#f97316,#b45309)' }}><Cpu className="h-5 w-5" /></div>
+                <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 text-admin-fg" style={{ background: 'linear-gradient(135deg,#f97316,#b45309)' }}><Cpu className="h-5 w-5" /></div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-semibold text-white">{m.label}</h3>
-                    {m.family && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)' }}>{m.family}</span>}
+                    <h3 className="font-semibold text-admin-fg">{m.label}</h3>
+                    {m.family && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'var(--admin-panel-raised)', color: 'var(--admin-fg-muted)' }}>{m.family}</span>}
                     {isDefault && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#B8860B', color: 'white' }}>PAR DÉFAUT</span>}
-                    {!m.enabled && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)' }}>DÉSACTIVÉ</span>}
+                    {!m.enabled && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--admin-hover)', color: 'var(--admin-fg-muted)' }}>DÉSACTIVÉ</span>}
                   </div>
-                  <p className="text-xs mt-0.5 font-mono truncate" style={{ color: 'rgba(255,255,255,0.4)' }}>{m.model}</p>
-                  {modules.length > 0 && <p className="text-[11px] mt-1" style={{ color: 'rgba(255,255,255,0.45)' }}>Utilisé par : {modules.join(', ')}</p>}
+                  <p className="text-xs mt-0.5 font-mono truncate" style={{ color: 'var(--admin-fg-muted)' }}>{m.model}</p>
+                  {modules.length > 0 && <p className="text-[11px] mt-1" style={{ color: 'var(--admin-fg-muted)' }}>Utilisé par : {modules.join(', ')}</p>}
                   <div className="mt-1.5"><TestBadge result={results[m.id] ?? null} /></div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
@@ -270,17 +270,17 @@ export function OpenSourceModels({ cfg, set }: { cfg: ProviderConfig; set: SetCf
                     {testing === m.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TestTube className="h-3.5 w-3.5" />}Tester
                   </button>
                   {!isDefault && m.enabled && (
-                    <button type="button" onClick={() => set('activeProvider', m.id)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: 'rgba(255,255,255,0.1)', color: 'white' }}>
+                    <button type="button" onClick={() => set('activeProvider', m.id)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: 'var(--admin-hover)', color: 'var(--admin-fg)' }}>
                       <Star className="h-3 w-3" />Par défaut
                     </button>
                   )}
-                  <button type="button" onClick={() => setOpenId(expanded ? null : m.id)} className="p-1.5 rounded-lg" style={{ color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.05)' }}>
+                  <button type="button" onClick={() => setOpenId(expanded ? null : m.id)} className="p-1.5 rounded-lg" style={{ color: 'var(--admin-fg-muted)', background: 'var(--admin-panel-raised)' }}>
                     {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </button>
                 </div>
               </div>
               {expanded && (
-                <div className="px-5 pb-5 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="px-5 pb-5 pt-2" style={{ borderTop: '1px solid var(--admin-line)' }}>
                   <Row label="Nom affiché"><TextInput value={m.label} onChange={v => update(m.id, { label: v })} /></Row>
                   <Row label="Nom du modèle"><TextInput value={m.model} onChange={v => update(m.id, { model: v })} mono width="w-72" /></Row>
                   <Row label="URL de l'API"><TextInput value={m.apiUrl} onChange={v => update(m.id, { apiUrl: v })} mono width="w-72" /></Row>
@@ -291,7 +291,7 @@ export function OpenSourceModels({ cfg, set }: { cfg: ProviderConfig; set: SetCf
                     <input type="checkbox" checked={m.enabled} onChange={e => update(m.id, { enabled: e.target.checked })} className="h-4 w-4 accent-amber-500" />
                   </Row>
                   <div className="pt-3 flex justify-end">
-                    <button type="button" onClick={() => remove(m)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-400" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                    <button type="button" onClick={() => remove(m)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-700" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
                       <Trash2 className="h-3.5 w-3.5" />Supprimer ce modèle
                     </button>
                   </div>

@@ -23,7 +23,7 @@ const STATS = [
     value: '0',
     sub: 'Missions actives',
     icon: Briefcase,
-    color: '#10b981',
+    color: '#047857',
     href: '/admin/jobs',
   },
   {
@@ -31,7 +31,7 @@ const STATS = [
     value: 'IA Actif',
     sub: 'Moteur IA configuré',
     icon: BrainCircuit,
-    color: '#f59e0b',
+    color: '#b45309',
     href: '/admin/llm-config',
   },
 ]
@@ -39,7 +39,7 @@ const STATS = [
 const QUICK_ACTIONS = [
   { label: 'Page d\'accueil', desc: 'Contenu, design, page builder', icon: Home, href: '/admin/homepage', color: '#7c3aed' },
   { label: 'Design & Thèmes', desc: 'Couleurs, typo, templates', icon: Palette, href: '/admin/design', color: '#2563eb' },
-  { label: 'Config IA', desc: 'Modèle LLM et pricing', icon: BrainCircuit, href: '/admin/llm-config', color: '#f59e0b' },
+  { label: 'Config IA', desc: 'Modèle LLM et pricing', icon: BrainCircuit, href: '/admin/llm-config', color: '#b45309' },
   { label: 'Paramètres', desc: 'Général & intégrations', icon: Settings, href: '/admin/settings', color: 'var(--color-primary)' },
 ]
 
@@ -55,8 +55,8 @@ const MODULES = [
 ]
 
 const STATUS_STYLE = {
-  live: { label: 'En ligne', color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
-  dev: { label: 'En dev', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
+  live: { label: 'En ligne', color: '#047857', bg: 'rgba(16,185,129,0.12)' },
+  dev: { label: 'En dev', color: '#b45309', bg: 'rgba(245,158,11,0.12)' },
   pending: { label: 'Planifié', color: '#6b7280', bg: 'rgba(107,114,128,0.12)' },
 }
 
@@ -73,18 +73,18 @@ export default function AdminDashboard() {
         <div className="max-w-6xl mx-auto px-6 py-8 flex flex-wrap items-center justify-between gap-6">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: 'rgba(16,185,129,0.18)', color: '#34d399' }}>
-                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#34d399' }} />
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: 'rgba(16,185,129,0.18)', color: '#047857' }}>
+                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#047857' }} />
                 Système opérationnel
               </span>
             </div>
-            <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>Vue d&apos;ensemble</h1>
+            <h1 style={{ color: 'var(--admin-fg)', fontWeight: 300, fontSize: '1.75rem' }}>Vue d&apos;ensemble</h1>
             <p className="text-sm mt-0.5 capitalize" style={{ color: 'var(--admin-fg-muted)' }}>{dateStr}</p>
           </div>
           <div className="flex items-center gap-2">
             <Link href="/admin/design"
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold no-underline transition-all"
-              style={{ background: 'rgba(124,58,237,0.18)', border: '1px solid rgba(124,58,237,0.4)', color: '#c4b5fd' }}>
+              style={{ background: 'rgba(124,58,237,0.18)', border: '1px solid rgba(124,58,237,0.4)', color: '#6d28d9' }}>
               <Palette className="h-4 w-4" />
               Personnaliser
             </Link>
@@ -112,7 +112,7 @@ export default function AdminDashboard() {
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${s.color}18` }}>
                   <s.icon className="h-5 w-5" style={{ color: s.color }} />
                 </div>
-                <ChevronRight className="h-4 w-4 transition-colors" style={{ color: 'var(--admin-fg-subtle)' }} />
+                <ChevronRight className="h-4 w-4 transition-colors" style={{ color: 'var(--admin-fg-muted)' }} />
               </div>
               <div className="relative text-2xl font-bold mb-0.5" style={{ color: 'var(--admin-fg)' }}>{s.value}</div>
               <div className="relative text-sm font-semibold" style={{ color: 'var(--admin-fg)' }}>{s.label}</div>
@@ -154,12 +154,12 @@ export default function AdminDashboard() {
               <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--admin-fg-muted)' }}>Activité récente</h2>
             </div>
             <div className="rounded-3xl overflow-hidden" style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
-              <div className="divide-y" style={{ borderColor: 'var(--admin-line)' }}>
+              <div className="divide-y divide-admin-line">
                 {[
-                  { msg: 'Site configuré', time: "À l'instant", color: '#10b981' },
+                  { msg: 'Site configuré', time: "À l'instant", color: '#047857' },
                   { msg: 'Moteur IA actif', time: 'Il y a 1 min', color: '#2563eb' },
                   { msg: 'Design: Modern Blue', time: 'Il y a 2 min', color: '#7c3aed' },
-                  { msg: 'Admin connecté', time: 'Il y a 3 min', color: '#f59e0b' },
+                  { msg: 'Admin connecté', time: 'Il y a 3 min', color: '#b45309' },
                 ].map((item, i) => (
                   <div key={i} className="flex items-center gap-3 px-4 py-3">
                     <span className="w-2 h-2 rounded-full shrink-0" style={{ background: item.color }} />
@@ -182,7 +182,7 @@ export default function AdminDashboard() {
             <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--admin-fg-muted)' }}>État des modules</h2>
           </div>
           <div className="rounded-3xl overflow-hidden" style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
-            <div className="divide-y" style={{ borderColor: 'var(--admin-line)' }}>
+            <div className="divide-y divide-admin-line">
               {MODULES.map(m => {
                 const s = STATUS_STYLE[m.status as keyof typeof STATUS_STYLE]
                 return (

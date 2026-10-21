@@ -8,7 +8,7 @@ import { previewPostText } from './actions'
 const VIS_CFG: Record<SuggestedGroup['visibility'], { label: string; icon: typeof Globe; color: string }> = {
   public: { label: 'Public', icon: Globe, color: '#16a34a' },
   private: { label: 'Privé', icon: Lock, color: '#B8860B' },
-  unknown: { label: 'À vérifier', icon: HelpCircle, color: '#8a90a8' },
+  unknown: { label: 'À vérifier', icon: HelpCircle, color: '#6b6b70' },
 }
 
 export function GroupsModal({ jobId, title, onClose }: { jobId: string; title: string; onClose: () => void }) {
@@ -51,7 +51,7 @@ export function GroupsModal({ jobId, title, onClose }: { jobId: string; title: s
             </div>
             <div className="min-w-0">
               <p className="text-sm font-bold" style={{ color: '#0B1D51' }}>Groupes LinkedIn suggérés</p>
-              <p className="text-xs mt-0.5 truncate" style={{ color: '#8a90a8' }}>{title}</p>
+              <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--admin-fg-muted)' }}>{title}</p>
             </div>
           </div>
           <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-gray-100 shrink-0">
@@ -75,7 +75,7 @@ export function GroupsModal({ jobId, title, onClose }: { jobId: string; title: s
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 gap-3">
               <Loader2 className="w-6 h-6 animate-spin" style={{ color: '#B8860B' }} />
-              <p className="text-xs" style={{ color: '#8a90a8' }}>Recherche de groupes pertinents…</p>
+              <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>Recherche de groupes pertinents…</p>
             </div>
           ) : error ? (
             <div className="flex items-center gap-3 p-4 rounded-xl" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
@@ -97,7 +97,7 @@ export function GroupsModal({ jobId, title, onClose }: { jobId: string; title: s
                             <vc.icon className="w-2.5 h-2.5" />{vc.label}
                           </span>
                         </div>
-                        {g.reason && <p className="text-xs mt-1 leading-relaxed" style={{ color: '#8a90a8' }}>{g.reason}</p>}
+                        {g.reason && <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--admin-fg-muted)' }}>{g.reason}</p>}
                       </div>
                       <a href={g.url} target="_blank" rel="noopener noreferrer"
                         className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-semibold shrink-0 transition-opacity hover:opacity-80"
@@ -112,14 +112,14 @@ export function GroupsModal({ jobId, title, onClose }: { jobId: string; title: s
           ) : (
             <div className="text-center py-12">
               <Users2 className="w-8 h-8 mx-auto mb-2" style={{ color: '#d0d4e8' }} />
-              <p className="text-sm" style={{ color: '#adb5cc' }}>Aucun groupe trouvé pour cette offre</p>
+              <p className="text-sm" style={{ color: 'var(--admin-fg-muted)' }}>Aucun groupe trouvé pour cette offre</p>
             </div>
           )}
         </div>
 
         {/* Footer disclaimer */}
         <div className="px-5 py-3 shrink-0" style={{ borderTop: '1px solid #e2e5f0', background: '#fafbfd' }}>
-          <p className="text-[11px] leading-relaxed" style={{ color: '#adb5cc' }}>
+          <p className="text-[11px] leading-relaxed" style={{ color: 'var(--admin-fg-muted)' }}>
             Suggestions générées par IA à partir d&apos;une recherche web — vérifie chaque groupe sur LinkedIn avant de publier.
             La publication dans un groupe reste manuelle : LinkedIn ne permet pas de poster dans un groupe via API, même avec un compte connecté.
           </p>

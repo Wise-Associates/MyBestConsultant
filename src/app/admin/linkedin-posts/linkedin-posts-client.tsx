@@ -41,7 +41,7 @@ function PreviewModal({ jobId, title, onClose }: { jobId: string; title: string;
         <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: '#e2e5f0' }}>
           <div>
             <p className="text-sm font-bold" style={{ color: '#0B1D51' }}>Aperçu du post LinkedIn</p>
-            <p className="text-xs mt-0.5 truncate max-w-xs" style={{ color: '#8a90a8' }}>{title}</p>
+            <p className="text-xs mt-0.5 truncate max-w-xs" style={{ color: 'var(--admin-fg-muted)' }}>{title}</p>
           </div>
           <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-gray-100">
             <X className="w-4 h-4" style={{ color: '#5a6080' }} />
@@ -60,7 +60,7 @@ function PreviewModal({ jobId, title, onClose }: { jobId: string; title: string;
           )}
         </div>
         <div className="px-5 pb-5">
-          <p className="text-xs" style={{ color: '#adb5cc' }}>
+          <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
             Ce texte sera publié sur LinkedIn via {' '}
             <span style={{ color: '#0B1D51', fontWeight: 600 }}>Make.com</span> ou votre profil personnel.
           </p>
@@ -102,13 +102,13 @@ function ConfigPanel({ cfg }: { cfg: LinkedInChannelConfig }) {
           </div>
           <div className="text-left">
             <p className="text-sm font-semibold" style={{ color: '#0B1D51' }}>Configuration du canal</p>
-            <p className="text-xs" style={{ color: '#8a90a8' }}>
+            <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
               {cfg.channel === 'make' ? 'Make.com (page entreprise)' : 'LinkedIn direct (profil personnel)'}
             </p>
           </div>
         </div>
-        {open ? <ChevronUp className="w-4 h-4" style={{ color: '#8a90a8' }} />
-          : <ChevronDown className="w-4 h-4" style={{ color: '#8a90a8' }} />}
+        {open ? <ChevronUp className="w-4 h-4" style={{ color: 'var(--admin-fg-muted)' }} />
+          : <ChevronDown className="w-4 h-4" style={{ color: 'var(--admin-fg-muted)' }} />}
       </button>
 
       {open && (
@@ -126,13 +126,13 @@ function ConfigPanel({ cfg }: { cfg: LinkedInChannelConfig }) {
                   }}>
                   <div className="flex items-center gap-2 mb-2">
                     {ch === 'make'
-                      ? <Zap className="w-4 h-4" style={{ color: channel === ch ? '#B8860B' : '#adb5cc' }} />
-                      : <User className="w-4 h-4" style={{ color: channel === ch ? '#0B1D51' : '#adb5cc' }} />}
-                    <span className="text-sm font-semibold" style={{ color: channel === ch ? '#0B1D51' : '#8a90a8' }}>
+                      ? <Zap className="w-4 h-4" style={{ color: channel === ch ? '#B8860B' : 'var(--admin-fg-subtle)' }} />
+                      : <User className="w-4 h-4" style={{ color: channel === ch ? '#0B1D51' : 'var(--admin-fg-subtle)' }} />}
+                    <span className="text-sm font-semibold" style={{ color: channel === ch ? '#0B1D51' : 'var(--admin-fg-muted)' }}>
                       {ch === 'make' ? 'Make.com' : 'LinkedIn direct'}
                     </span>
                   </div>
-                  <p className="text-xs" style={{ color: '#adb5cc' }}>
+                  <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
                     {ch === 'make' ? 'Page entreprise via webhook' : 'Profil personnel via OAuth'}
                   </p>
                 </button>
@@ -258,7 +258,7 @@ function JobCard({ job, cfg, onPosted }: {
             <p className="text-sm font-semibold truncate" style={{ color: '#0B1D51' }}>{job.title}</p>
             <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
               {job.location && (
-                <span className="flex items-center gap-0.5 text-xs" style={{ color: '#8a90a8' }}>
+                <span className="flex items-center gap-0.5 text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
                   <MapPin className="w-3 h-3" />{job.location}
                 </span>
               )}
@@ -290,7 +290,7 @@ function JobCard({ job, cfg, onPosted }: {
                   </span>
                 ))}
                 {job.skills.length > 5 && (
-                  <span className="text-xs" style={{ color: '#adb5cc' }}>+{job.skills.length - 5}</span>
+                  <span className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>+{job.skills.length - 5}</span>
                 )}
               </div>
             )}
@@ -309,12 +309,12 @@ function JobCard({ job, cfg, onPosted }: {
             <button onClick={() => setPreview(true)}
               className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors"
               title="Aperçu du post">
-              <Eye className="w-3.5 h-3.5" style={{ color: '#8a90a8' }} />
+              <Eye className="w-3.5 h-3.5" style={{ color: 'var(--admin-fg-muted)' }} />
             </button>
             <button onClick={() => setShowGroups(true)}
               className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors"
               title="Groupes LinkedIn suggérés">
-              <Users2 className="w-3.5 h-3.5" style={{ color: '#8a90a8' }} />
+              <Users2 className="w-3.5 h-3.5" style={{ color: 'var(--admin-fg-muted)' }} />
             </button>
             <button
               onClick={handlePost}
@@ -367,8 +367,8 @@ function Section({ title, count, icon: Icon, color, children, defaultOpen = true
           </span>
         </div>
         {open
-          ? <ChevronUp className="w-4 h-4" style={{ color: '#adb5cc' }} />
-          : <ChevronDown className="w-4 h-4" style={{ color: '#adb5cc' }} />}
+          ? <ChevronUp className="w-4 h-4" style={{ color: 'var(--admin-fg-muted)' }} />
+          : <ChevronDown className="w-4 h-4" style={{ color: 'var(--admin-fg-muted)' }} />}
       </button>
       {open && (
         <div className="border-t" style={{ borderColor: '#f0f1f7' }}>
@@ -390,7 +390,7 @@ function Filters({ search, setSearch, contract, setContract, remote, setRemote, 
   return (
     <div className="flex flex-wrap items-center gap-2">
       <div className="relative flex-1 min-w-[180px]">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: '#adb5cc' }} />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--admin-fg-muted)' }} />
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
@@ -457,11 +457,11 @@ export function LinkedInPostsClient({ jobs: initialJobs, cfg }: {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#0B1D51' }}>
-              <BarChart2 className="w-5 h-5 text-white" />
+              <BarChart2 className="w-5 h-5 text-admin-fg" />
             </div>
             <div>
               <h1 className="text-xl font-bold" style={{ color: '#0B1D51' }}>LinkedIn Posts</h1>
-              <p className="text-sm" style={{ color: '#8a90a8' }}>Diffusez vos offres sur LinkedIn</p>
+              <p className="text-sm" style={{ color: 'var(--admin-fg-muted)' }}>Diffusez vos offres sur LinkedIn</p>
             </div>
           </div>
           <a href="/admin/linkedin"
@@ -484,16 +484,16 @@ export function LinkedInPostsClient({ jobs: initialJobs, cfg }: {
             <>
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                  style={{ background: 'rgba(255,255,255,0.15)' }}>
+                  style={{ background: 'var(--admin-hover)' }}>
                   {cfg.channel === 'make'
-                    ? <Zap className="w-4 h-4 text-white" />
-                    : <User className="w-4 h-4 text-white" />}
+                    ? <Zap className="w-4 h-4 text-admin-fg" />
+                    : <User className="w-4 h-4 text-admin-fg" />}
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-white">
+                  <p className="text-sm font-semibold text-admin-fg">
                     {cfg.channel === 'make' ? 'Make.com — Page entreprise' : 'LinkedIn direct — Profil personnel'}
                   </p>
-                  <p className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                  <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
                     {cfg.channel === 'make' ? cfg.makeWebhookUrl?.slice(0, 48) + '...' : 'Connecté via OAuth'}
                   </p>
                 </div>
@@ -529,7 +529,7 @@ export function LinkedInPostsClient({ jobs: initialJobs, cfg }: {
               </div>
               <div>
                 <p className="text-2xl font-bold leading-none" style={{ color: s.color }}>{s.value}</p>
-                <p className="text-xs mt-0.5" style={{ color: '#adb5cc' }}>{s.label}</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--admin-fg-muted)' }}>{s.label}</p>
               </div>
             </div>
           ))}
@@ -551,7 +551,7 @@ export function LinkedInPostsClient({ jobs: initialJobs, cfg }: {
           {toPost.length === 0 ? (
             <div className="px-5 py-8 text-center" style={{ background: '#fafbfd' }}>
               <CheckCircle2 className="w-8 h-8 mx-auto mb-2" style={{ color: '#d0d4e8' }} />
-              <p className="text-sm" style={{ color: '#adb5cc' }}>Toutes les offres ont été publiées</p>
+              <p className="text-sm" style={{ color: 'var(--admin-fg-muted)' }}>Toutes les offres ont été publiées</p>
             </div>
           ) : (
             <div className="p-3 space-y-2 max-h-[480px] overflow-y-auto" style={{ background: '#fafbfd' }}>
@@ -567,7 +567,7 @@ export function LinkedInPostsClient({ jobs: initialJobs, cfg }: {
           {posted.length === 0 ? (
             <div className="px-5 py-8 text-center" style={{ background: '#fafbfd' }}>
               <Clock className="w-8 h-8 mx-auto mb-2" style={{ color: '#d0d4e8' }} />
-              <p className="text-sm" style={{ color: '#adb5cc' }}>Aucune offre publiée pour l'instant</p>
+              <p className="text-sm" style={{ color: 'var(--admin-fg-muted)' }}>Aucune offre publiée pour l'instant</p>
             </div>
           ) : (
             <div className="p-3 space-y-2 max-h-[480px] overflow-y-auto" style={{ background: '#fafbfd' }}>

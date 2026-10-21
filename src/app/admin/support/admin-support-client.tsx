@@ -21,7 +21,7 @@ function timeAgo(iso: string, now: number): string {
 }
 
 type Scope = 'active' | 'all' | 'done'
-const fieldStyle = { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)' } as const
+const fieldStyle = { background: 'var(--admin-panel-raised)', border: '1px solid var(--admin-line)', color: 'var(--admin-fg)' } as const
 
 export function AdminSupportClient({ tickets, adminName, now }: { tickets: Ticket[]; adminName: string; now: string }) {
   const nowMs = new Date(now).getTime()
@@ -71,31 +71,31 @@ export function AdminSupportClient({ tickets, adminName, now }: { tickets: Ticke
   ]
 
   return (
-    <div className="min-h-full p-6 sm:p-8 max-w-6xl mx-auto space-y-6" style={{ color: 'rgba(255,255,255,0.87)' }}>
+    <div className="min-h-full p-6 sm:p-8 max-w-6xl mx-auto space-y-6" style={{ color: 'var(--admin-fg)' }}>
       <div>
-        <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>SUPPORT</p>
-        <h1 className="tracking-tight text-white flex items-center gap-3" style={{ fontSize: '1.75rem', fontWeight: 700 }}><LifeBuoy className="h-6 w-6" style={{ color: '#e8a33d' }} />Help Desk</h1>
-        <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>Tickets des recruteurs et des candidats — {tickets.length} au total{stats.unread > 0 ? `, ${stats.unread} avec du nouveau` : ''}.</p>
+        <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'var(--admin-fg-muted)' }}>SUPPORT</p>
+        <h1 className="tracking-tight text-admin-fg flex items-center gap-3" style={{ fontSize: '1.75rem', fontWeight: 700 }}><LifeBuoy className="h-6 w-6" style={{ color: '#e8a33d' }} />Help Desk</h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--admin-fg-muted)' }}>Tickets des recruteurs et des candidats — {tickets.length} au total{stats.unread > 0 ? `, ${stats.unread} avec du nouveau` : ''}.</p>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {cards.map(c => (
-          <div key={c.label} className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>{c.label}</p>
-            <p className="text-3xl font-bold mt-1" style={{ color: c.value > 0 ? c.color : 'rgba(255,255,255,0.35)' }}>{c.value}</p>
-            <p className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{c.hint}</p>
+          <div key={c.label} className="rounded-2xl p-4" style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
+            <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>{c.label}</p>
+            <p className="text-3xl font-bold mt-1" style={{ color: c.value > 0 ? c.color : 'var(--admin-fg-muted)' }}>{c.value}</p>
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--admin-fg-muted)' }}>{c.hint}</p>
           </div>
         ))}
       </div>
 
       <div className="flex items-center gap-2.5 flex-wrap">
         <div className="flex items-center gap-2 px-3 rounded-xl flex-1 min-w-[220px]" style={fieldStyle}>
-          <Search className="h-4 w-4 shrink-0" style={{ color: 'rgba(255,255,255,0.4)' }} />
+          <Search className="h-4 w-4 shrink-0" style={{ color: 'var(--admin-fg-muted)' }} />
           <input value={query} onChange={e => reset(setQuery)(e.target.value)} placeholder="Rechercher un ticket, un utilisateur, une référence…" className="w-full py-2.5 text-sm outline-none bg-transparent" style={{ color: 'inherit' }} />
         </div>
-        <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid var(--admin-line)' }}>
           {([['active', 'À traiter'], ['all', 'Tous'], ['done', 'Terminés']] as [Scope, string][]).map(([k, l]) => (
-            <button key={k} type="button" onClick={() => reset(setScope)(k)} className="px-3.5 py-2.5 text-xs font-semibold" style={{ background: scope === k ? '#B8860B' : 'rgba(255,255,255,0.04)', color: scope === k ? 'white' : 'rgba(255,255,255,0.55)' }}>{l}</button>
+            <button key={k} type="button" onClick={() => reset(setScope)(k)} className="px-3.5 py-2.5 text-xs font-semibold" style={{ background: scope === k ? '#B8860B' : 'var(--admin-panel)', color: scope === k ? 'white' : 'var(--admin-fg-muted)' }}>{l}</button>
           ))}
         </div>
         <select value={priority} onChange={e => reset(setPriority)(e.target.value as typeof priority)} className="px-3 py-2.5 rounded-xl text-xs outline-none" style={fieldStyle}>
@@ -113,17 +113,17 @@ export function AdminSupportClient({ tickets, adminName, now }: { tickets: Ticke
         </select>
       </div>
 
-      <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+      <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
         {rows.length === 0 ? (
           <div className="py-16 text-center">
-            <Inbox className="h-8 w-8 mx-auto mb-2" style={{ color: 'rgba(255,255,255,0.25)' }} />
-            <p className="text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>{tickets.length === 0 ? 'Aucun ticket pour le moment.' : 'Aucun ticket ne correspond à ces filtres.'}</p>
+            <Inbox className="h-8 w-8 mx-auto mb-2" style={{ color: 'var(--admin-fg-muted)' }} />
+            <p className="text-sm" style={{ color: 'var(--admin-fg-muted)' }}>{tickets.length === 0 ? 'Aucun ticket pour le moment.' : 'Aucun ticket ne correspond à ces filtres.'}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm" style={{ minWidth: 760 }}>
               <thead>
-                <tr className="text-[11px] uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.03)' }}>
+                <tr className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--admin-fg-muted)', background: 'var(--admin-panel)' }}>
                   <th className="text-left font-semibold px-4 py-3">Ticket</th>
                   <th className="text-left font-semibold px-3 py-3">Demandeur</th>
                   <th className="text-left font-semibold px-3 py-3">Statut</th>
@@ -134,21 +134,21 @@ export function AdminSupportClient({ tickets, adminName, now }: { tickets: Ticke
               </thead>
               <tbody>
                 {rows.map(t => (
-                  <tr key={t.id} className="transition-colors hover:bg-white/[0.04]" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <tr key={t.id} className="transition-colors hover:bg-admin-panel" style={{ borderTop: '1px solid var(--admin-line)' }}>
                     <td className="px-4 py-3 max-w-[340px]">
                       <Link href={`/admin/support/${t.id}`} className="no-underline block">
                         <span className="flex items-center gap-2">
                           {t.unreadSupport && isOpenStatus(t.status) && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: '#e8a33d' }} title="Nouveau" />}
-                          <span className="font-semibold truncate text-white/90">{t.subject}</span>
+                          <span className="font-semibold truncate text-admin-fg">{t.subject}</span>
                         </span>
-                        <span className="text-[11px] font-mono" style={{ color: 'rgba(255,255,255,0.35)' }}>{t.reference} · {CATEGORY_META[t.category].label}</span>
+                        <span className="text-[11px] font-mono" style={{ color: 'var(--admin-fg-muted)' }}>{t.reference} · {CATEGORY_META[t.category].label}</span>
                       </Link>
                     </td>
-                    <td className="px-3 py-3"><p className="text-white/80 truncate max-w-[170px]">{t.userName}</p><p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{t.role === 'recruiter' ? 'Recruteur' : t.role === 'hunter' ? 'Chasseur' : 'Candidat'}</p></td>
+                    <td className="px-3 py-3"><p className="text-admin-fg truncate max-w-[170px]">{t.userName}</p><p className="text-[11px]" style={{ color: 'var(--admin-fg-muted)' }}>{t.role === 'recruiter' ? 'Recruteur' : t.role === 'hunter' ? 'Chasseur' : 'Candidat'}</p></td>
                     <td className="px-3 py-3"><StatusPill status={t.status} /></td>
                     <td className="px-3 py-3"><span className="text-xs font-semibold" style={{ color: PRIORITY_META[t.priority].color }}>● {PRIORITY_META[t.priority].label}</span></td>
-                    <td className="px-3 py-3 text-xs" style={{ color: t.assignee ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.3)' }}>{t.assignee || <span className="inline-flex items-center gap-1"><UserX className="h-3 w-3" />Personne</span>}</td>
-                    <td className="px-4 py-3 text-right text-xs whitespace-nowrap" style={{ color: 'rgba(255,255,255,0.45)' }}>{timeAgo(t.lastMessageAt, nowMs)}<br /><span style={{ color: 'rgba(255,255,255,0.3)' }}>{t.lastMessageBy === 'user' ? 'de l’utilisateur' : 'du support'}</span></td>
+                    <td className="px-3 py-3 text-xs" style={{ color: t.assignee ? 'var(--admin-fg)' : 'var(--admin-fg-muted)' }}>{t.assignee || <span className="inline-flex items-center gap-1"><UserX className="h-3 w-3" />Personne</span>}</td>
+                    <td className="px-4 py-3 text-right text-xs whitespace-nowrap" style={{ color: 'var(--admin-fg-muted)' }}>{timeAgo(t.lastMessageAt, nowMs)}<br /><span style={{ color: 'var(--admin-fg-muted)' }}>{t.lastMessageBy === 'user' ? 'de l’utilisateur' : 'du support'}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -159,10 +159,10 @@ export function AdminSupportClient({ tickets, adminName, now }: { tickets: Ticke
 
       {filtered.length > PAGE_SIZE && (
         <nav aria-label="Pagination" className="flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>Tickets {(current - 1) * PAGE_SIZE + 1}–{Math.min(current * PAGE_SIZE, filtered.length)} sur {filtered.length}</p>
+          <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>Tickets {(current - 1) * PAGE_SIZE + 1}–{Math.min(current * PAGE_SIZE, filtered.length)} sur {filtered.length}</p>
           <div className="flex items-center gap-1.5">
             <button onClick={() => setPage(current - 1)} disabled={current === 1} aria-label="Page précédente" className="w-9 h-9 rounded-lg flex items-center justify-center disabled:opacity-30" style={fieldStyle}><ChevronLeft className="h-4 w-4" /></button>
-            <span className="text-xs px-2" style={{ color: 'rgba(255,255,255,0.6)' }}>{current} / {totalPages}</span>
+            <span className="text-xs px-2" style={{ color: 'var(--admin-fg-muted)' }}>{current} / {totalPages}</span>
             <button onClick={() => setPage(current + 1)} disabled={current === totalPages} aria-label="Page suivante" className="w-9 h-9 rounded-lg flex items-center justify-center disabled:opacity-30" style={fieldStyle}><ChevronRight className="h-4 w-4" /></button>
           </div>
         </nav>

@@ -72,15 +72,15 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
     <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(0,0,0,0.55)' }} onClick={onClose}>
       <aside role="dialog" aria-modal="true" aria-labelledby="ao-offer-title" onClick={e => e.stopPropagation()}
         className="h-full overflow-y-auto p-7 space-y-6"
-        style={{ width: 'min(760px, 100vw)', background: '#0d0f14', borderLeft: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.87)' }}>
+        style={{ width: 'min(760px, 100vw)', background: 'var(--admin-panel)', borderLeft: '1px solid var(--admin-line)', color: 'var(--admin-fg)' }}>
 
         <div className="flex items-start justify-between gap-4">
           <div>
-            <span className="text-xs font-medium px-2 py-1 rounded-md" style={{ color: STATUS_UI[published ? 'published' : row.status].color, background: 'rgba(255,255,255,0.05)' }}>
+            <span className="text-xs font-medium px-2 py-1 rounded-md" style={{ color: STATUS_UI[published ? 'published' : row.status].color, background: 'var(--admin-panel-raised)' }}>
               {STATUS_UI[published ? 'published' : row.status].label}
             </span>
-            <h2 id="ao-offer-title" className="text-xl font-bold text-white mt-3" style={{ textWrap: 'balance' }}>{row.title}</h2>
-            <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.45)' }}>
+            <h2 id="ao-offer-title" className="text-xl font-bold text-admin-fg mt-3" style={{ textWrap: 'balance' }}>{row.title}</h2>
+            <p className="text-xs mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
               Reçue le {formatDay(row.receivedAt)} de {row.senderName ? `${row.senderName} <${row.senderAddress}>` : row.senderAddress || 'expéditeur inconnu'}
               {row.subject ? ` · « ${row.subject} »` : ''}
               {row.sourceCount > 1 ? ` · reçue dans ${row.sourceCount} e-mails` : ''}
@@ -90,7 +90,7 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
         </div>
 
         {error && (
-          <p role="alert" className="text-sm p-3 rounded-lg" style={{ color: '#f87171', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>{error}</p>
+          <p role="alert" className="text-sm p-3 rounded-lg" style={{ color: '#b91c1c', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>{error}</p>
         )}
 
         {/* Données extraites (internes : client compris) */}
@@ -106,7 +106,7 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
           <section>
             <p style={fieldLabel}>Compétences</p>
             <div className="flex flex-wrap gap-1.5">
-              {row.skills.map(s => <span key={s} className="text-xs px-2 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.06)' }}>{s}</span>)}
+              {row.skills.map(s => <span key={s} className="text-xs px-2 py-1 rounded-md" style={{ background: 'var(--admin-panel-raised)' }}>{s}</span>)}
             </div>
           </section>
         )}
@@ -133,15 +133,15 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
 
         {/* Version publique, modifiable avant publication */}
         {draft && preview && !published && (
-          <section className="rounded-2xl p-5 space-y-4" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <section className="rounded-2xl p-5 space-y-4" style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
             <div>
-              <h3 className="font-semibold text-white">Version publiée sur le site</h3>
-              <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.45)' }}>
+              <h3 className="font-semibold text-admin-fg">Version publiée sur le site</h3>
+              <p className="text-xs mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
                 Le client est remplacé par un libellé générique et les coordonnées (noms, e-mails, téléphones, liens) sont retirées. Ces règles sont réappliquées à la publication.
               </p>
             </div>
             {preview.similarJobs.length > 0 && (
-              <div className="flex gap-2 text-sm p-3 rounded-lg" style={{ color: '#fbbf24', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
+              <div className="flex gap-2 text-sm p-3 rounded-lg" style={{ color: '#b45309', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
                 <AlertTriangle size={16} className="shrink-0 mt-0.5" />
                 <p>Une offre similaire est déjà en ligne : {preview.similarJobs.map(j => `« ${j.title} » (${j.location})`).join(', ')}. Vérifiez qu&apos;il ne s&apos;agit pas d&apos;un doublon.</p>
               </div>
@@ -177,7 +177,7 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
               </button>
               <button type="button" onClick={() => setDraft(null)} disabled={pending} style={secondaryButton}>Annuler</button>
             </div>
-            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
               Comme pour l&apos;import d&apos;offres, la publication déclenche la diffusion LinkedIn et le sourcing automatiques s&apos;ils sont activés.
             </p>
           </section>
