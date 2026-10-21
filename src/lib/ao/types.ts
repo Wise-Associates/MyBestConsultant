@@ -50,6 +50,8 @@ export interface AoOffer extends AoOfferFields {
 
 export interface AoEmail {
   $id: string
+  /** Boîte lue (sources.ts) : ses e-mails sont suivis à part de ceux des autres boîtes (même Message-ID compris). */
+  sourceId: string
   messageId: string
   uid: number
   fromAddress: string

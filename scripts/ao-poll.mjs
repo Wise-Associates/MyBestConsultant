@@ -146,7 +146,7 @@ async function poll() {
     return null
   }
   if (!body.configured) {
-    console.error(`${time()} ✗ Boîte AO non configurée côté serveur : AO_IMAP_USER et AO_IMAP_PASSWORD.`)
+    console.error(`${time()} ✗ Aucune boîte AO active côté serveur : npm run ao:migrate-sources (docs/adr/0005).`)
     return null
   }
   if (body.skipped) {
@@ -163,7 +163,11 @@ async function poll() {
     body.remaining ? `${body.remaining} en attente` : '',
   ].filter(Boolean)
   const mode = body.mode === 'reconcile' ? ' (rattrapage des 7 derniers jours)' : ''
-  console.log(`${time()} ✓ ${body.pending ? parts.join(' · ') : 'aucun nouvel e-mail'}${mode}`)
+  // Une boîte illisible (mot de passe, serveur) laisse « aucun nouvel e-mail » : la signaler comme un échec.
+  const mark = body.failedMailboxes ? '✗' : '✓'
+  const failures = body.failedMailboxes ? ` — ${plural(body.failedMailboxes, 'boîte')} illisible${body.failedMailboxes > 1 ? 's' : ''}` : ''
+  const unread = body.unentitled ? ` — ${plural(body.unentitled, 'organisation')} sans abonnement actif` : ''
+  console.log(`${time()} ${mark} ${body.pending ? parts.join(' · ') : 'aucun nouvel e-mail'}${mode}${failures}${unread}`)
   for (const error of body.errors ?? []) console.log(`           ↳ ${error}`)
   // IA indisponible (crédits épuisés, clé refusée) : relancer plus tôt ne changerait rien.
   if (body.aiUnavailable) console.log('           ↳ IA indisponible : les e-mails attendent (crédits à recharger ou clé à ajouter dans Config IA).')
