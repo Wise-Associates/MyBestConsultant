@@ -260,7 +260,7 @@ describe('report faute de temps', () => {
 describe('filtres', () => {
   const row = (over: Partial<AoOfferRow> = {}): AoOfferRow => ({
     ...offer(), $id: 'o1', createdAt: '2026-10-10T08:00:00.000Z', fingerprint: 'f', emailId: 'e1', status: 'to_review',
-    jobId: null, sourceCount: 1, senderAddress: 'ao@esn.fr', senderName: 'ESN Conseil', forwardedBy: '', attachments: [], subject: 'AO React', receivedAt: '2026-10-10T08:00:00.000Z',
+    jobId: null, sourceCount: 1, senderAddress: 'ao@esn.fr', senderName: 'ESN Conseil', forwardedBy: '', attachments: [], commentCount: 0, subject: 'AO React', receivedAt: '2026-10-10T08:00:00.000Z',
     ...over,
   })
   const rows = [row(), row({ $id: 'o2', location: 'Lyon', contractType: 'cdi', salary: 55000, status: 'published', receivedAt: '2026-10-15T08:00:00.000Z' })]
