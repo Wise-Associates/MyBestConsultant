@@ -1,4 +1,5 @@
 import { LEGAL_SUFFIXES } from './fingerprint'
+import { identifyingLabel, type Sender } from './origin'
 import type { AoOfferFields } from './types'
 
 // Anonymisation des offres publiées depuis AO Offers : le client final et l'intermédiaire qui a envoyé
@@ -18,12 +19,6 @@ const PHONE = /(?:(?:\+|00)33\s?\(?0?\)?\s?|\b0)[1-9](?:[\s.-]?\d{2}){4}\b|(?:\+
 // Préfixe « ### » admis : les tableaux joints donnent une section titrée par colonne (spreadsheet.ts).
 const CONTACT_LINE = /^\s*(?:#{1,6}\s*)?[-*•]?\s*\**\s*(contact|interlocut\w*|responsable du recrutement|recruteur|t[ée]l(?:[ée]phone)?\.?|mobile|portable|e-?mail|courriel|mail|r[ée]f(?:[ée]rence)?\.?\s*interne)\b.*$/gim
 
-/** Messageries grand public et notre propre domaine : leur nom n'identifie pas l'expéditeur. */
-const NON_IDENTIFYING_DOMAINS = new Set([
-  'gmail', 'googlemail', 'outlook', 'hotmail', 'live', 'msn', 'yahoo', 'icloud', 'me', 'aol', 'gmx', 'proton', 'protonmail',
-  'orange', 'wanadoo', 'free', 'sfr', 'neuf', 'laposte', 'bbox', 'yopmail', 'wise-associates',
-])
-
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
 interface Token { start: number; end: number; word: string }
@@ -35,22 +30,28 @@ function tokens(text: string): Token[] {
 const words = (text: string) => tokens(text).map(t => t.word)
 
 /**
- * Noms à masquer, sous forme de suites de mots normalisés (casse, accents et ponctuation ignorés) :
- * le client tel qu'extrait, sans forme juridique, son sigle entre parenthèses, puis le nom et le domaine
- * de l'expéditeur (intermédiaire ou interlocuteur).
+ * Noms à masquer, sous forme de suites de mots normalisés (casse, accents et ponctuation ignorés) : chaque client
+ * (celui de l'offre et ceux que cite l'appel d'offres) tel qu'extrait, sans forme juridique, son sigle entre
+ * parenthèses, puis le nom et le domaine de chaque expéditeur (celui de l'e-mail et celui du message d'origine).
  */
-export function namesToHide(companyName: string, sender?: { name?: string; address?: string }): string[][] {
+export function namesToHide(clients: string[], ...senders: Partial<Sender>[]): string[][] {
   const variants: string[][] = []
-  const full = words(companyName)
-  variants.push(full, full.filter(w => !LEGAL_SUFFIXES.has(w)))
-  for (const m of companyName.matchAll(/\(([^)]+)\)/g)) variants.push(words(m[1]))
-  variants.push(words(companyName.replace(/\([^)]*\)/g, ' ')).filter(w => !LEGAL_SUFFIXES.has(w)))
-  // Un nom d'expéditeur d'un seul mot (« Recrutement », « Contact ») est trop générique pour être masqué partout.
-  const senderName = words(sender?.name ?? '')
-  if (senderName.length >= 2) variants.push(senderName)
-  const labels = sender?.address?.split('@')[1]?.toLowerCase().split('.') ?? []
-  const domain = labels.length >= 2 ? labels[labels.length - 2] : ''
-  if (domain && !NON_IDENTIFYING_DOMAINS.has(domain)) variants.push(words(domain))
+  for (const client of clients) {
+    const full = words(client)
+    variants.push(full, full.filter(w => !LEGAL_SUFFIXES.has(w)))
+    for (const m of client.matchAll(/\(([^)]+)\)/g)) variants.push(words(m[1]))
+    variants.push(words(client.replace(/\([^)]*\)/g, ' ')).filter(w => !LEGAL_SUFFIXES.has(w)))
+  }
+  for (const sender of senders) {
+    // Un nom d'expéditeur d'un seul mot (« Recrutement », « Contact ») est trop générique pour être masqué partout.
+    const senderName = words(sender.name ?? '')
+    if (senderName.length >= 2) variants.push(senderName)
+    // Outlook écrit « Dupont, Marie » ; le texte, lui, dit « Marie Dupont ».
+    const [last, first] = (sender.name ?? '').split(',', 2)
+    if (first && words(`${first} ${last}`).length >= 2) variants.push(words(`${first} ${last}`))
+    const domain = identifyingLabel(sender.address ?? '')
+    if (domain) variants.push(words(domain))
+  }
 
   const unique = new Map(variants.filter(v => v.join('').length >= 2).map(v => [v.join(' '), v]))
   return [...unique.values()].sort((a, b) => b.length - a.length) // les noms les plus longs d'abord

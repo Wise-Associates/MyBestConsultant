@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { contractOf, parseNumber, remoteOf } from '@/lib/job-import'
-import type { AoOfferFields } from './types'
+import type { ExtractedOffer } from './types'
 
 // La réponse de l'IA est une donnée non fiable : on la valide champ par champ, on normalise ce qui peut
 // l'être (contrat, télétravail, montant, compétences) et on écarte les offres sans titre.
@@ -33,19 +33,44 @@ const OfferSchema = z.object({
   description: text(20_000),
   duration: shortText(100),
   startDate: shortText(100),
+  deadline: shortText(100),
+  endClient: shortText(200),
   experience: shortText(100),
 })
 
 /**
  * Offre validée et normalisée à partir de champs bruts (réponse de l'IA, ligne de tableau) ; null sans titre exploitable.
  */
-export function parseOfferFields(raw: Record<string, unknown>): AoOfferFields | null {
+export function parseOfferFields(raw: Record<string, unknown>): ExtractedOffer | null {
   const parsed = OfferSchema.safeParse(raw)
   return parsed.success ? parsed.data : null
 }
 
+// « 30/10/2026 », « 30.10.26 », « 2026-10-30 » ; une date écrite en toutes lettres (« fin octobre ») n'est pas comparée.
+const NUMERIC_DATE = /\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4}|\d{2})\b|\b(\d{4})-(\d{2})-(\d{2})\b/
+
+function dateKey(value: string): number | null {
+  const m = value.match(NUMERIC_DATE)
+  if (!m) return null
+  const [year, month, day] = m[4] ? [+m[4], +m[5], +m[6]] : [m[3].length === 2 ? 2000 + +m[3] : +m[3], +m[2], +m[1]]
+  return month >= 1 && month <= 12 && day >= 1 && day <= 31 ? year * 10_000 + month * 100 + day : null
+}
+
+/**
+ * Date limite d'un e-mail, tirée de celles de ses offres (une seule est enregistrée, sur l'e-mail) : la plus proche
+ * des dates lisibles — répondre trop tôt ne fait rien perdre —, sinon la première indiquée ; '' si aucune.
+ */
+export function emailDeadline(deadlines: string[]): string {
+  const given = deadlines.map(d => d.trim()).filter(Boolean)
+  const dated = given.flatMap(value => {
+    const key = dateKey(value)
+    return key === null ? [] : [{ value, key }]
+  })
+  return dated.sort((a, b) => a.key - b.key)[0]?.value ?? given[0] ?? ''
+}
+
 export interface ParsedOffers {
-  offers: AoOfferFields[]
+  offers: ExtractedOffer[]
   /** Nombre d'éléments renvoyés par l'IA mais écartés (pas d'objet, pas de titre…). */
   rejected: number
 }
@@ -71,7 +96,7 @@ export function parseOffersJson(raw: string): ParsedOffers {
   }
   if (!Array.isArray(data)) throw new Error('Réponse IA invalide : attendu un tableau')
 
-  const offers: AoOfferFields[] = []
+  const offers: ExtractedOffer[] = []
   let rejected = 0
   for (const item of data) {
     const parsed = OfferSchema.safeParse(item && typeof item === 'object' ? item : null)
