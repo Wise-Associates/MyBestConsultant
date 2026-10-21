@@ -112,6 +112,13 @@ export async function settledMessageIds(sourceId: string, messageIds: string[], 
   return settled
 }
 
+/** true si la boîte a au moins un e-mail suivi (sinon : boîte nouvelle, ou historique effacé → lecture complète). */
+export async function hasAoEmails(sourceId: string): Promise<boolean> {
+  const { databases } = createAdminClient()
+  const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_EMAILS, [Query.equal('sourceId', sourceId), Query.limit(1)])
+  return res.documents.length > 0
+}
+
 /** E-mail AO par identifiant ; null s'il n'existe pas (toute autre erreur est remontée). */
 export async function getAoEmail(id: string): Promise<AoEmail | null> {
   const { databases } = createAdminClient()
