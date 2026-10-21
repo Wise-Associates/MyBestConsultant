@@ -10,13 +10,13 @@ import { parseSender } from '@/lib/ao/origin'
 import { getAoSource } from '@/lib/ao/sources'
 import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 import { loadPlatformAoView } from '@/lib/ao/platform-view'
-import { createAoComment, deleteAoComment, getAoComment, listAoComments, type AoComment } from '@/lib/ao/comments'
+import { createAoComment, deleteAoComment, deleteAoCommentsOfOffer, getAoComment, listAoComments, type AoComment } from '@/lib/ao/comments'
 import { canDeleteComment, parseCommentBody } from '@/lib/ao/comment-input'
 import type { AoOfferRow } from '@/lib/ao/filters'
 import { descriptionForPublication } from '@/lib/description-sections'
 import { cityKey, titleKey } from '@/lib/ao/fingerprint'
 import { manualRetryPatch } from '@/lib/ao/attempts'
-import { getAoEmail, getAoOffer, getAoOfferSourcing, listAoEmailsByIds, listAoOfferDetails, saveAoOfferSourcing, updateAoEmail, updateAoOffer } from '@/lib/ao/repo'
+import { deleteAoOfferAndDetails, getAoEmail, getAoOffer, getAoOfferSourcing, listAoEmailsByIds, listAoOfferDetails, saveAoOfferSourcing, updateAoEmail, updateAoOffer } from '@/lib/ao/repo'
 import { candidateNames, matchCandidatesForOffer } from '@/lib/sourcing-core'
 import { bestMatches } from '@/lib/sourcing-rules'
 import { getJobMatches, runPoolMatching, type JobMatchResult } from '@/lib/matching-core'
@@ -362,5 +362,30 @@ export async function deleteAoOfferComment(commentId: string): Promise<{ error?:
     return {}
   } catch (err) {
     return { error: commentsError(err, 'Suppression impossible') }
+  }
+}
+
+// ── Suppression d'une offre ──────────────────────────────────────
+
+/**
+ * Supprime définitivement une offre AO de la plateforme, avec ses commentaires et ses détails. Refusé pour une offre
+ * publiée : son offre publique resterait en ligne sans son appel d'offres. L'e-mail reste enregistré, l'offre n'est
+ * donc pas recréée par la synchronisation suivante (« Ignorer », lui, la garde en la masquant).
+ */
+export async function deleteAoOffer(id: string): Promise<{ error?: string }> {
+  await requireAdmin()
+  const parsed = DocumentId.safeParse(id)
+  if (!parsed.success) return { error: 'Offre introuvable : rechargez la page.' }
+  try {
+    const offer = await platformOffer(parsed.data)
+    if (!offer) return { error: 'Offre introuvable : rechargez la page.' }
+    if (offer.status === 'published' || offer.jobId) {
+      return { error: 'Offre publiée : retirez d\'abord l\'offre publique dans « Offres », sinon elle resterait en ligne sans son appel d\'offres.' }
+    }
+    await deleteAoCommentsOfOffer(offer.$id)
+    await deleteAoOfferAndDetails(offer.$id)
+    return {}
+  } catch (err) {
+    return { error: `Suppression impossible : ${errorOf(err)}` }
   }
 }

@@ -83,3 +83,16 @@ export async function deleteAoComment(id: string): Promise<void> {
   const { databases } = createAdminClient()
   await databases.deleteDocument(DB_ID, collection(), id)
 }
+
+/** Supprime tous les commentaires d'une offre (offre supprimée) ; rien à faire sans la collection des commentaires. */
+export async function deleteAoCommentsOfOffer(offerId: string): Promise<void> {
+  if (!COLLECTIONS.AO_COMMENTS) return
+  const { databases } = createAdminClient()
+  for (;;) {
+    const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_COMMENTS, [Query.equal('offerId', offerId), Query.select(['$id']), Query.limit(100)])
+    if (!res.documents.length) return
+    for (const doc of res.documents) {
+      await databases.deleteDocument(DB_ID, COLLECTIONS.AO_COMMENTS, doc.$id).catch(err => { if ((err as { code?: number }).code !== 404) throw err })
+    }
+  }
+}
