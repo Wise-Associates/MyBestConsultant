@@ -37,6 +37,16 @@
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
+  /* Back-office sombre : classes bg-admin-panel, border-admin-line, text-admin-fg-muted… (valeurs dans :root) */
+  --color-admin-bg: var(--admin-bg);
+  --color-admin-header: var(--admin-header);
+  --color-admin-panel: var(--admin-panel);
+  --color-admin-panel-raised: var(--admin-panel-raised);
+  --color-admin-line: var(--admin-line);
+  --color-admin-fg: var(--admin-fg);
+  --color-admin-fg-muted: var(--admin-fg-muted);
+  --color-admin-fg-subtle: var(--admin-fg-subtle);
+  --color-admin-track: var(--admin-track);
 }
 
 /* ── MyBestConsultant Design Tokens ──────────────────────────────
@@ -93,6 +103,20 @@
   --border-radius: 6px;
   --font-heading: 'Inter', system-ui, sans-serif;
   --font-body: 'Inter', system-ui, sans-serif;
+
+  /* Back-office (/admin) : thème sombre commun aux pages, cartes et graphiques. Indépendant du thème du site
+     public (--color-* ci-dessus, que l'admin personnalise) : changer l'apparence du site ne change pas l'admin.
+     Contraste sur --admin-bg : fg ≈ 15:1, fg-muted ≈ 6:1 (texte secondaire) ; fg-subtle < 4,5:1, donc réservé
+     aux icônes et décors, jamais au texte. */
+  --admin-bg: #0F1117;
+  --admin-header: #13151E;
+  --admin-panel: rgba(255, 255, 255, 0.03);
+  --admin-panel-raised: rgba(255, 255, 255, 0.05);
+  --admin-line: rgba(255, 255, 255, 0.07);
+  --admin-fg: rgba(255, 255, 255, 0.87);
+  --admin-fg-muted: rgba(255, 255, 255, 0.55);
+  --admin-fg-subtle: rgba(255, 255, 255, 0.35);
+  --admin-track: rgba(255, 255, 255, 0.06);
 }
 
 /* ── Typography — driven by design system CSS vars ───────────── */
