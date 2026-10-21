@@ -37,9 +37,8 @@
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
-  /* Back-office : classes bg-admin-panel, border-admin-line, text-admin-fg-muted… (valeurs dans :root) */
+  /* Back-office : classes bg-admin-panel, border-admin-line, text-admin-fg-muted… (valeurs dans .admin-light) */
   --color-admin-bg: var(--admin-bg);
-  --color-admin-header: var(--admin-header);
   --color-admin-panel: var(--admin-panel);
   --color-admin-panel-raised: var(--admin-panel-raised);
   --color-admin-hover: var(--admin-hover);
@@ -48,7 +47,6 @@
   --color-admin-fg: var(--admin-fg);
   --color-admin-fg-muted: var(--admin-fg-muted);
   --color-admin-fg-subtle: var(--admin-fg-subtle);
-  --color-admin-track: var(--admin-track);
 }
 
 /* ── MyBestConsultant Design Tokens ──────────────────────────────
@@ -105,14 +103,16 @@
   --border-radius: 6px;
   --font-heading: 'Inter', system-ui, sans-serif;
   --font-body: 'Inter', system-ui, sans-serif;
+}
 
-  /* Back-office (/admin) : thème clair commun à toutes les pages, cartes et graphiques. Indépendant du thème du
-     site public (--color-* ci-dessus, que l'admin personnalise) : changer l'apparence du site ne change pas l'admin.
-     Texte anthracite de la marque. Contraste sur --admin-panel (blanc) : fg ≈ 14:1, fg-muted ≈ 5,3:1 (texte
-     secondaire) ; fg-subtle ≈ 2,6:1, donc réservé aux icônes et décors, jamais au texte. Couleurs d'état : nuances
-     700 de Tailwind (#047857, #1d4ed8, #b91c1c, #b45309, #6d28d9), lisibles sur blanc. */
+/* Back-office (/admin) en clair : seule la page AO Offers porte cette classe, le reste de l'admin reste sombre
+   (couleurs écrites dans chaque page). Les tokens --admin-* n'existent qu'à l'intérieur : hors de .admin-light,
+   bg-admin-panel ou text-admin-fg ne donnent rien. Indépendant du thème du site public (--color-*, que l'admin
+   personnalise). Contraste sur --admin-panel (blanc) : fg ≈ 14:1, fg-muted ≈ 5,3:1 (texte secondaire) ;
+   fg-subtle ≈ 2,6:1, donc réservé aux icônes et décors, jamais au texte. Couleurs d'état : nuances 700 de Tailwind
+   (#047857, #1d4ed8, #b91c1c, #b45309, #6d28d9), lisibles sur blanc. */
+.admin-light {
   --admin-bg: #F5F5F6;
-  --admin-header: #FFFFFF;
   --admin-panel: #FFFFFF;
   --admin-panel-raised: #F0F0F2;
   --admin-hover: #E9E9EC;
@@ -121,7 +121,8 @@
   --admin-fg: #2C2C2E;
   --admin-fg-muted: #6B6B70;
   --admin-fg-subtle: #A1A1A6;
-  --admin-track: #ECECEF;
+  background: var(--admin-bg);
+  color: var(--admin-fg);
 }
 
 /* ── Typography — driven by design system CSS vars ───────────── */

@@ -43,9 +43,9 @@ const FIELD_STYLE: React.CSSProperties = {
   width: '100%',
   padding: '10px 14px',
   borderRadius: 10,
-  border: '1.5px solid var(--admin-line)',
-  background: 'var(--admin-panel-raised)',
-  color: 'var(--admin-fg)',
+  border: '1.5px solid rgba(255,255,255,0.1)',
+  background: 'rgba(255,255,255,0.05)',
+  color: 'rgba(255,255,255,0.85)',
   fontSize: 14,
   outline: 'none',
   transition: 'border-color 0.15s',
@@ -54,7 +54,7 @@ const SELECT_STYLE: React.CSSProperties = {
   ...FIELD_STYLE,
   cursor: 'pointer',
   appearance: 'none',
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B6B70' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.4)' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
   backgroundRepeat: 'no-repeat',
   backgroundPosition: 'right 14px center',
   paddingRight: 36,
@@ -65,7 +65,7 @@ const LABEL_STYLE: React.CSSProperties = {
   fontWeight: 600,
   letterSpacing: '0.08em',
   textTransform: 'uppercase',
-  color: 'var(--admin-fg-muted)',
+  color: 'rgba(255,255,255,0.35)',
   marginBottom: 6,
 }
 
@@ -116,19 +116,19 @@ export function JobEditModal({ job, onClose, onSaved }: Props) {
         className="relative w-full max-w-2xl rounded-2xl overflow-hidden flex flex-col"
         style={{
           background: '#0f172a',
-          border: '1px solid var(--admin-line)',
+          border: '1px solid rgba(255,255,255,0.09)',
           boxShadow: '0 32px 80px rgba(0,0,0,0.5)',
           maxHeight: '90vh',
         }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-7 py-5"
-          style={{ borderBottom: '1px solid var(--admin-line)' }}>
+          style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <div>
-            <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--admin-fg-muted)', textTransform: 'uppercase', marginBottom: 2 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 2 }}>
               Modifier l&apos;offre
             </p>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--admin-fg)', lineHeight: 1.2 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'white', lineHeight: 1.2 }}>
               {job.title}
             </h2>
           </div>
@@ -138,9 +138,9 @@ export function JobEditModal({ job, onClose, onSaved }: Props) {
               onClick={() => set('isActive', !form.isActive)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
               style={{
-                background: form.isActive ? 'rgba(52,211,153,0.12)' : 'var(--admin-panel-raised)',
-                color: form.isActive ? '#047857' : 'var(--admin-fg-muted)',
-                border: `1px solid ${form.isActive ? 'rgba(52,211,153,0.25)' : 'var(--admin-line)'}`,
+                background: form.isActive ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.06)',
+                color: form.isActive ? '#34d399' : 'rgba(255,255,255,0.35)',
+                border: `1px solid ${form.isActive ? 'rgba(52,211,153,0.25)' : 'rgba(255,255,255,0.08)'}`,
               }}
             >
               {form.isActive
@@ -150,7 +150,7 @@ export function JobEditModal({ job, onClose, onSaved }: Props) {
             </button>
             <button onClick={() => !pending && onClose()}
               className="p-2 rounded-lg transition-opacity hover:opacity-60"
-              style={{ color: 'var(--admin-fg-muted)' }}>
+              style={{ color: 'rgba(255,255,255,0.3)' }}>
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -168,7 +168,7 @@ export function JobEditModal({ job, onClose, onSaved }: Props) {
                 onChange={e => set('title', e.target.value)}
                 style={FIELD_STYLE}
                 onFocus={e => (e.target.style.borderColor = 'rgba(184,134,11,0.6)')}
-                onBlur={e => (e.target.style.borderColor = 'var(--admin-line)')}
+                onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
               />
             </div>
             <div>
@@ -179,7 +179,7 @@ export function JobEditModal({ job, onClose, onSaved }: Props) {
                 placeholder="Nom de l'entreprise…"
                 style={FIELD_STYLE}
                 onFocus={e => (e.target.style.borderColor = 'rgba(184,134,11,0.6)')}
-                onBlur={e => (e.target.style.borderColor = 'var(--admin-line)')}
+                onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
               />
             </div>
           </div>
@@ -193,7 +193,7 @@ export function JobEditModal({ job, onClose, onSaved }: Props) {
                 onChange={e => set('location', e.target.value)}
                 style={FIELD_STYLE}
                 onFocus={e => (e.target.style.borderColor = 'rgba(184,134,11,0.6)')}
-                onBlur={e => (e.target.style.borderColor = 'var(--admin-line)')}
+                onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
               />
             </div>
             <div>
@@ -231,7 +231,7 @@ export function JobEditModal({ job, onClose, onSaved }: Props) {
                 placeholder="Ex: 650"
                 style={FIELD_STYLE}
                 onFocus={e => (e.target.style.borderColor = 'rgba(184,134,11,0.6)')}
-                onBlur={e => (e.target.style.borderColor = 'var(--admin-line)')}
+                onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
               />
             </div>
             <div>
@@ -242,9 +242,9 @@ export function JobEditModal({ job, onClose, onSaved }: Props) {
                 onChange={e => set('expiresAt', e.target.value ? new Date(`${e.target.value}T23:59:59`).toISOString() : '')}
                 style={{ ...FIELD_STYLE, colorScheme: 'dark' }}
                 onFocus={e => (e.target.style.borderColor = 'rgba(184,134,11,0.6)')}
-                onBlur={e => (e.target.style.borderColor = 'var(--admin-line)')}
+                onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
               />
-              <p style={{ fontSize: 10, color: 'var(--admin-fg-muted)', marginTop: 4 }}>
+              <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 4 }}>
                 Vide = pas de désactivation automatique. Modifiable ici uniquement (admin).
               </p>
             </div>
@@ -274,7 +274,7 @@ export function JobEditModal({ job, onClose, onSaved }: Props) {
                   placeholder="Ajouter une compétence…"
                   style={{ ...FIELD_STYLE, flex: 1 }}
                   onFocus={e => (e.target.style.borderColor = 'rgba(184,134,11,0.6)')}
-                  onBlur={e => (e.target.style.borderColor = 'var(--admin-line)')}
+                  onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
                 />
                 <button onClick={addSkill}
                   className="px-3 rounded-lg transition-opacity hover:opacity-70"
@@ -294,7 +294,7 @@ export function JobEditModal({ job, onClose, onSaved }: Props) {
               rows={8}
               style={{ ...FIELD_STYLE, resize: 'vertical', lineHeight: 1.7 }}
               onFocus={e => (e.target.style.borderColor = 'rgba(184,134,11,0.6)')}
-              onBlur={e => (e.target.style.borderColor = 'var(--admin-line)')}
+              onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
             />
           </div>
 
@@ -308,10 +308,10 @@ export function JobEditModal({ job, onClose, onSaved }: Props) {
 
         {/* Footer */}
         <div className="px-7 py-5 flex items-center justify-between"
-          style={{ borderTop: '1px solid var(--admin-line)' }}>
+          style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
           <button onClick={() => !pending && onClose()}
             className="px-5 py-2.5 rounded-xl text-sm font-medium transition-opacity hover:opacity-60"
-            style={{ color: 'var(--admin-fg-muted)', border: '1px solid var(--admin-line)' }}>
+            style={{ color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}>
             Annuler
           </button>
           <button
