@@ -2,7 +2,7 @@ import { norm, readSheets } from '@/lib/job-import'
 import { MAX_ATTACHMENT_BYTES, MAX_UNCOMPRESSED_BYTES, zipFitsWithin } from './extractors/office'
 import { formatOf, type Attachment } from './extractors/types'
 import { parseOfferFields } from './parse'
-import type { AoOfferFields } from './types'
+import type { ExtractedOffer } from './types'
 
 // Tableaux d'offres joints aux e-mails (tableau de suivi d'AO d'un client, export de la page AO Offers…) :
 // chaque ligne devient une offre, colonne par colonne, SANS IA. C'est instantané, gratuit, et sans limite de
@@ -38,7 +38,7 @@ function contentMatches(format: string, content: Buffer): boolean {
   return !start.equals(ZIP_MAGIC) && !content.subarray(0, 8).equals(CFB_MAGIC) && content[0] !== 0x3c && !content.includes(0)
 }
 
-type Column = 'salary' | 'ignored' | 'remote' | 'location' | 'contract' | 'duration' | 'start' | 'experience' | 'skills' | 'company' | 'description' | 'title'
+type Column = 'salary' | 'deadline' | 'ignored' | 'remote' | 'location' | 'contract' | 'duration' | 'start' | 'experience' | 'skills' | 'company' | 'description' | 'title'
 
 /**
  * Noms de colonnes reconnus, normalisés par `norm` (minuscules, sans accents ni parenthèses), essayés DANS CET
@@ -48,10 +48,11 @@ type Column = 'salary' | 'ignored' | 'remote' | 'location' | 'contract' | 'durat
  */
 const COLUMNS: [Column, string[]][] = [
   ['salary', ['tjm', 'taux journalier', 'tarif', 'budget', 'salaire', 'remuneration', 'salary', 'prix']],
+  ['deadline', ['date limite', 'date de cloture', 'cloture', 'echeance', 'date de reponse', 'deadline']],
   // Suivi interne du tableau (numéro, statut, candidats présentés, notes…) et personnes ou coordonnées : jamais
   // repris (données personnelles). Testé avant l'intitulé : n'y mettre aucun mot d'un en-tête d'intitulé.
   ['ignored', ['reference', 'ref', 'n ao', 'numero', 'id', 'statut', 'candidat', 'candidats', 'candidature', 'candidatures', 'positionne',
-    'positionnes', 'note', 'notes', 'commentaire', 'commentaires', 'date de reception', 'date de cloture', 'date limite', 'taux', 'priorite',
+    'positionnes', 'note', 'notes', 'commentaire', 'commentaires', 'date de reception', 'taux', 'priorite',
     'responsable', 'commercial', 'interlocuteur', 'interlocuteurs', 'manager', 'referent', 'demandeur', 'acheteur', 'contact',
     'coordonnees', 'email', 'e mail', 'mail', 'telephone', 'tel', 'mobile', 'portable', 'linkedin']],
   ['remote', ['teletravail', 'tt', 'remote', 'rythme', 'presentiel', 'mode de travail', 'organisation du travail']],
@@ -92,7 +93,7 @@ function findHeader(rows: string[][]): Header | null {
   return null
 }
 
-function offerOf(row: string[], { columns }: Header): AoOfferFields | null {
+function offerOf(row: string[], { columns }: Header): ExtractedOffer | null {
   const cell = (col: number) => String(row[col] ?? '').trim()
   const first = (column: Column) => {
     const found = columns.find(c => c.column === column)
@@ -113,12 +114,13 @@ function offerOf(row: string[], { columns }: Header): AoOfferFields | null {
     description: descriptions.length === 1 ? descriptions[0].value : descriptions.map(d => `### ${d.label}\n${d.value}`).join('\n\n'),
     duration: first('duration'),
     startDate: first('start'),
+    deadline: first('deadline'),
     experience: first('experience'),
   })
 }
 
 export interface TableOffers {
-  offers: AoOfferFields[]
+  offers: ExtractedOffer[]
   /** Lignes non vides écartées, faute d'intitulé exploitable. */
   skippedRows: number
   /** true : le tableau dépasse MAX_TABLE_ROWS lignes, la suite n'a pas été lue. */
@@ -128,7 +130,7 @@ export interface TableOffers {
 /** Offres des feuilles d'un classeur (lignes de cellules texte) ; null si aucune feuille n'est un tableau d'offres. */
 export function tableOffersOf(sheets: string[][][]): TableOffers | null {
   let recognized = false
-  const offers: AoOfferFields[] = []
+  const offers: ExtractedOffer[] = []
   let skippedRows = 0
   let rowsRead = 0
   for (const rows of sheets) {

@@ -25,6 +25,15 @@ export interface AoOfferFields {
   experience: string
 }
 
+/**
+ * Offre lue dans un e-mail (par l'IA ou dans un tableau joint) : ses champs, plus la date limite de réponse et le
+ * client final cité. Ceux-ci sont gardés sur l'e-mail (AoEmail), pas sur l'offre : ao_offers est à 16/16 attributs.
+ */
+export interface ExtractedOffer extends AoOfferFields {
+  deadline: string
+  endClient: string
+}
+
 export interface AoOffer extends AoOfferFields {
   $id: string
   createdAt: string
@@ -45,6 +54,15 @@ export interface AoEmail {
   uid: number
   fromAddress: string
   fromName: string
+  /**
+   * Expéditeur du message d'origine d'un e-mail transféré, sinon celui de l'e-mail, sous la forme « Nom <adresse> »
+   * (origin.ts : formatSender / parseSender) ; vide s'il est des nôtres. Un seul attribut : ao_emails est à 16 au plus.
+   */
+  origin: string
+  /** Date limite de réponse à l'appel d'offres (la plus proche de ses offres) : information interne, jamais publiée. */
+  deadline: string
+  /** Clients cités par l'appel d'offres (tableau, texte) : masqués à la publication, comme le client de l'offre. */
+  citedClients: string[]
   subject: string
   receivedAt: string
   /** Noms des pièces jointes lues (pas leur contenu : il n'est pas conservé). */

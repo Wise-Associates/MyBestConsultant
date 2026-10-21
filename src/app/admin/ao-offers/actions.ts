@@ -6,6 +6,7 @@ import { requireAdmin } from '@/lib/appwrite/auth'
 import { getActiveJobs } from '@/lib/appwrite/jobs'
 import { adminJobExists, createAdminJob } from '@/lib/admin-job'
 import { DEFAULT_CLIENT_LABEL, namesToHide, revealsName, toPublicOffer } from '@/lib/ao/anonymize'
+import { parseSender } from '@/lib/ao/origin'
 import { descriptionForPublication } from '@/lib/description-sections'
 import { cityKey, titleKey } from '@/lib/ao/fingerprint'
 import { manualRetryPatch } from '@/lib/ao/attempts'
@@ -19,10 +20,17 @@ const ADMIN_TENANT_ID = 'admin'
 
 const errorOf = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
-/** Noms à masquer : client extrait, sigle, et nom / domaine de l'expéditeur de l'appel d'offres. */
+/**
+ * Noms à masquer : client de l'offre et clients cités par l'appel d'offres (avec leurs sigles), nom et domaine de
+ * l'expéditeur de l'e-mail et de celui du message d'origine.
+ */
 async function hiddenNamesFor(offer: AoOffer): Promise<string[][]> {
   const email = (await listAoEmailsByIds([offer.emailId])).get(offer.emailId)
-  return namesToHide(offer.companyName, { name: email?.fromName, address: email?.fromAddress })
+  return namesToHide(
+    [offer.companyName, ...(email?.citedClients ?? [])],
+    { name: email?.fromName, address: email?.fromAddress },
+    parseSender(email?.origin ?? '') ?? {},
+  )
 }
 
 export async function syncAoInboxNow(): Promise<{ report?: AoSyncReport; error?: string }> {

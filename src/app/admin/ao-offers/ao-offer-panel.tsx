@@ -66,6 +66,7 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
     ['Durée', row.duration || '—'],
     ['Démarrage', row.startDate || '—'],
     ['Expérience', row.experience || '—'],
+    ['Date limite', row.deadline || '—'],
   ]
 
   return (
@@ -82,6 +83,7 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
             <h2 id="ao-offer-title" className="text-xl font-bold text-admin-fg mt-3" style={{ textWrap: 'balance' }}>{row.title}</h2>
             <p className="text-xs mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
               Reçue le {formatDay(row.receivedAt)} de {row.senderName ? `${row.senderName} <${row.senderAddress}>` : row.senderAddress || 'expéditeur inconnu'}
+              {row.forwardedBy ? `, transférée par ${row.forwardedBy}` : ''}
               {row.subject ? ` · « ${row.subject} »` : ''}
               {row.sourceCount > 1 ? ` · reçue dans ${row.sourceCount} e-mails` : ''}
             </p>

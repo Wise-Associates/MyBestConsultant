@@ -5,8 +5,13 @@ import type { AoContract, AoOffer, AoOfferStatus, AoRemote } from './types'
 
 /** Offre enrichie des informations de l'e-mail d'origine. */
 export interface AoOfferRow extends AoOffer {
+  /** Expéditeur du message d'origine (e-mail transféré), sinon de l'e-mail. */
   senderAddress: string
   senderName: string
+  /** Collaborateur qui a transféré l'e-mail à la boîte AO ; vide si l'expéditeur l'a envoyé directement. */
+  forwardedBy: string
+  /** Date limite de réponse, enregistrée sur l'e-mail d'origine. */
+  deadline: string
   subject: string
   receivedAt: string
 }

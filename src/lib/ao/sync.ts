@@ -4,7 +4,8 @@ import { buildEmailContent, extractOffersFromEmail } from './extract'
 import { AiUnavailable, RetryLater, type ExtractionContext, type PassState } from './extractors/types'
 import { DUPLICATE_WINDOW_DAYS, offerFingerprint } from './fingerprint'
 import { aoInboxSettings, withAoInbox, type AoInbox, type AoInboxSettings, type InboxEnvelope } from './imap'
-import { TruncatedAnswerError } from './parse'
+import { citedClients, formatSender, originalSender, senderCompany } from './origin'
+import { emailDeadline, TruncatedAnswerError } from './parse'
 import {
   createAoEmail, createAoOffer, findAoDuplicate, findAoEmailByMessageId,
   incrementAoSources, listRetryableAoEmails, nextStepFor, purgeAoRecords, settledMessageIds, updateAoEmail,
@@ -14,7 +15,7 @@ import { MAX_TABLE_ROWS } from './spreadsheet'
 import {
   acquireSyncLock, checkpointIdFor, getCheckpoint, releaseDailyVisionCall, releaseSyncLock, saveCheckpoint, takeDailyTableOffers, takeDailyVisionCall,
 } from './state'
-import type { AoEmail, AoOfferFields } from './types'
+import type { AoEmail, ExtractedOffer } from './types'
 
 // Lecture planifiée de la boîte AO (route /api/cron/ao-inbox appelée par un planificateur, ou bouton
 // « Synchroniser » de l'admin). Un seul passage à la fois (verrou, state.ts). Chaque passage ne lit que le
@@ -215,11 +216,13 @@ async function processEnvelope(
   try {
     if (envelope.size > MAX_MESSAGE_BYTES) throw new PermanentError('Message trop volumineux (plus de 25 Mo) : à traiter à la main.')
     const message = await inbox.read(envelope.uid)
+    const origin = originalSender(message)
     // Enregistré avant la lecture des pièces jointes : un e-mail en attente de l'IA reste reconnaissable
     // (expéditeur, objet) dans la liste des e-mails en erreur de /admin/ao-offers.
     await updateAoEmail(emailId, {
       fromAddress: message.fromAddress.slice(0, 320),
       fromName: message.fromName.slice(0, 200),
+      origin: origin ? formatSender(origin) : '',
       subject: message.subject.slice(0, 500),
       receivedAt: message.receivedAt.toISOString(),
     })
@@ -248,13 +251,21 @@ async function processEnvelope(
       throw new RetryLater(`plafond du jour atteint pour les offres lues dans des tableaux (${MAX_TABLE_OFFERS_PER_DAY}) : e-mail repris dès que le plafond le permet`, false)
     }
     // Les offres des tableaux joints sont déjà lues ; l'IA ne lit que le texte restant, s'il y en a.
-    let fromAi: AoOfferFields[] = []
+    let fromAi: ExtractedOffer[] = []
+    const aiOrigin = content.bodyIncluded ? origin : null
     if (content.text.trim().length >= 50) {
       const llmWait = Math.min(MAX_LLM_WAIT_MS, timeLeft() - 10_000)
       if (llmWait < MIN_LLM_WAIT_MS) throw new RetryLater('plus assez de temps pour l\'extraction : e-mail repris au prochain passage', !canDefer)
-      fromAi = (await extractOffersFromEmail(content.text, llmWait)).offers
+      fromAi = (await extractOffersFromEmail(content.text, llmWait, aiOrigin)).offers
     }
-    const extracted = [...content.tableOffers, ...fromAi]
+    const read = [...content.tableOffers, ...fromAi]
+    // Enregistrés avant la création des offres : une offre ne doit jamais exister sans ce qui permet de la publier
+    // anonymisée (clients cités), même si la suite du traitement échoue.
+    await updateAoEmail(emailId, { citedClients: citedClients(read), deadline: emailDeadline(read.map(o => o.deadline)) })
+    // Le client est l'entreprise de l'expéditeur d'origine, pour toutes les offres de l'e-mail (origin.ts). Les noms
+    // lus par l'IA ne comptent que si elle avait la signature sous les yeux (corps de l'e-mail confié).
+    const company = senderCompany(origin, aiOrigin ? fromAi.map(o => o.companyName) : [])
+    const extracted = company === null ? read : read.map(o => ({ ...o, companyName: company }))
     const offers = extracted.slice(0, MAX_OFFERS_PER_EMAIL)
     let created = 0
     let duplicates = 0
