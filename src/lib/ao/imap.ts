@@ -57,6 +57,8 @@ export interface AoInbox {
   listUids(uids: number[]): Promise<InboxEnvelope[]>
   /** Télécharge et décode un message. */
   read(uid: number): Promise<InboxMessage>
+  /** Message brut tel que reçu (.eml : en-têtes et signatures compris), avec son identifiant ; null s'il n'existe plus. */
+  source(uid: number): Promise<{ messageId: string; raw: Buffer } | null>
 }
 
 const stripHtml = (html: string) =>
@@ -140,6 +142,10 @@ async function openAndWork<T>(client: ImapFlow, settings: AoInboxSettings, work:
         // « n:* » renvoie toujours au moins le dernier message, même déjà lu : on filtre.
         listAfter: async uid => (await envelopes({ uid: `${uid + 1}:*` })).filter(e => e.uid > uid),
         listUids: async uids => (uids.length ? envelopes(uids) : []),
+        async source(uid) {
+          const msg = await client.fetchOne(String(uid), { uid: true, source: true, envelope: true }, { uid: true })
+          return msg && msg.source ? { messageId: idOf(msg.envelope?.messageId, uid), raw: msg.source } : null
+        },
         async read(uid) {
           const msg = await client.fetchOne(String(uid), { uid: true, source: true, envelope: true, internalDate: true }, { uid: true })
           if (!msg || !msg.source) throw new Error(`Message IMAP ${uid} introuvable`)
