@@ -46,9 +46,11 @@ describe('organisations', () => {
   it('donne à chaque organisation son verrou et ses compteurs, en identifiants Appwrite valides', () => {
     const day = new Date('2026-10-21T23:30:00Z')
     const long = 'x'.repeat(36)
-    for (const id of [lockIdFor('t1'), lockIdFor(long), counterIdFor('vision', long, day), counterIdFor('tables', 't1', day)]) {
+    for (const id of [lockIdFor('t1'), lockIdFor(long), counterIdFor('vision', long, day), counterIdFor('tables', 't1', day), counterIdFor('mailboxTests', 't1', day), `${counterIdFor('mailboxTestsAll', 'plateforme', day)}_499`]) {
       assert.match(id, /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,35}$/, id)
     }
+    const prefixes = (['vision', 'tables', 'mailboxTests', 'mailboxTarget', 'mailboxTestsAll'] as const).map(c => counterIdFor(c, 't1', day)[0])
+    assert.equal(new Set(prefixes).size, prefixes.length, 'un préfixe par compteur')
     assert.notEqual(lockIdFor('t1'), lockIdFor('t2'))
     assert.notEqual(counterIdFor('vision', 't1', day), counterIdFor('vision', 't2', day))
     assert.notEqual(counterIdFor('vision', 't1', day), counterIdFor('vision', 't1', new Date('2026-10-22T00:30:00Z')))

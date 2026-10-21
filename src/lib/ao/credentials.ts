@@ -1,5 +1,5 @@
 import 'server-only'
-import { keyFromBase64, unseal } from '@/lib/crypto-box'
+import { keyFromBase64, seal, unseal } from '@/lib/crypto-box'
 import type { AoSource } from './sources'
 import { mailboxSecretContext } from './tenancy'
 
@@ -11,6 +11,10 @@ const key = () => keyFromBase64(process.env.AO_CREDENTIALS_KEY, 'AO_CREDENTIALS_
 /** Erreur explicite si la clé manque ou est invalide : appelé en début de passage, pour qu'il échoue en entier. */
 export function assertCredentialsKey(): void {
   key()
+}
+
+export function sealMailboxPassword(source: Pick<AoSource, '$id' | 'host' | 'username'>, password: string): string {
+  return seal(password, key(), mailboxSecretContext(source))
 }
 
 export function openMailboxPassword(source: Pick<AoSource, '$id' | 'host' | 'username' | 'passwordSealed'>): string {

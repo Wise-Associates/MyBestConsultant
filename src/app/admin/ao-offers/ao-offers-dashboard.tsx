@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { AlertCircle, CheckCircle2, Copy, Download, Inbox, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
 import { EMPTY_AO_FILTERS, filterAoOffers, filtersToSearchParams, type AoFilters, type AoOfferRow } from '@/lib/ao/filters'
@@ -88,11 +89,15 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, mailbox
           <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'var(--admin-fg-muted)' }}>RECRUTEMENT</p>
           <h1 className="text-[28px] font-bold tracking-tight text-admin-fg">AO Offers</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
-            Appels d&apos;offres reçus sur la boîte AO, lus automatiquement.
+            Appels d&apos;offres reçus dans les boîtes de la plateforme, lus automatiquement.
             {recentEmails[0] ? ` Dernier e-mail : ${formatDay(recentEmails[0].receivedAt)}.` : ''}
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <Link href="/admin/ao-offers/boites" style={secondaryButton}>
+            <Inbox size={15} />
+            Boîtes de réception
+          </Link>
           <button type="button" onClick={sync} disabled={syncing || !inboxConfigured} style={{ ...secondaryButton, opacity: syncing || !inboxConfigured ? 0.6 : 1 }}>
             {syncing ? <Loader2 size={15} className="animate-spin" /> : <RefreshCcw size={15} />}
             {syncing ? 'Lecture de la boîte…' : 'Synchroniser maintenant'}
@@ -105,7 +110,7 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, mailbox
       </div>
 
       {!inboxConfigured && (
-        <Banner tone="error" text="Aucune boîte de la plateforme n'est active : la lecture automatique est arrêtée. Enregistrez la boîte de la plateforme (AO_IMAP_USER) avec npm run ao:migrate-sources (voir docs/adr/0005)." />
+        <Banner tone="error" text="Aucune boîte de la plateforme n'est active : la lecture automatique est arrêtée. Ajoutez-en une dans « Boîtes de réception »." />
       )}
       {mailboxIssues.map(m => (
         <Banner key={m.label} tone="error" text={`Boîte ${m.label}${m.at ? ` (tentative du ${formatDay(m.at)})` : ''} : ${m.error}`} />

@@ -1,6 +1,7 @@
 # 0005 — AO Offers : boîtes de réception par organisation
 
-- Statut : accepté (phase A : socle serveur et migration ; phases B à D : écrans)
+- Statut : accepté (phase A : socle serveur et migration ; phase B : écrans de configuration des boîtes, avec test
+  de connexion ; phases C et D : page AO Offers des organisations, vue admin)
 - Date : 2026-10-21
 
 ## Contexte
