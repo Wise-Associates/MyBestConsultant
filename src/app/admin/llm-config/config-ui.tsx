@@ -6,10 +6,10 @@ import { Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 // ── Helpers ─────────────────────────────────────────────────────────
 export function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between py-3 border-b border-white/[0.06] last:border-0">
+    <div className="flex items-center justify-between py-3 border-b border-admin-line last:border-0">
       <div>
-        <span className="text-sm text-white/70">{label}</span>
-        {hint && <p className="text-[11px] text-white/30 mt-0.5">{hint}</p>}
+        <span className="text-sm text-admin-fg">{label}</span>
+        {hint && <p className="text-[11px] text-admin-fg-muted mt-0.5">{hint}</p>}
       </div>
       <div className="flex items-center gap-2">{children}</div>
     </div>
@@ -23,8 +23,8 @@ export function TextInput({ value, onChange, placeholder, mono, type = 'text', w
     <input
       type={type} value={value} placeholder={placeholder}
       onChange={e => onChange(e.target.value)}
-      className={`px-3 py-1.5 rounded-lg text-sm border focus:outline-none focus:ring-1 focus:ring-white/20 ${width} ${mono ? 'font-mono' : ''}`}
-      style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)' }}
+      className={`px-3 py-1.5 rounded-lg text-sm border focus:outline-none focus:ring-1 focus:ring-admin-line-strong ${width} ${mono ? 'font-mono' : ''}`}
+      style={{ background: 'var(--admin-panel-raised)', border: '1px solid var(--admin-line)', color: 'var(--admin-fg)' }}
     />
   )
 }
@@ -34,12 +34,12 @@ export function NumInput({ value, onChange, step = 1, prefix }: {
 }) {
   return (
     <div className="flex items-center gap-1.5">
-      {prefix && <span className="text-xs text-white/40">{prefix}</span>}
+      {prefix && <span className="text-xs text-admin-fg-muted">{prefix}</span>}
       <input
         type="number" step={step} value={value}
         onChange={e => onChange(parseFloat(e.target.value) || 0)}
-        className="w-20 px-2 py-1.5 rounded-lg text-sm text-right focus:outline-none focus:ring-1 focus:ring-white/20"
-        style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)' }}
+        className="w-20 px-2 py-1.5 rounded-lg text-sm text-right focus:outline-none focus:ring-1 focus:ring-admin-line-strong"
+        style={{ background: 'var(--admin-panel-raised)', border: '1px solid var(--admin-line)', color: 'var(--admin-fg)' }}
       />
     </div>
   )
@@ -56,16 +56,16 @@ export function ApiKeyInput({ value, onChange, placeholder }: { value: string; o
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder ?? 'sk-...'}
-          className="pl-3 pr-8 py-1.5 rounded-lg text-sm font-mono w-64 focus:outline-none focus:ring-1 focus:ring-white/20"
-          style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid ${hasKey ? 'rgba(52,211,153,0.4)' : 'rgba(255,255,255,0.1)'}`, color: 'rgba(255,255,255,0.85)' }}
+          className="pl-3 pr-8 py-1.5 rounded-lg text-sm font-mono w-64 focus:outline-none focus:ring-1 focus:ring-admin-line-strong"
+          style={{ background: 'var(--admin-panel-raised)', border: `1px solid ${hasKey ? 'rgba(52,211,153,0.4)' : 'var(--admin-line)'}`, color: 'var(--admin-fg)' }}
         />
         <button type="button" onClick={() => setShow(v => !v)}
           className="absolute right-2 top-1/2 -translate-y-1/2"
-          style={{ color: 'rgba(255,255,255,0.35)' }}>
+          style={{ color: 'var(--admin-fg-muted)' }}>
           {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
         </button>
       </div>
-      {hasKey && <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />}
+      {hasKey && <CheckCircle2 className="h-4 w-4 text-emerald-700 shrink-0" />}
     </div>
   )
 }

@@ -11,14 +11,14 @@ import {
 } from './actions'
 
 const ROLE_CONFIG: Record<UserRole, { label: string; accent: string; icon: typeof User }> = {
-  admin:     { label: 'Admin',     accent: '#f59e0b', icon: ShieldCheck },
-  recruiter: { label: 'Recruteur', accent: '#60a5fa', icon: Briefcase },
-  candidate: { label: 'Candidat',  accent: '#34d399', icon: User },
-  hunter:    { label: 'Chasseur',  accent: '#a78bfa', icon: Briefcase },
+  admin:     { label: 'Admin',     accent: '#b45309', icon: ShieldCheck },
+  recruiter: { label: 'Recruteur', accent: '#1d4ed8', icon: Briefcase },
+  candidate: { label: 'Candidat',  accent: '#047857', icon: User },
+  hunter:    { label: 'Chasseur',  accent: '#6d28d9', icon: Briefcase },
 }
 
-const fieldLabel: CSSProperties = { fontSize: 9, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 4 }
-const inputStyle: CSSProperties = { width: '100%', height: 36, borderRadius: 8, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)', fontSize: 13, padding: '0 10px', outline: 'none' }
+const fieldLabel: CSSProperties = { fontSize: 9, color: 'var(--admin-fg-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 4 }
+const inputStyle: CSSProperties = { width: '100%', height: 36, borderRadius: 8, background: 'var(--admin-panel-raised)', border: '1px solid var(--admin-line)', color: 'var(--admin-fg)', fontSize: 13, padding: '0 10px', outline: 'none' }
 
 function randomPassword(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%'
@@ -60,14 +60,14 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(1,4,18,0.88)', backdropFilter: 'blur(8px)' }}>
-      <div style={{ width: '90vw', maxWidth: 460, borderRadius: 20, overflow: 'hidden', background: '#0c0e14', border: '1px solid rgba(255,255,255,0.09)', boxShadow: '0 40px 120px rgba(0,0,0,0.8)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+      <div style={{ width: '90vw', maxWidth: 460, borderRadius: 20, overflow: 'hidden', background: 'var(--admin-panel)', border: '1px solid var(--admin-line)', boxShadow: '0 40px 120px rgba(0,0,0,0.8)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 20px', borderBottom: '1px solid var(--admin-line)' }}>
           <div style={{ width: 32, height: 32, borderRadius: 10, background: 'linear-gradient(135deg,rgba(11,29,81,0.9),rgba(22,36,102,0.9))', border: '1px solid rgba(184,134,11,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Plus size={15} color="#B8860B" />
           </div>
-          <p style={{ fontWeight: 700, fontSize: 14, color: '#fff', margin: 0 }}>Créer un compte</p>
+          <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--admin-fg)', margin: 0 }}>Créer un compte</p>
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} style={{ padding: 8, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', display: 'flex' }}>
+          <button onClick={onClose} style={{ padding: 8, borderRadius: 8, background: 'var(--admin-panel-raised)', border: 'none', cursor: 'pointer', color: 'var(--admin-fg-muted)', display: 'flex' }}>
             <X size={16} />
           </button>
         </div>
@@ -80,9 +80,9 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
                 <button key={id} type="button" onClick={() => setRole(id)}
                   style={{
                     flex: 1, padding: '8px 10px', borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                    border: role === id ? `1px solid ${cfg.accent}80` : '1px solid rgba(255,255,255,0.08)',
-                    background: role === id ? `${cfg.accent}18` : 'rgba(255,255,255,0.03)',
-                    color: role === id ? cfg.accent : 'rgba(255,255,255,0.45)',
+                    border: role === id ? `1px solid ${cfg.accent}80` : '1px solid var(--admin-line)',
+                    background: role === id ? `${cfg.accent}18` : 'var(--admin-panel)',
+                    color: role === id ? cfg.accent : 'var(--admin-fg-muted)',
                   }}>
                   <cfg.icon size={13} />
                   <span style={{ fontSize: 12, fontWeight: 600 }}>{cfg.label}</span>
@@ -119,26 +119,26 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
             <div style={{ display: 'flex', gap: 6 }}>
               <input value={password} onChange={e => setPassword(e.target.value)} style={{ ...inputStyle, flex: 1, fontFamily: 'monospace' }} />
               <button type="button" onClick={() => setPassword(randomPassword())} title="Générer un mot de passe"
-                style={{ width: 36, borderRadius: 8, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                style={{ width: 36, borderRadius: 8, background: 'var(--admin-panel-raised)', border: '1px solid var(--admin-line)', color: 'var(--admin-fg-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <RefreshCcw size={14} />
               </button>
             </div>
-            <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 5, lineHeight: 1.4 }}>
+            <p style={{ fontSize: 10, color: 'var(--admin-fg-muted)', marginTop: 5, lineHeight: 1.4 }}>
               Le compte est actif immédiatement — transmets ces identifiants à la personne concernée.
             </p>
           </div>
 
           {error && (
             <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-              <AlertCircle size={15} color="#f87171" />
-              <p style={{ fontSize: 12, color: '#f87171', margin: 0 }}>{error}</p>
+              <AlertCircle size={15} color="#b91c1c" />
+              <p style={{ fontSize: 12, color: '#b91c1c', margin: 0 }}>{error}</p>
             </div>
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: 8, padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+        <div style={{ display: 'flex', gap: 8, padding: '14px 20px', borderTop: '1px solid var(--admin-line)' }}>
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} style={{ padding: '10px 16px', borderRadius: 10, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 13, cursor: 'pointer' }}>
+          <button onClick={onClose} style={{ padding: '10px 16px', borderRadius: 10, background: 'transparent', border: 'none', color: 'var(--admin-fg-muted)', fontSize: 13, cursor: 'pointer' }}>
             Annuler
           </button>
           <button onClick={submit} disabled={isPending}
@@ -228,14 +228,14 @@ export function UsersDashboard({
   }
 
   return (
-    <div className="min-h-full p-8 space-y-6" style={{ color: 'rgba(255,255,255,0.87)' }}>
+    <div className="min-h-full p-8 space-y-6" style={{ color: 'var(--admin-fg)' }}>
 
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>GESTION</p>
-          <h1 className="text-[28px] font-bold tracking-tight text-white">Utilisateurs</h1>
-          <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'var(--admin-fg-muted)' }}>GESTION</p>
+          <h1 className="text-[28px] font-bold tracking-tight text-admin-fg">Utilisateurs</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
             {stats.total} compte{stats.total > 1 ? 's' : ''} enregistré{stats.total > 1 ? 's' : ''}
           </p>
         </div>
@@ -249,8 +249,8 @@ export function UsersDashboard({
 
       {loadError && (
         <div className="flex items-center gap-3 p-4 rounded-xl" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-          <AlertCircle className="h-4 w-4 shrink-0" style={{ color: '#f87171' }} />
-          <p className="text-sm" style={{ color: '#f87171' }}>{loadError}</p>
+          <AlertCircle className="h-4 w-4 shrink-0" style={{ color: '#b91c1c' }} />
+          <p className="text-sm" style={{ color: '#b91c1c' }}>{loadError}</p>
         </div>
       )}
 
@@ -258,19 +258,19 @@ export function UsersDashboard({
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[
           { label: 'Total',      value: stats.total,      icon: Users,       accent: '#B8860B' },
-          { label: 'Admins',     value: stats.admin,      icon: ShieldCheck, accent: '#f59e0b' },
-          { label: 'Recruteurs', value: stats.recruiter,  icon: Briefcase,   accent: '#60a5fa' },
-          { label: 'Candidats',  value: stats.candidate,  icon: User,        accent: '#34d399' },
+          { label: 'Admins',     value: stats.admin,      icon: ShieldCheck, accent: '#b45309' },
+          { label: 'Recruteurs', value: stats.recruiter,  icon: Briefcase,   accent: '#1d4ed8' },
+          { label: 'Candidats',  value: stats.candidate,  icon: User,        accent: '#047857' },
           { label: 'Inactifs',   value: stats.inactive,   icon: UserX,       accent: '#ef4444' },
         ].map(s => (
           <div key={s.label} className="rounded-2xl p-5 flex items-center gap-4"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
             <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${s.accent}18` }}>
               <s.icon className="h-5 w-5" style={{ color: s.accent }} />
             </div>
             <div>
-              <p className="text-2xl font-bold text-white">{s.value}</p>
-              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>{s.label}</p>
+              <p className="text-2xl font-bold text-admin-fg">{s.value}</p>
+              <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>{s.label}</p>
             </div>
           </div>
         ))}
@@ -279,53 +279,53 @@ export function UsersDashboard({
       {/* Filters */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[220px]">
-          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,255,255,0.3)' }} />
+          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--admin-fg-muted)' }} />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Rechercher par nom, email, entreprise…"
             className="w-full text-sm"
-            style={{ height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.85)', padding: '0 12px 0 36px', outline: 'none' }}
+            style={{ height: 40, borderRadius: 10, background: 'var(--admin-panel)', border: '1px solid var(--admin-line)', color: 'var(--admin-fg)', padding: '0 12px 0 36px', outline: 'none' }}
           />
         </div>
 
         <select value={roleFilter} onChange={e => setRoleFilter(e.target.value as UserRole | 'all')}
-          style={{ height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.7)', padding: '0 12px', fontSize: 13, cursor: 'pointer' }}>
-          <option value="all" style={{ background: '#0a0c10' }}>Tous les rôles</option>
-          <option value="admin" style={{ background: '#0a0c10' }}>Admin</option>
-          <option value="recruiter" style={{ background: '#0a0c10' }}>Recruteur</option>
-          <option value="candidate" style={{ background: '#0a0c10' }}>Candidat</option>
+          style={{ height: 40, borderRadius: 10, background: 'var(--admin-panel)', border: '1px solid var(--admin-line)', color: 'var(--admin-fg)', padding: '0 12px', fontSize: 13, cursor: 'pointer' }}>
+          <option value="all" style={{ background: 'var(--admin-panel)' }}>Tous les rôles</option>
+          <option value="admin" style={{ background: 'var(--admin-panel)' }}>Admin</option>
+          <option value="recruiter" style={{ background: 'var(--admin-panel)' }}>Recruteur</option>
+          <option value="candidate" style={{ background: 'var(--admin-panel)' }}>Candidat</option>
         </select>
 
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
-          style={{ height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.7)', padding: '0 12px', fontSize: 13, cursor: 'pointer' }}>
-          <option value="all" style={{ background: '#0a0c10' }}>Tous les statuts</option>
-          <option value="active" style={{ background: '#0a0c10' }}>Actifs</option>
-          <option value="inactive" style={{ background: '#0a0c10' }}>Inactifs</option>
+          style={{ height: 40, borderRadius: 10, background: 'var(--admin-panel)', border: '1px solid var(--admin-line)', color: 'var(--admin-fg)', padding: '0 12px', fontSize: 13, cursor: 'pointer' }}>
+          <option value="all" style={{ background: 'var(--admin-panel)' }}>Tous les statuts</option>
+          <option value="active" style={{ background: 'var(--admin-panel)' }}>Actifs</option>
+          <option value="inactive" style={{ background: 'var(--admin-panel)' }}>Inactifs</option>
         </select>
       </div>
 
       {rowError && (
         <div className="flex items-center gap-3 p-4 rounded-xl" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-          <AlertCircle className="h-4 w-4 shrink-0" style={{ color: '#f87171' }} />
-          <p className="text-sm" style={{ color: '#f87171' }}>{rowError}</p>
+          <AlertCircle className="h-4 w-4 shrink-0" style={{ color: '#b91c1c' }} />
+          <p className="text-sm" style={{ color: '#b91c1c' }}>{rowError}</p>
         </div>
       )}
 
       {/* Table */}
-      <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
-        <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-          <h2 className="font-semibold text-sm text-white">Comptes</h2>
-          <span className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>{filtered.length} résultat{filtered.length > 1 ? 's' : ''}</span>
+      <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--admin-line)' }}>
+        <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'var(--admin-panel)', borderBottom: '1px solid var(--admin-line)' }}>
+          <h2 className="font-semibold text-sm text-admin-fg">Comptes</h2>
+          <span className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>{filtered.length} résultat{filtered.length > 1 ? 's' : ''}</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <tr style={{ borderBottom: '1px solid var(--admin-line)' }}>
                 {['Utilisateur', 'Rôle', 'Entreprise', 'Statut', 'Inscrit le', ''].map((h, i) => (
                   <th key={i}
                     className={`text-left px-6 py-3 text-xs font-medium whitespace-nowrap ${i === 2 ? 'hidden md:table-cell' : ''} ${i === 4 ? 'hidden lg:table-cell' : ''}`}
-                    style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    style={{ color: 'var(--admin-fg-muted)' }}>
                     {h}
                   </th>
                 ))}
@@ -334,7 +334,7 @@ export function UsersDashboard({
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-20" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                  <td colSpan={6} className="text-center py-20" style={{ color: 'var(--admin-fg-muted)' }}>
                     <Users className="h-10 w-10 mx-auto mb-3 opacity-20" />
                     <p>Aucun utilisateur ne correspond à ces filtres</p>
                   </td>
@@ -346,19 +346,19 @@ export function UsersDashboard({
                 const isSelf = u.authId === currentUserId
                 const isPending = pendingIds.has(u.authId)
                 return (
-                  <tr key={u.authId} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: u.status ? 1 : 0.55 }}>
+                  <tr key={u.authId} style={{ borderBottom: '1px solid var(--admin-line)', opacity: u.status ? 1 : 0.55 }}>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full flex items-center justify-center font-semibold text-xs shrink-0 text-white"
-                          style={{ background: 'rgba(255,255,255,0.08)' }}>
+                        <div className="w-9 h-9 rounded-full flex items-center justify-center font-semibold text-xs shrink-0 text-admin-fg"
+                          style={{ background: 'var(--admin-panel-raised)' }}>
                           {initials}
                         </div>
                         <div>
-                          <p className="font-medium text-white flex items-center gap-2">
+                          <p className="font-medium text-admin-fg flex items-center gap-2">
                             {u.firstName} {u.lastName}
-                            {isSelf && <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>(vous)</span>}
+                            {isSelf && <span style={{ fontSize: 10, color: 'var(--admin-fg-muted)' }}>(vous)</span>}
                           </p>
-                          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>{u.email}</p>
+                          <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>{u.email}</p>
                         </div>
                       </div>
                     </td>
@@ -371,24 +371,24 @@ export function UsersDashboard({
                     </td>
                     <td className="px-4 py-4 hidden md:table-cell">
                       {u.companyName ? (
-                        <span className="flex items-center gap-1.5 text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                        <span className="flex items-center gap-1.5 text-sm" style={{ color: 'var(--admin-fg-muted)' }}>
                           <Building2 className="h-3.5 w-3.5" />
                           {u.companyName}
                         </span>
                       ) : (
-                        <span style={{ color: 'rgba(255,255,255,0.2)' }}>—</span>
+                        <span style={{ color: 'var(--admin-fg-muted)' }}>—</span>
                       )}
                     </td>
                     <td className="px-4 py-4">
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
                         style={u.status
-                          ? { background: 'rgba(52,211,153,0.12)', color: '#34d399', border: '1px solid rgba(52,211,153,0.25)' }
-                          : { background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}>
+                          ? { background: 'rgba(52,211,153,0.12)', color: '#047857', border: '1px solid rgba(52,211,153,0.25)' }
+                          : { background: 'rgba(239,68,68,0.1)', color: '#b91c1c', border: '1px solid rgba(239,68,68,0.25)' }}>
                         {u.status ? 'Actif' : 'Inactif'}
                       </span>
                     </td>
                     <td className="px-4 py-4 hidden lg:table-cell">
-                      <span className="flex items-center gap-1.5 text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                      <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
                         <Calendar className="h-3.5 w-3.5" />
                         {new Date(u.createdAt).toLocaleDateString('fr-FR')}
                       </span>
@@ -401,8 +401,8 @@ export function UsersDashboard({
                           title={u.status ? 'Désactiver le compte' : 'Activer le compte'}
                           style={{
                             padding: 7, borderRadius: 8, border: 'none', display: 'flex',
-                            background: 'rgba(255,255,255,0.05)',
-                            color: isSelf ? 'rgba(255,255,255,0.15)' : u.status ? '#f59e0b' : '#34d399',
+                            background: 'var(--admin-panel-raised)',
+                            color: isSelf ? 'var(--admin-fg-subtle)' : u.status ? '#b45309' : '#047857',
                             cursor: isSelf || isPending ? 'default' : 'pointer',
                             opacity: isPending ? 0.5 : 1,
                           }}>
@@ -415,7 +415,7 @@ export function UsersDashboard({
                           style={{
                             padding: 7, borderRadius: 8, border: 'none', display: 'flex',
                             background: 'rgba(239,68,68,0.08)',
-                            color: isSelf ? 'rgba(255,255,255,0.15)' : '#f87171',
+                            color: isSelf ? 'var(--admin-fg-subtle)' : '#b91c1c',
                             cursor: isSelf || isPending ? 'default' : 'pointer',
                           }}>
                           <Trash2 size={14} />
@@ -436,18 +436,18 @@ export function UsersDashboard({
 
       {confirmDelete && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(1,4,18,0.88)', backdropFilter: 'blur(8px)' }}>
-          <div style={{ width: '90vw', maxWidth: 400, borderRadius: 20, padding: 24, background: '#0c0e14', border: '1px solid rgba(239,68,68,0.25)', boxShadow: '0 40px 120px rgba(0,0,0,0.8)' }}>
+          <div style={{ width: '90vw', maxWidth: 400, borderRadius: 20, padding: 24, background: 'var(--admin-panel)', border: '1px solid rgba(239,68,68,0.25)', boxShadow: '0 40px 120px rgba(0,0,0,0.8)' }}>
             <div className="flex items-center gap-3 mb-3">
               <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Trash2 size={16} color="#f87171" />
+                <Trash2 size={16} color="#b91c1c" />
               </div>
-              <p style={{ fontWeight: 700, fontSize: 15, color: '#fff', margin: 0 }}>Supprimer ce compte ?</p>
+              <p style={{ fontWeight: 700, fontSize: 15, color: 'var(--admin-fg)', margin: 0 }}>Supprimer ce compte ?</p>
             </div>
-            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5, marginBottom: 20 }}>
-              <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{confirmDelete.firstName} {confirmDelete.lastName}</strong> ({confirmDelete.email}) sera définitivement supprimé. Cette action est irréversible.
+            <p style={{ fontSize: 13, color: 'var(--admin-fg-muted)', lineHeight: 1.5, marginBottom: 20 }}>
+              <strong style={{ color: 'var(--admin-fg)' }}>{confirmDelete.firstName} {confirmDelete.lastName}</strong> ({confirmDelete.email}) sera définitivement supprimé. Cette action est irréversible.
             </p>
             <div className="flex items-center gap-2 justify-end">
-              <button onClick={() => setConfirmDelete(null)} style={{ padding: '9px 16px', borderRadius: 10, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 13, cursor: 'pointer' }}>
+              <button onClick={() => setConfirmDelete(null)} style={{ padding: '9px 16px', borderRadius: 10, background: 'transparent', border: 'none', color: 'var(--admin-fg-muted)', fontSize: 13, cursor: 'pointer' }}>
                 Annuler
               </button>
               <button onClick={() => handleDelete(confirmDelete)}
