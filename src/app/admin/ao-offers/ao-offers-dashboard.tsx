@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { HoverCard } from '@/components/ui/hover-card'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { AlertCircle, BarChart3, CheckCircle2, Copy, Download, Inbox, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
@@ -9,6 +10,7 @@ import { MAX_ATTEMPTS } from '@/lib/ao/attempts'
 import type { AoSyncReport } from '@/lib/ao/sync'
 import type { AoEmail } from '@/lib/ao/types'
 import { retryAoEmail, syncAoInboxNow } from './actions'
+import { afterBatch } from '@/lib/ao/sync-loop'
 import { AoOfferPanel } from './ao-offer-panel'
 import {
   BRAND, CONTRACT_LABEL, ENGAGEMENT_LABEL, REMOTE_LABEL, STATUS_UI, control, formatAmount, formatDay, optionStyle, primaryButton, secondaryButton,
@@ -58,11 +60,23 @@ export interface MailboxIssue {
   at: string | null
 }
 
-export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, mailboxIssues, loadError }: Props) {
+export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, inboxConfigured, mailboxIssues, loadError }: Props) {
+  // Données renvoyées par les passages d'une synchronisation en cours (affichées au fil de l'eau). Elles ne valent que
+  // pour les données de page sur lesquelles elles ont été prises : dès que la page est rafraîchie (fin de
+  // synchronisation), ses nouvelles données les remplacent, sans effet ni retour en arrière.
+  const [live, setLive] = useState<{ base: AoOfferRow[]; rows: AoOfferRow[]; recentEmails: AoEmail[] } | null>(null)
+  const current = live && live.base === pageRows ? live : null
+  const rows = current?.rows ?? pageRows
+  const recentEmails = current?.recentEmails ?? pageEmails
   const [filters, setFilters] = useState<AoFilters>(EMPTY_AO_FILTERS)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice>(null)
-  const [syncing, startSync] = useTransition()
+  // Pas une transition : chaque passage rafraîchit le tableau dès sa fin (une transition retiendrait l'affichage
+  // jusqu'à la fin de toute la synchronisation).
+  const [syncing, setSyncing] = useState(false)
+  const [progress, setProgress] = useState<SyncProgress | null>(null)
+  const stopRequested = useRef(false)
+  const router = useRouter()
   const [retrying, startRetry] = useTransition()
   const [retryingId, setRetryingId] = useState<string | null>(null)
   const noticeRef = useRef<HTMLDivElement>(null)
@@ -81,14 +95,57 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, mailbox
   const set = <K extends keyof AoFilters>(key: K, value: AoFilters[K]) => setFilters(f => ({ ...f, [key]: value }))
   const amount = (value: string) => (value.trim() === '' || Number.isNaN(Number(value)) ? null : Math.max(0, Number(value)))
 
-  function sync() {
+  /** Enchaîne de petits passages jusqu'à ce que la boîte soit lue (afterBatch) ; le tableau se met à jour après chacun. */
+  async function sync() {
     setNotice(null)
-    startSync(async () => {
-      const res = await syncAoInboxNow()
-      if (res.error || !res.report) return setNotice({ tone: 'error', text: res.error ?? 'Synchronisation impossible.' })
-      if (res.report.skipped) return setNotice({ tone: 'ok', text: 'Une synchronisation est déjà en cours (passage automatique) : les nouvelles offres apparaîtront à la fin. Réessayez dans quelques minutes si besoin.' })
-      setNotice(noticeOf(res.report))
-    })
+    setSyncing(true)
+    stopRequested.current = false
+    const total: SyncProgress = { processed: 0, offersCreated: 0, duplicates: 0, failed: 0, remaining: 0, errors: [] }
+    setProgress(total)
+    let waits = 0
+    try {
+      for (;;) {
+        const res = await syncAoInboxNow()
+        if (res.error || !res.report) {
+          setNotice({ tone: 'error', text: res.error ?? 'Synchronisation impossible.' })
+          return
+        }
+        const r = res.report
+        total.processed += r.processed
+        total.offersCreated += r.offersCreated
+        total.duplicates += r.duplicates
+        total.failed += r.failed
+        total.remaining = r.remaining
+        total.errors = [...total.errors, ...r.errors].slice(-3)
+        setProgress({ ...total })
+        // Nouvelles offres de ce passage affichées tout de suite (filtres, tri et panneau ouvert sont gardés).
+        if (res.rows && res.recentEmails) setLive({ base: pageRows, rows: res.rows, recentEmails: res.recentEmails })
+        const step = afterBatch(r)
+        if (stopRequested.current) {
+          setNotice({ tone: 'ok', text: `Synchronisation arrêtée : ${summaryOf(total)}${total.remaining ? ` · ${total.remaining} restant(s) pour la prochaine fois` : ''}.` })
+          return
+        }
+        if (step.action === 'continue') continue
+        if (step.action === 'wait') {
+          // Passage automatique en cours sur la même boîte : il se termine en quelques minutes au plus.
+          if (waits++ < BUSY_RETRIES) {
+            await new Promise(resolve => setTimeout(resolve, BUSY_WAIT_MS))
+            continue
+          }
+          setNotice({ tone: 'ok', text: 'Une synchronisation automatique est en cours : ses offres apparaîtront à sa fin. Réessayez dans quelques minutes si besoin.' })
+          return
+        }
+        setNotice(endNotice(step.reason, total, r))
+        return
+      }
+    } catch (err) {
+      setNotice({ tone: 'error', text: `Synchronisation interrompue : ${err instanceof Error ? err.message : 'connexion perdue'}. Les e-mails déjà lus sont enregistrés ; relancez pour continuer.` })
+    } finally {
+      setSyncing(false)
+      setProgress(null)
+      // Données de la page rafraîchies une fois la synchronisation finie (bandeaux des boîtes, compteurs…).
+      router.refresh()
+    }
   }
 
   function retry(id: string) {
@@ -133,6 +190,12 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, mailbox
             {syncing ? <Loader2 size={15} className="animate-spin" /> : <RefreshCcw size={15} />}
             {syncing ? 'Lecture de la boîte…' : 'Synchroniser maintenant'}
           </button>
+          {syncing && (
+            <button type="button" onClick={() => { stopRequested.current = true }} style={secondaryButton}>
+              <X size={15} />
+              Arrêter
+            </button>
+          )}
           <a href={exportHref} download style={primaryButton}>
             <Download size={15} />
             Télécharger Excel ({filtered.length})
@@ -147,6 +210,12 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, mailbox
         <Banner key={m.label} tone="error" text={`Boîte ${m.label}${m.at ? ` (tentative du ${formatDay(m.at)})` : ''} : ${m.error}`} />
       ))}
       {loadError && <Banner tone="error" text={loadError} />}
+      {progress && (
+        <p role="status" aria-live="polite" className="flex items-center gap-2 text-sm p-3 rounded-xl" style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)', color: 'var(--admin-fg)' }}>
+          <Loader2 size={15} className="animate-spin shrink-0" />
+          Synchronisation en cours : {summaryOf(progress)}{progress.remaining ? ` · ${progress.remaining} restant${progress.remaining > 1 ? 's' : ''}` : ''}. Les offres apparaissent au fur et à mesure.
+        </p>
+      )}
       <div ref={noticeRef}>{notice && <Banner tone={notice.tone} text={notice.text} onClose={() => setNotice(null)} />}</div>
 
       {/* Indicateurs (cliquables : filtrent la liste) */}
@@ -309,6 +378,41 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, mailbox
 }
 
 /** Message de fin d'une synchronisation (bouton « Synchroniser maintenant » ou « Réessayer »). */
+/** Cumul des passages d'une synchronisation continue. */
+interface SyncProgress {
+  processed: number
+  offersCreated: number
+  duplicates: number
+  failed: number
+  remaining: number
+  errors: string[]
+}
+/** Passage automatique en cours : la page réessaie 6 fois, toutes les 20 s (2 min), avant d'abandonner. */
+const BUSY_RETRIES = 6
+const BUSY_WAIT_MS = 20_000
+
+const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`
+function summaryOf(p: SyncProgress): string {
+  return [
+    `${plural(p.processed, 'e-mail')} traité${p.processed > 1 ? 's' : ''}`,
+    `${p.offersCreated} nouvelle${p.offersCreated > 1 ? 's' : ''} offre${p.offersCreated > 1 ? 's' : ''}`,
+    p.duplicates ? `${plural(p.duplicates, 'doublon')} fusionné${p.duplicates > 1 ? 's' : ''}` : '',
+    p.failed ? `${p.failed} en erreur` : '',
+  ].filter(Boolean).join(' · ')
+}
+
+/** Message de fin d'une synchronisation continue, selon la raison de l'arrêt (afterBatch). */
+function endNotice(reason: Extract<ReturnType<typeof afterBatch>, { action: 'stop' }>['reason'], total: SyncProgress, last: AoSyncReport): NonNullable<Notice> {
+  const errors = total.errors.length ? ` — ${total.errors.slice(0, 2).join(' ; ')}` : ''
+  switch (reason) {
+    case 'done': return { tone: total.failed ? 'error' : 'ok', text: `Synchronisation terminée : ${summaryOf(total)}${errors}.` }
+    case 'not-configured': return { tone: 'error', text: 'Aucune boîte de la plateforme n\'est active : rien n\'a été lu.' }
+    case 'ai': return { tone: 'error', text: `Arrêtée, IA indisponible (crédits épuisés ou clé refusée) : ${summaryOf(total)} · ${last.remaining} en attente, voir « E-mails non traités ».` }
+    case 'mailbox': return { tone: 'error', text: `Arrêtée, boîte illisible : ${last.errors.slice(0, 2).join(' ; ')}` }
+    case 'stalled': return { tone: 'error', text: `Arrêtée : aucun e-mail n'a pu être traité au dernier passage (${last.remaining} restant(s))${errors}. Réessayez.` }
+  }
+}
+
 function noticeOf(r: AoSyncReport, lead = ''): NonNullable<Notice> {
   if (!r.configured) return { tone: 'error', text: 'Aucune boîte de la plateforme n\'est active : rien n\'a été lu.' }
   const parts = [
