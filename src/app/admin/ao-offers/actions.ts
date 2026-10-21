@@ -13,7 +13,8 @@ import { descriptionForPublication } from '@/lib/description-sections'
 import { cityKey, titleKey } from '@/lib/ao/fingerprint'
 import { manualRetryPatch } from '@/lib/ao/attempts'
 import { getAoEmail, getAoOffer, listAoEmailsByIds, listAoOfferDetails, updateAoEmail, updateAoOffer } from '@/lib/ao/repo'
-import { matchCandidatesForOffer, type CandidateMatch } from '@/lib/sourcing-core'
+import { matchCandidatesForOffer } from '@/lib/sourcing-core'
+import { getJobMatches, runPoolMatching, type JobMatchResult } from '@/lib/matching-core'
 import type { AoEmail, AoOffer } from '@/lib/ao/types'
 import { syncAoEmail, syncAoInbox, type AoSyncReport } from '@/lib/ao/sync'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
@@ -209,12 +210,64 @@ export async function setAoOfferStatus(id: string, status: 'to_review' | 'ignore
 /** Candidats proposés pour une offre (10 au plus, les mieux notés d'abord). */
 const MAX_SOURCED = 10
 
+/** Candidat proposé pour une offre AO : calculé à la demande (live) ou enregistré par le matching de la publication. */
+export interface SourcedCandidate {
+  id: string
+  name: string
+  score: number | null
+  reason: string
+  /** live : calculé à l'instant ; pool : base candidats ; vivier : CV ajouté à l'offre ; application : candidature reçue. */
+  origin: 'live' | JobMatchResult['source']
+}
+
+export interface SourcingResult {
+  candidates?: SourcedCandidate[]
+  /** CV analysés (calcul à la demande seulement). */
+  scanned?: number
+  /** Offre publiée : date du matching enregistré (null s'il n'a pas encore été calculé). */
+  computedAt?: string | null
+  error?: string
+}
+
+const byScore = (a: SourcedCandidate, b: SourcedCandidate) => (b.score ?? -1) - (a.score ?? -1)
+
+function storedCandidates(matches: JobMatchResult[]): SourcedCandidate[] {
+  return matches
+    .map(m => ({ id: `${m.source}:${m.id}`, name: m.name, score: m.score, reason: m.reason, origin: m.source }))
+    .sort(byScore)
+    .slice(0, MAX_SOURCED)
+}
+
+/**
+ * Matching enregistré d'une offre AO publiée : calculé à sa publication (src/lib/auto-source-candidates.ts) pour la
+ * base candidats, plus son vivier et ses candidatures ; lu sans appel d'IA. `recompute` : recalcule d'abord le
+ * matching de la base (un appel d'IA), comme le bouton de la page Matching. Offre non publiée : rien à lire.
+ */
+export async function storedAoOfferMatches(id: string, recompute = false): Promise<SourcingResult> {
+  await requireAdmin()
+  const parsed = DocumentId.safeParse(id)
+  if (!parsed.success) return { error: 'Offre introuvable : rechargez la page.' }
+  try {
+    const offer = await platformOffer(parsed.data)
+    if (!offer) return { error: 'Offre introuvable : rechargez la page.' }
+    if (!offer.jobId) return { candidates: [], computedAt: null }
+    if (recompute) {
+      const run = await runPoolMatching(offer.jobId)
+      if (run.error) return { error: run.error }
+    }
+    const { matches, poolComputedAt } = await getJobMatches(offer.jobId)
+    return { candidates: storedCandidates(matches), computedAt: poolComputedAt }
+  } catch (err) {
+    return { error: `Matching illisible : ${errorOf(err)}` }
+  }
+}
+
 /**
  * « Sourcing » d'une offre AO : candidats de la base rapprochés de l'offre, notés de 0 à 100 par l'IA avec la raison
  * (même notation que le sourcing des offres publiées, src/lib/sourcing-core.ts), sans attendre sa publication.
  * Offres de la plateforme seulement ; un appel d'IA par clic, rien n'est enregistré.
  */
-export async function sourceAoOfferCandidates(id: string): Promise<{ matches?: CandidateMatch[]; scanned?: number; error?: string }> {
+export async function sourceAoOfferCandidates(id: string): Promise<SourcingResult> {
   await requireAdmin()
   const parsed = DocumentId.safeParse(id)
   if (!parsed.success) return { error: 'Offre introuvable : rechargez la page.' }
@@ -233,7 +286,8 @@ export async function sourceAoOfferCandidates(id: string): Promise<{ matches?: C
       ].filter(Boolean),
     })
     if (result.error) return { error: result.error, scanned: result.scanned }
-    return { matches: result.matches.slice(0, MAX_SOURCED), scanned: result.scanned }
+    const candidates = result.matches.map(m => ({ id: `live:${m.candidateId}`, name: m.name, score: m.score, reason: m.reason, origin: 'live' as const }))
+    return { candidates: candidates.sort(byScore).slice(0, MAX_SOURCED), scanned: result.scanned }
   } catch (err) {
     return { error: `Sourcing impossible : ${errorOf(err)}` }
   }
