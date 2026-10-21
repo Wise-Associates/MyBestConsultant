@@ -1,9 +1,8 @@
 import type { Job } from '@/types'
+import { bestMatches } from '@/lib/sourcing-rules'
 
 // Only contact candidates the AI is genuinely confident about, and cap the volume per
 // job so a single job posting can't blast the entire candidate base at once.
-const AUTO_SOURCE_TOP_N = 5
-const AUTO_SOURCE_MIN_SCORE = 65
 
 // Fires automatically right after a job is created (mirrors tryAutoPostJobToLinkedIn's
 // call sites and its silent-failure contract — sourcing must never block job creation).
@@ -12,7 +11,7 @@ export async function tryAutoSourceCandidates(job: Job & { $id: string }): Promi
     const { matchCandidatesForJob, generateOutreachMessageCore, sendOutreachEmailCore } = await import('@/lib/sourcing-core')
 
     const { matches } = await matchCandidatesForJob(job.$id)
-    const top = matches.filter(m => m.score >= AUTO_SOURCE_MIN_SCORE).slice(0, AUTO_SOURCE_TOP_N)
+    const top = bestMatches(matches)
 
     for (const match of top) {
       const { subject, message, error } = await generateOutreachMessageCore(match.candidateId, job.$id)

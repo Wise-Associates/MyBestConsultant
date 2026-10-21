@@ -101,6 +101,16 @@ export async function matchCandidatesForJob(jobId: string): Promise<MatchResult>
   }
 }
 
+/** Nom affichable des candidats `ids` (candidat supprimé : absent). */
+export async function candidateNames(ids: string[]): Promise<Map<string, string>> {
+  const names = new Map<string, string>()
+  if (!ids.length) return names
+  const { databases } = createAdminClient()
+  const res = await databases.listDocuments(DB_ID, COLLECTIONS.USERS, [Query.equal('$id', ids.slice(0, 100)), Query.limit(100)])
+  for (const d of res.documents) names.set(d.$id, `${d.firstName ?? ''} ${d.lastName ?? ''}`.trim())
+  return names
+}
+
 /** Offre à rapprocher des candidats : une offre publiée (matchCandidatesForJob) ou un appel d'offres pas encore publié (AO Offers). */
 export interface OfferForMatching {
   title: string
