@@ -25,7 +25,7 @@ const SECTIONS = [
     label: 'RECRUTEMENT',
     items: [
       { href: '/admin/jobs',        label: 'Offres',        sub: 'Toutes les missions',    icon: Briefcase },
-      { href: '/admin/ao-offers',   label: 'AO Offers',     sub: "Appels d'offres reçus",  icon: Inbox },
+      { href: '/admin/candidats',   label: 'Candidats',     sub: "Appels d'offres reçus",  icon: Inbox },
       { href: '/admin/sourcing',    label: 'Sourcing IA',   sub: 'Repérer des candidats',  icon: Radar },
       { href: '/admin/cvtheque',    label: 'CV Thèque',     sub: 'Recherche par compétence', icon: FolderSearch },
       { href: '/admin/interviews',  label: 'Entretiens IA', sub: 'Candidats & analyses',   icon: Video },

@@ -14,6 +14,13 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "30mb",
     },
   },
+  // La page AO Offers s'appelle « Candidats » (2026-10-21) : l'ancienne adresse reste valable.
+  async redirects() {
+    return [
+      { source: "/admin/ao-offers", destination: "/admin/candidats", permanent: true },
+      { source: "/admin/ao-offers/:path*", destination: "/admin/candidats/:path*", permanent: true },
+    ];
+  },
 };
 
 export default nextConfig;

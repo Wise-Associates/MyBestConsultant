@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   try {
     const report = await syncAoInbox({ budgetMs: 240_000, holder: 'cron' })
     // Personne ne lit la réponse d'un cron : le journal Vercel est le seul endroit où le voir.
-    if (report.aiUnavailable) console.warn('AO inbox: IA indisponible (crédits épuisés ou clé refusée) — e-mails en attente, voir /admin/ao-offers')
+    if (report.aiUnavailable) console.warn('AO inbox: IA indisponible (crédits épuisés ou clé refusée) — e-mails en attente, voir /admin/candidats')
     if (report.errors.length) console.error('AO inbox: erreurs pendant le passage', report.errors.slice(0, 10))
     // Toutes les boîtes tentées ont échoué : le planificateur (et sa surveillance) doivent le voir comme un échec.
     if (report.mailboxes > 0 && report.failedMailboxes === report.mailboxes) {

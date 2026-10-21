@@ -6,7 +6,7 @@ import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 import { MailboxesManager } from '@/components/ao/mailboxes-manager'
 import { deletePlatformMailboxAction, savePlatformMailboxAction, setPlatformMailboxEnabledAction, testPlatformMailboxAction } from './actions'
 
-// Boîtes de réception de la plateforme lues par AO Offers (page claire, comme /admin/ao-offers).
+// Boîtes de réception de la plateforme lues par AO Offers (page claire, comme /admin/candidats).
 export default async function PlatformMailboxesPage() {
   await requireAdmin()
   let mailboxes: MailboxView[] = []
@@ -20,8 +20,8 @@ export default async function PlatformMailboxesPage() {
   return (
     <div className="admin-light min-h-full p-8 space-y-6">
       <div>
-        <Link href="/admin/ao-offers" className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--admin-fg-muted)' }}>
-          <ArrowLeft className="h-3.5 w-3.5" /> AO Offers
+        <Link href="/admin/candidats" className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--admin-fg-muted)' }}>
+          <ArrowLeft className="h-3.5 w-3.5" /> Candidats
         </Link>
         <h1 className="text-2xl font-bold mt-2" style={{ color: 'var(--admin-fg)', fontSize: '1.5rem' }}>Boîtes de réception de la plateforme</h1>
         <p className="text-sm mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
