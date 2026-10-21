@@ -4,12 +4,14 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { HoverCard } from '@/components/ui/hover-card'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
-import { AlertCircle, BarChart3, CheckCircle2, Copy, Download, Inbox, MessageSquare, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
+import { AlertCircle, BarChart3, CheckCircle2, Copy, Download, Eye, Inbox, MessageSquare, Trash2, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
 import { EMPTY_AO_FILTERS, filterAoOffers, filtersToSearchParams, type AoFilters, type AoOfferRow } from '@/lib/ao/filters'
 import { MAX_ATTEMPTS } from '@/lib/ao/attempts'
 import type { AoSyncReport } from '@/lib/ao/sync'
 import type { AoEmail } from '@/lib/ao/types'
-import { retryAoEmail, syncAoInboxNow } from './actions'
+import { deleteAoOffer, retryAoEmail, syncAoInboxNow } from './actions'
+import { AoComments } from './ao-comments'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { afterBatch } from '@/lib/ao/sync-loop'
 import { AoOfferPanel } from './ao-offer-panel'
 import {
@@ -34,20 +36,25 @@ type Notice = { tone: 'ok' | 'error'; text: string } | null
  * à l'offre, sans défilement horizontal. Toute colonne masquée reste lisible dans le panneau de détail.
  */
 const TABLE_COLUMNS = [
-  { key: 'received', label: 'Reçue le', width: 92, show: 'hidden sm:table-cell' },
+  { key: 'received', label: 'Reçue le', width: 80, show: 'hidden sm:table-cell' },
   { key: 'offer', label: 'Offre', width: undefined, show: '' },
-  { key: 'city', label: 'Ville', width: 100, show: 'hidden 2xl:table-cell' },
-  { key: 'seniority', label: 'Séniorité', width: 88, show: 'hidden xl:table-cell' },
-  { key: 'engagement', label: 'AT / Forfait', title: 'Assistance technique (AT) ou forfait', width: 92, show: 'hidden xl:table-cell' },
-  { key: 'deadline', label: 'Date limite', width: 108, show: 'hidden md:table-cell' },
-  { key: 'tjm', label: 'TJM', title: 'TJM ou salaire', width: 88, show: 'hidden sm:table-cell' },
-  { key: 'skills', label: 'Compétences', width: 210, show: 'hidden min-[1400px]:table-cell' },
-  { key: 'sources', label: 'Sources', title: 'Nombre d’e-mails ayant apporté cette offre', width: 80, show: 'hidden 2xl:table-cell' },
-  { key: 'status', label: 'Statut', width: 96, show: '' },
+  { key: 'city', label: 'Ville', width: 96, show: 'hidden 2xl:table-cell' },
+  { key: 'seniority', label: 'Séniorité', width: 80, show: 'hidden xl:table-cell' },
+  { key: 'engagement', label: 'AT / Forfait', title: 'Assistance technique (AT) ou forfait', width: 90, show: 'hidden xl:table-cell' },
+  { key: 'deadline', label: 'Date limite', width: 92, show: 'hidden md:table-cell' },
+  { key: 'tjm', label: 'TJM', title: 'TJM ou salaire', width: 80, show: 'hidden sm:table-cell' },
+  { key: 'skills', label: 'Compétences', width: 200, show: 'hidden min-[1400px]:table-cell' },
+  { key: 'sources', label: 'Sources', title: 'Nombre d’e-mails ayant apporté cette offre', width: 72, show: 'hidden 2xl:table-cell' },
+  { key: 'status', label: 'Statut', width: 92, show: 'hidden sm:table-cell' },
+  { key: 'actions', label: 'Actions', width: 116, show: '' },
 ] as const satisfies readonly { key: string; label: string; title?: string; width: number | undefined; show: string }[]
 
 type ColumnKey = (typeof TABLE_COLUMNS)[number]['key']
-const cell = (key: ColumnKey) => `${TABLE_COLUMNS.find(c => c.key === key)!.show} px-3 py-3 truncate`
+// Colonnes secondaires en petit texte (comme les badges et sous-lignes) : l'offre garde la place et la taille normale.
+const SMALL_TEXT = new Set<ColumnKey>(['received', 'city', 'seniority', 'engagement', 'deadline', 'tjm', 'sources'])
+const cell = (key: ColumnKey) => `${TABLE_COLUMNS.find(c => c.key === key)!.show} px-3 py-3 truncate${SMALL_TEXT.has(key) ? ' text-xs' : ''}`
+/** Bouton icône de la colonne Actions (cible de 32 px, focus visible). */
+const iconButton = 'inline-flex items-center justify-center w-8 h-8 rounded-lg hover:bg-admin-panel-raised focus-visible:ring-2 focus-visible:ring-offset-1'
 /** Libellé court dans le tableau ; le libellé complet est en infobulle et dans le panneau. */
 const ENGAGEMENT_SHORT = { assistance: 'AT', forfait: 'Forfait', '': '—' } as const
 /** Date courte du tableau (21/10/26) ; la date complète est en infobulle. */
@@ -77,6 +84,11 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
   const [progress, setProgress] = useState<SyncProgress | null>(null)
   const stopRequested = useRef(false)
   const router = useRouter()
+  // Fenêtres « Commentaires » et « Supprimer » : identifiant de l'offre concernée (null : fermée).
+  const [commentsFor, setCommentsFor] = useState<string | null>(null)
+  const [deleteFor, setDeleteFor] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState('')
+  const [deleting, setDeleting] = useState(false)
   const [retrying, startRetry] = useTransition()
   const [retryingId, setRetryingId] = useState<string | null>(null)
   const noticeRef = useRef<HTMLDivElement>(null)
@@ -84,6 +96,21 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
   // Les lignes viennent du serveur (rafraîchies après chaque action) : seul le filtrage est local.
   const filtered = useMemo(() => filterAoOffers(rows, filters), [rows, filters])
   const selected = rows.find(r => r.$id === selectedId) ?? null
+  const commentsRow = rows.find(r => r.$id === commentsFor) ?? null
+  const deleteRow = rows.find(r => r.$id === deleteFor) ?? null
+
+  async function confirmDelete() {
+    if (!deleteRow) return
+    setDeleting(true)
+    setDeleteError('')
+    const res = await deleteAoOffer(deleteRow.$id)
+    setDeleting(false)
+    if (res.error) return setDeleteError(res.error)
+    if (selectedId === deleteRow.$id) setSelectedId(null)
+    setDeleteFor(null)
+    setNotice({ tone: 'ok', text: `Offre « ${deleteRow.title} » supprimée.` })
+    router.refresh()
+  }
   const failedEmails = recentEmails.filter(e => e.status === 'failed')
   const stats = {
     toReview: rows.filter(r => r.status === 'to_review').length,
@@ -305,19 +332,11 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
                 </td>
               </tr>
             ) : filtered.map(r => (
-              <tr key={r.$id} onClick={() => setSelectedId(r.$id)} className="cursor-pointer hover:bg-admin-panel"
-                style={{ borderBottom: '1px solid var(--admin-line)' }}>
+              // Seuls le titre et l'œil ouvrent le détail : un clic ailleurs dans la ligne (sélection de texte…) ne fait rien.
+              <tr key={r.$id} className="hover:bg-admin-panel" style={{ borderBottom: '1px solid var(--admin-line)' }}>
                 <td className={cell('received')} title={formatDay(r.receivedAt)} style={{ color: 'var(--admin-fg-muted)', fontVariantNumeric: 'tabular-nums' }}>{shortDay(r.receivedAt)}</td>
                 <td className={cell('offer')}>
-                  <div className="flex items-center gap-2 min-w-0">
-                    <button type="button" onClick={() => setSelectedId(r.$id)} title={r.title} className="min-w-0 truncate text-left font-medium text-admin-fg hover:underline">{r.title}</button>
-                    {r.commentCount > 0 && (
-                      <span className="inline-flex items-center gap-1 shrink-0 text-xs" style={{ color: 'var(--admin-fg-muted)' }} title={`${r.commentCount} commentaire${r.commentCount > 1 ? 's' : ''}`}>
-                        <MessageSquare size={12} aria-hidden="true" />
-                        <span className="sr-only">Commentaires : </span>{r.commentCount}
-                      </span>
-                    )}
-                  </div>
+                  <button type="button" onClick={() => setSelectedId(r.$id)} title={r.title} className="block w-full truncate text-left font-medium text-admin-fg hover:underline">{r.title}</button>
                   <p className="text-xs truncate" title={`${r.companyName || 'Client non précisé'} · ${r.senderName || r.senderAddress}`} style={{ color: 'var(--admin-fg-muted)' }}>{r.companyName || 'Client non précisé'} · {r.senderName || r.senderAddress}</p>
                 </td>
                 <td className={cell('city')} title={r.location || undefined}>{r.location || '—'}</td>
@@ -348,6 +367,28 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
                 </td>
                 <td className={cell('status')}>
                   <span className="text-xs font-medium px-2 py-1 rounded-md" style={{ color: STATUS_UI[r.status].color, background: 'var(--admin-panel-raised)' }}>{STATUS_UI[r.status].label}</span>
+                </td>
+                <td className={cell('actions')}>
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => setSelectedId(r.$id)} className={iconButton} aria-label={`Voir le détail : ${r.title}`} title="Voir le détail">
+                      <Eye size={16} />
+                    </button>
+                    <button type="button" onClick={() => setCommentsFor(r.$id)} className={`${iconButton} relative`} aria-label={`Commentaires (${r.commentCount}) : ${r.title}`} title="Commentaires">
+                      <MessageSquare size={16} />
+                      {r.commentCount > 0 && (
+                        <span aria-hidden="true" className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full text-[10px] font-semibold leading-4 text-center text-white" style={{ background: '#1d4ed8' }}>{r.commentCount}</span>
+                      )}
+                    </button>
+                    {r.status === 'published' || r.jobId ? (
+                      <span className={`${iconButton} opacity-40 cursor-not-allowed`} title="Offre publiée : retirez d'abord l'offre publique dans « Offres »" aria-label="Suppression impossible : offre publiée">
+                        <Trash2 size={16} />
+                      </span>
+                    ) : (
+                      <button type="button" onClick={() => { setDeleteError(''); setDeleteFor(r.$id) }} className={iconButton} aria-label={`Supprimer l'offre : ${r.title}`} title="Supprimer l'offre" style={{ color: '#b91c1c' }}>
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -380,7 +421,42 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
         </div>
       )}
 
-      {selected && <AoOfferPanel row={selected} onClose={() => setSelectedId(null)} onCommentsChanged={() => router.refresh()} />}
+      {selected && <AoOfferPanel row={selected} onClose={() => setSelectedId(null)} />}
+
+      {/* Commentaires de l'offre : discussion interne, hors du panneau de détail. */}
+      <Dialog open={commentsRow !== null} onOpenChange={open => { if (!open) setCommentsFor(null) }}>
+        {commentsRow && (
+          <DialogContent className="admin-light sm:max-w-[640px] max-h-[85vh] overflow-y-auto" style={{ background: 'var(--admin-panel)' }}>
+            <DialogHeader>
+              <DialogTitle className="text-admin-fg" style={{ fontSize: '1.05rem' }}>Commentaires</DialogTitle>
+              <DialogDescription className="truncate" style={{ color: 'var(--admin-fg-muted)' }} title={commentsRow.title}>{commentsRow.title}</DialogDescription>
+            </DialogHeader>
+            <AoComments offerId={commentsRow.$id} onChanged={() => router.refresh()} />
+          </DialogContent>
+        )}
+      </Dialog>
+
+      {/* Suppression d'une offre : confirmation explicite, définitive. */}
+      <Dialog open={deleteRow !== null} onOpenChange={open => { if (!open && !deleting) setDeleteFor(null) }}>
+        {deleteRow && (
+          <DialogContent className="admin-light sm:max-w-[480px]" style={{ background: 'var(--admin-panel)' }} showCloseButton={!deleting}>
+            <DialogHeader>
+              <DialogTitle className="text-admin-fg" style={{ fontSize: '1.05rem' }}>Supprimer cette offre ?</DialogTitle>
+              <DialogDescription style={{ color: 'var(--admin-fg-muted)' }}>
+                « {deleteRow.title} » sera supprimée définitivement, avec ses détails{deleteRow.commentCount ? ` et ses ${deleteRow.commentCount} commentaire${deleteRow.commentCount > 1 ? 's' : ''}` : ''}. L&apos;e-mail d&apos;origine reste enregistré : l&apos;offre ne sera pas recréée par la synchronisation. Pour seulement la masquer, utilisez « Ignorer » dans son détail.
+              </DialogDescription>
+            </DialogHeader>
+            {deleteError && <p role="alert" className="text-sm" style={{ color: '#b91c1c' }}>{deleteError}</p>}
+            <DialogFooter>
+              <button type="button" onClick={() => setDeleteFor(null)} disabled={deleting} style={secondaryButton}>Annuler</button>
+              <button type="button" onClick={confirmDelete} disabled={deleting} style={{ ...secondaryButton, background: '#b91c1c', borderColor: '#b91c1c', color: 'white' }}>
+                {deleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                Supprimer
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   )
 }
