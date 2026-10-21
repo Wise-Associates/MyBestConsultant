@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 // Organisations du module AO Offers (docs/adr/0005-ao-boites-par-organisation.md) : chaque organisation lit ses
 // propres boîtes ; ses e-mails, offres, verrou de synchronisation et quotas d'IA lui sont propres.
 
-/** Organisation « plateforme » : nos propres boîtes (ao@wise-associates.fr…), comme les offres publiées par l'admin. */
+/** Organisation « plateforme » : nos propres boîtes (aujourd'hui ao@wise-associates.fr), comme les offres publiées par l'admin. */
 export const PLATFORM_TENANT_ID = 'admin'
 export const PLATFORM_NAME = 'Wise Associates'
 

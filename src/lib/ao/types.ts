@@ -1,4 +1,5 @@
-// Types du module « AO Offers » : appels d'offres reçus sur la boîte ao@, extraits par l'IA,
+// Types du module « AO Offers » (AO = appels d'offres) : appels d'offres reçus dans les boîtes lues — celles de la
+// plateforme et celles des organisations, quelle que soit leur adresse (sources.ts) —, extraits par l'IA,
 // stockés dans deux collections (AO_EMAILS, AO_OFFERS) puis publiés en offres anonymisées.
 
 export type AoContract = 'cdi' | 'cdd' | 'freelance' | 'mission'
