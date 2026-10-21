@@ -11,10 +11,10 @@ import { InterviewDetailModal } from './interview-detail-modal'
 
 // ── Status config ─────────────────────────────────────────────────
 const STATUS = {
-  pending:     { label: 'En attente',  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  icon: Clock },
-  in_progress: { label: 'En cours',    color: '#60a5fa', bg: 'rgba(96,165,250,0.12)',  icon: Activity },
-  completed:   { label: 'Terminé',     color: '#10b981', bg: 'rgba(16,185,129,0.12)',  icon: CheckCircle2 },
-  analysed:    { label: 'Analysé',     color: '#a78bfa', bg: 'rgba(167,139,250,0.12)', icon: Brain },
+  pending:     { label: 'En attente',  color: '#b45309', bg: 'rgba(245,158,11,0.12)',  icon: Clock },
+  in_progress: { label: 'En cours',    color: '#1d4ed8', bg: 'rgba(96,165,250,0.12)',  icon: Activity },
+  completed:   { label: 'Terminé',     color: '#047857', bg: 'rgba(16,185,129,0.12)',  icon: CheckCircle2 },
+  analysed:    { label: 'Analysé',     color: '#6d28d9', bg: 'rgba(167,139,250,0.12)', icon: Brain },
 }
 
 // ── Stat card ─────────────────────────────────────────────────────
@@ -56,7 +56,7 @@ function CompletionDonut({ rate }: { rate: number }) {
         <circle cx="50" cy="50" r={r} fill="none" strokeWidth="10" style={{ stroke: 'var(--admin-track)' }} />
         <circle cx="50" cy="50" r={r} fill="none" stroke="#10b981" strokeWidth="10"
           strokeDasharray={`${dash} ${circ}`} strokeLinecap="round" transform="rotate(-90 50 50)" />
-        <text x="50" y="54" textAnchor="middle" fontSize="18" fontWeight="700" style={{ fill: 'white' }}>{rate}%</text>
+        <text x="50" y="54" textAnchor="middle" fontSize="18" fontWeight="700" style={{ fill: 'var(--admin-fg)' }}>{rate}%</text>
       </svg>
       <div>
         <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--admin-fg-muted)', marginBottom: '0.5rem' }}>Taux de complétion</p>
@@ -79,7 +79,7 @@ function JobBars({ data }: { data: AdminInterviewStats['byJob'] }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
               <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--admin-fg)', maxWidth: '70%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</p>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <span style={{ fontSize: 11, color: '#10b981', fontWeight: 600 }}>{d.completedCount} ✓</span>
+                <span style={{ fontSize: 11, color: '#047857', fontWeight: 600 }}>{d.completedCount} ✓</span>
                 <span style={{ fontSize: 11, color: 'var(--admin-fg-muted)' }}>{d.count} total</span>
               </div>
             </div>
@@ -122,10 +122,10 @@ export function InterviewsClient({
       {/* Header */}
       <div style={{ borderBottom: '1px solid var(--admin-line)', padding: '1.75rem 2.5rem' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: '#B8860B', marginBottom: '0.35rem' }}>
+          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--admin-fg-muted)', marginBottom: '0.35rem' }}>
             Recrutement IA
           </p>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: 300, color: 'white', lineHeight: 1.2 }}>
+          <h1 style={{ fontSize: '1.6rem', fontWeight: 300, color: 'var(--admin-fg)', lineHeight: 1.2 }}>
             Entretiens <strong style={{ fontWeight: 700 }}>candidats</strong>
           </h1>
           <p style={{ fontSize: 13, color: 'var(--admin-fg-muted)', marginTop: '0.35rem' }}>
@@ -138,10 +138,10 @@ export function InterviewsClient({
 
         {/* Stats grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-          <StatCard label="Total" value={stats.total} sub={`+${stats.last7days} cette semaine`} color="#60a5fa" icon={Users} />
-          <StatCard label="En attente" value={stats.pending} color="#f59e0b" icon={Clock} />
-          <StatCard label="Terminés" value={stats.completed + stats.analysed} color="#10b981" icon={CheckCircle2} />
-          <StatCard label="Analysés IA" value={stats.analysed} color="#a78bfa" icon={Brain} />
+          <StatCard label="Total" value={stats.total} sub={`+${stats.last7days} cette semaine`} color="#1d4ed8" icon={Users} />
+          <StatCard label="En attente" value={stats.pending} color="#b45309" icon={Clock} />
+          <StatCard label="Terminés" value={stats.completed + stats.analysed} color="#047857" icon={CheckCircle2} />
+          <StatCard label="Analysés IA" value={stats.analysed} color="#6d28d9" icon={Brain} />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: '1rem', marginBottom: '2rem' }}>
@@ -154,7 +154,7 @@ export function InterviewsClient({
         <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {/* Search */}
           <div style={{ position: 'relative', flex: 1, minWidth: 240 }}>
-            <Search style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', width: 15, height: 15, color: 'var(--admin-fg-subtle)' }} />
+            <Search style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', width: 15, height: 15, color: 'var(--admin-fg-muted)' }} />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -242,7 +242,7 @@ export function InterviewsClient({
 
                   {/* Date */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                    <Calendar style={{ width: 12, height: 12, color: 'var(--admin-fg-subtle)', flexShrink: 0 }} />
+                    <Calendar style={{ width: 12, height: 12, color: 'var(--admin-fg-muted)', flexShrink: 0 }} />
                     <span style={{ fontSize: 12, color: 'var(--admin-fg-muted)' }}>{dateStr}</span>
                   </div>
 
@@ -260,9 +260,9 @@ export function InterviewsClient({
                   <a href={`/interview/${row.id}`}
                     target="_blank" rel="noreferrer"
                     onClick={e => e.stopPropagation()}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 8, color: 'var(--admin-fg-subtle)', border: '1px solid var(--admin-line)', textDecoration: 'none' }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 8, color: 'var(--admin-fg-muted)', border: '1px solid var(--admin-line)', textDecoration: 'none' }}
                     onMouseEnter={e => { e.currentTarget.style.color = '#B8860B'; e.currentTarget.style.borderColor = '#B8860B' }}
-                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--admin-fg-subtle)'; e.currentTarget.style.borderColor = 'var(--admin-line)' }}>
+                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--admin-fg-muted)'; e.currentTarget.style.borderColor = 'var(--admin-line)' }}>
                     <ExternalLink style={{ width: 13, height: 13 }} />
                   </a>
                 </div>

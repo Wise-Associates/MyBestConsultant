@@ -53,35 +53,35 @@ function ColorPicker({ label, value, onChange }: { label: string; value: string;
 
   return (
     <div className="relative">
-      <div className="flex items-center gap-3 py-3 border-b border-white/[0.05] last:border-0">
-        <p className="text-sm text-white/70 flex-1">{label}</p>
+      <div className="flex items-center gap-3 py-3 border-b border-admin-line last:border-0">
+        <p className="text-sm text-admin-fg flex-1">{label}</p>
         <button onClick={() => setOpen(v => !v)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/15 transition-colors hover:border-white/30"
-          style={{ background: 'rgba(255,255,255,0.05)' }}>
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-admin-line-strong transition-colors hover:border-admin-line-strong"
+          style={{ background: 'var(--admin-panel-raised)' }}>
           {/* Color swatch */}
-          <span className="w-5 h-5 rounded border border-white/20 shrink-0 flex items-center justify-center text-[8px] text-white/40"
+          <span className="w-5 h-5 rounded border border-admin-line-strong shrink-0 flex items-center justify-center text-[8px] text-admin-fg-muted"
             style={{ background: displayColor ?? 'linear-gradient(135deg, #0B1D51 50%, #B8860B 50%)' }}>
             {isVar ? '~' : ''}
           </span>
-          <span className="text-xs font-mono text-white/50 max-w-[140px] truncate">{value}</span>
-          <ChevronDown className="h-3 w-3 text-white/30 shrink-0" />
+          <span className="text-xs font-mono text-admin-fg-muted max-w-[140px] truncate">{value}</span>
+          <ChevronDown className="h-3 w-3 text-admin-fg-muted shrink-0" />
         </button>
       </div>
 
       {open && (
         <div className="absolute right-0 top-full mt-1 z-50 w-72 rounded-2xl overflow-hidden shadow-2xl"
-          style={{ background: '#1a1d2e', border: '1px solid rgba(255,255,255,0.12)' }}>
+          style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line-strong)' }}>
           <div className="p-4 space-y-4">
             {/* CSS Vars */}
             <div>
-              <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-2">Couleurs du template</p>
+              <p className="text-[10px] font-semibold text-admin-fg-muted uppercase tracking-widest mb-2">Couleurs du template</p>
               <div className="grid grid-cols-3 gap-1.5">
                 {CSS_VAR_COLORS.map(c => (
                   <button key={c.value} onClick={() => { onChange(c.value); setOpen(false) }}
-                    className="flex flex-col items-center gap-1 p-2 rounded-lg text-center transition-all hover:bg-white/10"
-                    style={{ background: value === c.value ? 'rgba(255,255,255,0.12)' : 'transparent' }}>
-                    <span className="w-7 h-7 rounded-full border-2 border-dashed border-white/20 flex items-center justify-center text-[9px] text-white/50">~</span>
-                    <span className="text-[9px] text-white/40 leading-tight">{c.label.replace(' (template)', '')}</span>
+                    className="flex flex-col items-center gap-1 p-2 rounded-lg text-center transition-all hover:bg-admin-hover"
+                    style={{ background: value === c.value ? 'var(--admin-hover)' : 'transparent' }}>
+                    <span className="w-7 h-7 rounded-full border-2 border-dashed border-admin-line-strong flex items-center justify-center text-[9px] text-admin-fg-muted">~</span>
+                    <span className="text-[9px] text-admin-fg-muted leading-tight">{c.label.replace(' (template)', '')}</span>
                   </button>
                 ))}
               </div>
@@ -89,7 +89,7 @@ function ColorPicker({ label, value, onChange }: { label: string; value: string;
 
             {/* Palette */}
             <div>
-              <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-2">Palette</p>
+              <p className="text-[10px] font-semibold text-admin-fg-muted uppercase tracking-widest mb-2">Palette</p>
               <div className="grid grid-cols-7 gap-1.5">
                 {PALETTE_COLORS.map(c => (
                   <button key={c.value}
@@ -102,7 +102,7 @@ function ColorPicker({ label, value, onChange }: { label: string; value: string;
                       outlineOffset: '2px',
                     }}>
                     {value === c.value && (
-                      <Check className="absolute inset-0 m-auto h-3.5 w-3.5 text-white drop-shadow" />
+                      <Check className="absolute inset-0 m-auto h-3.5 w-3.5 text-admin-fg drop-shadow" />
                     )}
                   </button>
                 ))}
@@ -111,23 +111,23 @@ function ColorPicker({ label, value, onChange }: { label: string; value: string;
 
             {/* Custom hex */}
             <div>
-              <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-2">Couleur personnalisée</p>
+              <p className="text-[10px] font-semibold text-admin-fg-muted uppercase tracking-widest mb-2">Couleur personnalisée</p>
               <div className="flex items-center gap-2">
                 <div className="relative shrink-0">
                   <input type="color" value={isVar ? '#0B1D51' : value}
                     onChange={e => onChange(e.target.value)}
                     className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
-                  <div className="w-9 h-9 rounded-lg border border-white/15 cursor-pointer"
+                  <div className="w-9 h-9 rounded-lg border border-admin-line-strong cursor-pointer"
                     style={{ background: isVar ? '#0B1D51' : value }} />
                 </div>
                 <input value={value} onChange={e => onChange(e.target.value)}
                   placeholder="#0B1D51 ou rgba(...)"
-                  className="flex-1 bg-white/[0.05] border border-white/[0.1] text-white/70 text-xs font-mono rounded-lg px-2.5 py-2 focus:outline-none focus:border-white/30" />
+                  className="flex-1 bg-admin-panel-raised border border-admin-line text-admin-fg text-xs font-mono rounded-lg px-2.5 py-2 focus:outline-none focus:border-admin-line-strong" />
               </div>
             </div>
           </div>
           <button onClick={() => setOpen(false)}
-            className="w-full py-2 text-xs text-white/30 hover:text-white/60 transition-colors border-t border-white/[0.07]">
+            className="w-full py-2 text-xs text-admin-fg-muted hover:text-admin-fg-muted transition-colors border-t border-admin-line">
             Fermer
           </button>
         </div>
@@ -139,14 +139,14 @@ function ColorPicker({ label, value, onChange }: { label: string; value: string;
 // ── Toggle ────────────────────────────────────────────────────────
 function Toggle({ label, sub, value, onChange }: { label: string; sub?: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
-    <div className="flex items-center justify-between py-3 border-b border-white/[0.05] last:border-0">
+    <div className="flex items-center justify-between py-3 border-b border-admin-line last:border-0">
       <div>
-        <p className="text-sm text-white/70">{label}</p>
-        {sub && <p className="text-[11px] text-white/30 mt-0.5">{sub}</p>}
+        <p className="text-sm text-admin-fg">{label}</p>
+        {sub && <p className="text-[11px] text-admin-fg-muted mt-0.5">{sub}</p>}
       </div>
       <button onClick={() => onChange(!value)}
         className="relative flex items-center shrink-0 px-0.5 rounded-full transition-colors"
-        style={{ width: '40px', height: '22px', background: value ? '#2563eb' : 'rgba(255,255,255,0.12)' }}>
+        style={{ width: '40px', height: '22px', background: value ? '#2563eb' : 'var(--admin-hover)' }}>
         <span className="w-4 h-4 rounded-full bg-white shadow transition-transform duration-200"
           style={{ transform: value ? 'translateX(18px)' : 'translateX(0)' }} />
       </button>
@@ -160,16 +160,16 @@ function SelectRow<T extends string>({ label, value, options, onChange }: {
   onChange: (v: T) => void
 }) {
   return (
-    <div className="flex items-center justify-between py-3 border-b border-white/[0.05] last:border-0 gap-4">
-      <p className="text-sm text-white/70 shrink-0">{label}</p>
+    <div className="flex items-center justify-between py-3 border-b border-admin-line last:border-0 gap-4">
+      <p className="text-sm text-admin-fg shrink-0">{label}</p>
       <div className="relative">
         <select value={value} onChange={e => onChange(e.target.value as T)}
-          className="appearance-none bg-white/[0.05] border border-white/[0.1] text-white/70 text-sm rounded-lg px-3 py-2 pr-8 focus:outline-none focus:border-white/30">
+          className="appearance-none bg-admin-panel-raised border border-admin-line text-admin-fg text-sm rounded-lg px-3 py-2 pr-8 focus:outline-none focus:border-admin-line-strong">
           {options.map(o => (
-            <option key={o.value} value={o.value} className="bg-[#1a1a2e] text-white">{o.label}</option>
+            <option key={o.value} value={o.value} className="bg-admin-panel text-admin-fg">{o.label}</option>
           ))}
         </select>
-        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/30 pointer-events-none" />
+        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-admin-fg-muted pointer-events-none" />
       </div>
     </div>
   )
@@ -179,13 +179,13 @@ function NumberRow({ label, value, min, max, unit, onChange }: {
   label: string; value: number; min: number; max: number; unit?: string; onChange: (v: number) => void
 }) {
   return (
-    <div className="flex items-center justify-between py-3 border-b border-white/[0.05] last:border-0 gap-4">
-      <p className="text-sm text-white/70 shrink-0">{label}</p>
+    <div className="flex items-center justify-between py-3 border-b border-admin-line last:border-0 gap-4">
+      <p className="text-sm text-admin-fg shrink-0">{label}</p>
       <div className="flex items-center gap-3">
         <input type="range" min={min} max={max} value={value}
           onChange={e => onChange(Number(e.target.value))}
           className="w-28 accent-blue-500" />
-        <span className="text-sm text-white/50 w-12 text-right font-mono tabular-nums">{value}{unit}</span>
+        <span className="text-sm text-admin-fg-muted w-12 text-right font-mono tabular-nums">{value}{unit}</span>
       </div>
     </div>
   )
@@ -194,8 +194,8 @@ function NumberRow({ label, value, min, max, unit, onChange }: {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="text-[11px] font-semibold text-white/35 uppercase tracking-widest mb-3">{title}</h3>
-      <div className="rounded-xl bg-white/[0.03] border border-white/[0.07] px-4">
+      <h3 className="text-[11px] font-semibold text-admin-fg-muted uppercase tracking-widest mb-3">{title}</h3>
+      <div className="rounded-xl bg-admin-panel border border-admin-line px-4">
         {children}
       </div>
     </div>
@@ -224,9 +224,9 @@ function PagesPicker({ value, onChange, availablePages }: {
         <button onClick={() => onChange('all')}
           className="flex-1 flex items-center gap-2 px-4 py-3 rounded-xl border text-sm font-medium transition-all"
           style={{
-            background: isAll ? 'rgba(37,99,235,0.15)' : 'rgba(255,255,255,0.03)',
-            border: isAll ? '1px solid rgba(37,99,235,0.5)' : '1px solid rgba(255,255,255,0.08)',
-            color: isAll ? '#60a5fa' : 'rgba(255,255,255,0.5)',
+            background: isAll ? 'rgba(37,99,235,0.15)' : 'var(--admin-panel)',
+            border: isAll ? '1px solid rgba(37,99,235,0.5)' : '1px solid var(--admin-line)',
+            color: isAll ? '#1d4ed8' : 'var(--admin-fg-muted)',
           }}>
           <Globe className="h-4 w-4" />
           Tout le site
@@ -234,9 +234,9 @@ function PagesPicker({ value, onChange, availablePages }: {
         <button onClick={() => onChange(selected.length > 0 ? selected : [])}
           className="flex-1 flex items-center gap-2 px-4 py-3 rounded-xl border text-sm font-medium transition-all"
           style={{
-            background: !isAll ? 'rgba(37,99,235,0.15)' : 'rgba(255,255,255,0.03)',
-            border: !isAll ? '1px solid rgba(37,99,235,0.5)' : '1px solid rgba(255,255,255,0.08)',
-            color: !isAll ? '#60a5fa' : 'rgba(255,255,255,0.5)',
+            background: !isAll ? 'rgba(37,99,235,0.15)' : 'var(--admin-panel)',
+            border: !isAll ? '1px solid rgba(37,99,235,0.5)' : '1px solid var(--admin-line)',
+            color: !isAll ? '#1d4ed8' : 'var(--admin-fg-muted)',
           }}>
           <FileText className="h-4 w-4" />
           Pages spécifiques
@@ -244,7 +244,7 @@ function PagesPicker({ value, onChange, availablePages }: {
       </div>
 
       {!isAll && (
-        <div className="rounded-xl border border-white/[0.08] overflow-hidden">
+        <div className="rounded-xl border border-admin-line overflow-hidden">
           {/* Fixed pages */}
           {[
             { slug: '/', title: 'Page d\'accueil' },
@@ -255,8 +255,8 @@ function PagesPicker({ value, onChange, availablePages }: {
             { slug: '/recruiter/dashboard', title: 'Espace recruteur' },
           ].concat(availablePages.map(p => ({ slug: `/${p.slug}`, title: p.title }))).map((page, i) => (
             <label key={page.slug}
-              className="flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors hover:bg-white/[0.04]"
-              style={{ borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
+              className="flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors hover:bg-admin-panel"
+              style={{ borderTop: i > 0 ? '1px solid var(--admin-line)' : 'none' }}>
               <div className="relative w-4 h-4 shrink-0">
                 <input type="checkbox" checked={selected.includes(page.slug)}
                   onChange={() => toggle(page.slug)}
@@ -264,13 +264,13 @@ function PagesPicker({ value, onChange, availablePages }: {
                 <div className="w-4 h-4 rounded border flex items-center justify-center transition-all"
                   style={{
                     background: selected.includes(page.slug) ? '#2563eb' : 'transparent',
-                    borderColor: selected.includes(page.slug) ? '#2563eb' : 'rgba(255,255,255,0.2)',
+                    borderColor: selected.includes(page.slug) ? '#2563eb' : 'var(--admin-line-strong)',
                   }}>
-                  {selected.includes(page.slug) && <Check className="h-2.5 w-2.5 text-white" />}
+                  {selected.includes(page.slug) && <Check className="h-2.5 w-2.5 text-admin-fg" />}
                 </div>
               </div>
-              <span className="text-sm text-white/60">{page.title}</span>
-              <span className="text-xs text-white/25 ml-auto font-mono">{page.slug}</span>
+              <span className="text-sm text-admin-fg-muted">{page.title}</span>
+              <span className="text-xs text-admin-fg-muted ml-auto font-mono">{page.slug}</span>
             </label>
           ))}
         </div>
@@ -293,16 +293,16 @@ function CtaEditor({ buttons, onChange }: { buttons: CtaButton[]; onChange: (b: 
   }
   function remove(id: string) { onChange(buttons.filter(b => b.id !== id)) }
 
-  const inp = 'w-full bg-white/[0.05] border border-white/[0.1] text-white/70 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-white/30'
+  const inp = 'w-full bg-admin-panel-raised border border-admin-line text-admin-fg text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-admin-line-strong'
 
   return (
     <div className="space-y-3">
       {buttons.map(btn => (
-        <div key={btn.id} className="rounded-xl border border-white/[0.1] bg-white/[0.03] overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.07]">
-            <GripVertical className="h-4 w-4 text-white/20 shrink-0" />
+        <div key={btn.id} className="rounded-xl border border-admin-line bg-admin-panel overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-admin-line">
+            <GripVertical className="h-4 w-4 text-admin-fg-muted shrink-0" />
             <input value={btn.label} onChange={e => update(btn.id, { label: e.target.value })}
-              className="flex-1 bg-transparent text-sm font-medium text-white/80 focus:outline-none" />
+              className="flex-1 bg-transparent text-sm font-medium text-admin-fg focus:outline-none" />
             <div className="px-3 py-1 text-xs font-semibold shrink-0"
               style={{
                 background: btn.style === 'filled' ? btn.bgColor : 'transparent',
@@ -312,32 +312,32 @@ function CtaEditor({ buttons, onChange }: { buttons: CtaButton[]; onChange: (b: 
               }}>
               {btn.label}
             </div>
-            <button onClick={() => remove(btn.id)} className="text-white/25 hover:text-red-400 transition-colors">
+            <button onClick={() => remove(btn.id)} className="text-admin-fg-muted hover:text-red-700 transition-colors">
               <Trash2 className="h-4 w-4" />
             </button>
           </div>
           <div className="px-4 py-4 grid grid-cols-2 gap-3">
             <div>
-              <p className="text-[11px] text-white/35 mb-1.5">Lien</p>
+              <p className="text-[11px] text-admin-fg-muted mb-1.5">Lien</p>
               <input value={btn.href} onChange={e => update(btn.id, { href: e.target.value })} className={inp} />
             </div>
             <div>
-              <p className="text-[11px] text-white/35 mb-1.5">Visibilité</p>
+              <p className="text-[11px] text-admin-fg-muted mb-1.5">Visibilité</p>
               <select value={btn.showFor} onChange={e => update(btn.id, { showFor: e.target.value as CtaButton['showFor'] })} className={inp}>
-                <option value="all" className="bg-[#1a1a2e]">Tous</option>
-                <option value="guest" className="bg-[#1a1a2e]">Visiteurs uniquement</option>
-                <option value="logged" className="bg-[#1a1a2e]">Connectés uniquement</option>
+                <option value="all" className="bg-admin-panel">Tous</option>
+                <option value="guest" className="bg-admin-panel">Visiteurs uniquement</option>
+                <option value="logged" className="bg-admin-panel">Connectés uniquement</option>
               </select>
             </div>
             <div>
-              <p className="text-[11px] text-white/35 mb-1.5">Style</p>
-              <div className="flex rounded-lg overflow-hidden border border-white/[0.1]">
+              <p className="text-[11px] text-admin-fg-muted mb-1.5">Style</p>
+              <div className="flex rounded-lg overflow-hidden border border-admin-line">
                 {(['filled', 'outline', 'ghost'] as const).map(s => (
                   <button key={s} onClick={() => update(btn.id, { style: s })}
                     className="flex-1 py-2 text-xs capitalize transition-all"
                     style={{
-                      background: btn.style === s ? 'rgba(255,255,255,0.12)' : 'transparent',
-                      color: btn.style === s ? 'white' : 'rgba(255,255,255,0.35)',
+                      background: btn.style === s ? 'var(--admin-hover)' : 'transparent',
+                      color: btn.style === s ? 'var(--admin-fg)' : 'var(--admin-fg-muted)',
                     }}>
                     {s}
                   </button>
@@ -345,14 +345,14 @@ function CtaEditor({ buttons, onChange }: { buttons: CtaButton[]; onChange: (b: 
               </div>
             </div>
             <div>
-              <p className="text-[11px] text-white/35 mb-1.5">Arrondi</p>
-              <div className="flex rounded-lg overflow-hidden border border-white/[0.1]">
+              <p className="text-[11px] text-admin-fg-muted mb-1.5">Arrondi</p>
+              <div className="flex rounded-lg overflow-hidden border border-admin-line">
                 {(['sm', 'md', 'lg', 'full'] as const).map(r => (
                   <button key={r} onClick={() => update(btn.id, { rounded: r })}
                     className="flex-1 py-2 text-xs transition-all"
                     style={{
-                      background: btn.rounded === r ? 'rgba(255,255,255,0.12)' : 'transparent',
-                      color: btn.rounded === r ? 'white' : 'rgba(255,255,255,0.35)',
+                      background: btn.rounded === r ? 'var(--admin-hover)' : 'transparent',
+                      color: btn.rounded === r ? 'var(--admin-fg)' : 'var(--admin-fg-muted)',
                     }}>
                     {r}
                   </button>
@@ -369,13 +369,13 @@ function CtaEditor({ buttons, onChange }: { buttons: CtaButton[]; onChange: (b: 
                     <input type="color" value={btn[f.key].startsWith('#') ? btn[f.key] : '#000000'}
                       onChange={e => update(btn.id, { [f.key]: e.target.value })}
                       className="absolute inset-0 opacity-0 cursor-pointer" />
-                    <div className="w-8 h-8 rounded-lg border border-white/15 cursor-pointer"
+                    <div className="w-8 h-8 rounded-lg border border-admin-line-strong cursor-pointer"
                       style={{ background: btn[f.key] }} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[10px] text-white/30 mb-0.5">{f.label}</p>
+                    <p className="text-[10px] text-admin-fg-muted mb-0.5">{f.label}</p>
                     <input value={btn[f.key]} onChange={e => update(btn.id, { [f.key]: e.target.value })}
-                      className="w-full bg-transparent text-[11px] font-mono text-white/40 focus:outline-none border-b border-white/10" />
+                      className="w-full bg-transparent text-[11px] font-mono text-admin-fg-muted focus:outline-none border-b border-admin-line" />
                   </div>
                 </div>
               ))}
@@ -384,7 +384,7 @@ function CtaEditor({ buttons, onChange }: { buttons: CtaButton[]; onChange: (b: 
         </div>
       ))}
       <button onClick={add}
-        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-white/20 text-sm text-white/40 hover:text-white/70 hover:border-white/40 transition-all">
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-admin-line-strong text-sm text-admin-fg-muted hover:text-admin-fg hover:border-admin-line-strong transition-all">
         <Plus className="h-4 w-4" /> Ajouter un bouton
       </button>
     </div>
@@ -413,17 +413,17 @@ function FooterColumnsEditor({ columns, onChange }: { columns: FooterColumn[]; o
     updateCol(colId, { links: col.links.filter((_, i) => i !== idx) })
   }
 
-  const inp = 'flex-1 bg-white/[0.05] border border-white/[0.1] text-white/70 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-white/30'
+  const inp = 'flex-1 bg-admin-panel-raised border border-admin-line text-admin-fg text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-admin-line-strong'
 
   return (
     <div className="space-y-3">
       {columns.map(col => (
-        <div key={col.id} className="rounded-xl border border-white/[0.1] bg-white/[0.03]">
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.07]">
-            <GripVertical className="h-4 w-4 text-white/20" />
+        <div key={col.id} className="rounded-xl border border-admin-line bg-admin-panel">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-admin-line">
+            <GripVertical className="h-4 w-4 text-admin-fg-muted" />
             <input value={col.title} onChange={e => updateCol(col.id, { title: e.target.value })}
-              className="flex-1 bg-transparent text-sm font-semibold text-white/80 focus:outline-none" />
-            <button onClick={() => removeCol(col.id)} className="text-white/20 hover:text-red-400 transition-colors">
+              className="flex-1 bg-transparent text-sm font-semibold text-admin-fg focus:outline-none" />
+            <button onClick={() => removeCol(col.id)} className="text-admin-fg-muted hover:text-red-700 transition-colors">
               <Trash2 className="h-4 w-4" />
             </button>
           </div>
@@ -433,21 +433,21 @@ function FooterColumnsEditor({ columns, onChange }: { columns: FooterColumn[]; o
                 <input value={link.label} onChange={e => updateLink(col.id, idx, { label: e.target.value })}
                   placeholder="Libellé" className={inp} />
                 <input value={link.href} onChange={e => updateLink(col.id, idx, { href: e.target.value })}
-                  placeholder="/page" className="w-32 bg-white/[0.05] border border-white/[0.1] text-white/70 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-white/30 font-mono" />
-                <button onClick={() => removeLink(col.id, idx)} className="text-white/20 hover:text-red-400 transition-colors shrink-0">
+                  placeholder="/page" className="w-32 bg-admin-panel-raised border border-admin-line text-admin-fg text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-admin-line-strong font-mono" />
+                <button onClick={() => removeLink(col.id, idx)} className="text-admin-fg-muted hover:text-red-700 transition-colors shrink-0">
                   <X className="h-4 w-4" />
                 </button>
               </div>
             ))}
             <button onClick={() => addLink(col.id)}
-              className="flex items-center gap-1.5 text-xs text-white/30 hover:text-white/60 transition-colors pt-1">
+              className="flex items-center gap-1.5 text-xs text-admin-fg-muted hover:text-admin-fg-muted transition-colors pt-1">
               <Plus className="h-3.5 w-3.5" /> Ajouter un lien
             </button>
           </div>
         </div>
       ))}
       <button onClick={addCol}
-        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-white/20 text-sm text-white/40 hover:text-white/70 hover:border-white/40 transition-all">
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-admin-line-strong text-sm text-admin-fg-muted hover:text-admin-fg hover:border-admin-line-strong transition-all">
         <Plus className="h-4 w-4" /> Ajouter une colonne
       </button>
     </div>
@@ -478,23 +478,23 @@ function LogoUploader({ currentLogoUrl, siteName, onUploaded }: { currentLogoUrl
   return (
     <div className="space-y-3">
       {/* Current logo */}
-      <div className="flex items-center gap-4 p-4 rounded-xl bg-white/[0.03] border border-white/[0.07]">
+      <div className="flex items-center gap-4 p-4 rounded-xl bg-admin-panel border border-admin-line">
         <div className="w-24 h-12 rounded-lg flex items-center justify-center shrink-0"
-          style={{ background: '#0B1D51', border: '1px solid rgba(255,255,255,0.1)' }}>
+          style={{ background: '#0B1D51', border: '1px solid var(--admin-line)' }}>
           {url
             ? <img src={url} alt="logo" className="max-h-10 max-w-20 object-contain" />
-            : <span className="text-xs text-white/30 font-bold">{siteName.slice(0, 3)}</span>
+            : <span className="text-xs text-admin-fg-muted font-bold">{siteName.slice(0, 3)}</span>
           }
         </div>
         <div className="flex-1 min-w-0">
           {url
-            ? <p className="text-xs text-white/50 font-mono truncate">{url.split('/').pop()}</p>
-            : <p className="text-sm text-white/40">Aucun logo uploadé</p>
+            ? <p className="text-xs text-admin-fg-muted font-mono truncate">{url.split('/').pop()}</p>
+            : <p className="text-sm text-admin-fg-muted">Aucun logo uploadé</p>
           }
-          <p className="text-[11px] text-white/25 mt-0.5">PNG ou SVG recommandé, fond transparent</p>
+          <p className="text-[11px] text-admin-fg-muted mt-0.5">PNG ou SVG recommandé, fond transparent</p>
         </div>
         {url && (
-          <button onClick={() => setUrl('')} className="text-white/20 hover:text-red-400 transition-colors shrink-0">
+          <button onClick={() => setUrl('')} className="text-admin-fg-muted hover:text-red-700 transition-colors shrink-0">
             <Trash2 className="h-4 w-4" />
           </button>
         )}
@@ -505,24 +505,24 @@ function LogoUploader({ currentLogoUrl, siteName, onUploaded }: { currentLogoUrl
         onClick={() => inputRef.current?.click()}
         disabled={uploading}
         className="w-full flex items-center justify-center gap-3 py-4 rounded-xl border-2 border-dashed transition-all"
-        style={{ borderColor: 'rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.02)' }}
+        style={{ borderColor: 'var(--admin-line-strong)', background: 'var(--admin-panel)' }}
         onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'rgba(37,99,235,0.6)' }}
-        onDragLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)' }}
+        onDragLeave={e => { e.currentTarget.style.borderColor = 'var(--admin-line-strong)' }}
         onDrop={async e => {
           e.preventDefault()
-          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'
+          e.currentTarget.style.borderColor = 'var(--admin-line-strong)'
           const file = e.dataTransfer.files[0]
           if (file) handleFile(file)
         }}>
         {uploading
-          ? <><Loader2 className="h-4 w-4 text-white/50 animate-spin" /><span className="text-sm text-white/40">Upload en cours…</span></>
-          : <><Upload className="h-4 w-4 text-white/30" /><span className="text-sm text-white/40">Glisser un fichier ou cliquer pour choisir</span></>
+          ? <><Loader2 className="h-4 w-4 text-admin-fg-muted animate-spin" /><span className="text-sm text-admin-fg-muted">Upload en cours…</span></>
+          : <><Upload className="h-4 w-4 text-admin-fg-muted" /><span className="text-sm text-admin-fg-muted">Glisser un fichier ou cliquer pour choisir</span></>
         }
       </button>
       <input ref={inputRef} type="file" accept="image/png,image/svg+xml,image/jpeg,image/webp"
         className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
 
-      {error && <p className="text-xs text-red-400 px-1">{error}</p>}
+      {error && <p className="text-xs text-red-700 px-1">{error}</p>}
     </div>
   )
 }
@@ -536,15 +536,15 @@ function NavbarPreview({ h, siteName, logoUrl }: { h: HeaderConfig; siteName: st
   const roundedMap: Record<string, string> = { none: '0', sm: '4px', md: '8px', lg: '12px', full: '9999px' }
 
   return (
-    <div className="rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
+    <div className="rounded-2xl overflow-hidden border border-admin-line shadow-2xl">
       {/* Browser chrome */}
-      <div className="flex items-center gap-2 px-4 py-2.5" style={{ background: '#1a1d2e', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="flex items-center gap-2 px-4 py-2.5" style={{ background: 'var(--admin-panel)', borderBottom: '1px solid var(--admin-line)' }}>
         <div className="flex gap-1.5">
           <div className="w-3 h-3 rounded-full bg-red-500/70" />
           <div className="w-3 h-3 rounded-full bg-yellow-500/70" />
           <div className="w-3 h-3 rounded-full bg-green-500/70" />
         </div>
-        <div className="flex-1 mx-3 px-3 py-1 rounded-md text-[11px] text-white/30 font-mono" style={{ background: 'rgba(255,255,255,0.05)' }}>
+        <div className="flex-1 mx-3 px-3 py-1 rounded-md text-[11px] text-admin-fg-muted font-mono" style={{ background: 'var(--admin-panel-raised)' }}>
           mybestconsultant.fr
         </div>
       </div>
@@ -606,11 +606,11 @@ function NavbarPreview({ h, siteName, logoUrl }: { h: HeaderConfig; siteName: st
       <div style={{ background: '#f8fafc' }}>
         {/* Hero */}
         <div className="px-8 py-10 space-y-3" style={{ background: 'linear-gradient(135deg, #0B1D51 0%, #1a3080 100%)' }}>
-          <div className="h-5 w-2/3 rounded-full bg-white/20" />
-          <div className="h-3 w-1/2 rounded-full bg-white/10" />
+          <div className="h-5 w-2/3 rounded-full bg-admin-hover" />
+          <div className="h-3 w-1/2 rounded-full bg-admin-hover" />
           <div className="flex gap-3 mt-4">
             <div className="h-8 w-28 rounded-lg" style={{ background: accent }} />
-            <div className="h-8 w-24 rounded-lg border border-white/30" />
+            <div className="h-8 w-24 rounded-lg border border-admin-line-strong" />
           </div>
         </div>
         {/* Cards row */}
@@ -636,7 +636,7 @@ function FooterPreview({ f, siteName }: { f: FooterConfig; siteName: string }) {
   const colCount = Math.min(f.columns.length, 4)
 
   return (
-    <div className="rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
+    <div className="rounded-2xl overflow-hidden border border-admin-line shadow-2xl">
       {/* Page content stub above footer */}
       <div className="px-8 py-5 grid grid-cols-3 gap-3" style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
         {[1,2,3].map(i => (
@@ -756,24 +756,24 @@ export function HeaderFooterEditor({ initialHeader, initialFooter, siteName, log
   const tabs = isHeader ? HEADER_TABS : FOOTER_TABS
 
   return (
-    <div className="min-h-full bg-[#0A0C10] text-white">
+    <div className="min-h-full bg-admin-bg text-admin-fg">
 
       {/* Header */}
-      <div className="border-b border-white/[0.07] px-8 py-5 flex items-center justify-between gap-4">
+      <div className="border-b border-admin-line px-8 py-5 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">Header & Footer</h1>
-          <p className="text-sm text-white/35 mt-0.5">
+          <p className="text-sm text-admin-fg-muted mt-0.5">
             Personnalisez l&apos;en-tête et le pied de page — les changements s&apos;appliquent sur tout le site
           </p>
         </div>
         <a href="/" target="_blank"
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-xs text-white/40 hover:text-white transition-colors">
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-admin-panel-raised border border-admin-line text-xs text-admin-fg-muted hover:text-admin-fg transition-colors">
           <ExternalLink className="h-3.5 w-3.5" /> Voir le site
         </a>
       </div>
 
       {status === 'error' && (
-        <div className="mx-8 mt-4 flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+        <div className="mx-8 mt-4 flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-700 text-sm">
           <AlertCircle className="h-4 w-4 shrink-0" />{errMsg}
         </div>
       )}
@@ -784,13 +784,13 @@ export function HeaderFooterEditor({ initialHeader, initialFooter, siteName, log
         <div className="flex-1 px-8 py-6 space-y-5">
 
           {/* Section switcher */}
-          <div className="flex gap-1.5 p-1.5 rounded-2xl bg-white/[0.04] border border-white/[0.06] w-fit">
+          <div className="flex gap-1.5 p-1.5 rounded-2xl bg-admin-panel border border-admin-line w-fit">
             {['header', 'footer'].map(s => (
               <button key={s} onClick={() => setTab(s === 'header' ? 'header-style' : 'footer-style')}
                 className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all capitalize"
                 style={{
                   background: (s === 'header' ? isHeader : !isHeader) ? 'white' : 'transparent',
-                  color: (s === 'header' ? isHeader : !isHeader) ? 'black' : 'rgba(255,255,255,0.4)',
+                  color: (s === 'header' ? isHeader : !isHeader) ? 'black' : 'var(--admin-fg-muted)',
                 }}>
                 {s === 'header' ? <Layout className="h-4 w-4" /> : <Columns3 className="h-4 w-4" />}
                 {s.charAt(0).toUpperCase() + s.slice(1)}
@@ -799,13 +799,13 @@ export function HeaderFooterEditor({ initialHeader, initialFooter, siteName, log
           </div>
 
           {/* Sub-tabs */}
-          <div className="flex gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/[0.06] w-fit">
+          <div className="flex gap-1 p-1 rounded-xl bg-admin-panel border border-admin-line w-fit">
             {tabs.map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition-all"
                 style={{
-                  background: tab === t.id ? 'rgba(255,255,255,0.1)' : 'transparent',
-                  color: tab === t.id ? 'white' : 'rgba(255,255,255,0.38)',
+                  background: tab === t.id ? 'var(--admin-hover)' : 'transparent',
+                  color: tab === t.id ? 'var(--admin-fg)' : 'var(--admin-fg-muted)',
                 }}>
                 <t.icon className="h-3.5 w-3.5" />{t.label}
               </button>
@@ -907,7 +907,7 @@ export function HeaderFooterEditor({ initialHeader, initialFooter, siteName, log
           {/* ── BOUTONS ── */}
           {tab === 'header-buttons' && (
             <div className="max-w-xl">
-              <p className="text-sm text-white/35 mb-4">
+              <p className="text-sm text-admin-fg-muted mb-4">
                 Boutons dans la zone droite du header. Contrôlez le style et la visibilité selon l&apos;état de connexion.
               </p>
               <CtaEditor buttons={header.ctaButtons} onChange={v => setH('ctaButtons', v)} />
@@ -950,7 +950,7 @@ export function HeaderFooterEditor({ initialHeader, initialFooter, siteName, log
               <Section title="Texte de bas de page">
                 <div className="py-3">
                   <input value={footer.bottomText} onChange={e => setF('bottomText', e.target.value)}
-                    className="w-full bg-white/[0.05] border border-white/[0.1] text-white/70 text-sm rounded-xl px-4 py-3 focus:outline-none focus:border-white/30" />
+                    className="w-full bg-admin-panel-raised border border-admin-line text-admin-fg text-sm rounded-xl px-4 py-3 focus:outline-none focus:border-admin-line-strong" />
                 </div>
               </Section>
             </div>
@@ -959,7 +959,7 @@ export function HeaderFooterEditor({ initialHeader, initialFooter, siteName, log
           {/* ── FOOTER COLONNES ── */}
           {tab === 'footer-links' && (
             <div className="max-w-2xl">
-              <p className="text-sm text-white/35 mb-4">Organisez les liens du footer en colonnes thématiques.</p>
+              <p className="text-sm text-admin-fg-muted mb-4">Organisez les liens du footer en colonnes thématiques.</p>
               <FooterColumnsEditor columns={footer.columns} onChange={v => setF('columns', v)} />
             </div>
           )}
@@ -977,15 +977,15 @@ export function HeaderFooterEditor({ initialHeader, initialFooter, siteName, log
         </div>
 
         {/* ── Right panel ── */}
-        <div className="w-full xl:w-[580px] shrink-0 border-t xl:border-t-0 xl:border-l border-white/[0.07] flex flex-col sticky top-0 h-screen overflow-y-auto">
+        <div className="w-full xl:w-[580px] shrink-0 border-t xl:border-t-0 xl:border-l border-admin-line flex flex-col sticky top-0 h-screen overflow-y-auto">
 
           {/* Save button */}
-          <div className="p-5 border-b border-white/[0.07]">
+          <div className="p-5 border-b border-admin-line">
             <button onClick={save} disabled={isPending}
               className="w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all"
               style={{
-                background: status === 'ok' ? '#10b981' : status === 'error' ? 'rgba(239,68,68,0.2)' : 'white',
-                color: status === 'error' ? '#f87171' : 'black',
+                background: status === 'ok' ? '#047857' : status === 'error' ? 'rgba(239,68,68,0.2)' : 'var(--admin-fg)',
+                color: status === 'error' ? '#b91c1c' : 'white',
               }}>
               {isPending ? <Loader2 className="h-4 w-4 animate-spin" />
                 : status === 'ok' ? <Check className="h-4 w-4" />
@@ -997,7 +997,7 @@ export function HeaderFooterEditor({ initialHeader, initialFooter, siteName, log
                 : `Appliquer le ${isHeader ? 'header' : 'footer'}`}
             </button>
             {status === 'ok' && (
-              <p className="text-xs text-emerald-400/70 text-center mt-2 animate-pulse">
+              <p className="text-xs text-emerald-700/70 text-center mt-2 animate-pulse">
                 ✓ Visible sur le site maintenant
               </p>
             )}
@@ -1007,8 +1007,8 @@ export function HeaderFooterEditor({ initialHeader, initialFooter, siteName, log
           <div className="p-6 space-y-8">
             <div>
               <div className="flex items-center justify-between mb-3">
-                <p className="text-[11px] font-semibold text-white/30 uppercase tracking-widest">Aperçu Header</p>
-                <span className="text-[10px] px-2 py-0.5 rounded-full text-blue-400/70" style={{ background: 'rgba(37,99,235,0.12)' }}>
+                <p className="text-[11px] font-semibold text-admin-fg-muted uppercase tracking-widest">Aperçu Header</p>
+                <span className="text-[10px] px-2 py-0.5 rounded-full text-blue-700/70" style={{ background: 'rgba(37,99,235,0.12)' }}>
                   {header.pages === 'all' ? 'Tout le site' : `${(header.pages as string[]).length} page(s)`}
                 </span>
               </div>
@@ -1016,8 +1016,8 @@ export function HeaderFooterEditor({ initialHeader, initialFooter, siteName, log
             </div>
             <div>
               <div className="flex items-center justify-between mb-3">
-                <p className="text-[11px] font-semibold text-white/30 uppercase tracking-widest">Aperçu Footer</p>
-                <span className="text-[10px] px-2 py-0.5 rounded-full text-purple-400/70" style={{ background: 'rgba(139,92,246,0.12)' }}>
+                <p className="text-[11px] font-semibold text-admin-fg-muted uppercase tracking-widest">Aperçu Footer</p>
+                <span className="text-[10px] px-2 py-0.5 rounded-full text-purple-700/70" style={{ background: 'rgba(139,92,246,0.12)' }}>
                   {footer.pages === 'all' ? 'Tout le site' : `${(footer.pages as string[]).length} page(s)`}
                 </span>
               </div>
