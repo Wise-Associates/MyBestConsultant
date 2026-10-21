@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useTransition, type ReactNode } from 'react'
-import { AlertTriangle, Ban, Download, ExternalLink, Loader2, Paperclip, RotateCcw, Send, Users, X } from 'lucide-react'
+import { AlertTriangle, Ban, Check, Copy, Download, ExternalLink, Loader2, Paperclip, RotateCcw, Send, Users, X } from 'lucide-react'
 import type { AoOfferRow } from '@/lib/ao/filters'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
 import {
@@ -86,6 +86,7 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
               {STATUS_UI[published ? 'published' : row.status].label}
             </span>
             <h2 id="ao-offer-title" className="text-xl font-bold text-admin-fg mt-3" style={{ textWrap: 'balance' }}>{row.title}</h2>
+            <FingerprintBadge fingerprint={row.fingerprint} />
             <p className="text-xs mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
               Reçue le {formatDay(row.receivedAt)} de {row.senderName ? `${row.senderName} <${row.senderAddress}>` : row.senderAddress || 'expéditeur inconnu'}
               {row.forwardedBy ? `, transférée par ${row.forwardedBy}` : ''}
@@ -318,5 +319,36 @@ function Sourcing({ offerId }: { offerId: string }) {
         )}
       </div>
     </section>
+  )
+}
+
+/**
+ * Empreinte de l'offre (fingerprint.ts) : ce qui fait son unicité. Deux e-mails donnant la même empreinte (mêmes mots du
+ * titre, même client, même ville, même contrat, même organisation) sont fusionnés en une seule offre (« Sources »).
+ * Affichée courte ; valeur complète en infobulle et copiée par le bouton.
+ */
+function FingerprintBadge({ fingerprint }: { fingerprint: string }) {
+  const [copied, setCopied] = useState<'ok' | 'error' | null>(null)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(fingerprint)
+      setCopied('ok')
+    } catch {
+      // Presse-papiers refusé (contexte non sécurisé, permission) : la valeur reste lisible dans l'infobulle.
+      setCopied('error')
+    }
+    setTimeout(() => setCopied(null), 2000)
+  }
+  return (
+    <p className="inline-flex items-center gap-1.5 mt-2 text-xs px-2 py-1 rounded-md" style={{ background: 'var(--admin-panel-raised)', color: 'var(--admin-fg-muted)' }}
+      title={`Empreinte d'unicité : ${fingerprint}\nCalculée à partir des mots du titre, du client, de la ville et du contrat ; deux e-mails de même empreinte sont fusionnés.`}>
+      <span>ID :</span>
+      <code className="font-mono" style={{ color: 'var(--admin-fg)' }}>{fingerprint.slice(0, 10)}</code>
+      <button type="button" onClick={copy} aria-label="Copier l'identifiant complet" className="inline-flex items-center rounded focus-visible:ring-2" style={{ color: 'var(--admin-fg-muted)' }}>
+        {copied === 'ok' ? <Check size={13} /> : <Copy size={13} />}
+      </button>
+      {copied && <span role="status" className="sr-only">{copied === 'ok' ? 'Identifiant copié' : 'Copie impossible'}</span>}
+      {copied === 'error' && <span aria-hidden="true">copie impossible</span>}
+    </p>
   )
 }
