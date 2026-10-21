@@ -12,19 +12,19 @@ import { AudioPlayer, MultiTrackAudioPlayer } from '@/components/shared/audio-pl
 
 // ── Constantes ────────────────────────────────────────────────────
 const STATUS_CFG = {
-  pending:     { label: 'En attente',  color: '#b45309', bg: 'rgba(245,158,11,0.1)' },
+  pending:     { label: 'En attente',  color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
   in_progress: { label: 'En cours',    color: '#3b82f6', bg: 'rgba(59,130,246,0.1)' },
-  completed:   { label: 'Terminé',     color: '#047857', bg: 'rgba(16,185,129,0.1)' },
+  completed:   { label: 'Terminé',     color: '#10b981', bg: 'rgba(16,185,129,0.1)' },
   analysed:    { label: 'Analysé IA',  color: '#8b5cf6', bg: 'rgba(139,92,246,0.1)' },
 }
 const RECO_CFG = {
-  hire:    { label: 'À recruter',     color: '#047857', bg: 'rgba(16,185,129,0.12)',  icon: TrendingUp },
-  consider:{ label: 'À considérer',  color: '#b45309', bg: 'rgba(245,158,11,0.12)',  icon: Minus },
+  hire:    { label: 'À recruter',     color: '#10b981', bg: 'rgba(16,185,129,0.12)',  icon: TrendingUp },
+  consider:{ label: 'À considérer',  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  icon: Minus },
   reject:  { label: 'À rejeter',     color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: TrendingDown },
 }
 const CAT_COLORS: Record<string, string> = {
-  intro: '#1d4ed8', technical: '#6d28d9', behavioral: '#047857',
-  motivation: '#f59e0b', closing: '#b91c1c',
+  intro: '#60a5fa', technical: '#a78bfa', behavioral: '#34d399',
+  motivation: '#f59e0b', closing: '#f87171',
 }
 const CAT_LABELS: Record<string, string> = {
   intro: 'Intro', technical: 'Technique', behavioral: 'Comportemental',
@@ -39,13 +39,13 @@ function ScoreGauge({ score, label, size = 80 }: { score: number; label: string;
   return (
     <div style={{ textAlign: 'center' }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--admin-track)" strokeWidth={size * 0.1} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={size * 0.1} />
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={size * 0.1}
           strokeDasharray={`${(score / 100) * circ} ${circ}`}
           strokeLinecap="round" transform={`rotate(-90 ${size / 2} ${size / 2})`} />
         <text x={size / 2} y={size / 2 + 5} textAnchor="middle" fontSize={size * 0.22} fontWeight="700" fill={color}>{score}</text>
       </svg>
-      <p style={{ fontSize: 10, color: 'var(--admin-fg-muted)', fontWeight: 600, marginTop: 4 }}>{label}</p>
+      <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontWeight: 600, marginTop: 4 }}>{label}</p>
     </div>
   )
 }
@@ -63,29 +63,29 @@ function Message({ entry, questionMap }: {
       {/* Avatar */}
       <div style={{
         width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-        background: isAlex ? 'linear-gradient(135deg,#4c1d95,#7c3aed)' : 'var(--admin-panel-raised)',
+        background: isAlex ? 'linear-gradient(135deg,#4c1d95,#7c3aed)' : 'rgba(255,255,255,0.08)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        border: isAlex ? 'none' : '1px solid var(--admin-line-strong)',
+        border: isAlex ? 'none' : '1px solid rgba(255,255,255,0.12)',
       }}>
         {isAlex
-          ? <Brain style={{ width: 14, height: 14, color: '#6d28d9' }} />
-          : <User style={{ width: 13, height: 13, color: 'var(--admin-fg-muted)' }} />
+          ? <Brain style={{ width: 14, height: 14, color: '#c4b5fd' }} />
+          : <User style={{ width: 13, height: 13, color: 'rgba(255,255,255,0.5)' }} />
         }
       </div>
 
       <div style={{ maxWidth: '72%', display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: isAlex ? 'flex-start' : 'flex-end' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: isAlex ? '#6d28d9' : 'var(--admin-fg-muted)' }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: isAlex ? '#a78bfa' : 'rgba(255,255,255,0.35)' }}>
             {isAlex ? 'Alex' : 'Candidat'}
           </span>
-          {time && <span style={{ fontSize: 10, color: 'var(--admin-fg-muted)' }}>{time}</span>}
+          {time && <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)' }}>{time}</span>}
         </div>
         <div style={{
           padding: '0.75rem 1rem',
           borderRadius: isAlex ? '4px 16px 16px 16px' : '16px 4px 16px 16px',
-          background: isAlex ? 'rgba(124,58,237,0.12)' : 'var(--admin-panel-raised)',
-          border: isAlex ? '1px solid rgba(124,58,237,0.2)' : '1px solid var(--admin-line)',
-          fontSize: '0.85rem', color: isAlex ? 'var(--admin-fg)' : 'var(--admin-fg)',
+          background: isAlex ? 'rgba(124,58,237,0.12)' : 'rgba(255,255,255,0.06)',
+          border: isAlex ? '1px solid rgba(124,58,237,0.2)' : '1px solid rgba(255,255,255,0.08)',
+          fontSize: '0.85rem', color: isAlex ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.75)',
           lineHeight: 1.65,
         }}>
           {entry.content}
@@ -104,16 +104,16 @@ function TabTranscript({ detail }: { detail: InterviewDetail }) {
     <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       {/* Questions résumé */}
       {detail.questions.length > 0 && (
-        <div style={{ padding: '1rem', borderRadius: 14, background: 'var(--admin-panel)', border: '1px solid var(--admin-line)', marginBottom: '0.5rem' }}>
-          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--admin-fg-muted)', marginBottom: '0.75rem' }}>
+        <div style={{ padding: '1rem', borderRadius: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', marginBottom: '0.5rem' }}>
+          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: '0.75rem' }}>
             {detail.questions.length} questions posées
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
             {detail.questions.map((q, i) => (
               <span key={q.id ?? i} style={{
                 fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 20,
-                color: CAT_COLORS[q.category] ?? '#6d28d9',
-                background: `${CAT_COLORS[q.category] ?? '#6d28d9'}18`,
+                color: CAT_COLORS[q.category] ?? '#a78bfa',
+                background: `${CAT_COLORS[q.category] ?? '#a78bfa'}18`,
               }}>
                 {CAT_LABELS[q.category] ?? q.category}
               </span>
@@ -124,7 +124,7 @@ function TabTranscript({ detail }: { detail: InterviewDetail }) {
 
       {/* Conversation */}
       {detail.transcript.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--admin-fg-muted)' }}>
+        <div style={{ textAlign: 'center', padding: '3rem', color: 'rgba(255,255,255,0.25)' }}>
           <MessageSquare style={{ width: 32, height: 32, margin: '0 auto 1rem', opacity: 0.3 }} />
           <p style={{ fontSize: 13 }}>Aucune transcription disponible</p>
           <p style={{ fontSize: 11, marginTop: '0.5rem', opacity: 0.6 }}>L&apos;entretien n&apos;a pas encore démarré</p>
@@ -166,10 +166,10 @@ function TabAnalysis({ detail, onAnalysisDone, onAnalyze }: {
         <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
           <Brain style={{ width: 32, height: 32, color: 'rgba(124,58,237,0.5)' }} />
         </div>
-        <p style={{ color: 'var(--admin-fg-muted)', fontSize: 15, fontWeight: 600, marginBottom: '0.5rem' }}>
+        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 15, fontWeight: 600, marginBottom: '0.5rem' }}>
           Analyse IA non générée
         </p>
-        <p style={{ color: 'var(--admin-fg-muted)', fontSize: 12, lineHeight: 1.7, marginBottom: '2rem' }}>
+        <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12, lineHeight: 1.7, marginBottom: '2rem' }}>
           {hasTranscript
             ? `${detail.transcript.length} échanges disponibles — cliquez pour lancer l'analyse Claude AI`
             : "Aucune transcription disponible. L'entretien doit être complété d'abord."}
@@ -192,7 +192,7 @@ function TabAnalysis({ detail, onAnalysisDone, onAnalyze }: {
             }
           </button>
         )}
-        {err && <p style={{ color: '#b91c1c', fontSize: 12, marginTop: '1rem' }}>{err}</p>}
+        {err && <p style={{ color: '#f87171', fontSize: 12, marginTop: '1rem' }}>{err}</p>}
       </div>
     )
   }
@@ -204,9 +204,9 @@ function TabAnalysis({ detail, onAnalysisDone, onAnalyze }: {
     <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
       {/* Scores */}
-      <div style={{ borderRadius: 16, padding: '1.5rem', background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
+      <div style={{ borderRadius: 16, padding: '1.5rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--admin-fg-muted)' }}>
+          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)' }}>
             Scores
           </p>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: 12, fontWeight: 700, padding: '5px 14px', borderRadius: 20, background: reco.bg, color: reco.color }}>
@@ -224,8 +224,8 @@ function TabAnalysis({ detail, onAnalysisDone, onAnalyze }: {
       {/* Résumé */}
       {a.summary && (
         <div style={{ borderRadius: 14, padding: '1.25rem', background: 'rgba(124,58,237,0.07)', border: '1px solid rgba(124,58,237,0.15)' }}>
-          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--admin-fg-muted)', marginBottom: '0.75rem' }}>Résumé</p>
-          <p style={{ fontSize: '0.875rem', color: 'var(--admin-fg)', lineHeight: 1.7 }}>{a.summary}</p>
+          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: '0.75rem' }}>Résumé</p>
+          <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.75)', lineHeight: 1.7 }}>{a.summary}</p>
         </div>
       )}
 
@@ -233,14 +233,14 @@ function TabAnalysis({ detail, onAnalysisDone, onAnalyze }: {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
         {a.keyInsights.length > 0 && (
           <div style={{ borderRadius: 14, padding: '1.25rem', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
-            <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#047857', marginBottom: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#10b981', marginBottom: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <Star style={{ width: 11, height: 11 }} />Points forts
             </p>
             <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
               {a.keyInsights.map((ins, i) => (
                 <li key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-                  <CheckCircle2 style={{ width: 13, height: 13, color: '#047857', flexShrink: 0, marginTop: 2 }} />
-                  <span style={{ fontSize: '0.8rem', color: 'var(--admin-fg-muted)', lineHeight: 1.55 }}>{ins}</span>
+                  <CheckCircle2 style={{ width: 13, height: 13, color: '#10b981', flexShrink: 0, marginTop: 2 }} />
+                  <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.65)', lineHeight: 1.55 }}>{ins}</span>
                 </li>
               ))}
             </ul>
@@ -256,7 +256,7 @@ function TabAnalysis({ detail, onAnalysisDone, onAnalyze }: {
               {a.redFlags.map((flag, i) => (
                 <li key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
                   <AlertTriangle style={{ width: 13, height: 13, color: '#ef4444', flexShrink: 0, marginTop: 2 }} />
-                  <span style={{ fontSize: '0.8rem', color: 'var(--admin-fg-muted)', lineHeight: 1.55 }}>{flag}</span>
+                  <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.65)', lineHeight: 1.55 }}>{flag}</span>
                 </li>
               ))}
             </ul>
@@ -266,8 +266,8 @@ function TabAnalysis({ detail, onAnalysisDone, onAnalyze }: {
 
       {/* Prochaines étapes */}
       {a.nextSteps.length > 0 && (
-        <div style={{ borderRadius: 14, padding: '1.25rem', background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
-          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--admin-fg-muted)', marginBottom: '0.875rem' }}>
+        <div style={{ borderRadius: 14, padding: '1.25rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: '0.875rem' }}>
             Prochaines étapes recommandées
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -276,14 +276,14 @@ function TabAnalysis({ detail, onAnalysisDone, onAnalyze }: {
                 <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(184,134,11,0.15)', border: '1px solid rgba(184,134,11,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, color: '#d4a017' }}>{i + 1}</span>
                 </div>
-                <span style={{ fontSize: '0.8rem', color: 'var(--admin-fg-muted)', lineHeight: 1.55 }}>{step}</span>
+                <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.65)', lineHeight: 1.55 }}>{step}</span>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      <p style={{ fontSize: 10, color: 'var(--admin-fg-muted)', textAlign: 'right' }}>
+      <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', textAlign: 'right' }}>
         Analyse générée par {a.analysedBy}
       </p>
     </div>
@@ -314,13 +314,13 @@ function TabRecordings({ detail }: { detail: InterviewDetail }) {
   if (recs.length === 0) {
     return (
       <div style={{ padding: '3rem', textAlign: 'center' }}>
-        <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--admin-panel)', border: '1px solid var(--admin-line)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
-          <Mic style={{ width: 28, height: 28, color: 'var(--admin-fg-muted)' }} />
+        <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
+          <Mic style={{ width: 28, height: 28, color: 'rgba(255,255,255,0.2)' }} />
         </div>
-        <p style={{ color: 'var(--admin-fg-muted)', fontSize: 14, fontWeight: 600, marginBottom: '0.5rem' }}>
+        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 14, fontWeight: 600, marginBottom: '0.5rem' }}>
           Aucun enregistrement
         </p>
-        <p style={{ color: 'var(--admin-fg-muted)', fontSize: 12, lineHeight: 1.6 }}>
+        <p style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12, lineHeight: 1.6 }}>
           Les enregistrements audio sont capturés lors des entretiens vocaux.<br />
           Cet entretien n&apos;en contient pas (réponses texte uniquement ou ancienne version).
         </p>
@@ -340,13 +340,13 @@ function TabRecordings({ detail }: { detail: InterviewDetail }) {
 
   return (
     <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--admin-fg-muted)' }}>
+      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)' }}>
         {recs.length} enregistrement{recs.length > 1 ? 's' : ''} {videoRecs.length > 0 ? '' : 'audio'}
       </p>
 
       {useMultiTrack ? (
         <MultiTrackAudioPlayer
-          accentColor="#6d28d9"
+          accentColor="#a78bfa"
           dark
           tracks={audioRecs.map((rec, i) => {
             const { label, sublabel } = labelFor(rec, i)
@@ -362,7 +362,7 @@ function TabRecordings({ detail }: { detail: InterviewDetail }) {
               src={rec.url}
               label={label}
               sublabel={sublabel}
-              accentColor={isInterviewer ? '#1d4ed8' : '#6d28d9'}
+              accentColor={isInterviewer ? '#60a5fa' : '#a78bfa'}
               downloadName={`entretien-${isFullTrack ? 'complet' : `q${rec.questionIdx + 1}`}.webm`}
               dark
             />
@@ -373,14 +373,14 @@ function TabRecordings({ detail }: { detail: InterviewDetail }) {
       {videoRecs.map((rec, i) => {
         const { label, sublabel } = labelFor(rec, i)
         return (
-          <div key={rec.fileId} style={{ borderRadius: 14, padding: '1.25rem', background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
+          <div key={rec.fileId} style={{ borderRadius: 14, padding: '1.25rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.875rem' }}>
               <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(124,58,237,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Video style={{ width: 13, height: 13, color: '#6d28d9' }} />
+                <Video style={{ width: 13, height: 13, color: '#a78bfa' }} />
               </div>
               <div style={{ minWidth: 0 }}>
-                <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--admin-fg)' }}>{label}</p>
-                <p style={{ fontSize: 10, color: 'var(--admin-fg-muted)', marginTop: 2 }}>{sublabel}</p>
+                <p style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.7)' }}>{label}</p>
+                <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 2 }}>{sublabel}</p>
               </div>
             </div>
             <video controls src={rec.url} style={{ width: '100%', maxHeight: 320, borderRadius: 8, outline: 'none', background: '#000' }} />
@@ -439,49 +439,49 @@ export function InterviewDetailModal({ row, onClose, getDetail = getInterviewDet
       <div style={{
         width: '100%', maxWidth: 760, height: '90vh',
         borderRadius: 24, overflow: 'hidden',
-        background: 'var(--admin-panel)', border: '1px solid var(--admin-line)',
+        background: '#0d0f14', border: '1px solid rgba(255,255,255,0.08)',
         boxShadow: '0 32px 80px rgba(0,0,0,0.7)',
         display: 'flex', flexDirection: 'column',
       }}>
 
         {/* ── Header ── */}
-        <div style={{ padding: '1.5rem 1.75rem', borderBottom: '1px solid var(--admin-line)', flexShrink: 0, background: 'var(--admin-panel)' }}>
+        <div style={{ padding: '1.5rem 1.75rem', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0, background: 'rgba(255,255,255,0.02)' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
             {/* Avatar candidat */}
-            <div style={{ width: 52, height: 52, borderRadius: 16, background: 'linear-gradient(135deg,#1e1b4b,#4c1d95)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 18, fontWeight: 700, color: '#6d28d9' }}>
+            <div style={{ width: 52, height: 52, borderRadius: 16, background: 'linear-gradient(135deg,#1e1b4b,#4c1d95)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 18, fontWeight: 700, color: '#c4b5fd' }}>
               {row.candidateName.slice(0, 2).toUpperCase()}
             </div>
 
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                <h2 style={{ color: 'var(--admin-fg)', fontWeight: 700, fontSize: '1.1rem', margin: 0 }}>{row.candidateName}</h2>
+                <h2 style={{ color: 'white', fontWeight: 700, fontSize: '1.1rem', margin: 0 }}>{row.candidateName}</h2>
                 <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: st.bg, color: st.color }}>
                   {st.label}
                 </span>
               </div>
-              <p style={{ color: 'var(--admin-fg-muted)', fontSize: 12, marginTop: '0.25rem' }}>{row.candidateEmail}</p>
+              <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 12, marginTop: '0.25rem' }}>{row.candidateEmail}</p>
 
               {/* Meta */}
               <div style={{ display: 'flex', gap: '1.25rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <Briefcase style={{ width: 12, height: 12, color: 'var(--admin-fg-muted)' }} />
-                  <span style={{ fontSize: 11, color: 'var(--admin-fg-muted)' }}>{row.jobTitle}</span>
+                  <Briefcase style={{ width: 12, height: 12, color: 'rgba(255,255,255,0.25)' }} />
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{row.jobTitle}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <Calendar style={{ width: 12, height: 12, color: 'var(--admin-fg-muted)' }} />
-                  <span style={{ fontSize: 11, color: 'var(--admin-fg-muted)' }}>
+                  <Calendar style={{ width: 12, height: 12, color: 'rgba(255,255,255,0.25)' }} />
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
                     {new Date(row.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
                   </span>
                 </div>
                 {duration !== null && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <Clock style={{ width: 12, height: 12, color: 'var(--admin-fg-muted)' }} />
-                    <span style={{ fontSize: 11, color: 'var(--admin-fg-muted)' }}>{duration} min</span>
+                    <Clock style={{ width: 12, height: 12, color: 'rgba(255,255,255,0.25)' }} />
+                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{duration} min</span>
                   </div>
                 )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <MessageSquare style={{ width: 12, height: 12, color: 'var(--admin-fg-muted)' }} />
-                  <span style={{ fontSize: 11, color: 'var(--admin-fg-muted)' }}>
+                  <MessageSquare style={{ width: 12, height: 12, color: 'rgba(255,255,255,0.25)' }} />
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
                     {row.transcriptLength} échanges · {row.questionCount} questions
                   </span>
                 </div>
@@ -489,23 +489,23 @@ export function InterviewDetailModal({ row, onClose, getDetail = getInterviewDet
             </div>
 
             <button onClick={onClose}
-              style={{ padding: 8, borderRadius: 10, color: 'var(--admin-fg-muted)', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}
+              style={{ padding: 8, borderRadius: 10, color: 'rgba(255,255,255,0.3)', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}
               onMouseEnter={e => (e.currentTarget.style.color = 'white')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'var(--admin-fg-muted)')}>
+              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.3)')}>
               <X style={{ width: 20, height: 20 }} />
             </button>
           </div>
 
           {/* Tabs */}
-          <div style={{ display: 'flex', gap: '0.25rem', marginTop: '1.25rem', background: 'var(--admin-panel)', padding: '0.25rem', borderRadius: 12, width: 'fit-content' }}>
+          <div style={{ display: 'flex', gap: '0.25rem', marginTop: '1.25rem', background: 'rgba(255,255,255,0.04)', padding: '0.25rem', borderRadius: 12, width: 'fit-content' }}>
             {TABS.map(t => (
               <button key={t.key}
                 onClick={() => setTab(t.key)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '0.4rem',
                   padding: '0.5rem 1rem', borderRadius: 9, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-                  background: tab === t.key ? 'var(--admin-hover)' : 'transparent',
-                  color: tab === t.key ? 'var(--admin-fg)' : 'var(--admin-fg-muted)',
+                  background: tab === t.key ? 'rgba(255,255,255,0.09)' : 'transparent',
+                  color: tab === t.key ? 'white' : 'rgba(255,255,255,0.35)',
                   transition: 'all 0.15s',
                 }}>
                 <t.icon style={{ width: 13, height: 13 }} />{t.label}
@@ -519,10 +519,10 @@ export function InterviewDetailModal({ row, onClose, getDetail = getInterviewDet
           {loading ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '1rem' }}>
               <Loader2 style={{ width: 32, height: 32, color: '#7c3aed', animation: 'spin 1s linear infinite' }} />
-              <p style={{ color: 'var(--admin-fg-muted)', fontSize: 13 }}>Chargement de l&apos;entretien…</p>
+              <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>Chargement de l&apos;entretien…</p>
             </div>
           ) : error ? (
-            <div style={{ padding: '3rem', textAlign: 'center', color: '#b91c1c', fontSize: 13 }}>{error}</div>
+            <div style={{ padding: '3rem', textAlign: 'center', color: '#f87171', fontSize: 13 }}>{error}</div>
           ) : detail ? (
             <>
               {tab === 'transcript'  && <TabTranscript detail={detail} />}

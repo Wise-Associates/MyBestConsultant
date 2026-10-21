@@ -31,24 +31,24 @@ function parseCssVars(vars: string): React.CSSProperties {
   return style as React.CSSProperties
 }
 
-const inp = "bg-admin-panel-raised border-admin-line text-admin-fg placeholder:text-admin-fg-subtle focus:border-admin-line-strong focus:ring-0 rounded-lg text-sm h-9"
-const ta  = "bg-admin-panel-raised border-admin-line text-admin-fg placeholder:text-admin-fg-subtle focus:border-admin-line-strong focus:ring-0 rounded-lg text-sm resize-none"
+const inp = "bg-white/[0.06] border-white/[0.1] text-white/80 placeholder:text-white/25 focus:border-white/30 focus:ring-0 rounded-lg text-sm h-9"
+const ta  = "bg-white/[0.06] border-white/[0.1] text-white/80 placeholder:text-white/25 focus:border-white/30 focus:ring-0 rounded-lg text-sm resize-none"
 
 function slugify(s: string) {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
 const CATALOG: { type: SectionType; label: string; desc: string; icon: React.ElementType; color: string }[] = [
-  { type: 'hero',          label: 'Hero',         desc: 'Bannière pleine largeur + CTA',   icon: Layout,            color: 'text-blue-700' },
-  { type: 'text',          label: 'Texte',         desc: 'Titre + paragraphe',              icon: Type,              color: 'text-admin-fg-muted' },
-  { type: 'image_text',    label: 'Image + Texte', desc: 'Deux colonnes image / contenu',   icon: ImageIcon,         color: 'text-violet-700' },
-  { type: 'cta',           label: 'CTA',           desc: "Bande appel à l'action",          icon: Zap,               color: 'text-amber-700' },
-  { type: 'cards',         label: 'Cartes',        desc: 'Grille avec icônes',              icon: Grid3X3,           color: 'text-emerald-700' },
-  { type: 'stats',         label: 'Stats',         desc: 'Chiffres clés mis en valeur',     icon: BarChart2,         color: 'text-pink-700' },
+  { type: 'hero',          label: 'Hero',         desc: 'Bannière pleine largeur + CTA',   icon: Layout,            color: 'text-blue-400' },
+  { type: 'text',          label: 'Texte',         desc: 'Titre + paragraphe',              icon: Type,              color: 'text-white/60' },
+  { type: 'image_text',    label: 'Image + Texte', desc: 'Deux colonnes image / contenu',   icon: ImageIcon,         color: 'text-violet-400' },
+  { type: 'cta',           label: 'CTA',           desc: "Bande appel à l'action",          icon: Zap,               color: 'text-amber-400' },
+  { type: 'cards',         label: 'Cartes',        desc: 'Grille avec icônes',              icon: Grid3X3,           color: 'text-emerald-400' },
+  { type: 'stats',         label: 'Stats',         desc: 'Chiffres clés mis en valeur',     icon: BarChart2,         color: 'text-pink-400' },
   { type: 'image_gallery', label: 'Galerie',       desc: "Grille d'images cliquables",      icon: GalleryHorizontal, color: 'text-cyan-400' },
-  { type: 'divider',       label: 'Séparateur',    desc: 'Espace ou ligne entre sections',  icon: Minus,             color: 'text-admin-fg-muted' },
-  { type: 'custom_html',   label: 'HTML Custom',   desc: 'Coller du HTML externe / GitHub', icon: Code2,             color: 'text-orange-700' },
-  { type: 'trusted_logos', label: 'Logos partenaires', desc: 'Bandeau "Ils nous ont fait confiance"', icon: Building2, color: 'text-sky-700' },
+  { type: 'divider',       label: 'Séparateur',    desc: 'Espace ou ligne entre sections',  icon: Minus,             color: 'text-white/30' },
+  { type: 'custom_html',   label: 'HTML Custom',   desc: 'Coller du HTML externe / GitHub', icon: Code2,             color: 'text-orange-400' },
+  { type: 'trusted_logos', label: 'Logos partenaires', desc: 'Bandeau "Ils nous ont fait confiance"', icon: Building2, color: 'text-sky-400' },
 ]
 
 const BG_PALETTE = [
@@ -108,10 +108,10 @@ function ImageFocalPicker({ imageUrl, value, onChange }: { imageUrl: string; val
 
   return (
     <div className="space-y-2">
-      <Label className="text-[10px] text-admin-fg-muted uppercase tracking-widest">Point focal (glisser)</Label>
+      <Label className="text-[10px] text-white/35 uppercase tracking-widest">Point focal (glisser)</Label>
       {/* Image drag area */}
       <div ref={containerRef}
-        className="relative rounded-lg overflow-hidden cursor-crosshair border border-admin-line"
+        className="relative rounded-lg overflow-hidden cursor-crosshair border border-white/[0.08]"
         style={{ height: 90 }}
         onMouseDown={e => { setDragging(true); calcFromEvent(e) }}
         onMouseMove={e => { if (dragging) calcFromEvent(e) }}
@@ -124,20 +124,20 @@ function ImageFocalPicker({ imageUrl, value, onChange }: { imageUrl: string; val
         <div className="absolute w-4 h-4 rounded-full border-2 border-white shadow-lg pointer-events-none"
           style={{ left: `${px}%`, top: `${py}%`, transform: 'translate(-50%, -50%)', background: 'rgba(99,102,241,0.7)' }} />
         {/* Crosshair lines */}
-        <div className="absolute pointer-events-none" style={{ left: `${px}%`, top: 0, bottom: 0, width: 1, background: 'var(--admin-hover)', transform: 'translateX(-50%)' }} />
-        <div className="absolute pointer-events-none" style={{ top: `${py}%`, left: 0, right: 0, height: 1, background: 'var(--admin-hover)', transform: 'translateY(-50%)' }} />
+        <div className="absolute pointer-events-none" style={{ left: `${px}%`, top: 0, bottom: 0, width: 1, background: 'rgba(255,255,255,0.25)', transform: 'translateX(-50%)' }} />
+        <div className="absolute pointer-events-none" style={{ top: `${py}%`, left: 0, right: 0, height: 1, background: 'rgba(255,255,255,0.25)', transform: 'translateY(-50%)' }} />
       </div>
       {/* Quick presets 3x3 */}
       <div className="grid grid-cols-3 gap-0.5">
         {POS_GRID.map((row, ri) => row.map((pos, ci) => (
           <button key={pos} onClick={() => onChange(pos)}
             title={pos}
-            className={`h-5 rounded text-[9px] transition-colors ${value === pos ? 'bg-indigo-500/40 border border-indigo-400/50' : 'bg-admin-panel hover:bg-admin-hover border border-admin-line'}`}>
-            <div className="w-1.5 h-1.5 rounded-full bg-admin-hover mx-auto" style={{ opacity: value === pos ? 1 : 0.3 }} />
+            className={`h-5 rounded text-[9px] transition-colors ${value === pos ? 'bg-indigo-500/40 border border-indigo-400/50' : 'bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.06]'}`}>
+            <div className="w-1.5 h-1.5 rounded-full bg-white/50 mx-auto" style={{ opacity: value === pos ? 1 : 0.3 }} />
           </button>
         )))}
       </div>
-      <p className="text-[10px] text-admin-fg-muted font-mono">{value || 'center'}</p>
+      <p className="text-[10px] text-white/25 font-mono">{value || 'center'}</p>
     </div>
   )
 }
@@ -146,7 +146,7 @@ function ImageFocalPicker({ imageUrl, value, onChange }: { imageUrl: string; val
 function F({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-[10px] text-admin-fg-muted uppercase tracking-widest">{label}</Label>
+      <Label className="text-[10px] text-white/35 uppercase tracking-widest">{label}</Label>
       {children}
     </div>
   )
@@ -155,7 +155,7 @@ function F({ label, children }: { label: string; children: React.ReactNode }) {
 function Sel({ value, options, onChange }: { value: string; options: { label: string; value: string }[]; onChange: (v: string) => void }) {
   return (
     <select value={value} onChange={e => onChange(e.target.value)}
-      className="w-full bg-admin-panel-raised border border-admin-line text-admin-fg text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-admin-line-strong">
+      className="w-full bg-white/[0.06] border border-white/[0.1] text-white/70 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-white/30">
       {options.map(o => <option key={o.value} value={o.value} className="bg-[#16182a]">{o.label}</option>)}
     </select>
   )
@@ -167,14 +167,14 @@ function BgColorPicker({ value, onChange }: { value: string; onChange: (v: strin
       <div className="flex flex-wrap gap-1.5 items-center">
         {BG_PALETTE.map(p => (
           <button key={p.value} title={p.label} onClick={() => onChange(p.value)}
-            className={`h-7 w-7 rounded-md border-2 transition-all flex items-center justify-center ${value === p.value ? 'border-admin-line-strong scale-110' : 'border-admin-line hover:border-admin-line-strong'}`}
+            className={`h-7 w-7 rounded-md border-2 transition-all flex items-center justify-center ${value === p.value ? 'border-white/60 scale-110' : 'border-white/[0.1] hover:border-white/30'}`}
             style={{ background: p.preview }}>
-            {!p.value && <span className="text-[9px] text-admin-fg-muted font-medium">↩</span>}
+            {!p.value && <span className="text-[9px] text-white/40 font-medium">↩</span>}
           </button>
         ))}
         <input type="color" value={value.startsWith('#') ? value : '#0B1D51'}
           onChange={e => onChange(e.target.value)}
-          className="h-7 w-7 rounded-md border border-admin-line bg-transparent cursor-pointer p-0.5 hover:border-admin-line-strong"
+          className="h-7 w-7 rounded-md border border-white/[0.1] bg-transparent cursor-pointer p-0.5 hover:border-white/30"
           title="Couleur personnalisée" />
       </div>
     </F>
@@ -372,25 +372,25 @@ function SectionEditor({ section, onChange, onPickTemplate }: { section: PageSec
       <F label="Style visuel">
         <button
           onClick={() => onPickTemplate?.()}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-admin-line bg-admin-panel hover:bg-admin-panel-raised transition-colors text-left group"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-white/[0.1] bg-white/[0.04] hover:bg-white/[0.08] transition-colors text-left group"
         >
           {/* Current variant thumbnail */}
-          <div className="h-10 w-16 rounded-md shrink-0 overflow-hidden border border-admin-line" style={{
+          <div className="h-10 w-16 rounded-md shrink-0 overflow-hidden border border-white/[0.1]" style={{
             background: HERO_TEMPLATES.find(t => t.id === (section.variant ?? 'default'))?.thumbBg ?? '#0B1D51',
           }}>
             <div className="w-full h-full flex items-center justify-center">
-              <div className="w-8 h-0.5 rounded-full bg-admin-hover" />
+              <div className="w-8 h-0.5 rounded-full bg-white/40" />
             </div>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-admin-fg truncate">
+            <p className="text-xs font-semibold text-white/70 truncate">
               {HERO_TEMPLATES.find(t => t.id === (section.variant ?? 'default'))?.name ?? 'Classique'}
             </p>
-            <p className="text-[10px] text-admin-fg-muted truncate">
+            <p className="text-[10px] text-white/30 truncate">
               {HERO_TEMPLATES.find(t => t.id === (section.variant ?? 'default'))?.desc}
             </p>
           </div>
-          <span className="text-[10px] text-admin-fg-muted group-hover:text-admin-fg-muted shrink-0">Changer →</span>
+          <span className="text-[10px] text-white/25 group-hover:text-white/50 shrink-0">Changer →</span>
         </button>
       </F>
       {fi('Titre principal', 'title', section.title, 'Titre...')}
@@ -475,14 +475,14 @@ function SectionEditor({ section, onChange, onPickTemplate }: { section: PageSec
       ])}
       {bgPicker}
       {heightPicker}
-      <div className="border-t border-admin-line pt-3 space-y-2">
-        <Label className="text-[10px] text-admin-fg-muted uppercase tracking-widest">Cartes</Label>
+      <div className="border-t border-white/[0.07] pt-3 space-y-2">
+        <Label className="text-[10px] text-white/35 uppercase tracking-widest">Cartes</Label>
         {section.cards.map((card, i) => (
-          <div key={i} className="p-3 rounded-xl bg-admin-panel border border-admin-line space-y-2">
+          <div key={i} className="p-3 rounded-xl bg-white/[0.04] border border-white/[0.08] space-y-2">
             <div className="flex justify-between items-center">
-              <span className="text-xs text-admin-fg-muted">Carte {i + 1}</span>
+              <span className="text-xs text-white/40">Carte {i + 1}</span>
               <button onClick={() => set('cards', section.cards.filter((_, j) => j !== i))}
-                className="text-admin-fg-muted hover:text-red-700 transition-colors"><Trash2 className="h-3 w-3" /></button>
+                className="text-white/20 hover:text-red-400 transition-colors"><Trash2 className="h-3 w-3" /></button>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <Input value={card.icon} onChange={e => set('cards', section.cards.map((c, j) => j === i ? { ...c, icon: e.target.value } : c))}
@@ -501,7 +501,7 @@ function SectionEditor({ section, onChange, onPickTemplate }: { section: PageSec
           </div>
         ))}
         <button onClick={() => set('cards', [...section.cards, { icon: '✨', title: 'Nouvelle carte', body: '', href: '#' }])}
-          className="flex items-center gap-1.5 text-xs text-admin-fg-muted hover:text-admin-fg-muted transition-colors py-1">
+          className="flex items-center gap-1.5 text-xs text-white/30 hover:text-white/60 transition-colors py-1">
           <Plus className="h-3 w-3" /> Ajouter une carte
         </button>
       </div>
@@ -517,11 +517,11 @@ function SectionEditor({ section, onChange, onPickTemplate }: { section: PageSec
       ])}
       {bgPicker}
       {heightPicker}
-      <div className="border-t border-admin-line pt-3 space-y-2">
+      <div className="border-t border-white/[0.07] pt-3 space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-[10px] text-admin-fg-muted uppercase tracking-widest">Statistiques</Label>
+          <Label className="text-[10px] text-white/35 uppercase tracking-widest">Statistiques</Label>
           <button onClick={() => set('items', [...section.items, { value: '', label: '', description: '' }])}
-            className="flex items-center gap-1 text-[10px] text-admin-fg-muted hover:text-admin-fg-muted transition-colors">
+            className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white/60 transition-colors">
             <Plus className="h-3 w-3" /> Ajouter
           </button>
         </div>
@@ -536,7 +536,7 @@ function SectionEditor({ section, onChange, onPickTemplate }: { section: PageSec
                 className={inp} placeholder="Détail" />
             </div>
             <button onClick={() => set('items', section.items.filter((_, j) => j !== i))}
-              className="text-admin-fg-muted hover:text-red-700 transition-colors shrink-0"><Trash2 className="h-3.5 w-3.5" /></button>
+              className="text-white/20 hover:text-red-400 transition-colors shrink-0"><Trash2 className="h-3.5 w-3.5" /></button>
           </div>
         ))}
       </div>
@@ -557,20 +557,20 @@ function SectionEditor({ section, onChange, onPickTemplate }: { section: PageSec
       </div>
       {bgPicker}
       {heightPicker}
-      <div className="border-t border-admin-line pt-3 space-y-3">
+      <div className="border-t border-white/[0.07] pt-3 space-y-3">
         <div className="flex items-center justify-between">
-          <Label className="text-[10px] text-admin-fg-muted uppercase tracking-widest">Images ({section.items.length})</Label>
+          <Label className="text-[10px] text-white/35 uppercase tracking-widest">Images ({section.items.length})</Label>
           <button onClick={() => set('items', [...section.items, { url: '', alt: '', caption: '', href: '', objectPosition: 'center' }])}
-            className="flex items-center gap-1 text-[10px] text-admin-fg-muted hover:text-admin-fg-muted transition-colors">
+            className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white/60 transition-colors">
             <Plus className="h-3 w-3" /> Ajouter
           </button>
         </div>
         {section.items.map((item, i) => (
-          <div key={i} className="p-3 rounded-xl bg-admin-panel border border-admin-line space-y-2">
+          <div key={i} className="p-3 rounded-xl bg-white/[0.04] border border-white/[0.08] space-y-2">
             <div className="flex justify-between items-center">
-              <span className="text-xs text-admin-fg-muted">Image {i + 1}</span>
+              <span className="text-xs text-white/40">Image {i + 1}</span>
               <button onClick={() => set('items', section.items.filter((_, j) => j !== i))}
-                className="text-admin-fg-muted hover:text-red-700 transition-colors"><Trash2 className="h-3 w-3" /></button>
+                className="text-white/20 hover:text-red-400 transition-colors"><Trash2 className="h-3 w-3" /></button>
             </div>
             <ImageUpload label="Image" value={item.url}
               onChange={url => set('items', section.items.map((it, j) => j === i ? { ...it, url } : it))} />
@@ -616,7 +616,7 @@ function SectionEditor({ section, onChange, onPickTemplate }: { section: PageSec
             options={[{ label: 'Normal', value: 'false' }, { label: 'Gras', value: 'true' }]} />
         </F>
       </div>
-      <p className="text-[10px] text-admin-fg-muted">
+      <p className="text-[10px] text-white/25">
         Les logos eux-mêmes se gèrent dans Admin → Page d&apos;accueil → Logos partenaires — ce bloc affiche simplement cette même liste ici.
       </p>
       {bgPicker}
@@ -660,14 +660,14 @@ function SectionEditor({ section, onChange, onPickTemplate }: { section: PageSec
     }
 
     const tabCls = (active: boolean) =>
-      `flex-1 py-1.5 text-xs font-semibold transition-colors ${active ? 'bg-admin-hover text-admin-fg' : 'text-admin-fg-muted hover:text-admin-fg-muted'}`
+      `flex-1 py-1.5 text-xs font-semibold transition-colors ${active ? 'bg-white/[0.1] text-white' : 'text-white/35 hover:text-white/60'}`
 
     return (
       <div className="space-y-3">
         {fi('Libellé', 'label', section.label, 'ex: Team HyperUI')}
 
         {/* Tab switcher */}
-        <div className="flex rounded-lg overflow-hidden border border-admin-line">
+        <div className="flex rounded-lg overflow-hidden border border-white/[0.1]">
           <button onClick={() => setCustomHtmlTab('texts')} className={tabCls(customHtmlTab === 'texts')}>
             ✏️ Contenu ({total})
           </button>
@@ -680,8 +680,8 @@ function SectionEditor({ section, onChange, onPickTemplate }: { section: PageSec
           <div className="space-y-4">
             {total === 0 && (
               <div className="py-6 text-center space-y-1">
-                <p className="text-xs text-admin-fg-muted">Aucun champ détecté.</p>
-                <p className="text-[10px] text-admin-fg-muted">Basculez sur &ldquo;Code&rdquo; pour modifier le HTML.</p>
+                <p className="text-xs text-white/30">Aucun champ détecté.</p>
+                <p className="text-[10px] text-white/20">Basculez sur &ldquo;Code&rdquo; pour modifier le HTML.</p>
               </div>
             )}
 
@@ -694,11 +694,11 @@ function SectionEditor({ section, onChange, onPickTemplate }: { section: PageSec
                   return (
                     <div key={idx} className="space-y-1">
                       <div className="flex items-center justify-between">
-                        <Label className="text-[10px] text-admin-fg-muted uppercase tracking-widest">
+                        <Label className="text-[10px] text-white/35 uppercase tracking-widest">
                           {TAG_LABEL[f.tag] ?? f.tag.toUpperCase()} — &ldquo;{preview}&rdquo;
                         </Label>
                         <button onClick={() => deleteText(idx, f)} title="Supprimer"
-                          className="p-0.5 rounded text-admin-fg-muted hover:text-red-700 transition-colors"><Trash2 className="h-3 w-3" /></button>
+                          className="p-0.5 rounded text-white/20 hover:text-red-400 transition-colors"><Trash2 className="h-3 w-3" /></button>
                       </div>
                       {isLong
                         ? <Textarea value={f.value} rows={2} className={ta}
@@ -710,11 +710,11 @@ function SectionEditor({ section, onChange, onPickTemplate }: { section: PageSec
                 }
                 if (f.kind === 'img') {
                   return (
-                    <div key={idx} className="p-3 rounded-xl bg-admin-panel border border-admin-line space-y-2">
+                    <div key={idx} className="p-3 rounded-xl bg-white/[0.04] border border-white/[0.07] space-y-2">
                       <div className="flex items-center justify-between">
-                        <p className="text-[10px] text-admin-fg-muted font-medium">Image</p>
+                        <p className="text-[10px] text-white/40 font-medium">Image</p>
                         <button onClick={() => deleteImg(idx, f)} title="Supprimer"
-                          className="p-0.5 rounded text-admin-fg-muted hover:text-red-700 transition-colors"><Trash2 className="h-3 w-3" /></button>
+                          className="p-0.5 rounded text-white/20 hover:text-red-400 transition-colors"><Trash2 className="h-3 w-3" /></button>
                       </div>
                       <ImageUpload label="Source" value={f.src} onChange={newSrc => updateImgSrc(idx, f, newSrc)} />
                       <F label="Texte alt">
@@ -726,11 +726,11 @@ function SectionEditor({ section, onChange, onPickTemplate }: { section: PageSec
                 }
                 if (f.kind === 'btn') {
                   return (
-                    <div key={idx} className="p-3 rounded-xl bg-admin-panel border border-admin-line space-y-2">
+                    <div key={idx} className="p-3 rounded-xl bg-white/[0.04] border border-white/[0.07] space-y-2">
                       <div className="flex items-center justify-between">
-                        <p className="text-[10px] text-admin-fg-muted font-medium">Bouton — &ldquo;{f.label.slice(0, 18)}&rdquo;</p>
+                        <p className="text-[10px] text-white/40 font-medium">Bouton — &ldquo;{f.label.slice(0, 18)}&rdquo;</p>
                         <button onClick={() => deleteBtn(idx, f)} title="Supprimer"
-                          className="p-0.5 rounded text-admin-fg-muted hover:text-red-700 transition-colors"><Trash2 className="h-3 w-3" /></button>
+                          className="p-0.5 rounded text-white/20 hover:text-red-400 transition-colors"><Trash2 className="h-3 w-3" /></button>
                       </div>
                       <F label="Label">
                         <Input value={f.label} className={inp} placeholder="Cliquez ici"
@@ -755,7 +755,7 @@ function SectionEditor({ section, onChange, onPickTemplate }: { section: PageSec
                           {(['sm', 'md', 'lg'] as const).map(s => (
                             <button key={s}
                               onClick={() => updateBtn(idx, f, { size: s })}
-                              className={`px-3 py-1 rounded text-[10px] font-semibold transition-all ${f.size === s ? 'bg-admin-hover text-admin-fg' : 'bg-admin-panel text-admin-fg-muted hover:text-admin-fg'}`}>
+                              className={`px-3 py-1 rounded text-[10px] font-semibold transition-all ${f.size === s ? 'bg-white/[0.15] text-white' : 'bg-white/[0.04] text-white/40 hover:text-white/70'}`}>
                               {s.toUpperCase()}
                             </button>
                           ))}
@@ -769,8 +769,8 @@ function SectionEditor({ section, onChange, onPickTemplate }: { section: PageSec
             </div>
 
             {/* ── Ajouter un élément ── */}
-            <div className="border-t border-admin-line pt-3 space-y-2">
-              <p className="text-[10px] text-admin-fg-muted uppercase tracking-widest font-semibold">Ajouter</p>
+            <div className="border-t border-white/[0.07] pt-3 space-y-2">
+              <p className="text-[10px] text-white/30 uppercase tracking-widest font-semibold">Ajouter</p>
               <div className="grid grid-cols-2 gap-1.5">
                 {([
                   ['Titre H2', '<h2 class="text-2xl font-bold text-gray-900 mt-6">Nouveau titre</h2>',
@@ -806,7 +806,7 @@ function SectionEditor({ section, onChange, onPickTemplate }: { section: PageSec
                         return [...prev, field]
                       })
                     }}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-admin-panel hover:bg-admin-panel-raised border border-admin-line hover:border-admin-line-strong text-xs text-admin-fg-muted hover:text-admin-fg transition-all">
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.07] hover:border-white/20 text-xs text-white/50 hover:text-white/80 transition-all">
                     <Plus className="h-3 w-3 shrink-0" />{label}
                   </button>
                 ))}
@@ -990,37 +990,37 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
   const selectedSection = selected !== null ? sections[selected] : null
 
   return (
-    <div className="flex flex-col h-screen bg-admin-panel text-admin-fg overflow-hidden">
+    <div className="flex flex-col h-screen bg-[#0A0C10] text-white overflow-hidden">
 
       {/* TOP BAR */}
-      <header className="shrink-0 h-12 border-b border-admin-line flex items-center px-4 gap-3">
-        <Link href="/admin/pages" className="p-1.5 rounded-lg hover:bg-admin-panel-raised text-admin-fg-muted hover:text-admin-fg transition-colors">
+      <header className="shrink-0 h-12 border-b border-white/[0.07] flex items-center px-4 gap-3">
+        <Link href="/admin/pages" className="p-1.5 rounded-lg hover:bg-white/[0.06] text-white/40 hover:text-white/80 transition-colors">
           <ArrowLeft className="h-4 w-4" />
         </Link>
-        <div className="w-px h-4 bg-admin-hover" />
+        <div className="w-px h-4 bg-white/[0.1]" />
         {/* Templates button */}
         <button
           onClick={() => setShowPageTemplates(true)}
-          className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-admin-line bg-admin-panel hover:bg-admin-panel-raised text-admin-fg-muted hover:text-admin-fg transition-colors"
+          className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/[0.1] bg-white/[0.04] hover:bg-white/[0.08] text-white/60 hover:text-white/90 transition-colors"
         >
           <Wand2 className="h-3.5 w-3.5" />
           Templates
         </button>
-        <div className="w-px h-4 bg-admin-hover" />
+        <div className="w-px h-4 bg-white/[0.1]" />
         <input
           value={meta.title}
           onChange={e => handleTitleChange(e.target.value)}
-          className="bg-transparent text-sm font-medium text-admin-fg focus:outline-none focus:text-admin-fg border-b border-transparent focus:border-admin-line-strong min-w-0 flex-1 max-w-[200px] pb-0.5"
+          className="bg-transparent text-sm font-medium text-white/80 focus:outline-none focus:text-white border-b border-transparent focus:border-white/20 min-w-0 flex-1 max-w-[200px] pb-0.5"
           placeholder="Titre de la page..."
         />
-        <span className="text-admin-fg-muted text-xs font-mono hidden sm:inline truncate max-w-[120px]">/{meta.slug}</span>
+        <span className="text-white/20 text-xs font-mono hidden sm:inline truncate max-w-[120px]">/{meta.slug}</span>
         <div className="flex-1" />
 
         {/* Device toggle */}
-        <div className="hidden md:flex items-center gap-0.5 p-1 rounded-lg bg-admin-panel border border-admin-line">
+        <div className="hidden md:flex items-center gap-0.5 p-1 rounded-lg bg-white/[0.04] border border-white/[0.07]">
           {([['desktop', Monitor], ['tablet', Tablet], ['mobile', Smartphone]] as [Device, React.ElementType][]).map(([d, Icon]) => (
             <button key={d} onClick={() => setDevice(d)}
-              className={`p-1.5 rounded-md transition-colors ${device === d ? 'bg-admin-hover text-admin-fg' : 'text-admin-fg-muted hover:text-admin-fg-muted'}`}>
+              className={`p-1.5 rounded-md transition-colors ${device === d ? 'bg-white/[0.12] text-white' : 'text-white/30 hover:text-white/60'}`}>
               <Icon className="h-3.5 w-3.5" />
             </button>
           ))}
@@ -1029,29 +1029,29 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
         {/* Inline edit toggle */}
         <button onClick={() => setInlineEdit(!inlineEdit)}
           title="Éditer directement dans le preview"
-          className={`p-1.5 rounded-lg border transition-colors ${inlineEdit ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-700' : 'border-admin-line text-admin-fg-muted hover:text-admin-fg-muted'}`}>
+          className={`p-1.5 rounded-lg border transition-colors ${inlineEdit ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-400' : 'border-white/[0.07] text-white/30 hover:text-white/60'}`}>
           <PenLine className="h-4 w-4" />
         </button>
 
         {/* Published toggle */}
         <button onClick={() => setMeta(m => ({ ...m, isPublished: !m.isPublished }))}
           className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
-            meta.isPublished ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20' : 'bg-admin-panel text-admin-fg-muted border-admin-line hover:border-admin-line-strong'
+            meta.isPublished ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-white/[0.04] text-white/40 border-white/[0.1] hover:border-white/20'
           }`}>
           {meta.isPublished ? <Globe className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
           {meta.isPublished ? 'Publié' : 'Brouillon'}
         </button>
 
         <button onClick={() => setShowMeta(!showMeta)}
-          className={`p-1.5 rounded-lg border transition-colors ${showMeta ? 'bg-admin-panel-raised border-admin-line-strong text-admin-fg' : 'border-admin-line text-admin-fg-muted hover:text-admin-fg-muted'}`}>
+          className={`p-1.5 rounded-lg border transition-colors ${showMeta ? 'bg-white/[0.08] border-white/20 text-white/70' : 'border-white/[0.07] text-white/30 hover:text-white/60'}`}>
           <Settings2 className="h-4 w-4" />
         </button>
 
         <Button onClick={save} disabled={isPending} size="sm"
           className={`gap-1.5 font-semibold text-sm px-4 h-8 ${
             saveStatus === 'ok' ? 'bg-emerald-500 hover:bg-emerald-400 text-white' :
-            saveStatus === 'error' ? 'bg-red-500/20 text-red-700 border border-red-500/30' :
-            'bg-admin-fg text-white hover:bg-admin-fg/90'
+            saveStatus === 'error' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+            'bg-white text-black hover:bg-white/90'
           }`}>
           {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> :
            saveStatus === 'ok' ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
@@ -1061,11 +1061,11 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
 
       {/* META DROPDOWN */}
       {showMeta && (
-        <div className="shrink-0 border-b border-admin-line bg-admin-panel px-6 py-4">
+        <div className="shrink-0 border-b border-white/[0.07] bg-[#0f1018] px-6 py-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
             <F label="Slug (URL)">
               <div className="flex items-center">
-                <span className="px-2 h-9 flex items-center bg-admin-panel border border-r-0 border-admin-line rounded-l-lg text-admin-fg-muted text-xs">/</span>
+                <span className="px-2 h-9 flex items-center bg-white/[0.03] border border-r-0 border-white/[0.1] rounded-l-lg text-white/25 text-xs">/</span>
                 <Input value={meta.slug}
                   onChange={e => { setSlugEdited(true); setMeta(m => ({ ...m, slug: e.target.value })) }}
                   className={inp + ' rounded-l-none'} placeholder="mon-slug" />
@@ -1088,7 +1088,7 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
       )}
 
       {saveStatus === 'error' && (
-        <div className="shrink-0 flex items-center gap-2 px-4 py-2 bg-red-500/10 border-b border-red-500/20 text-red-700 text-xs">
+        <div className="shrink-0 flex items-center gap-2 px-4 py-2 bg-red-500/10 border-b border-red-500/20 text-red-400 text-xs">
           <AlertCircle className="h-3.5 w-3.5 shrink-0" />{errorMsg}
         </div>
       )}
@@ -1097,23 +1097,23 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
       <div className="flex-1 flex overflow-hidden">
 
         {/* Panel 1 — list */}
-        <aside className="w-60 shrink-0 border-r border-admin-line flex flex-col overflow-hidden">
-          <div className="px-3 py-2.5 border-b border-admin-line flex items-center justify-between shrink-0">
-            <span className="text-xs font-semibold text-admin-fg-muted uppercase tracking-widest">Sections</span>
+        <aside className="w-60 shrink-0 border-r border-white/[0.07] flex flex-col overflow-hidden">
+          <div className="px-3 py-2.5 border-b border-white/[0.07] flex items-center justify-between shrink-0">
+            <span className="text-xs font-semibold text-white/40 uppercase tracking-widest">Sections</span>
             <button onClick={() => setShowCatalog(!showCatalog)}
-              className={`p-1.5 rounded-lg transition-colors ${showCatalog ? 'bg-admin-fg text-white' : 'bg-admin-panel-raised text-admin-fg-muted hover:bg-admin-hover'}`}>
+              className={`p-1.5 rounded-lg transition-colors ${showCatalog ? 'bg-white text-black' : 'bg-white/[0.06] text-white/60 hover:bg-white/[0.1]'}`}>
               <Plus className="h-3.5 w-3.5" />
             </button>
           </div>
           {showCatalog && (
-            <div className="border-b border-admin-line p-2 space-y-0.5 bg-admin-panel max-h-72 overflow-y-auto">
+            <div className="border-b border-white/[0.07] p-2 space-y-0.5 bg-[#0f1018] max-h-72 overflow-y-auto">
               {CATALOG.map(item => (
                 <button key={item.type} onClick={() => add(item.type)}
-                  className="w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg hover:bg-admin-panel-raised transition-colors text-left">
+                  className="w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg hover:bg-white/[0.06] transition-colors text-left">
                   <item.icon className={`h-4 w-4 mt-0.5 shrink-0 ${item.color}`} />
                   <div>
-                    <p className="text-xs font-medium text-admin-fg">{item.label}</p>
-                    <p className="text-[10px] text-admin-fg-muted leading-tight">{item.desc}</p>
+                    <p className="text-xs font-medium text-white/70">{item.label}</p>
+                    <p className="text-[10px] text-white/30 leading-tight">{item.desc}</p>
                   </div>
                 </button>
               ))}
@@ -1122,8 +1122,8 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
           <div className="flex-1 overflow-y-auto py-2 space-y-0.5 px-2">
             {sections.length === 0 && (
               <div className="flex flex-col items-center justify-center py-12 text-center px-4">
-                <Layout className="h-8 w-8 text-admin-fg-muted mb-2" />
-                <p className="text-xs text-admin-fg-muted">Cliquez + pour ajouter</p>
+                <Layout className="h-8 w-8 text-white/[0.08] mb-2" />
+                <p className="text-xs text-white/25">Cliquez + pour ajouter</p>
               </div>
             )}
             {sections.map((s, i) => {
@@ -1151,29 +1151,29 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
                   }}
                   className={`group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-all ${
                     isDragTarget ? 'border border-indigo-500/50 bg-indigo-500/10' :
-                    isSelected ? 'bg-admin-hover border border-admin-line-strong' :
-                    'hover:bg-admin-panel border border-transparent'
+                    isSelected ? 'bg-white/[0.1] border border-white/[0.15]' :
+                    'hover:bg-white/[0.04] border border-transparent'
                   }`}
                   onClick={() => setSelected(isSelected ? null : i)}>
                   {/* Drag handle */}
-                  <div className="cursor-grab active:cursor-grabbing text-admin-fg-muted hover:text-admin-fg-muted shrink-0" title="Glisser pour déplacer">
+                  <div className="cursor-grab active:cursor-grabbing text-white/20 hover:text-white/50 shrink-0" title="Glisser pour déplacer">
                     <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
                       <circle cx="2" cy="2" r="1.2"/><circle cx="8" cy="2" r="1.2"/>
                       <circle cx="2" cy="7" r="1.2"/><circle cx="8" cy="7" r="1.2"/>
                       <circle cx="2" cy="12" r="1.2"/><circle cx="8" cy="12" r="1.2"/>
                     </svg>
                   </div>
-                  <Icon className={`h-3.5 w-3.5 shrink-0 ${isSelected ? 'text-admin-fg' : 'text-admin-fg-muted'}`} />
-                  <span className={`text-xs flex-1 truncate font-medium ${isSelected ? 'text-admin-fg' : 'text-admin-fg-muted'}`}>
+                  <Icon className={`h-3.5 w-3.5 shrink-0 ${isSelected ? 'text-white/80' : 'text-white/30'}`} />
+                  <span className={`text-xs flex-1 truncate font-medium ${isSelected ? 'text-white/80' : 'text-white/50'}`}>
                     {LABEL[s.type]}
                     {'title' in s && (s as { title?: string }).title
-                      ? <span className="ml-1 font-normal text-admin-fg-muted">— {((s as { title?: string }).title ?? '').slice(0, 14)}</span>
+                      ? <span className="ml-1 font-normal text-white/25">— {((s as { title?: string }).title ?? '').slice(0, 14)}</span>
                       : null}
                   </span>
-                  {'bgColor' in s && (s as { bgColor?: string }).bgColor && <Palette className="h-2.5 w-2.5 text-admin-fg-muted shrink-0" />}
+                  {'bgColor' in s && (s as { bgColor?: string }).bgColor && <Palette className="h-2.5 w-2.5 text-white/20 shrink-0" />}
                   <div className="hidden group-hover:flex items-center gap-0.5">
                     <button onClick={e => { e.stopPropagation(); remove(i) }}
-                      className="p-0.5 rounded text-admin-fg-muted hover:text-red-700"><Trash2 className="h-3 w-3" /></button>
+                      className="p-0.5 rounded text-white/20 hover:text-red-400"><Trash2 className="h-3 w-3" /></button>
                   </div>
                 </div>
               )
@@ -1182,13 +1182,13 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
         </aside>
 
         {/* Panel 2 — editor */}
-        <aside className="w-[340px] shrink-0 border-r border-admin-line flex flex-col overflow-hidden">
+        <aside className="w-[340px] shrink-0 border-r border-white/[0.07] flex flex-col overflow-hidden">
           {selectedSection ? (
             <>
-              <div className="px-4 py-3 border-b border-admin-line flex items-center gap-2 shrink-0">
-                {(() => { const Icon = ICON[selectedSection.type]; return <Icon className="h-4 w-4 text-admin-fg-muted" /> })()}
-                <span className="text-sm font-semibold text-admin-fg">{LABEL[selectedSection.type]}</span>
-                <span className="ml-auto text-[10px] text-admin-fg-muted">Section {(selected ?? 0) + 1}/{sections.length}</span>
+              <div className="px-4 py-3 border-b border-white/[0.07] flex items-center gap-2 shrink-0">
+                {(() => { const Icon = ICON[selectedSection.type]; return <Icon className="h-4 w-4 text-white/40" /> })()}
+                <span className="text-sm font-semibold text-white/70">{LABEL[selectedSection.type]}</span>
+                <span className="ml-auto text-[10px] text-white/25">Section {(selected ?? 0) + 1}/{sections.length}</span>
               </div>
               <div className="flex-1 overflow-y-auto p-4">
                 <SectionEditor
@@ -1200,27 +1200,27 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
-              <Settings2 className="h-10 w-10 text-admin-fg-muted mb-3" />
-              <p className="text-xs text-admin-fg-muted font-medium">Sélectionnez une section</p>
-              <p className="text-[11px] text-admin-fg-muted mt-1">pour éditer son contenu</p>
+              <Settings2 className="h-10 w-10 text-white/[0.07] mb-3" />
+              <p className="text-xs text-white/25 font-medium">Sélectionnez une section</p>
+              <p className="text-[11px] text-white/15 mt-1">pour éditer son contenu</p>
             </div>
           )}
         </aside>
 
         {/* Panel 3 — preview */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-admin-panel-raised">
-          <div className="shrink-0 px-4 py-2 border-b border-admin-line flex items-center gap-3">
-            <Eye className="h-3.5 w-3.5 text-admin-fg-muted" />
-            <span className="text-xs text-admin-fg-muted font-medium">Aperçu en temps réel</span>
+        <div className="flex-1 flex flex-col overflow-hidden bg-[#080a0f]">
+          <div className="shrink-0 px-4 py-2 border-b border-white/[0.07] flex items-center gap-3">
+            <Eye className="h-3.5 w-3.5 text-white/30" />
+            <span className="text-xs text-white/40 font-medium">Aperçu en temps réel</span>
             {inlineEdit && (
-              <span className="text-[10px] text-indigo-700 font-medium flex items-center gap-1">
+              <span className="text-[10px] text-indigo-400 font-medium flex items-center gap-1">
                 <PenLine className="h-3 w-3" /> Cliquez sur les textes pour modifier
               </span>
             )}
             <div className="flex-1" />
             {meta.isPublished && (
               <a href={`/${meta.slug}`} target="_blank"
-                className="inline-flex items-center gap-1.5 text-[10px] text-admin-fg-muted hover:text-admin-fg-muted transition-colors">
+                className="inline-flex items-center gap-1.5 text-[10px] text-white/30 hover:text-white/60 transition-colors">
                 <Globe className="h-3 w-3" /> Voir publiée
               </a>
             )}
@@ -1233,7 +1233,7 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
               transition: 'width 0.3s ease',
               margin: '0 auto',
               background: 'var(--color-background)',
-              boxShadow: device !== 'desktop' ? '0 0 0 1px var(--admin-line), 0 8px 32px rgba(0,0,0,0.4)' : 'none',
+              boxShadow: device !== 'desktop' ? '0 0 0 1px rgba(255,255,255,0.06), 0 8px 32px rgba(0,0,0,0.4)' : 'none',
               borderRadius: device !== 'desktop' ? '12px' : 0,
               overflow: 'hidden',
             }}>
@@ -1285,28 +1285,28 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)' }}
           onClick={() => setShowPageTemplates(false)}>
-          <div className="relative bg-admin-panel border border-admin-line rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden"
+          <div className="relative bg-[#0c0e16] border border-white/[0.1] rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden"
             onClick={e => e.stopPropagation()}>
 
             {/* Header */}
-            <div className="px-6 py-4 border-b border-admin-line flex items-center gap-4 shrink-0">
-              <Wand2 className="h-5 w-5 text-indigo-700" />
+            <div className="px-6 py-4 border-b border-white/[0.07] flex items-center gap-4 shrink-0">
+              <Wand2 className="h-5 w-5 text-indigo-400" />
               <div className="flex-1">
-                <h2 className="text-base font-semibold text-admin-fg">Bibliothèque de templates</h2>
-                <p className="text-xs text-admin-fg-muted mt-0.5">Appliquer un template remplace toutes les sections existantes</p>
+                <h2 className="text-base font-semibold text-white">Bibliothèque de templates</h2>
+                <p className="text-xs text-white/40 mt-0.5">Appliquer un template remplace toutes les sections existantes</p>
               </div>
               <button onClick={() => setShowPageTemplates(false)}
-                className="p-2 rounded-lg hover:bg-admin-panel-raised text-admin-fg-muted hover:text-admin-fg transition-colors text-lg leading-none">✕</button>
+                className="p-2 rounded-lg hover:bg-white/[0.06] text-white/40 hover:text-white/80 transition-colors text-lg leading-none">✕</button>
             </div>
 
             {/* Tabs */}
-            <div className="flex border-b border-admin-line shrink-0">
+            <div className="flex border-b border-white/[0.07] shrink-0">
               {(['internal', 'github'] as const).map(tab => (
                 <button key={tab} onClick={() => setPageTemplateTab(tab)}
                   className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
                     pageTemplateTab === tab
-                      ? 'border-indigo-500 text-admin-fg'
-                      : 'border-transparent text-admin-fg-muted hover:text-admin-fg'
+                      ? 'border-indigo-500 text-white'
+                      : 'border-transparent text-white/40 hover:text-white/70'
                   }`}>
                   {tab === 'internal' ? '✨ Nos Templates Pro (8)' : '🔗 Bibliothèque GitHub'}
                 </button>
@@ -1324,25 +1324,25 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
                       setSelected(null)
                       setShowPageTemplates(false)
                     }}
-                    className="group relative rounded-xl overflow-hidden border border-admin-line hover:border-admin-line-strong transition-all text-left">
+                    className="group relative rounded-xl overflow-hidden border border-white/[0.08] hover:border-white/25 transition-all text-left">
                     {/* Color thumbnail */}
                     <div className="h-24 relative flex items-end p-3"
                       style={{ background: `linear-gradient(135deg, ${tpl.style}, ${tpl.accent}22)` }}>
                       {/* Mock section lines */}
                       <div className="space-y-1 w-full">
-                        <div className="h-1.5 rounded-full w-3/4" style={{ background: tpl.dark ? 'var(--admin-hover)' : 'rgba(11,29,81,0.5)' }} />
-                        <div className="h-1 rounded-full w-1/2" style={{ background: tpl.dark ? 'var(--admin-hover)' : 'rgba(11,29,81,0.25)' }} />
+                        <div className="h-1.5 rounded-full w-3/4" style={{ background: tpl.dark ? 'rgba(255,255,255,0.5)' : 'rgba(11,29,81,0.5)' }} />
+                        <div className="h-1 rounded-full w-1/2" style={{ background: tpl.dark ? 'rgba(255,255,255,0.25)' : 'rgba(11,29,81,0.25)' }} />
                         <div className="h-4 rounded w-16 mt-1" style={{ background: tpl.accent }} />
                       </div>
                       {/* Section count badge */}
                       <div className="absolute top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                        style={{ background: tpl.dark ? 'var(--admin-hover)' : 'rgba(0,0,0,0.12)', color: tpl.dark ? 'var(--admin-fg)' : 'rgba(0,0,0,0.5)' }}>
+                        style={{ background: tpl.dark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)', color: tpl.dark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.5)' }}>
                         {tpl.sections.length} sections
                       </div>
                     </div>
-                    <div className="px-3 py-2.5 bg-admin-panel">
-                      <p className="text-xs font-bold text-admin-fg group-hover:text-admin-fg">{tpl.name}</p>
-                      <p className="text-[10px] text-admin-fg-muted leading-tight mt-0.5">{tpl.desc}</p>
+                    <div className="px-3 py-2.5 bg-[#0f1118]">
+                      <p className="text-xs font-bold text-white/80 group-hover:text-white">{tpl.name}</p>
+                      <p className="text-[10px] text-white/30 leading-tight mt-0.5">{tpl.desc}</p>
                     </div>
                   </button>
                 ))}
@@ -1353,10 +1353,10 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
             {pageTemplateTab === 'github' && (
               <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Filters */}
-                <div className="shrink-0 px-5 py-3 border-b border-admin-line flex flex-wrap gap-3 items-center">
+                <div className="shrink-0 px-5 py-3 border-b border-white/[0.07] flex flex-wrap gap-3 items-center">
                   <select value={ghSource} onChange={e => setGhSource(e.target.value)}
-                    className="text-xs bg-admin-panel-raised border border-admin-line text-admin-fg rounded-lg px-3 py-1.5 focus:outline-none focus:border-admin-line-strong">
-                    {GITHUB_SOURCES.map(s => <option key={s} value={s} className="bg-admin-panel">{s}</option>)}
+                    className="text-xs bg-white/[0.06] border border-white/[0.1] text-white/70 rounded-lg px-3 py-1.5 focus:outline-none focus:border-white/30">
+                    {GITHUB_SOURCES.map(s => <option key={s} value={s} className="bg-[#0c0e16]">{s}</option>)}
                   </select>
                   <div className="flex flex-wrap gap-1.5">
                     {GITHUB_CATEGORIES.map(cat => (
@@ -1364,7 +1364,7 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
                         className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
                           ghCategory === cat
                             ? 'bg-indigo-500 text-white'
-                            : 'bg-admin-panel-raised text-admin-fg-muted hover:bg-admin-hover hover:text-admin-fg'
+                            : 'bg-white/[0.05] text-white/40 hover:bg-white/[0.1] hover:text-white/70'
                         }`}>
                         {cat}
                       </button>
@@ -1374,19 +1374,19 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
                 {/* Components grid */}
                 <div className="flex-1 overflow-y-auto p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
                   {getGithubComponents(ghCategory, ghSource).map(comp => (
-                    <div key={comp.id} className="rounded-xl overflow-hidden border border-admin-line hover:border-admin-line-strong transition-all flex flex-col">
+                    <div key={comp.id} className="rounded-xl overflow-hidden border border-white/[0.08] hover:border-white/20 transition-all flex flex-col">
                       {/* Preview block */}
                       <div className="h-20 flex flex-col items-center justify-center gap-1.5 px-3"
                         style={{ background: comp.previewBg }}>
-                        <Code2 className="h-5 w-5 opacity-30" style={{ color: comp.previewBg === 'var(--admin-fg)' || comp.previewBg === '#fafafa' || comp.previewBg === '#f8fafc' || comp.previewBg === '#f9fafb' || comp.previewBg === '#f3f4f6' ? '#0B1D51' : 'white' }} />
-                        <span className="text-[10px] font-semibold opacity-50" style={{ color: comp.previewBg === 'var(--admin-fg)' || comp.previewBg === '#fafafa' || comp.previewBg === '#f8fafc' || comp.previewBg === '#f9fafb' || comp.previewBg === '#f3f4f6' ? '#0B1D51' : 'white' }}>
+                        <Code2 className="h-5 w-5 opacity-30" style={{ color: comp.previewBg === '#ffffff' || comp.previewBg === '#fafafa' || comp.previewBg === '#f8fafc' || comp.previewBg === '#f9fafb' || comp.previewBg === '#f3f4f6' ? '#0B1D51' : 'white' }} />
+                        <span className="text-[10px] font-semibold opacity-50" style={{ color: comp.previewBg === '#ffffff' || comp.previewBg === '#fafafa' || comp.previewBg === '#f8fafc' || comp.previewBg === '#f9fafb' || comp.previewBg === '#f3f4f6' ? '#0B1D51' : 'white' }}>
                           {comp.source}
                         </span>
                       </div>
-                      <div className="px-3 py-2 bg-admin-panel flex-1 flex flex-col gap-2">
+                      <div className="px-3 py-2 bg-[#0f1118] flex-1 flex flex-col gap-2">
                         <div>
-                          <p className="text-xs font-semibold text-admin-fg">{comp.name}</p>
-                          <p className="text-[10px] text-admin-fg-muted">{comp.category}</p>
+                          <p className="text-xs font-semibold text-white/80">{comp.name}</p>
+                          <p className="text-[10px] text-white/30">{comp.category}</p>
                         </div>
                         <button
                           disabled={ghFetching === comp.id}
@@ -1405,7 +1405,7 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
                             setSelected(sections.length)
                             setShowPageTemplates(false)
                           }}
-                          className="mt-auto flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[11px] font-semibold transition-colors bg-admin-panel-raised hover:bg-indigo-500/20 text-admin-fg-muted hover:text-indigo-700 border border-admin-line hover:border-indigo-500/30 disabled:opacity-40 disabled:cursor-not-allowed">
+                          className="mt-auto flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-[11px] font-semibold transition-colors bg-white/[0.06] hover:bg-indigo-500/20 text-white/50 hover:text-indigo-400 border border-white/[0.08] hover:border-indigo-500/30 disabled:opacity-40 disabled:cursor-not-allowed">
                           {ghFetching === comp.id
                             ? <><Loader2 className="h-3 w-3 animate-spin" /> Chargement...</>
                             : <><Download className="h-3 w-3" /> Importer</>}
@@ -1414,11 +1414,11 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
                     </div>
                   ))}
                   {getGithubComponents(ghCategory, ghSource).length === 0 && (
-                    <div className="col-span-full text-center py-12 text-admin-fg-muted text-sm">Aucun composant pour cette combinaison.</div>
+                    <div className="col-span-full text-center py-12 text-white/30 text-sm">Aucun composant pour cette combinaison.</div>
                   )}
                 </div>
                 {ghError && (
-                  <div className="shrink-0 flex items-center gap-2 px-5 py-3 bg-red-500/10 border-t border-red-500/20 text-red-700 text-xs">
+                  <div className="shrink-0 flex items-center gap-2 px-5 py-3 bg-red-500/10 border-t border-red-500/20 text-red-400 text-xs">
                     <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {ghError}
                   </div>
                 )}
@@ -1436,16 +1436,16 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
           onClick={() => setShowTemplatePicker(false)}
         >
           <div
-            className="relative bg-admin-panel border border-admin-line rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden"
+            className="relative bg-[#0f1118] border border-white/[0.08] rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="px-6 py-4 border-b border-admin-line flex items-center justify-between shrink-0">
+            <div className="px-6 py-4 border-b border-white/[0.07] flex items-center justify-between shrink-0">
               <div>
-                <h2 className="text-base font-semibold text-admin-fg">Choisir un template hero</h2>
-                <p className="text-xs text-admin-fg-muted mt-0.5">Sélectionne un style — le contenu reste intact</p>
+                <h2 className="text-base font-semibold text-white">Choisir un template hero</h2>
+                <p className="text-xs text-white/40 mt-0.5">Sélectionne un style — le contenu reste intact</p>
               </div>
-              <button onClick={() => setShowTemplatePicker(false)} className="p-2 rounded-lg hover:bg-admin-panel-raised text-admin-fg-muted hover:text-admin-fg transition-colors text-lg leading-none">✕</button>
+              <button onClick={() => setShowTemplatePicker(false)} className="p-2 rounded-lg hover:bg-white/[0.06] text-white/40 hover:text-white/80 transition-colors text-lg leading-none">✕</button>
             </div>
 
             {/* Grid */}
@@ -1461,7 +1461,7 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
                       setShowTemplatePicker(false)
                     }}
                     className={`group relative rounded-xl overflow-hidden border-2 transition-all text-left ${
-                      isActive ? 'border-indigo-500 shadow-lg shadow-indigo-500/20' : 'border-admin-line hover:border-admin-line-strong'
+                      isActive ? 'border-indigo-500 shadow-lg shadow-indigo-500/20' : 'border-white/[0.07] hover:border-white/25'
                     }`}
                   >
                     {/* Thumbnail */}
@@ -1480,7 +1480,7 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
                       )}
                       {/* Glass card preview */}
                       {tpl.id === 'glass' && (
-                        <div style={{ position: 'absolute', inset: '12px 16px', background: 'var(--admin-panel-raised)', backdropFilter: 'blur(8px)', border: '1px solid var(--admin-line-strong)', borderRadius: 8 }} />
+                        <div style={{ position: 'absolute', inset: '12px 16px', background: 'rgba(255,255,255,0.07)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8 }} />
                       )}
                       {/* Grid overlay for minimal */}
                       {tpl.id === 'minimal' && (
@@ -1518,15 +1518,15 @@ export function PageEditor({ pageId, initialSections, initialMeta, initialCssVar
                         position: 'absolute', bottom: 12, left: 14, right: 14,
                         display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center',
                       }}>
-                        <div style={{ height: 4, width: '70%', borderRadius: 4, background: tpl.darkThumb ? 'var(--admin-hover)' : 'rgba(11,29,81,0.5)' }} />
-                        <div style={{ height: 3, width: '50%', borderRadius: 4, background: tpl.darkThumb ? 'var(--admin-hover)' : 'rgba(11,29,81,0.25)' }} />
+                        <div style={{ height: 4, width: '70%', borderRadius: 4, background: tpl.darkThumb ? 'rgba(255,255,255,0.5)' : 'rgba(11,29,81,0.5)' }} />
+                        <div style={{ height: 3, width: '50%', borderRadius: 4, background: tpl.darkThumb ? 'rgba(255,255,255,0.25)' : 'rgba(11,29,81,0.25)' }} />
                         <div style={{ height: 6, width: 40, borderRadius: 4, background: tpl.thumbAccent, marginTop: 2 }} />
                       </div>
                     </div>
                     {/* Label */}
-                    <div className="px-3 py-2 bg-admin-panel">
-                      <p className={`text-xs font-semibold ${isActive ? 'text-indigo-700' : 'text-admin-fg'}`}>{tpl.name}</p>
-                      <p className="text-[10px] text-admin-fg-muted leading-tight mt-0.5">{tpl.desc}</p>
+                    <div className="px-3 py-2 bg-[#0f1118]">
+                      <p className={`text-xs font-semibold ${isActive ? 'text-indigo-400' : 'text-white/70'}`}>{tpl.name}</p>
+                      <p className="text-[10px] text-white/30 leading-tight mt-0.5">{tpl.desc}</p>
                     </div>
                   </button>
                 )
