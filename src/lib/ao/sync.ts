@@ -3,15 +3,15 @@ import { handledUidsOf, nextCheckpoint, planRead, processingOrder, type ReadPlan
 import { buildEmailContent, extractOffersFromEmail } from './extract'
 import { AiUnavailable, RetryLater, type ExtractionContext, type PassState } from './extractors/types'
 import { DUPLICATE_WINDOW_DAYS, offerFingerprint } from './fingerprint'
-import { assertCredentialsKey, openMailboxPassword } from './credentials'
+import { assertCredentialsKey } from './credentials'
+import { inboxSettingsFor } from './inbox-settings'
 import { withAoInbox, type AoInbox, type AoInboxSettings, type InboxEnvelope } from './imap'
-import { resolveImapHost } from './imap-host'
 import { citedClients, formatSender, originalSender, senderCompany } from './origin'
 import { emailDeadline } from './dates'
 import { TruncatedAnswerError } from './parse'
 import {
   createAoEmail, createAoOffer, findAoDuplicate, findAoEmailByMessageId,
-  incrementAoSources, listRetryableAoEmails, nextStepFor, purgeAoRecords, settledMessageIds, updateAoEmail,
+  incrementAoSources, listRetryableAoEmails, nextStepFor, purgeAoRecords, saveAoOfferDetails, settledMessageIds, updateAoEmail,
 } from './repo'
 import { MAX_ATTEMPTS, attemptsAfterFailure, canDeferEmail } from './attempts'
 import { MAX_TABLE_ROWS } from './spreadsheet'
@@ -124,8 +124,8 @@ const emptyReport = (): AoSyncReport => ({
 
 /** Configuration du serveur : son absence fait échouer le passage en entier (et non boîte par boîte, en silence). */
 function assertConfigured(): void {
-  if (!COLLECTIONS.AO_EMAILS || !COLLECTIONS.AO_OFFERS || !COLLECTIONS.AO_STATE || !COLLECTIONS.AO_SOURCES) {
-    throw new Error('APPWRITE_COLLECTION_AO_EMAILS / _AO_OFFERS / _AO_STATE / _AO_SOURCES non définies : créez les collections (npm run ao:setup) et ajoutez ces variables.')
+  if (!COLLECTIONS.AO_EMAILS || !COLLECTIONS.AO_OFFERS || !COLLECTIONS.AO_STATE || !COLLECTIONS.AO_SOURCES || !COLLECTIONS.AO_OFFER_DETAILS) {
+    throw new Error('APPWRITE_COLLECTION_AO_EMAILS / _AO_OFFERS / _AO_STATE / _AO_SOURCES / _AO_OFFER_DETAILS non définies : créez les collections (npm run ao:setup) et ajoutez ces variables.')
   }
   assertCredentialsKey()
 }
@@ -226,12 +226,6 @@ export async function syncAoEmail(
     await releaseSyncLock(lock)
   }
   return report
-}
-
-/** Connexion à une boîte : serveur vérifié (adresses publiques seulement), mot de passe déchiffré au dernier moment. */
-async function inboxSettingsFor(source: AoSource): Promise<AoInboxSettings> {
-  const endpoint = await resolveImapHost(source.host)
-  return { ...endpoint, user: source.username, password: openMailboxPassword(source), mailbox: source.mailbox }
 }
 
 /**
@@ -403,13 +397,19 @@ async function processEnvelope(
       if (seen.has(fingerprint)) { duplicates++; continue } // même offre dans le corps et une pièce jointe
       seen.add(fingerprint)
       const duplicate = await findAoDuplicate(fingerprint, new Date(now.getTime() - DUPLICATE_WINDOW_DAYS * DAY_MS))
-      // Créée par un essai interrompu de ce même e-mail : c'est la sienne, pas un doublon.
-      if (duplicate?.emailId === emailId) { created++; continue }
+      const details = offer.engagement || offer.technologies.length ? { engagement: offer.engagement, technologies: offer.technologies } : null
+      // Créée par un essai interrompu de ce même e-mail : c'est la sienne, pas un doublon (ses détails ont pu manquer).
+      if (duplicate?.emailId === emailId) {
+        if (details) await saveAoOfferDetails(duplicate.$id, details)
+        created++
+        continue
+      }
       if (duplicate) {
         await incrementAoSources(duplicate)
         duplicates++
       } else {
-        await createAoOffer(offer, { fingerprint, emailId })
+        const saved = await createAoOffer(offer, { fingerprint, emailId })
+        if (details) await saveAoOfferDetails(saved.$id, details)
         created++
       }
     }
