@@ -10,6 +10,12 @@ import { canUseAoSourcing, PLATFORM_NAME, PLATFORM_TENANT_ID } from './tenancy'
 // (recrutement@…, jobs@…) : seuls le serveur, l'identifiant, le mot de passe et le dossier comptent. Le mot de passe y est chiffré (credentials.ts)
 // et n'est jamais renvoyé au navigateur.
 
+/**
+ * Mot de passe d'une boîte supprimée par son organisation : effacé (illisible), boîte désactivée et masquée. Le document
+ * est gardé : ses e-mails et offres restent rattachés à l'organisation jusqu'à leur purge (365 jours).
+ */
+export const ERASED_PASSWORD = 'erased'
+
 export interface AoSource {
   $id: string
   tenantId: string
@@ -74,8 +80,30 @@ export async function listEnabledSources(tenantId?: string): Promise<AoSource[]>
 /** Toutes les boîtes d'une organisation, actives ou non (leurs e-mails et offres restent consultables). */
 export async function listSources(tenantId: string): Promise<AoSource[]> {
   const { databases } = createAdminClient()
-  const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_SOURCES, [Query.equal('tenantId', tenantId), Query.orderAsc('$createdAt'), Query.limit(100)])
-  return res.documents.map(docToAoSource)
+  const sources: AoSource[] = []
+  let cursor: string | null = null
+  // Toutes les pages : les boîtes supprimées (gardées, voir ERASED_PASSWORD) ne doivent pas masquer les plus récentes.
+  for (;;) {
+    const res: Models.DocumentList<Models.Document> = await databases.listDocuments(DB_ID, COLLECTIONS.AO_SOURCES, [
+      Query.equal('tenantId', tenantId), Query.orderAsc('$createdAt'), Query.orderAsc('$id'), Query.limit(100),
+      ...(cursor ? [Query.cursorAfter(cursor)] : []),
+    ])
+    sources.push(...res.documents.map(docToAoSource))
+    if (res.documents.length < 100) return sources
+    cursor = res.documents[res.documents.length - 1].$id
+  }
+}
+
+export const isErased = (source: Pick<AoSource, 'passwordSealed'>) => source.passwordSealed === ERASED_PASSWORD
+
+export async function createAoSource(id: string, data: Omit<AoSource, '$id' | 'lastSyncAt'>): Promise<AoSource> {
+  const { databases } = createAdminClient()
+  return docToAoSource(await databases.createDocument(DB_ID, COLLECTIONS.AO_SOURCES, id, data))
+}
+
+export async function updateAoSource(id: string, patch: Partial<Omit<AoSource, '$id' | 'tenantId'>>): Promise<AoSource> {
+  const { databases } = createAdminClient()
+  return docToAoSource(await databases.updateDocument(DB_ID, COLLECTIONS.AO_SOURCES, id, patch))
 }
 
 /** Boîte par identifiant ; null si elle n'existe pas (toute autre erreur est remontée). */

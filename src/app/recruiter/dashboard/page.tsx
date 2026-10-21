@@ -9,7 +9,7 @@ import { resolveStatus } from '@/lib/funnel-stage-utils'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
-import { Briefcase, Users, Star, TrendingUp, Upload, Brain, MessageSquare, Building2, Calendar, FolderSearch, FolderOpen, BarChart3, Layers, GitBranch, Users as TeamIcon } from 'lucide-react'
+import { Briefcase, Users, Star, TrendingUp, Upload, Brain, MessageSquare, Building2, Calendar, FolderSearch, FolderOpen, BarChart3, Layers, GitBranch, Inbox, Users as TeamIcon } from 'lucide-react'
 import { CreateJobDialog } from './create-job-dialog'
 import type { CandidateApp } from './applications-panel'
 import { JobsListClient } from './jobs-list-client'
@@ -245,6 +245,7 @@ export default async function RecruiterDashboard() {
           <ToolTile href="/recruiter/funnel" title="Processus de recrutement" subtitle="Pipelines, phases et statuts" rgb="245,158,11" iconColor="#d97706"><GitBranch className="h-5 w-5" /></ToolTile>
           <ToolTile href="/recruiter/marque-employeur" title="Marque employeur" subtitle="Votre page publique" rgb="236,72,153" iconColor="#db2777"><Building2 className="h-5 w-5" /></ToolTile>
           <ToolTile href="/recruiter/equipe" title="Mon équipe" subtitle="Inviter et partager" rgb="20,184,166" iconColor="#0d9488"><TeamIcon className="h-5 w-5" /></ToolTile>
+          <ToolTile href="/recruiter/parametres/boites-ao" title="Boîtes d'appels d'offres" subtitle="E-mails lus automatiquement" rgb="14,165,233" iconColor="#0284c7"><Inbox className="h-5 w-5" /></ToolTile>
         </div>
 
         {/* Stats */}

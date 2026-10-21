@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { Query } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import type { Checkpoint } from './checkpoint'
-import { counterIdFor } from './tenancy'
+import { counterIdFor, type DailyCounter } from './tenancy'
 
 // État de la synchronisation AO (collection AO_STATE, sans permission client) :
 // - un verrou par organisation : une seule synchronisation à la fois de ses boîtes (Vercel Cron, boutons, ao:poll) ;
@@ -116,6 +117,39 @@ export async function takeDailyVisionCall(tenantId: string, now: Date, limit: nu
  */
 export async function takeDailyTableOffers(tenantId: string, now: Date, amount: number, limit: number): Promise<boolean> {
   return takeDaily(counterIdFor('tables', tenantId, now), amount, limit)
+}
+
+/**
+ * Prend une place parmi `limit` pour la journée (compteur `counter` de `key`) ; false si toutes sont prises. Chaque
+ * place est un document à identifiant fixe, créé de façon atomique (409 s'il existe déjà) : même lancées en parallèle,
+ * jamais plus de `limit` demandes ne passent. Pour les limites appelées hors du verrou de synchronisation (tests de
+ * connexion), où takeDaily, qui lit puis réécrit un total, laisserait passer des rafales.
+ */
+export async function takeDailySlot(counter: DailyCounter, key: string, now: Date, limit: number): Promise<boolean> {
+  const { databases } = createAdminClient()
+  const base = counterIdFor(counter, key, now)
+  // Places déjà prises : on commence la recherche après elles (sinon chaque demande essaierait toutes les places).
+  const used = (await databases.listDocuments(DB_ID, COLLECTIONS.AO_STATE, [Query.equal('holder', base), Query.limit(1)])).total
+  for (let slot = used; slot < limit; slot++) {
+    try {
+      await databases.createDocument(DB_ID, COLLECTIONS.AO_STATE, `${base}_${slot}`, { kind: 'slot', holder: base })
+      return true
+    } catch (err) {
+      if (codeOf(err) !== 409) throw err
+    }
+  }
+  return false
+}
+
+/** Supprime les compteurs et places quotidiens créés avant `before` (passages planifiés ; 100 au plus par appel). */
+export async function purgeDailyState(before: Date): Promise<void> {
+  const { databases } = createAdminClient()
+  const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_STATE, [
+    Query.equal('kind', ['counter', 'slot']), Query.lessThan('$createdAt', before.toISOString()), Query.limit(100),
+  ])
+  for (const doc of res.documents) {
+    await databases.deleteDocument(DB_ID, COLLECTIONS.AO_STATE, doc.$id).catch(err => { if (codeOf(err) !== 404) throw err })
+  }
 }
 
 /** Compteur quotidien (document à identifiant fixe de AO_STATE) : ajoute `amount` si `limit` n'est pas dépassée. */
