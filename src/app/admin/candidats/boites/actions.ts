@@ -10,7 +10,7 @@ import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 // Boîtes de réception de la plateforme (ao@wise-associates.fr et toute autre adresse) : réservées à l'admin. Les
 // boîtes des organisations se gèrent dans leur espace (/recruiter/parametres/boites-ao), pas ici.
 
-const PATH = '/admin/ao-offers/boites'
+const PATH = '/admin/candidats/boites'
 const DocumentId = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,35}$/)
 const idOrNull = (id: unknown) => (id === null ? null : DocumentId.safeParse(id).success ? (id as string) : undefined)
 

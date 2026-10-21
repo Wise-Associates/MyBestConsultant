@@ -350,7 +350,7 @@ async function processEnvelope(
     const message = await inbox.read(envelope.uid)
     const origin = originalSender(message, source.ownDomains)
     // Enregistré avant la lecture des pièces jointes : un e-mail en attente de l'IA reste reconnaissable
-    // (expéditeur, objet) dans la liste des e-mails en erreur de /admin/ao-offers.
+    // (expéditeur, objet) dans la liste des e-mails en erreur de /admin/candidats.
     await updateAoEmail(emailId, {
       fromAddress: message.fromAddress.slice(0, 320),
       fromName: message.fromName.slice(0, 200),
