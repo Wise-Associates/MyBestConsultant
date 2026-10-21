@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { PLATFORM_TENANT_ID } from './tenancy'
 import type { AoOfferFields } from './types'
 
 // Dédoublonnage : un même appel d'offres arrive souvent plusieurs fois (relances, plusieurs intermédiaires,
@@ -40,7 +41,12 @@ export function cityKey(location: string): string {
   return words(first).filter(w => !/^\d+(e|er|eme)?$/.test(w) && w !== 'cedex').join(' ')
 }
 
-export function offerFingerprint(offer: Pick<AoOfferFields, 'title' | 'companyName' | 'location' | 'contractType'>): string {
-  const key = [titleKey(offer.title), companyKey(offer.companyName), cityKey(offer.location), offer.contractType].join('|')
+/**
+ * Empreinte d'une offre, propre à son organisation : deux organisations qui reçoivent le même appel d'offres ont
+ * chacune leur offre. Celles de la plateforme gardent la forme d'avant les organisations (empreintes déjà en base).
+ */
+export function offerFingerprint(offer: Pick<AoOfferFields, 'title' | 'companyName' | 'location' | 'contractType'>, tenantId = PLATFORM_TENANT_ID): string {
+  const parts = [titleKey(offer.title), companyKey(offer.companyName), cityKey(offer.location), offer.contractType]
+  const key = (tenantId === PLATFORM_TENANT_ID ? parts : [tenantId, ...parts]).join('|')
   return createHash('sha256').update(key).digest('hex').slice(0, 40)
 }

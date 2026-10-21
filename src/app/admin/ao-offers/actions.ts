@@ -7,11 +7,13 @@ import { getActiveJobs } from '@/lib/appwrite/jobs'
 import { adminJobExists, createAdminJob } from '@/lib/admin-job'
 import { DEFAULT_CLIENT_LABEL, namesToHide, revealsName, toPublicOffer } from '@/lib/ao/anonymize'
 import { parseSender } from '@/lib/ao/origin'
+import { getAoSource } from '@/lib/ao/sources'
+import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 import { descriptionForPublication } from '@/lib/description-sections'
 import { cityKey, titleKey } from '@/lib/ao/fingerprint'
 import { manualRetryPatch } from '@/lib/ao/attempts'
 import { getAoEmail, getAoOffer, listAoEmailsByIds, updateAoEmail, updateAoOffer } from '@/lib/ao/repo'
-import type { AoOffer } from '@/lib/ao/types'
+import type { AoEmail, AoOffer } from '@/lib/ao/types'
 import { syncAoEmail, syncAoInbox, type AoSyncReport } from '@/lib/ao/sync'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
 
@@ -22,22 +24,40 @@ const errorOf = (err: unknown) => (err instanceof Error ? err.message : String(e
 
 /**
  * Noms à masquer : client de l'offre et clients cités par l'appel d'offres (avec leurs sigles), nom et domaine de
- * l'expéditeur de l'e-mail et de celui du message d'origine.
+ * l'expéditeur de l'e-mail et de celui du message d'origine (sauf ceux de l'organisation qui lit la boîte).
  */
 async function hiddenNamesFor(offer: AoOffer): Promise<string[][]> {
   const email = (await listAoEmailsByIds([offer.emailId])).get(offer.emailId)
+  const source = email?.sourceId ? await getAoSource(email.sourceId) : null
   return namesToHide(
     [offer.companyName, ...(email?.citedClients ?? [])],
-    { name: email?.fromName, address: email?.fromAddress },
-    parseSender(email?.origin ?? '') ?? {},
+    [{ name: email?.fromName, address: email?.fromAddress }, parseSender(email?.origin ?? '') ?? {}],
+    source?.ownDomains ?? [],
   )
+}
+
+/**
+ * E-mail d'une boîte de la plateforme ; null sinon. L'admin voit les offres des organisations mais n'agit que sur
+ * celles de la plateforme (ADR 0005) : vérifié avant toute écriture.
+ */
+async function platformEmail(emailId: string): Promise<AoEmail | null> {
+  const email = await getAoEmail(emailId)
+  const source = email?.sourceId ? await getAoSource(email.sourceId) : null
+  return email && source?.tenantId === PLATFORM_TENANT_ID ? email : null
+}
+
+/** Offre AO de la plateforme (voir platformEmail) ; null si elle n'existe pas ou appartient à une organisation. */
+async function platformOffer(id: string): Promise<AoOffer | null> {
+  const offer = await getAoOffer(id)
+  return offer && (await platformEmail(offer.emailId)) ? offer : null
 }
 
 export async function syncAoInboxNow(): Promise<{ report?: AoSyncReport; error?: string }> {
   await requireAdmin()
   try {
     // Plus court que le passage planifié : l'admin attend la réponse.
-    const report = await syncAoInbox({ maxEmails: 5, budgetMs: 150_000, holder: 'admin' })
+    // Boîtes de la plateforme seulement : celles des organisations sont lues par leurs passages planifiés.
+    const report = await syncAoInbox({ maxEmails: 5, budgetMs: 150_000, holder: 'admin', tenantId: PLATFORM_TENANT_ID })
     revalidatePath('/admin/ao-offers')
     return { report }
   } catch (err) {
@@ -59,7 +79,7 @@ export async function retryAoEmail(id: string): Promise<{ report?: AoSyncReport;
   if (!parsed.success) return { error: 'Identifiant d\'e-mail invalide.' }
   let email
   try {
-    email = await getAoEmail(parsed.data)
+    email = await platformEmail(parsed.data)
     if (!email) return { error: 'E-mail introuvable : rechargez la page.' }
     const patch = manualRetryPatch(email)
     if (!patch) return { error: 'Cet e-mail n\'est plus en erreur : rechargez la page.' }
@@ -69,7 +89,7 @@ export async function retryAoEmail(id: string): Promise<{ report?: AoSyncReport;
   }
   try {
     // Plus court que le passage planifié : l'admin attend la réponse.
-    return { report: await syncAoEmail(email, { budgetMs: 150_000, holder: 'admin' }) }
+    return { report: await syncAoEmail(email, { budgetMs: 150_000, holder: 'admin', tenantId: PLATFORM_TENANT_ID }) }
   } catch (err) {
     return { error: `Traitement immédiat impossible (${errorOf(err)}) : l'e-mail est remis en file pour la prochaine synchronisation.` }
   } finally {
@@ -98,7 +118,7 @@ export interface PublicationPreview {
 export async function previewAoPublication(id: string): Promise<{ preview?: PublicationPreview; error?: string }> {
   await requireAdmin()
   try {
-    const offer = await getAoOffer(id)
+    const offer = await platformOffer(id)
     if (!offer) return { error: 'Offre introuvable.' }
     const pub = toPublicOffer(offer, await hiddenNamesFor(offer))
     const key = `${titleKey(offer.title)}|${cityKey(offer.location)}`
@@ -139,7 +159,7 @@ export async function publishAoOffer(id: string, input: PublicationDraft): Promi
   const parsed = PublishSchema.safeParse(input)
   if (!parsed.success) return { error: 'Champs invalides : vérifiez le titre, la description (20 caractères minimum) et le montant.' }
   try {
-    const offer = await getAoOffer(id)
+    const offer = await platformOffer(id)
     if (!offer) return { error: 'Offre introuvable.' }
     if (offer.status === 'published' || offer.jobId) return { error: 'Cette offre est déjà publiée.' }
 
@@ -174,7 +194,7 @@ export async function setAoOfferStatus(id: string, status: 'to_review' | 'ignore
   await requireAdmin()
   if (status !== 'to_review' && status !== 'ignored') return { error: 'Statut invalide.' }
   try {
-    const offer = await getAoOffer(id)
+    const offer = await platformOffer(id)
     if (!offer) return { error: 'Offre introuvable.' }
     if (offer.status === 'published') return { error: 'Une offre publiée se gère depuis « Offres ».' }
     await updateAoOffer(id, { status })

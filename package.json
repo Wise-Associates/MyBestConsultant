@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit -p .",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "ao:setup": "node --network-family-autoselection-attempt-timeout=2000 scripts/setup-ao-collections.mjs",
+    "ao:migrate-sources": "tsx --network-family-autoselection-attempt-timeout=2000 scripts/ao-sources-migrate.mts",
     "ao:poll": "node scripts/ao-poll.mjs",
     "ao:poll:start": "node scripts/ao-poll.mjs start",
     "ao:poll:stop": "node scripts/ao-poll.mjs stop",

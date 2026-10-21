@@ -38,17 +38,24 @@ Le texte est un e-mail (corps + pièces jointes) reçu sur notre boîte dédiée
 - Une même offre présente à la fois dans le corps et dans une pièce jointe ne doit apparaître qu'une fois.
 - Si le message ne contient aucune offre de poste ou de mission, réponds [].`
 
+// Nom de l'organisation qui lit la boîte, saisi par elle : une ligne courte, sans guillemets (il entre dans la consigne).
+const safeName = (name: string) => name.replace(/[\r\n"«»`]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) || 'notre organisation'
+
 /**
  * Client = entreprise de l'expéditeur d'origine (règle métier, voir origin.ts) : seul le domaine de son adresse est
  * donné en tête du texte (moins de données personnelles confiées à l'IA). La valeur retenue pour l'e-mail est
  * recalculée ensuite (senderCompany).
  */
-export const AO_CLIENT_FROM_SENDER = `
+export function clientFromSender(orgName: string): string {
+  return `
 - companyName est l'entreprise de l'expéditeur d'origine, dont le domaine d'adresse est indiqué en tête du texte
   (« Domaine de l'expéditeur d'origine : ») : d'après sa signature, sinon d'après ce domaine (sauf messagerie grand
   public). Même valeur pour toutes les offres, même si le texte cite un client final (il va dans endClient). Jamais
-  Wise Associates (nous), qui ne faisons que transférer. Si tu ne peux pas la déterminer, mets "".`
+  ${safeName(orgName)} (nous), qui ne faisons que transférer. Si tu ne peux pas la déterminer, mets "".`
+}
 
-/** Pas d'expéditeur d'origine connu (appel d'offres écrit par nos soins) : le client est celui que cite le texte. */
-export const AO_CLIENT_FROM_TEXT = `
-- companyName est le client cité dans le texte, jamais Wise Associates (nous). S'il n'est pas nommé, mets "".`
+/** Pas d'expéditeur d'origine connu (appel d'offres écrit par l'organisation) : le client est celui que cite le texte. */
+export function clientFromText(orgName: string): string {
+  return `
+- companyName est le client cité dans le texte, jamais ${safeName(orgName)} (nous). S'il n'est pas nommé, mets "".`
+}

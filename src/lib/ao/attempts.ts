@@ -26,3 +26,12 @@ export function attemptsAfterFailure(attempts: number, { final, countsAsAttempt 
 export function manualRetryPatch(email: Pick<AoEmail, 'status'>): Pick<AoEmail, 'attempts'> | null {
   return email.status === 'failed' ? { attempts: 0 } : null
 }
+
+/**
+ * Un e-mail peut-il être reporté au passage suivant faute de temps ? Les e-mails suivants d'une boîte, oui ; le premier
+ * seulement si la boîte n'a plus le temps nécessaire (`fullTimeMs`) : avec ce temps, il est traité quoi qu'il arrive,
+ * ce qui garantit que la boîte avance ; sans lui, le traiter coûterait ses pièces jointes scannées ou un essai.
+ */
+export function canDeferEmail(handledInMailbox: number, timeLeftMs: number, fullTimeMs: number): boolean {
+  return handledInMailbox > 0 || timeLeftMs < fullTimeMs
+}

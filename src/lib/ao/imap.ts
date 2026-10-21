@@ -1,31 +1,17 @@
 import { createHash } from 'node:crypto'
 import { ImapFlow } from 'imapflow'
 import { simpleParser } from 'mailparser'
+import { IMAP_TLS_PORT, type ImapEndpoint } from './imap-host'
 
-// Accès à la boîte des appels d'offres (ao@wise-associates.fr chez IONOS) en IMAP sur TLS.
+// Accès à une boîte d'appels d'offres (sources.ts : la nôtre, ao@wise-associates.fr, ou celle d'une organisation) en
+// IMAP sur TLS, à l'adresse vérifiée par imap-host.ts.
 // La boîte est ouverte en LECTURE SEULE : aucun message n'est supprimé, déplacé ni marqué comme lu ;
 // le suivi de ce qui a déjà été traité est fait en base (collection AO_EMAILS, par Message-ID).
 
-export interface AoInboxSettings {
-  host: string
-  port: number
+export interface AoInboxSettings extends ImapEndpoint {
   user: string
   password: string
   mailbox: string
-}
-
-/** Paramètres lus dans l'environnement ; null tant que l'identifiant ou le mot de passe manque. */
-export function aoInboxSettings(): AoInboxSettings | null {
-  const user = process.env.AO_IMAP_USER?.trim()
-  const password = process.env.AO_IMAP_PASSWORD
-  if (!user || !password) return null
-  return {
-    host: process.env.AO_IMAP_HOST?.trim() || 'imap.ionos.fr',
-    port: Number(process.env.AO_IMAP_PORT) || 993,
-    user,
-    password,
-    mailbox: process.env.AO_IMAP_MAILBOX?.trim() || 'INBOX',
-  }
 }
 
 export interface InboxEnvelope {
@@ -76,19 +62,47 @@ const stripHtml = (html: string) =>
     .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"')
     .replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n\n').trim()
 
-/** Ouvre la boîte le temps de `work`, puis ferme la connexion (même en cas d'erreur). */
-export async function withAoInbox<T>(settings: AoInboxSettings, work: (inbox: AoInbox) => Promise<T>): Promise<T> {
+/** Taille maximale d'une réponse du serveur : un message de plus de 25 Mo est de toute façon écarté (sync.ts). */
+const MAX_LITERAL_BYTES = 26 * 1024 * 1024
+
+/**
+ * Ouvre la boîte le temps de `work`, puis ferme la connexion (même en cas d'erreur). Au-delà de `hardLimitMs`, la
+ * connexion est coupée et `work` échoue : un serveur qui répond au compte-gouttes ne retient pas le passage.
+ */
+export async function withAoInbox<T>(settings: AoInboxSettings, hardLimitMs: number, work: (inbox: AoInbox) => Promise<T>): Promise<T> {
   const client = new ImapFlow({
-    host: settings.host,
-    port: settings.port,
+    // Adresse vérifiée (pas le nom, que le DNS pourrait résoudre autrement) ; le nom sert au certificat, vérifié.
+    host: settings.address,
+    servername: settings.servername,
+    port: IMAP_TLS_PORT,
     secure: true,
+    tls: { rejectUnauthorized: true, minVersion: 'TLSv1.2' },
     auth: { user: settings.user, pass: settings.password },
     logger: false,
     disableAutoIdle: true,
     connectionTimeout: 15_000,
     greetingTimeout: 15_000,
     socketTimeout: 60_000,
+    // Serveur choisi par une organisation : ses réponses sont bornées (par défaut, imapflow en accepte jusqu'à 1 Go).
+    maxLiteralSize: MAX_LITERAL_BYTES,
+    maxResponseSize: MAX_LITERAL_BYTES + 1024 * 1024,
   })
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    client.close()
+  }, hardLimitMs)
+  try {
+    return await openAndWork(client, settings, work)
+  } catch (err) {
+    if (timedOut) throw new Error(`Serveur IMAP trop lent : lecture arrêtée après ${Math.round(hardLimitMs / 1000)} s, reprise au prochain passage.`, { cause: err })
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function openAndWork<T>(client: ImapFlow, settings: AoInboxSettings, work: (inbox: AoInbox) => Promise<T>): Promise<T> {
   await client.connect()
   try {
     const lock = await client.getMailboxLock(settings.mailbox, { readOnly: true })
