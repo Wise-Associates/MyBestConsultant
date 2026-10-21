@@ -2,21 +2,23 @@ import { createHash, randomUUID } from 'node:crypto'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import type { Checkpoint } from './checkpoint'
+import { counterIdFor } from './tenancy'
 
 // État de la synchronisation AO (collection AO_STATE, sans permission client) :
-// - le verrou qui garantit une seule synchronisation à la fois (Vercel Cron, bouton admin, ao:poll) ;
+// - un verrou par organisation : une seule synchronisation à la fois de ses boîtes (Vercel Cron, boutons, ao:poll) ;
 // - un point de reprise par boîte lue (voir checkpoint.ts) ;
-// - le compteur quotidien des lectures par l'IA (images, PDF scannés).
+// - les compteurs quotidiens de chaque organisation (lectures d'images / PDF scannés par l'IA, offres de tableaux).
 // Ce sont des documents à identifiant fixe : la création échoue (409) si le document existe déjà,
 // ce que la base garantit même entre plusieurs instances Vercel.
 
-const LOCK_ID = 'sync_lock'
 /** Plus long que la durée maximale d'un passage (300 s sur Vercel). */
 export const SYNC_LOCK_TTL_MS = 6 * 60_000
 
 const codeOf = (err: unknown) => (err as { code?: number }).code
 
 export interface SyncLock {
+  /** Document du verrou (tenancy.ts : lockIdFor). */
+  id: string
   token: string
 }
 
@@ -24,10 +26,10 @@ export interface SyncLock {
  * Prend le verrou ; null si une autre synchronisation le détient encore. Un verrou expiré (passage
  * interrompu sans le rendre) est repris. `holder` : origine du passage (cron, admin…), pour le diagnostic.
  */
-export async function acquireSyncLock(holder: string, now: Date): Promise<SyncLock | null> {
+export async function acquireSyncLock(lockId: string, holder: string, now: Date): Promise<SyncLock | null> {
   const { databases } = createAdminClient()
   const token = randomUUID()
-  const create = () => databases.createDocument(DB_ID, COLLECTIONS.AO_STATE, LOCK_ID, {
+  const create = () => databases.createDocument(DB_ID, COLLECTIONS.AO_STATE, lockId, {
     kind: 'lock',
     holder: holder.slice(0, 200),
     token,
@@ -36,14 +38,14 @@ export async function acquireSyncLock(holder: string, now: Date): Promise<SyncLo
 
   try {
     await create()
-    return { token }
+    return { id: lockId, token }
   } catch (err) {
     if (codeOf(err) !== 409) throw err
   }
   // Verrou présent : toujours valide → passage ignoré ; expiré → on le reprend.
-  const current = await getOrNull(LOCK_ID)
+  const current = await getOrNull(lockId)
   if (current && new Date(String(current.expiresAt)).getTime() > now.getTime()) return null
-  await databases.deleteDocument(DB_ID, COLLECTIONS.AO_STATE, LOCK_ID).catch(err => { if (codeOf(err) !== 404) throw err })
+  await databases.deleteDocument(DB_ID, COLLECTIONS.AO_STATE, lockId).catch(err => { if (codeOf(err) !== 404) throw err })
   try {
     await create()
   } catch (err) {
@@ -52,7 +54,7 @@ export async function acquireSyncLock(holder: string, now: Date): Promise<SyncLo
   }
   // Deux passages ont pu voir le même verrou expiré : le second à l'écrire l'emporte, l'autre s'efface.
   await new Promise(resolve => setTimeout(resolve, 500))
-  return (await getOrNull(LOCK_ID))?.token === token ? { token } : null
+  return (await getOrNull(lockId))?.token === token ? { id: lockId, token } : null
 }
 
 /** Document d'état, ou null s'il n'existe pas (toute autre erreur est remontée). */
@@ -70,8 +72,8 @@ async function getOrNull(id: string) {
 export async function releaseSyncLock(lock: SyncLock): Promise<void> {
   const { databases } = createAdminClient()
   // Un échec ici n'est pas bloquant : le verrou expire de lui-même après SYNC_LOCK_TTL_MS.
-  const current = await getOrNull(LOCK_ID).catch(() => null)
-  if (current?.token === lock.token) await databases.deleteDocument(DB_ID, COLLECTIONS.AO_STATE, LOCK_ID).catch(() => undefined)
+  const current = await getOrNull(lock.id).catch(() => null)
+  if (current?.token === lock.token) await databases.deleteDocument(DB_ID, COLLECTIONS.AO_STATE, lock.id).catch(() => undefined)
 }
 
 /** Identifiant Appwrite stable d'une boîte lue (serveur + compte + dossier), 33 caractères. */
@@ -100,22 +102,20 @@ export async function saveCheckpoint(id: string, checkpoint: Checkpoint): Promis
   }
 }
 
-const visionCounterId = (now: Date) => `vision_${now.toISOString().slice(0, 10)}`
-
 /**
- * Compte une lecture par l'IA pour la journée (UTC) ; false si `limit` est atteinte. Appelé sous le
- * verrou de synchronisation : pas d'écritures concurrentes sur le compteur.
+ * Compte une lecture par l'IA pour la journée (UTC) de l'organisation ; false si `limit` est atteinte. Appelé sous le
+ * verrou de l'organisation : pas d'écritures concurrentes sur son compteur.
  */
-export async function takeDailyVisionCall(now: Date, limit: number): Promise<boolean> {
-  return takeDaily(visionCounterId(now), 1, limit)
+export async function takeDailyVisionCall(tenantId: string, now: Date, limit: number): Promise<boolean> {
+  return takeDaily(counterIdFor('vision', tenantId, now), 1, limit)
 }
 
 /**
- * Compte `amount` offres lues dans des tableaux joints pour la journée (UTC) ; false si `limit` serait dépassée.
- * Sous le verrou de synchronisation, comme takeDailyVisionCall.
+ * Compte `amount` offres lues dans des tableaux joints pour la journée (UTC) de l'organisation ; false si `limit`
+ * serait dépassée. Sous le verrou de l'organisation, comme takeDailyVisionCall.
  */
-export async function takeDailyTableOffers(now: Date, amount: number, limit: number): Promise<boolean> {
-  return takeDaily(`tables_${now.toISOString().slice(0, 10)}`, amount, limit)
+export async function takeDailyTableOffers(tenantId: string, now: Date, amount: number, limit: number): Promise<boolean> {
+  return takeDaily(counterIdFor('tables', tenantId, now), amount, limit)
 }
 
 /** Compteur quotidien (document à identifiant fixe de AO_STATE) : ajoute `amount` si `limit` n'est pas dépassée. */
@@ -133,9 +133,9 @@ async function takeDaily(id: string, amount: number, limit: number): Promise<boo
  * Rend une lecture comptée par takeDailyVisionCall avec le même `now` (même journée), quand aucun service
  * ne l'a facturée. Sous le verrou de synchronisation, comme takeDailyVisionCall.
  */
-export async function releaseDailyVisionCall(now: Date): Promise<void> {
+export async function releaseDailyVisionCall(tenantId: string, now: Date): Promise<void> {
   const { databases } = createAdminClient()
-  const id = visionCounterId(now)
+  const id = counterIdFor('vision', tenantId, now)
   const used = Number((await getOrNull(id))?.count ?? 0)
   if (used > 0) await databases.updateDocument(DB_ID, COLLECTIONS.AO_STATE, id, { count: used - 1 })
 }

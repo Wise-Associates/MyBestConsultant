@@ -16,12 +16,21 @@ interface Props {
   rows: AoOfferRow[]
   recentEmails: AoEmail[]
   inboxConfigured: boolean
+  /** Boîtes de la plateforme dont la dernière lecture a échoué (ou qui ne sont pas lues). */
+  mailboxIssues: MailboxIssue[]
   loadError: string
 }
 
 type Notice = { tone: 'ok' | 'error'; text: string } | null
 
-export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, loadError }: Props) {
+export interface MailboxIssue {
+  label: string
+  error: string
+  /** Début de la dernière tentative de lecture (ISO), ou null si la boîte n'a jamais été lue. */
+  at: string | null
+}
+
+export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, mailboxIssues, loadError }: Props) {
   const [filters, setFilters] = useState<AoFilters>(EMPTY_AO_FILTERS)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice>(null)
@@ -96,8 +105,11 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, loadErr
       </div>
 
       {!inboxConfigured && (
-        <Banner tone="error" text="La lecture automatique est désactivée : renseignez AO_IMAP_USER et AO_IMAP_PASSWORD dans les variables d'environnement (Vercel et fichier .env local)." />
+        <Banner tone="error" text="Aucune boîte de la plateforme n'est active : la lecture automatique est arrêtée. Enregistrez la boîte ao@ avec npm run ao:migrate-sources (voir docs/adr/0005)." />
       )}
+      {mailboxIssues.map(m => (
+        <Banner key={m.label} tone="error" text={`Boîte ${m.label}${m.at ? ` (tentative du ${formatDay(m.at)})` : ''} : ${m.error}`} />
+      ))}
       {loadError && <Banner tone="error" text={loadError} />}
       <div ref={noticeRef}>{notice && <Banner tone={notice.tone} text={notice.text} onClose={() => setNotice(null)} />}</div>
 
@@ -252,7 +264,7 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, loadErr
 
 /** Message de fin d'une synchronisation (bouton « Synchroniser maintenant » ou « Réessayer »). */
 function noticeOf(r: AoSyncReport, lead = ''): NonNullable<Notice> {
-  if (!r.configured) return { tone: 'error', text: 'La boîte AO n\'est pas configurée (AO_IMAP_USER / AO_IMAP_PASSWORD).' }
+  if (!r.configured) return { tone: 'error', text: 'Aucune boîte de la plateforme n\'est active : rien n\'a été lu.' }
   const parts = [
     `${r.processed} e-mail${r.processed > 1 ? 's' : ''} traité${r.processed > 1 ? 's' : ''}`,
     `${r.offersCreated} nouvelle${r.offersCreated > 1 ? 's' : ''} offre${r.offersCreated > 1 ? 's' : ''}`,
@@ -261,8 +273,9 @@ function noticeOf(r: AoSyncReport, lead = ''): NonNullable<Notice> {
     r.aiUnavailable ? 'IA indisponible (crédits épuisés ou clé refusée) : les e-mails concernés attendent, voir « E-mails non traités »' : '',
   ].filter(Boolean)
   return {
-    tone: r.failed ? 'error' : 'ok',
-    text: `${lead}${parts.join(' · ')}${r.failed ? ` — ${r.failed} en erreur : ${r.errors.slice(0, 2).join(' ; ')}` : ''}`,
+    // Une boîte illisible (mot de passe, serveur) laisse 0 e-mail traité : sans ce cas, le passage paraîtrait réussi.
+    tone: r.failed || r.errors.length ? 'error' : 'ok',
+    text: `${lead}${parts.join(' · ')}${r.errors.length ? ` — ${r.failed ? `${r.failed} en erreur : ` : ''}${r.errors.slice(0, 2).join(' ; ')}` : ''}`,
   }
 }
 
