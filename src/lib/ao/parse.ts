@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { contractOf, parseNumber, remoteOf } from '@/lib/job-import'
+import { placeUnlabeledDates } from './dates'
 import type { ExtractedOffer } from './types'
 
 // La réponse de l'IA est une donnée non fiable : on la valide champ par champ, on normalise ce qui peut
@@ -38,35 +39,18 @@ const OfferSchema = z.object({
   experience: shortText(100),
 })
 
+/** Réponse de l'IA : les champs d'une offre, plus les dates citées sans libellé, classées ensuite (dates.ts), pas par l'IA. */
+const AiOfferSchema = OfferSchema.extend({
+  otherDates: z.unknown().optional().transform(v => (Array.isArray(v) ? v : []).map(d => asText(d).replace(/[<>]/g, '').slice(0, 100)).filter(Boolean).slice(0, 5)),
+})
+
 /**
- * Offre validée et normalisée à partir de champs bruts (réponse de l'IA, ligne de tableau) ; null sans titre exploitable.
+ * Offre validée et normalisée à partir de champs bruts (ligne de tableau : colonnes nommées, pas de date sans libellé) ;
+ * null sans titre exploitable.
  */
 export function parseOfferFields(raw: Record<string, unknown>): ExtractedOffer | null {
   const parsed = OfferSchema.safeParse(raw)
   return parsed.success ? parsed.data : null
-}
-
-// « 30/10/2026 », « 30.10.26 », « 2026-10-30 » ; une date écrite en toutes lettres (« fin octobre ») n'est pas comparée.
-const NUMERIC_DATE = /\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4}|\d{2})\b|\b(\d{4})-(\d{2})-(\d{2})\b/
-
-function dateKey(value: string): number | null {
-  const m = value.match(NUMERIC_DATE)
-  if (!m) return null
-  const [year, month, day] = m[4] ? [+m[4], +m[5], +m[6]] : [m[3].length === 2 ? 2000 + +m[3] : +m[3], +m[2], +m[1]]
-  return month >= 1 && month <= 12 && day >= 1 && day <= 31 ? year * 10_000 + month * 100 + day : null
-}
-
-/**
- * Date limite d'un e-mail, tirée de celles de ses offres (une seule est enregistrée, sur l'e-mail) : la plus proche
- * des dates lisibles — répondre trop tôt ne fait rien perdre —, sinon la première indiquée ; '' si aucune.
- */
-export function emailDeadline(deadlines: string[]): string {
-  const given = deadlines.map(d => d.trim()).filter(Boolean)
-  const dated = given.flatMap(value => {
-    const key = dateKey(value)
-    return key === null ? [] : [{ value, key }]
-  })
-  return dated.sort((a, b) => a.key - b.key)[0]?.value ?? given[0] ?? ''
 }
 
 export interface ParsedOffers {
@@ -77,9 +61,10 @@ export interface ParsedOffers {
 
 /**
  * Lit la réponse brute de l'IA : un tableau JSON, éventuellement entouré de texte ou de balises ```.
- * Lève une erreur si aucun tableau JSON n'est lisible (l'e-mail sera réessayé).
+ * Les dates citées sans libellé sont placées selon leur jour (dates.ts) ; `reference` (date de réception de l'e-mail)
+ * donne l'année des dates écrites sans. Lève une erreur si aucun tableau JSON n'est lisible (l'e-mail sera réessayé).
  */
-export function parseOffersJson(raw: string): ParsedOffers {
+export function parseOffersJson(raw: string, reference: Date): ParsedOffers {
   const start = raw.indexOf('[')
   const end = raw.lastIndexOf(']')
   if (start < 0) throw new Error('Réponse IA invalide : aucun tableau JSON')
@@ -99,9 +84,13 @@ export function parseOffersJson(raw: string): ParsedOffers {
   const offers: ExtractedOffer[] = []
   let rejected = 0
   for (const item of data) {
-    const parsed = OfferSchema.safeParse(item && typeof item === 'object' ? item : null)
-    if (parsed.success) offers.push(parsed.data)
-    else rejected++
+    const parsed = AiOfferSchema.safeParse(item && typeof item === 'object' ? item : null)
+    if (!parsed.success) {
+      rejected++
+      continue
+    }
+    const { otherDates, ...offer } = parsed.data
+    offers.push({ ...offer, ...placeUnlabeledDates(offer, otherDates, reference) })
   }
   return { offers, rejected }
 }

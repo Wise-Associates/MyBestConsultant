@@ -1,7 +1,10 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import * as XLSX from 'xlsx'
-import { emailDeadline, parseOffersJson, TruncatedAnswerError } from './parse'
+import { parseOffersJson, TruncatedAnswerError } from './parse'
+import { emailDeadline } from './dates'
+
+const RECEIVED = new Date('2026-10-21T09:00:00Z')
 import { cityKey, offerFingerprint, titleKey } from './fingerprint'
 import { DEFAULT_CLIENT_LABEL, namesToHide, revealsName, scrubContacts, toPublicOffer } from './anonymize'
 import Anthropic from '@anthropic-ai/sdk'
@@ -44,21 +47,27 @@ const offer = (over: Partial<ExtractedOffer> = {}): ExtractedOffer => ({
 
 describe('parseOffersJson', () => {
   it('garde la date limite de réponse à part de la date de démarrage', () => {
-    const { offers } = parseOffersJson('[{"title":"Data engineer","startDate":"","deadline":"30/10/2026","endClient":"BNP Paribas"}]')
+    const { offers } = parseOffersJson('[{"title":"Data engineer","startDate":"","deadline":"30/10/2026","endClient":"BNP Paribas"}]', RECEIVED)
     assert.equal(offers[0].deadline, '30/10/2026')
     assert.equal(offers[0].endClient, 'BNP Paribas')
     assert.equal(offers[0].startDate, '')
   })
 
+  it('classe les dates sans libellé de la réponse de l\'IA selon leur jour (lundi : démarrage, vendredi : date limite)', () => {
+    const { offers } = parseOffersJson('[{"title":"Chef de projet","otherDates":["30/10/2026","lundi 2 novembre"]},{"title":"PO","startDate":"vendredi 06/11/2026","otherDates":["09/11/2026"]}]', RECEIVED)
+    assert.deepEqual(offers.map(o => [o.startDate, o.deadline]), [['lundi 2 novembre', '30/10/2026'], ['vendredi 06/11/2026', '']])
+    assert.ok(!('otherDates' in offers[0]), 'la liste brute ne sort pas de la lecture')
+  })
+
   it('garde sur l\'e-mail la date limite la plus proche de ses offres', () => {
-    assert.equal(emailDeadline(['', '15/11/2026', '30/10/2026', '2026-11-02']), '30/10/2026')
-    assert.equal(emailDeadline(['fin octobre', '31.10.26']), '31.10.26')
-    assert.equal(emailDeadline(['fin octobre', 'ASAP']), 'fin octobre')
-    assert.equal(emailDeadline(['', '  ']), '')
+    assert.equal(emailDeadline(['', '15/11/2026', '30/10/2026', '2026-11-02'], RECEIVED), '30/10/2026')
+    assert.equal(emailDeadline(['fin octobre', '31.10.26'], RECEIVED), '31.10.26')
+    assert.equal(emailDeadline(['fin octobre', 'ASAP'], RECEIVED), 'fin octobre')
+    assert.equal(emailDeadline(['', '  '], RECEIVED), '')
   })
 
   it('lit un tableau entouré de texte ou de balises markdown', () => {
-    const { offers } = parseOffersJson('Voici :\n```json\n[{"title":"Chef de projet","contractType":"freelance","remote":"remote","salary":"600 €/j","skills":"Java, Spring; Kafka"}]\n```')
+    const { offers } = parseOffersJson('Voici :\n```json\n[{"title":"Chef de projet","contractType":"freelance","remote":"remote","salary":"600 €/j","skills":"Java, Spring; Kafka"}]\n```', RECEIVED)
     assert.equal(offers.length, 1)
     assert.equal(offers[0].contractType, 'freelance')
     assert.equal(offers[0].remote, 'remote')
@@ -67,13 +76,13 @@ describe('parseOffersJson', () => {
   })
 
   it('écarte les éléments sans titre et compte les rejets', () => {
-    const { offers, rejected } = parseOffersJson('[{"title":""},{"companyName":"X"},"texte",{"title":"Data engineer"}]')
+    const { offers, rejected } = parseOffersJson('[{"title":""},{"companyName":"X"},"texte",{"title":"Data engineer"}]', RECEIVED)
     assert.deepEqual(offers.map(o => o.title), ['Data engineer'])
     assert.equal(rejected, 3)
   })
 
   it('normalise les valeurs inattendues au lieu de les publier telles quelles', () => {
-    const { offers } = parseOffersJson('[{"title":"PO","contractType":"CDI temps plein","remote":"100% télétravail","salary":-3,"skills":["a","a","b"]}]')
+    const { offers } = parseOffersJson('[{"title":"PO","contractType":"CDI temps plein","remote":"100% télétravail","salary":-3,"skills":["a","a","b"]}]', RECEIVED)
     assert.equal(offers[0].contractType, 'cdi')
     assert.equal(offers[0].remote, 'remote')
     assert.equal(offers[0].salary, null)
@@ -81,7 +90,7 @@ describe('parseOffersJson', () => {
   })
 
   it('refuse une réponse sans tableau JSON (l\'e-mail sera réessayé)', () => {
-    assert.throws(() => parseOffersJson('Désolé, je ne peux pas.'), /aucun tableau JSON/)
+    assert.throws(() => parseOffersJson('Désolé, je ne peux pas.', RECEIVED), /aucun tableau JSON/)
   })
 })
 
@@ -163,13 +172,13 @@ describe('anonymisation', () => {
 
 describe('robustesse de la lecture', () => {
   it('retire les chevrons des champs courts (titre, ville…) renvoyés par l\'IA', () => {
-    const { offers } = parseOffersJson('[{"title":"Dev <b>React</b>","location":"Paris </script><script>x()</script>"}]')
+    const { offers } = parseOffersJson('[{"title":"Dev <b>React</b>","location":"Paris </script><script>x()</script>"}]', RECEIVED)
     assert.doesNotMatch(offers[0].title + offers[0].location, /[<>]/)
   })
 
   it('reconnaît une réponse IA coupée (inutile de la redemander)', () => {
-    assert.throws(() => parseOffersJson('[{"title":"A","skills":["x"]},{"title":"B","descr'), TruncatedAnswerError)
-    assert.doesNotThrow(() => parseOffersJson('[{"title":"Data engineer"}] Voilà les offres.'))
+    assert.throws(() => parseOffersJson('[{"title":"A","skills":["x"]},{"title":"B","descr', RECEIVED), TruncatedAnswerError)
+    assert.doesNotThrow(() => parseOffersJson('[{"title":"Data engineer"}] Voilà les offres.', RECEIVED))
   })
 
   it('découpe les Message-ID en requêtes de moins de 4096 caractères', () => {
