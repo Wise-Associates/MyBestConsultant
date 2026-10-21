@@ -12,8 +12,9 @@ import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 import { descriptionForPublication } from '@/lib/description-sections'
 import { cityKey, titleKey } from '@/lib/ao/fingerprint'
 import { manualRetryPatch } from '@/lib/ao/attempts'
-import { getAoEmail, getAoOffer, listAoEmailsByIds, listAoOfferDetails, updateAoEmail, updateAoOffer } from '@/lib/ao/repo'
-import { matchCandidatesForOffer } from '@/lib/sourcing-core'
+import { getAoEmail, getAoOffer, getAoOfferSourcing, listAoEmailsByIds, listAoOfferDetails, saveAoOfferSourcing, updateAoEmail, updateAoOffer } from '@/lib/ao/repo'
+import { candidateNames, matchCandidatesForOffer } from '@/lib/sourcing-core'
+import { bestMatches } from '@/lib/sourcing-rules'
 import { getJobMatches, runPoolMatching, type JobMatchResult } from '@/lib/matching-core'
 import type { AoEmail, AoOffer } from '@/lib/ao/types'
 import { syncAoEmail, syncAoInbox, type AoSyncReport } from '@/lib/ao/sync'
@@ -207,87 +208,78 @@ export async function setAoOfferStatus(id: string, status: 'to_review' | 'ignore
   }
 }
 
-/** Candidats proposés pour une offre (10 au plus, les mieux notés d'abord). */
-const MAX_SOURCED = 10
-
-/** Candidat proposé pour une offre AO : calculé à la demande (live) ou enregistré par le matching de la publication. */
+/** Candidat retenu pour une offre AO (les 5 meilleurs notés 65 ou plus, sourcing-rules.ts). */
 export interface SourcedCandidate {
   id: string
   name: string
   score: number | null
   reason: string
-  /** live : calculé à l'instant ; pool : base candidats ; vivier : CV ajouté à l'offre ; application : candidature reçue. */
-  origin: 'live' | JobMatchResult['source']
+  /** pool : base candidats ; vivier : CV ajouté à l'offre publiée ; application : candidature reçue. */
+  origin: JobMatchResult['source']
 }
 
 export interface SourcingResult {
   candidates?: SourcedCandidate[]
-  /** CV analysés (calcul à la demande seulement). */
-  scanned?: number
-  /** Offre publiée : date du matching enregistré (null s'il n'a pas encore été calculé). */
+  /** Date du calcul (null : jamais calculé pour cette offre). */
   computedAt?: string | null
+  /** CV analysés (offre non publiée). */
+  scanned?: number
   error?: string
 }
 
-const byScore = (a: SourcedCandidate, b: SourcedCandidate) => (b.score ?? -1) - (a.score ?? -1)
-
-function storedCandidates(matches: JobMatchResult[]): SourcedCandidate[] {
-  return matches
-    .map(m => ({ id: `${m.source}:${m.id}`, name: m.name, score: m.score, reason: m.reason, origin: m.source }))
-    .sort(byScore)
-    .slice(0, MAX_SOURCED)
-}
-
 /**
- * Matching enregistré d'une offre AO publiée : calculé à sa publication (src/lib/auto-source-candidates.ts) pour la
- * base candidats, plus son vivier et ses candidatures ; lu sans appel d'IA. `recompute` : recalcule d'abord le
- * matching de la base (un appel d'IA), comme le bouton de la page Matching. Offre non publiée : rien à lire.
+ * Sourcing d'une offre AO, toujours enregistré pour ne pas refaire d'appel d'IA à chaque ouverture :
+ * - offre publiée : matching calculé à la publication (tryAutoSourceCandidates → runPoolMatching), lu avec
+ *   getJobMatches (base candidats, vivier, candidatures) ;
+ * - offre non publiée : dernier calcul à la demande, enregistré dans ao_offer_details (identifiants, scores, raisons).
+ * `recompute` : recalcule d'abord (un appel d'IA, environ une minute). Seuls les 5 meilleurs notés 65 ou plus sont
+ * renvoyés (même règle que l'e-mail automatique de la publication). Offres de la plateforme seulement.
  */
-export async function storedAoOfferMatches(id: string, recompute = false): Promise<SourcingResult> {
+export async function aoOfferSourcing(id: string, recompute = false): Promise<SourcingResult> {
   await requireAdmin()
   const parsed = DocumentId.safeParse(id)
   if (!parsed.success) return { error: 'Offre introuvable : rechargez la page.' }
   try {
     const offer = await platformOffer(parsed.data)
     if (!offer) return { error: 'Offre introuvable : rechargez la page.' }
-    if (!offer.jobId) return { candidates: [], computedAt: null }
-    if (recompute) {
-      const run = await runPoolMatching(offer.jobId)
-      if (run.error) return { error: run.error }
+
+    if (offer.jobId) {
+      if (recompute) {
+        const run = await runPoolMatching(offer.jobId)
+        if (run.error) return { error: run.error }
+      }
+      const { matches, poolComputedAt } = await getJobMatches(offer.jobId)
+      const kept = bestMatches(matches).map(m => ({ id: `${m.source}:${m.id}`, name: m.name, score: m.score, reason: m.reason, origin: m.source }))
+      return { candidates: kept, computedAt: poolComputedAt }
     }
-    const { matches, poolComputedAt } = await getJobMatches(offer.jobId)
-    return { candidates: storedCandidates(matches), computedAt: poolComputedAt }
-  } catch (err) {
-    return { error: `Matching illisible : ${errorOf(err)}` }
-  }
-}
 
-/**
- * « Sourcing » d'une offre AO : candidats de la base rapprochés de l'offre, notés de 0 à 100 par l'IA avec la raison
- * (même notation que le sourcing des offres publiées, src/lib/sourcing-core.ts), sans attendre sa publication.
- * Offres de la plateforme seulement ; un appel d'IA par clic, rien n'est enregistré.
- */
-export async function sourceAoOfferCandidates(id: string): Promise<SourcingResult> {
-  await requireAdmin()
-  const parsed = DocumentId.safeParse(id)
-  if (!parsed.success) return { error: 'Offre introuvable : rechargez la page.' }
-  try {
-    const offer = await platformOffer(parsed.data)
-    if (!offer) return { error: 'Offre introuvable : rechargez la page.' }
-    const technologies = (await listAoOfferDetails([offer.$id])).get(offer.$id)?.technologies ?? []
-    const result = await matchCandidatesForOffer({
-      title: offer.title,
-      skills: offer.skills,
-      description: offer.description,
-      details: [
-        technologies.length ? `Technologies : ${technologies.join(', ')}` : '',
-        offer.experience ? `Expérience requise : ${offer.experience}` : '',
-        offer.location ? `Lieu : ${offer.location}` : '',
-      ].filter(Boolean),
-    })
-    if (result.error) return { error: result.error, scanned: result.scanned }
-    const candidates = result.matches.map(m => ({ id: `live:${m.candidateId}`, name: m.name, score: m.score, reason: m.reason, origin: 'live' as const }))
-    return { candidates: candidates.sort(byScore).slice(0, MAX_SOURCED), scanned: result.scanned }
+    let record = recompute ? null : await getAoOfferSourcing(offer.$id)
+    if (!record && !recompute) return { computedAt: null }
+    if (!record) {
+      const technologies = (await listAoOfferDetails([offer.$id])).get(offer.$id)?.technologies ?? []
+      const result = await matchCandidatesForOffer({
+        title: offer.title,
+        skills: offer.skills,
+        description: offer.description,
+        details: [
+          technologies.length ? `Technologies : ${technologies.join(', ')}` : '',
+          offer.experience ? `Expérience requise : ${offer.experience}` : '',
+          offer.location ? `Lieu : ${offer.location}` : '',
+        ].filter(Boolean),
+      })
+      if (result.error) return { error: result.error, scanned: result.scanned }
+      record = {
+        at: new Date().toISOString(),
+        scanned: result.scanned,
+        candidates: bestMatches(result.matches).map(m => ({ candidateId: m.candidateId, score: m.score, reason: m.reason })),
+      }
+      await saveAoOfferSourcing(offer.$id, record)
+    }
+    const names = await candidateNames(record.candidates.map(c => c.candidateId))
+    const kept = record.candidates
+      .filter(c => names.has(c.candidateId))
+      .map(c => ({ id: `pool:${c.candidateId}`, name: names.get(c.candidateId) ?? '', score: c.score, reason: c.reason, origin: 'pool' as const }))
+    return { candidates: kept, computedAt: record.at, scanned: record.scanned }
   } catch (err) {
     return { error: `Sourcing impossible : ${errorOf(err)}` }
   }
