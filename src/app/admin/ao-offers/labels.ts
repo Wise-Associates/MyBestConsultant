@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import type { AoContract, AoOfferStatus, AoRemote } from '@/lib/ao/types'
+import type { AoContract, AoEngagement, AoOfferStatus, AoRemote } from '@/lib/ao/types'
 
 // Libellés et styles partagés par la liste et le panneau de détail AO Offers.
 
@@ -14,6 +14,7 @@ export const STATUS_UI: Record<AoOfferStatus, { label: string; color: string }> 
 
 export const CONTRACT_LABEL: Record<AoContract, string> = { cdi: 'CDI', cdd: 'CDD', freelance: 'Freelance', mission: 'Mission' }
 export const REMOTE_LABEL: Record<AoRemote, string> = { onsite: 'Sur site', hybrid: 'Hybride', remote: 'Télétravail' }
+export const ENGAGEMENT_LABEL: Record<AoEngagement, string> = { assistance: 'Assistance technique', forfait: 'Forfait', '': '—' }
 
 /** TJM pour les missions et le freelance, salaire annuel pour les CDI/CDD (comme l'import d'offres). */
 export function formatAmount(salary: number | null, contract: AoContract): string {

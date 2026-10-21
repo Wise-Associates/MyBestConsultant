@@ -2,7 +2,9 @@ import * as XLSX from 'xlsx'
 import type { AoOfferFields, ExtractedOffer } from './types'
 
 /** Une ligne de l'export : les champs de l'offre et la date limite de son e-mail. */
-type ExportedOffer = AoOfferFields & Pick<ExtractedOffer, 'deadline'>
+type ExportedOffer = AoOfferFields & Pick<ExtractedOffer, 'deadline' | 'engagement' | 'technologies'>
+
+const ENGAGEMENT_LABEL = { assistance: 'Assistance technique', forfait: 'Forfait', '': '' } as const
 
 // Export Excel au format du modèle d'import (public/templates/modele-import-offres.xlsx) : le fichier
 // téléchargé depuis AO Offers peut être ré-importé tel quel dans « Offres → Importer ».
@@ -21,6 +23,8 @@ export const AO_EXCEL_HEADERS = [
   'Expérience requise',
   // Hors modèle d'import (ignorée par « Offres → Importer ») ; relue par la lecture des tableaux AO (spreadsheet.ts).
   'Date limite de réponse',
+  'Assistance technique / Forfait',
+  'Technologies (séparées par des virgules)',
 ] as const
 
 export function aoOfferRow(offer: ExportedOffer): (string | number)[] {
@@ -37,13 +41,15 @@ export function aoOfferRow(offer: ExportedOffer): (string | number)[] {
     offer.startDate,
     offer.experience,
     offer.deadline,
+    ENGAGEMENT_LABEL[offer.engagement],
+    offer.technologies.join(', '),
   ]
 }
 
 /** Classeur .xlsx (une feuille « AO Offers »). Les cellules texte restent du texte : pas d'injection de formule. */
 export function buildAoWorkbook(offers: ExportedOffer[]): Buffer {
   const sheet = XLSX.utils.aoa_to_sheet([[...AO_EXCEL_HEADERS], ...offers.map(aoOfferRow)])
-  sheet['!cols'] = [36, 24, 18, 14, 14, 12, 40, 80, 20, 16, 18, 16].map(wch => ({ wch }))
+  sheet['!cols'] = [36, 24, 18, 14, 14, 12, 40, 80, 20, 16, 18, 16, 20, 40].map(wch => ({ wch }))
   const book = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(book, sheet, 'AO Offers')
   return XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer

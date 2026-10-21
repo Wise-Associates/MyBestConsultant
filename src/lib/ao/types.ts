@@ -26,11 +26,24 @@ export interface AoOfferFields {
   experience: string
 }
 
+/** assistance : profil(s) facturé(s) à l'unité (régie, TJM) · forfait : projet à prix global · '' : non précisé. */
+export type AoEngagement = 'assistance' | 'forfait' | ''
+
 /**
- * Offre lue dans un e-mail (par l'IA ou dans un tableau joint) : ses champs, plus la date limite de réponse et le
- * client final cité. Ceux-ci sont gardés sur l'e-mail (AoEmail), pas sur l'offre : ao_offers est à 16/16 attributs.
+ * Détails d'une offre hors des 11 colonnes du modèle : collection AO_OFFER_DETAILS (un document par offre, de même
+ * identifiant), ao_offers étant à 16/16 attributs.
  */
-export interface ExtractedOffer extends AoOfferFields {
+export interface AoOfferDetails {
+  engagement: AoEngagement
+  /** Technologies, langages, outils et plateformes cités (distincts des compétences). */
+  technologies: string[]
+}
+
+/**
+ * Offre lue dans un e-mail (par l'IA ou dans un tableau joint) : ses champs et ses détails, plus la date limite de
+ * réponse et le client final cité, gardés sur l'e-mail (AoEmail) : ao_offers est à 16/16 attributs.
+ */
+export interface ExtractedOffer extends AoOfferFields, AoOfferDetails {
   deadline: string
   endClient: string
 }
