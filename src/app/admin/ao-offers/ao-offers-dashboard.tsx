@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { HoverCard } from '@/components/ui/hover-card'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { AlertCircle, BarChart3, CheckCircle2, Copy, Download, Inbox, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
 import { EMPTY_AO_FILTERS, filterAoOffers, filtersToSearchParams, type AoFilters, type AoOfferRow } from '@/lib/ao/filters'
@@ -212,9 +213,10 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, mailbox
                 <tr key={r.$id} onClick={() => setSelectedId(r.$id)} className="cursor-pointer hover:bg-admin-panel"
                   style={{ borderBottom: '1px solid var(--admin-line)' }}>
                   <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--admin-fg-muted)', fontVariantNumeric: 'tabular-nums' }}>{formatDay(r.receivedAt)}</td>
-                  <td className="px-4 py-3 min-w-[240px]">
-                    <button type="button" onClick={() => setSelectedId(r.$id)} className="text-left font-medium text-admin-fg hover:underline">{r.title}</button>
-                    <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>{r.companyName || 'Client non précisé'} · {r.senderName || r.senderAddress}</p>
+                  {/* Une ligne chacun (texte complet au survol et dans le panneau) : toutes les lignes ont la même hauteur. */}
+                  <td className="px-4 py-3 min-w-[240px] max-w-[360px]">
+                    <button type="button" onClick={() => setSelectedId(r.$id)} title={r.title} className="block w-full truncate text-left font-medium text-admin-fg hover:underline">{r.title}</button>
+                    <p className="text-xs truncate" title={`${r.companyName || 'Client non précisé'} · ${r.senderName || r.senderAddress}`} style={{ color: 'var(--admin-fg-muted)' }}>{r.companyName || 'Client non précisé'} · {r.senderName || r.senderAddress}</p>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">{r.location || '—'}</td>
                   <td className="px-4 py-3 whitespace-nowrap" title={r.experience || undefined}>{SENIORITY_SHORT[seniorityOf(r.experience)]}</td>
@@ -222,11 +224,19 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, mailbox
                   <td className="px-4 py-3 whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>{r.deadline || '—'}</td>
                   <td className="px-4 py-3 whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAmount(r.salary, r.contractType)}</td>
                   <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1 max-w-[260px]">
-                      {r.skills.slice(0, 4).map(s => (
-                        <span key={s} className="text-[11px] px-2 py-0.5 rounded-md" style={{ background: 'var(--admin-panel-raised)', color: 'var(--admin-fg)' }}>{s}</span>
+                    {/* Deux compétences sur une ligne ; les autres dans une carte au survol (ligne de hauteur constante). */}
+                    <div className="flex items-center gap-1 flex-nowrap">
+                      {r.skills.slice(0, 2).map(s => (
+                        <span key={s} title={s} className="text-[11px] px-2 py-0.5 rounded-md whitespace-nowrap truncate max-w-[130px]" style={{ background: 'var(--admin-panel-raised)', color: 'var(--admin-fg)' }}>{s}</span>
                       ))}
-                      {r.skills.length > 4 && <span className="text-[11px]" style={{ color: 'var(--admin-fg-muted)' }}>+{r.skills.length - 4}</span>}
+                      {r.skills.length > 2 && (
+                        <HoverCard label={`+${r.skills.length - 2}`} ariaLabel={`Voir les ${r.skills.length} compétences`}>
+                          <span className="block font-semibold mb-1.5">Compétences</span>
+                          <span className="flex flex-wrap gap-1">
+                            {r.skills.map(s => <span key={s} className="px-2 py-0.5 rounded-md" style={{ background: 'var(--admin-panel-raised)' }}>{s}</span>)}
+                          </span>
+                        </HoverCard>
+                      )}
                     </div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">

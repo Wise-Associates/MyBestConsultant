@@ -79,23 +79,49 @@ export interface CandidateMatch {
 
 const MAX_CANDIDATES = 30
 
-export async function matchCandidatesForJob(jobId: string): Promise<{ matches: CandidateMatch[]; scanned: number; error?: string }> {
+export type MatchResult = { matches: CandidateMatch[]; scanned: number; error?: string }
+
+export async function matchCandidatesForJob(jobId: string): Promise<MatchResult> {
   try {
     const { databases } = createAdminClient()
-
-    const job = await databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId)
-
-    const [candidatesRes, applicantsRes] = await Promise.all([
-      databases.listDocuments(DB_ID, COLLECTIONS.USERS, [
-        Query.equal('role', 'candidate'),
-        Query.limit(200),
-      ]),
+    const [job, applicantsRes] = await Promise.all([
+      databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId),
       databases.listDocuments(DB_ID, COLLECTIONS.APPLICATIONS, [
         Query.equal('jobId', jobId),
         Query.limit(500),
       ]),
     ])
     const alreadyApplied = new Set(applicantsRes.documents.map(a => a.candidateId as string))
+    return await matchCandidatesForOffer(
+      { title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? '') },
+      alreadyApplied,
+    )
+  } catch (e) {
+    return { matches: [], scanned: 0, error: e instanceof Error ? e.message : 'Erreur inconnue' }
+  }
+}
+
+/** Offre à rapprocher des candidats : une offre publiée (matchCandidatesForJob) ou un appel d'offres pas encore publié (AO Offers). */
+export interface OfferForMatching {
+  title: string
+  skills: string[]
+  description: string
+  /** Précisions ajoutées à l'offre envoyée à l'IA (« Technologies : … », « Expérience : … ») ; aucune pour une offre publiée. */
+  details?: string[]
+}
+
+/**
+ * Candidats de la base (avec CV, hors désinscrits et hors `excludeCandidateIds`) notés de 0 à 100 par l'IA pour une
+ * offre, avec la raison ; les mieux notés d'abord. Partagé par le sourcing des offres publiées et celui des AO.
+ */
+export async function matchCandidatesForOffer(offer: OfferForMatching, excludeCandidateIds: Set<string> = new Set()): Promise<MatchResult> {
+  try {
+    const { databases } = createAdminClient()
+    const candidatesRes = await databases.listDocuments(DB_ID, COLLECTIONS.USERS, [
+      Query.equal('role', 'candidate'),
+      Query.limit(200),
+    ])
+    const alreadyApplied = excludeCandidateIds
 
     const withCv = candidatesRes.documents
       .filter(d => d.cvFileId && !d.optedOutOfOutreach && !alreadyApplied.has(d.$id))
@@ -119,7 +145,8 @@ Réponds UNIQUEMENT avec un tableau JSON valide, sans markdown :
 Inclus tous les candidats, même les moins pertinents (score bas). Sois honnête et précis sur le score.`
 
     const candidatesBlock = usable.map(p => `--- Candidat [${p.candidateId}] ${p.name} ---\n${p.cvText}`).join('\n\n')
-    const userMsg = `=== OFFRE ===\nPoste : ${job.title}\nCompétences recherchées : ${((job.skills as string[]) ?? []).join(', ')}\nDescription : ${(job.description as string ?? '').slice(0, 1200)}\n\n=== CANDIDATS ===\n${candidatesBlock}`
+    const details = (offer.details ?? []).map(line => `${line}\n`).join('')
+    const userMsg = `=== OFFRE ===\nPoste : ${offer.title}\nCompétences recherchées : ${offer.skills.join(', ')}\n${details}Description : ${offer.description.slice(0, 1200)}\n\n=== CANDIDATS ===\n${candidatesBlock}`
 
     const { content } = await callLLM([{ role: 'user', content: userMsg }], SYSTEM, { module: 'matching' })
     const jsonMatch = content.match(/\[[\s\S]*\]/)
