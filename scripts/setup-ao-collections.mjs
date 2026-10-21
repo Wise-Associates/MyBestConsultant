@@ -117,6 +117,20 @@ const SCHEMA = [
     indexes: [['holder', 'key', ['holder']], ['kind', 'key', ['kind']]],
   },
   {
+    // Commentaires internes sur une offre AO (src/lib/ao/comments.ts) : visibles des seuls utilisateurs de l'organisation
+    // de l'offre, purgés avec les e-mails et offres (365 jours).
+    id: 'ao_comments',
+    name: 'AO comments',
+    attributes: [
+      ['string', 'offerId', { size: 36, required: true }],
+      ['string', 'tenantId', { size: 36, required: true }],
+      ['string', 'authorId', { size: 36, required: true }],
+      ['string', 'authorName', { size: 200 }],
+      ['string', 'body', { size: 5000, required: true }],
+    ],
+    indexes: [['offerid', 'key', ['offerId']]],
+  },
+  {
     // Détails d'une offre hors du modèle d'import (src/lib/ao/types.ts : AoOfferDetails) : document de même identifiant
     // que l'offre (ao_offers est à 16/16 attributs), supprimé avec elle par la purge.
     id: 'ao_offer_details',
@@ -222,4 +236,4 @@ for (const c of SCHEMA) {
   if (apply) await waitForIndexes(c.id)
 }
 console.log(apply ? 'Terminé.' : 'Rien n\'a été modifié.')
-console.log('Variables à définir : APPWRITE_COLLECTION_AO_EMAILS=ao_emails  APPWRITE_COLLECTION_AO_OFFERS=ao_offers  APPWRITE_COLLECTION_AO_STATE=ao_sync_state  APPWRITE_COLLECTION_AO_SOURCES=ao_sources  APPWRITE_COLLECTION_AO_OFFER_DETAILS=ao_offer_details')
+console.log('Variables à définir : APPWRITE_COLLECTION_AO_EMAILS=ao_emails  APPWRITE_COLLECTION_AO_OFFERS=ao_offers  APPWRITE_COLLECTION_AO_STATE=ao_sync_state  APPWRITE_COLLECTION_AO_SOURCES=ao_sources  APPWRITE_COLLECTION_AO_OFFER_DETAILS=ao_offer_details  APPWRITE_COLLECTION_AO_COMMENTS=ao_comments')
