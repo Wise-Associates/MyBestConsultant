@@ -112,6 +112,7 @@ Core principles for production-quality frontend decisions on this project.
 - **node-appwrite v15** — don't upgrade, server is 1.7.4.
 - **Cookies**: `mbc-session` (httpOnly) + `mbc-role` (readable by middleware). Never rename.
 - **Server Actions** call `createAdminClient()` not `createSessionClient()` for mutations.
+- **Sign-up never joins an existing organisation**: a recruiter who registers always gets a new tenant (unique slug `nom`, `nom-2`… via `src/lib/tenant-slug.ts`); colleagues join only through an invitation (`src/lib/team.ts`, `/recruiter/equipe`). Typing a company's name must never give access to its data.
 - **Every admin Server Action and `/api/admin/*` route checks the caller itself** (`requireAdmin()` from `@/lib/appwrite/auth`, or role check → 401/403). Server Actions are public POST endpoints: the admin layout only guards page rendering. Code outside `src/app/admin` never imports admin actions; shared reads live in `src/lib`.
 - **Collection attribute limit: 16.** Count before creating new attributes.
 <!-- END:frontend-architect-principles -->

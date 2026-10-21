@@ -3,6 +3,7 @@ import { createAdminClient, createSessionClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from './config'
 import { ID, Query, type Models } from 'node-appwrite'
 import type { UserProfile, UserRole } from '@/types'
+import { READABLE_SLUG_ATTEMPTS, slugCandidate } from '@/lib/tenant-slug'
 
 const SESSION_COOKIE = 'mbc-session'
 const ROLE_COOKIE = 'mbc-role'
@@ -55,19 +56,30 @@ export async function getSessionToken(): Promise<string | null> {
 
 // ── Current user ─────────────────────────────────────────────────
 
+/**
+ * Creates a NEW organisation owned by `recruiterId`. A name typed at sign-up never joins an existing organisation
+ * (anyone could otherwise enter a company by typing its name and see its data): colleagues join through invitations
+ * (src/lib/team.ts). `slug` has a unique index, so a taken slug is retried with a suffix (src/lib/tenant-slug.ts).
+ */
 async function createTenantForRecruiter(recruiterId: string, companyNameHint: string): Promise<string> {
   const { databases } = createAdminClient()
   const companyName = companyNameHint.trim() || 'Entreprise'
-  const slug = companyName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || ID.unique()
-  const tenant = await databases.createDocument(DB_ID, COLLECTIONS.TENANTS, ID.unique(), {
-    name: companyName,
-    slug,
-    recruiterId,
-    // Every account starts on Free — the admin Abonnements dashboard manages upgrades from here.
-    plan: 'free',
-    subscriptionStatus: 'active',
-  })
-  return tenant.$id
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const tenant = await databases.createDocument(DB_ID, COLLECTIONS.TENANTS, ID.unique(), {
+        name: companyName,
+        slug: slugCandidate(companyName, attempt, () => ID.unique().slice(-6)),
+        recruiterId,
+        // Every account starts on Free — the admin Abonnements dashboard manages upgrades from here.
+        plan: 'free',
+        subscriptionStatus: 'active',
+      })
+      return tenant.$id
+    } catch (err) {
+      // 409: slug already taken (unique index) — try the next candidate; anything else is a real failure.
+      if ((err as { code?: number }).code !== 409 || attempt >= READABLE_SLUG_ATTEMPTS + 2) throw err
+    }
+  }
 }
 
 // A valid Appwrite Auth account can end up without a USERS profile document if a
@@ -182,34 +194,11 @@ export async function createUserAccountAndProfile(params: {
     // 2. Add role label via Users admin API
     await users.updateLabels(authUser.$id, [params.role])
 
-    // 3. Create tenant if recruiter — or join the existing one if a colleague from the
-    // same company already registered. `slug` has a unique index, so a second recruiter
-    // at "Wise Associates" would otherwise hit a document_already_exists conflict on
-    // createDocument, which the caller previously (and incorrectly) surfaced as "an
-    // account already exists with this email".
+    // 3. A recruiter always gets their own new organisation (see createTenantForRecruiter): colleagues of an
+    // existing one join through an invitation, never by typing the same company name.
     let tenantId: string | undefined
     if (params.role === 'recruiter' && params.companyName) {
-      const slug = params.companyName
-        .toLowerCase()
-        .replace(/\s+/g, '-')
-        .replace(/[^a-z0-9-]/g, '')
-
-      const existing = await databases.listDocuments(DB_ID, COLLECTIONS.TENANTS, [
-        Query.equal('slug', slug), Query.limit(1),
-      ])
-      if (existing.documents.length > 0) {
-        tenantId = existing.documents[0].$id
-      } else {
-        const tenant = await databases.createDocument(DB_ID, COLLECTIONS.TENANTS, ID.unique(), {
-          name: params.companyName,
-          slug,
-          recruiterId: authUser.$id,
-          // Every account starts on Free — the admin Abonnements dashboard manages upgrades from here.
-          plan: 'free',
-          subscriptionStatus: 'active',
-        })
-        tenantId = tenant.$id
-      }
+      tenantId = await createTenantForRecruiter(authUser.$id, params.companyName)
     }
 
     // 4. Create user profile document
