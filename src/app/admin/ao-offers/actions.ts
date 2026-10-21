@@ -12,7 +12,8 @@ import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 import { descriptionForPublication } from '@/lib/description-sections'
 import { cityKey, titleKey } from '@/lib/ao/fingerprint'
 import { manualRetryPatch } from '@/lib/ao/attempts'
-import { getAoEmail, getAoOffer, listAoEmailsByIds, updateAoEmail, updateAoOffer } from '@/lib/ao/repo'
+import { getAoEmail, getAoOffer, listAoEmailsByIds, listAoOfferDetails, updateAoEmail, updateAoOffer } from '@/lib/ao/repo'
+import { matchCandidatesForOffer, type CandidateMatch } from '@/lib/sourcing-core'
 import type { AoEmail, AoOffer } from '@/lib/ao/types'
 import { syncAoEmail, syncAoInbox, type AoSyncReport } from '@/lib/ao/sync'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
@@ -202,5 +203,38 @@ export async function setAoOfferStatus(id: string, status: 'to_review' | 'ignore
     return {}
   } catch (err) {
     return { error: errorOf(err) }
+  }
+}
+
+/** Candidats proposés pour une offre (10 au plus, les mieux notés d'abord). */
+const MAX_SOURCED = 10
+
+/**
+ * « Sourcing » d'une offre AO : candidats de la base rapprochés de l'offre, notés de 0 à 100 par l'IA avec la raison
+ * (même notation que le sourcing des offres publiées, src/lib/sourcing-core.ts), sans attendre sa publication.
+ * Offres de la plateforme seulement ; un appel d'IA par clic, rien n'est enregistré.
+ */
+export async function sourceAoOfferCandidates(id: string): Promise<{ matches?: CandidateMatch[]; scanned?: number; error?: string }> {
+  await requireAdmin()
+  const parsed = DocumentId.safeParse(id)
+  if (!parsed.success) return { error: 'Offre introuvable : rechargez la page.' }
+  try {
+    const offer = await platformOffer(parsed.data)
+    if (!offer) return { error: 'Offre introuvable : rechargez la page.' }
+    const technologies = (await listAoOfferDetails([offer.$id])).get(offer.$id)?.technologies ?? []
+    const result = await matchCandidatesForOffer({
+      title: offer.title,
+      skills: offer.skills,
+      description: offer.description,
+      details: [
+        technologies.length ? `Technologies : ${technologies.join(', ')}` : '',
+        offer.experience ? `Expérience requise : ${offer.experience}` : '',
+        offer.location ? `Lieu : ${offer.location}` : '',
+      ].filter(Boolean),
+    })
+    if (result.error) return { error: result.error, scanned: result.scanned }
+    return { matches: result.matches.slice(0, MAX_SOURCED), scanned: result.scanned }
+  } catch (err) {
+    return { error: `Sourcing impossible : ${errorOf(err)}` }
   }
 }
