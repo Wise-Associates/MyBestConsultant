@@ -40,9 +40,11 @@ La date y est la **date limite de réponse** ; l'IA la prenait pour la date de d
 2. **Les clients cités restent masqués à la publication.** Ils n'apparaissent plus dans le client de l'offre : la
    colonne « Client » des tableaux et le client final lu par l'IA (`endClient`) sont relevés avant de remplacer le
    client, et enregistrés sur l'e-mail (`citedClients`) avant la création des offres.
-3. **Date limite de réponse** : champ `deadline` demandé à l'IA (une date sans libellé dans un récapitulatif est une
-   date limite, le démarrage n'est rempli que s'il est désigné comme tel) et lu dans les colonnes « Date limite »,
-   « Date de clôture », « Échéance » des tableaux, jusqu'ici ignorées.
+3. **Date limite de réponse** : champ `deadline`, lu dans les colonnes « Date limite », « Date de clôture »,
+   « Échéance » des tableaux, jusqu'ici ignorées. Complément du 2026-10-21 (`src/lib/ao/dates.ts`) : l'IA ne remplit
+   `startDate` et `deadline` que pour les dates que le texte désigne lui-même ; les dates citées sans libellé sont
+   classées par le code selon leur jour de la semaine — vendredi : date limite, lundi : démarrage, autre jour : date
+   limite. Le jour est calculé, pas demandé à l'IA (elle se trompe souvent sur le jour d'une date).
 4. **La date limite est enregistrée sur l'e-mail** (`ao_emails.deadline`), pas sur l'offre : `ao_offers` a atteint
    la limite du projet de 16 attributs. Un e-mail en garde une seule, la plus proche de ses offres (répondre trop tôt
    ne fait rien perdre) ; elle s'affiche pour chacune de ses offres. Jamais publiée.

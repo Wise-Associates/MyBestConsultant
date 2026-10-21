@@ -65,10 +65,11 @@ export async function buildEmailContent(message: InboxMessage, ctx: ExtractionCo
  * et valide sa réponse. `timeoutMs` borne l'attente pour rester dans la durée d'exécution du passage planifié.
  * `origin` : expéditeur d'origine (origin.ts), dont l'IA lit l'entreprise dans la signature ; null si le corps de
  * l'e-mail ne lui est pas confié ou si l'expéditeur est inconnu (l'IA prend alors le client cité dans le texte).
- * `orgName` : organisation qui lit la boîte, jamais retenue comme client.
+ * `orgName` : organisation qui lit la boîte, jamais retenue comme client. `receivedAt` : date de réception de l'e-mail
+ * (année des dates écrites sans, dates.ts).
  * AiUnavailable si tous les modèles ont échoué sans frais (crédits épuisés, clé refusée, service en panne…).
  */
-export async function extractOffersFromEmail(content: string, timeoutMs: number, origin: Sender | null, orgName: string): Promise<ParsedOffers> {
+export async function extractOffersFromEmail(content: string, timeoutMs: number, origin: Sender | null, orgName: string, receivedAt: Date): Promise<ParsedOffers> {
   let timer: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(`Pas de réponse de l'IA après ${Math.round(timeoutMs / 1000)} s`)), timeoutMs)
@@ -91,5 +92,5 @@ export async function extractOffersFromEmail(content: string, timeoutMs: number,
   } finally {
     clearTimeout(timer)
   }
-  return parseOffersJson(raw)
+  return parseOffersJson(raw, receivedAt)
 }
