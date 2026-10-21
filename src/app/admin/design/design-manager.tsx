@@ -109,15 +109,15 @@ function SelectField({ label, value, options, onChange }: {
 }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs text-white/50 uppercase tracking-wider">{label}</Label>
+      <Label className="text-xs text-admin-fg-muted uppercase tracking-wider">{label}</Label>
       <div className="relative">
         <select value={value} onChange={e => onChange(e.target.value)}
-          className="w-full appearance-none bg-white/[0.05] border border-white/[0.1] text-white/80 text-sm rounded-lg px-3 py-2.5 pr-8 focus:outline-none focus:border-white/30 transition-colors">
+          className="w-full appearance-none bg-admin-panel-raised border border-admin-line text-admin-fg text-sm rounded-lg px-3 py-2.5 pr-8 focus:outline-none focus:border-admin-line-strong transition-colors">
           {options.map(o => (
-            <option key={o.value} value={o.value} className="bg-[#1a1a2e] text-white">{o.label}</option>
+            <option key={o.value} value={o.value} className="bg-admin-panel text-admin-fg">{o.label}</option>
           ))}
         </select>
-        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30 pointer-events-none" />
+        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-admin-fg-muted pointer-events-none" />
       </div>
     </div>
   )
@@ -177,18 +177,18 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
   ]
 
   return (
-    <div className="min-h-full bg-[#0A0C10] text-white">
+    <div className="min-h-full bg-admin-bg text-admin-fg">
 
       {/* ── PAGE HEADER ─────────────────────────────────────── */}
-      <div className="border-b border-white/[0.07] px-8 py-6 flex items-start justify-between gap-4">
+      <div className="border-b border-admin-line px-8 py-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-white">Design & Apparence</h1>
-          <p className="text-sm text-white/40 mt-1">
-            Couleurs, typographie et style. Les changements s&apos;appliquent en <span className="text-white/60 font-medium">temps réel</span> — sauvegardez pour les rendre permanents sur le site public.
+          <h1 className="text-xl font-semibold text-admin-fg">Design & Apparence</h1>
+          <p className="text-sm text-admin-fg-muted mt-1">
+            Couleurs, typographie et style. Les changements s&apos;appliquent en <span className="text-admin-fg-muted font-medium">temps réel</span> — sauvegardez pour les rendre permanents sur le site public.
           </p>
         </div>
         <a href="/" target="_blank"
-          className="shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs text-white/50 hover:text-white transition-all">
+          className="shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-admin-panel-raised hover:bg-admin-hover border border-admin-line text-xs text-admin-fg-muted hover:text-admin-fg transition-all">
           <ExternalLink className="h-3.5 w-3.5" />
           Voir le site
         </a>
@@ -196,7 +196,7 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
 
       {/* ── ERROR BANNER ────────────────────────────────────── */}
       {saveStatus === 'error' && (
-        <div className="mx-8 mt-4 flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+        <div className="mx-8 mt-4 flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-700 text-sm">
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span>Erreur : {errorMsg}</span>
         </div>
@@ -208,11 +208,11 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
         <div className="flex-1 px-8 py-6">
 
           {/* Tab bar */}
-          <div className="flex gap-1 p-1 rounded-xl bg-white/[0.04] border border-white/[0.07] mb-8 w-fit">
+          <div className="flex gap-1 p-1 rounded-xl bg-admin-panel border border-admin-line mb-8 w-fit">
             {TABS.map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  tab === t.id ? 'bg-white text-black shadow-sm' : 'text-white/50 hover:text-white/80'
+                  tab === t.id ? 'bg-white text-black shadow-sm' : 'text-admin-fg-muted hover:text-admin-fg'
                 }`}>
                 <t.icon className="h-4 w-4" />
                 {t.label}
@@ -229,7 +229,7 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
                   return (
                     <button key={tpl.id} onClick={() => applyTemplate(tpl.id)}
                       className={`text-left rounded-xl overflow-hidden border transition-all hover:scale-[1.02] ${
-                        isActive ? 'border-white/40 ring-2 ring-white/20' : 'border-white/[0.07] hover:border-white/20'
+                        isActive ? 'border-admin-line-strong ring-2 ring-admin-line-strong' : 'border-admin-line hover:border-admin-line-strong'
                       }`}>
                       <div className="h-32 relative" style={{ background: tpl.vars.heroBg }}>
                         <div className="absolute top-0 inset-x-0 h-7 flex items-center px-3 gap-2" style={{ background: tpl.vars.navbarBg }}>
@@ -252,7 +252,7 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
                         )}
                         <div className="absolute top-10 right-3 flex flex-col gap-1">
                           {[tpl.vars.colorPrimary, tpl.vars.colorAccent, tpl.vars.colorText].map((c, i) => (
-                            <div key={i} className="w-3 h-3 rounded-full border border-white/20" style={{ background: c }} />
+                            <div key={i} className="w-3 h-3 rounded-full border border-admin-line-strong" style={{ background: c }} />
                           ))}
                         </div>
                       </div>
@@ -262,14 +262,14 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
                             <p className="font-semibold text-sm" style={{ color: tpl.vars.colorText }}>{tpl.preview} {tpl.name}</p>
                             <p className="text-xs mt-0.5" style={{ color: tpl.vars.colorTextMuted }}>{tpl.description}</p>
                           </div>
-                          {isActive && <span className="text-xs px-2 py-0.5 rounded-full bg-black text-white font-medium">Actif</span>}
+                          {isActive && <span className="text-xs px-2 py-0.5 rounded-full bg-admin-fg text-white font-medium">Actif</span>}
                         </div>
                       </div>
                     </button>
                   )
                 })}
               </div>
-              <p className="text-xs text-white/25 pt-2">
+              <p className="text-xs text-admin-fg-muted pt-2">
                 Chaque template est un point de départ — personnalisez ensuite les couleurs, la typographie et le style dans les onglets suivants.
               </p>
             </div>
@@ -280,20 +280,20 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
             <div className="space-y-8">
               {COLOR_GROUPS.map(group => (
                 <div key={group.title}>
-                  <h3 className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-4">{group.title}</h3>
+                  <h3 className="text-xs font-semibold text-admin-fg-muted uppercase tracking-widest mb-4">{group.title}</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {group.fields.map(f => (
-                      <div key={f.key} className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.07] hover:border-white/[0.12] transition-colors">
+                      <div key={f.key} className="flex items-center gap-3 p-3 rounded-xl bg-admin-panel border border-admin-line hover:border-admin-line-strong transition-colors">
                         <div className="relative shrink-0">
                           <input type="color" value={(merged[f.key] as string) ?? '#000000'}
                             onChange={e => setVar(f.key, e.target.value)}
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer rounded-lg" />
-                          <div className="w-10 h-10 rounded-lg border border-white/10 shadow-inner cursor-pointer"
+                          <div className="w-10 h-10 rounded-lg border border-admin-line shadow-inner cursor-pointer"
                             style={{ background: (merged[f.key] as string) ?? '#000000' }} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-white/70">{f.label}</p>
-                          <p className="text-xs font-mono text-white/30 truncate">{(merged[f.key] as string) ?? ''}</p>
+                          <p className="text-sm font-medium text-admin-fg">{f.label}</p>
+                          <p className="text-xs font-mono text-admin-fg-muted truncate">{(merged[f.key] as string) ?? ''}</p>
                         </div>
                       </div>
                     ))}
@@ -304,7 +304,7 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
                 const next = { ...prev }
                 COLOR_GROUPS.flatMap(g => g.fields).forEach(f => delete next[f.key as keyof TemplateVars])
                 return next
-              })} className="flex items-center gap-2 text-xs text-white/30 hover:text-white/60 transition-colors">
+              })} className="flex items-center gap-2 text-xs text-admin-fg-muted hover:text-admin-fg-muted transition-colors">
                 <RotateCcw className="h-3.5 w-3.5" />
                 Réinitialiser aux couleurs du template
               </button>
@@ -316,24 +316,24 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
             <div className="space-y-10">
               {/* Familles */}
               <div>
-                <h3 className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-4">Familles de polices</h3>
+                <h3 className="text-xs font-semibold text-admin-fg-muted uppercase tracking-widest mb-4">Familles de polices</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {(['fontHeading', 'fontBody'] as const).map(key => (
                     <div key={key} className="space-y-2">
-                      <Label className="text-xs text-white/50 uppercase tracking-wider">
+                      <Label className="text-xs text-admin-fg-muted uppercase tracking-wider">
                         {key === 'fontHeading' ? 'Police titres (H1, H2, H3)' : 'Police corps de texte'}
                       </Label>
                       <div className="relative">
                         <select value={merged[key]} onChange={e => setVar(key, e.target.value)}
-                          className="w-full appearance-none bg-white/[0.05] border border-white/[0.1] text-white/80 text-sm rounded-lg px-3 py-2.5 pr-8 focus:outline-none focus:border-white/30">
+                          className="w-full appearance-none bg-admin-panel-raised border border-admin-line text-admin-fg text-sm rounded-lg px-3 py-2.5 pr-8 focus:outline-none focus:border-admin-line-strong">
                           {GOOGLE_FONTS.map(f => (
-                            <option key={f.value} value={f.value} className="bg-[#1a1a2e] text-white">{f.label}</option>
+                            <option key={f.value} value={f.value} className="bg-admin-panel text-admin-fg">{f.label}</option>
                           ))}
                         </select>
-                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30 pointer-events-none" />
+                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-admin-fg-muted pointer-events-none" />
                       </div>
                       {/* Live preview du texte avec la police sélectionnée */}
-                      <p className="text-lg text-white/50 mt-1 truncate"
+                      <p className="text-lg text-admin-fg-muted mt-1 truncate"
                         style={{ fontFamily: merged[key], fontWeight: key === 'fontHeading' ? Number(merged.fontWeightHeading) : 400 }}>
                         {GOOGLE_FONTS.find(f => f.value === merged[key])?.label ?? 'Custom'} — Aa Bb Cc 1 2 3
                       </p>
@@ -344,14 +344,14 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
 
               {/* Tailles */}
               <div>
-                <h3 className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-4">Tailles de texte</h3>
+                <h3 className="text-xs font-semibold text-admin-fg-muted uppercase tracking-widest mb-4">Tailles de texte</h3>
                 <div className="space-y-2">
                   {FONT_SIZE_PRESETS.map(f => (
-                    <div key={f.key} className="flex items-center gap-4 p-3 rounded-xl bg-white/[0.03] border border-white/[0.07]">
-                      <span className="text-xs text-white/40 w-36 shrink-0">{f.label}</span>
+                    <div key={f.key} className="flex items-center gap-4 p-3 rounded-xl bg-admin-panel border border-admin-line">
+                      <span className="text-xs text-admin-fg-muted w-36 shrink-0">{f.label}</span>
                       <input type="text" value={(merged[f.key] as string) ?? ''} onChange={e => setVar(f.key, e.target.value)}
                         placeholder={f.placeholder}
-                        className="flex-1 bg-transparent border-b border-white/[0.1] text-sm text-white/70 focus:outline-none focus:border-white/40 font-mono py-0.5" />
+                        className="flex-1 bg-transparent border-b border-admin-line text-sm text-admin-fg focus:outline-none focus:border-admin-line-strong font-mono py-0.5" />
                     </div>
                   ))}
                 </div>
@@ -359,7 +359,7 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
 
               {/* Poids, hauteur de ligne, espacement */}
               <div>
-                <h3 className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-4">Poids & espacement</h3>
+                <h3 className="text-xs font-semibold text-admin-fg-muted uppercase tracking-widest mb-4">Poids & espacement</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <SelectField label="Poids titres" value={merged.fontWeightHeading} options={FONT_WEIGHT_OPTIONS} onChange={v => setVar('fontWeightHeading', v)} />
                   <SelectField label="Poids corps" value={merged.fontWeightBody} options={FONT_WEIGHT_OPTIONS} onChange={v => setVar('fontWeightBody', v)} />
@@ -370,12 +370,12 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
               </div>
 
               {/* Aperçu live */}
-              <div className="p-6 rounded-xl border border-white/[0.07] bg-white/[0.02] space-y-4">
-                <p className="text-xs text-white/30 uppercase tracking-widest">Aperçu live</p>
-                <div style={{ fontFamily: merged.fontHeading, fontSize: '2.2rem', fontWeight: merged.fontWeightHeading, letterSpacing: merged.letterSpacingHeading, color: 'rgba(255,255,255,0.85)', lineHeight: 1.15 }}>
+              <div className="p-6 rounded-xl border border-admin-line bg-admin-panel space-y-4">
+                <p className="text-xs text-admin-fg-muted uppercase tracking-widest">Aperçu live</p>
+                <div style={{ fontFamily: merged.fontHeading, fontSize: '2.2rem', fontWeight: merged.fontWeightHeading, letterSpacing: merged.letterSpacingHeading, color: 'var(--admin-fg)', lineHeight: 1.15 }}>
                   Trouvez votre prochaine mission
                 </div>
-                <div style={{ fontFamily: merged.fontBody, fontSize: merged.fontSizeBase, fontWeight: merged.fontWeightBody, letterSpacing: merged.letterSpacingBody, lineHeight: merged.lineHeight, color: 'rgba(255,255,255,0.4)' }}>
+                <div style={{ fontFamily: merged.fontBody, fontSize: merged.fontSizeBase, fontWeight: merged.fontWeightBody, letterSpacing: merged.letterSpacingBody, lineHeight: merged.lineHeight, color: 'var(--admin-fg-muted)' }}>
                   MyBestConsultant connecte les meilleurs consultants aux entreprises qui ont besoin de leur expertise stratégique et opérationnelle.
                 </div>
               </div>
@@ -387,26 +387,26 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
             <div className="space-y-10">
               {/* Arrondi */}
               <div>
-                <h3 className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-4">Arrondi des coins</h3>
+                <h3 className="text-xs font-semibold text-admin-fg-muted uppercase tracking-widest mb-4">Arrondi des coins</h3>
                 <div className="grid grid-cols-5 gap-3 mb-3">
                   {RADIUS_PRESETS.map(r => {
                     const isActive = merged.borderRadius === r.small
                     return (
                       <button key={r.label} onClick={() => { setVar('borderRadius', r.small); setVar('borderRadiusLg', r.large) }}
-                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${isActive ? 'border-white/40 bg-white/[0.08]' : 'border-white/[0.07] bg-white/[0.03] hover:border-white/20'}`}>
-                        <div className="w-10 h-10 border-2 border-white/40 bg-white/10" style={{ borderRadius: r.small === '9999px' ? '9999px' : r.small }} />
-                        <span className="text-xs text-white/50">{r.label}</span>
-                        {isActive && <Check className="h-3 w-3 text-white" />}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${isActive ? 'border-admin-line-strong bg-admin-panel-raised' : 'border-admin-line bg-admin-panel hover:border-admin-line-strong'}`}>
+                        <div className="w-10 h-10 border-2 border-admin-line-strong bg-admin-hover" style={{ borderRadius: r.small === '9999px' ? '9999px' : r.small }} />
+                        <span className="text-xs text-admin-fg-muted">{r.label}</span>
+                        {isActive && <Check className="h-3 w-3 text-admin-fg" />}
                       </button>
                     )
                   })}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   {(['borderRadius', 'borderRadiusLg'] as const).map((k, i) => (
-                    <div key={k} className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.07]">
-                      <span className="text-xs text-white/40 w-32 shrink-0">{i === 0 ? 'Petit (btn, input)' : 'Grand (cartes, modal)'}</span>
+                    <div key={k} className="flex items-center gap-3 p-3 rounded-xl bg-admin-panel border border-admin-line">
+                      <span className="text-xs text-admin-fg-muted w-32 shrink-0">{i === 0 ? 'Petit (btn, input)' : 'Grand (cartes, modal)'}</span>
                       <input type="text" value={merged[k]} onChange={e => setVar(k, e.target.value)}
-                        className="flex-1 bg-transparent border-b border-white/[0.1] text-sm text-white/70 font-mono focus:outline-none focus:border-white/40" />
+                        className="flex-1 bg-transparent border-b border-admin-line text-sm text-admin-fg font-mono focus:outline-none focus:border-admin-line-strong" />
                     </div>
                   ))}
                 </div>
@@ -414,26 +414,26 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
 
               {/* Ombres */}
               <div>
-                <h3 className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-4">Ombres portées</h3>
+                <h3 className="text-xs font-semibold text-admin-fg-muted uppercase tracking-widest mb-4">Ombres portées</h3>
                 <div className="grid grid-cols-5 gap-3 mb-3">
                   {SHADOW_PRESETS.map(s => {
                     const isActive = merged.shadowCard === s.card
                     return (
                       <button key={s.label} onClick={() => { setVar('shadowCard', s.card); setVar('shadowButton', s.button) }}
-                        className={`flex flex-col items-center gap-3 p-4 rounded-xl border transition-all ${isActive ? 'border-white/40 bg-white/[0.08]' : 'border-white/[0.07] bg-white/[0.03] hover:border-white/20'}`}>
-                        <div className="w-12 h-12 rounded-lg bg-white/20" style={{ boxShadow: s.card !== 'none' ? '0 4px 12px rgba(255,255,255,0.15)' : 'none' }} />
-                        <span className="text-xs text-white/50">{s.label}</span>
-                        {isActive && <Check className="h-3 w-3 text-white" />}
+                        className={`flex flex-col items-center gap-3 p-4 rounded-xl border transition-all ${isActive ? 'border-admin-line-strong bg-admin-panel-raised' : 'border-admin-line bg-admin-panel hover:border-admin-line-strong'}`}>
+                        <div className="w-12 h-12 rounded-lg bg-admin-hover" style={{ boxShadow: s.card !== 'none' ? '0 4px 12px var(--admin-line-strong)' : 'none' }} />
+                        <span className="text-xs text-admin-fg-muted">{s.label}</span>
+                        {isActive && <Check className="h-3 w-3 text-admin-fg" />}
                       </button>
                     )
                   })}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {(['shadowCard', 'shadowButton'] as const).map((k, i) => (
-                    <div key={k} className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.07]">
-                      <span className="text-xs text-white/40 w-24 shrink-0">{i === 0 ? 'Ombre carte' : 'Ombre bouton'}</span>
+                    <div key={k} className="flex items-center gap-3 p-3 rounded-xl bg-admin-panel border border-admin-line">
+                      <span className="text-xs text-admin-fg-muted w-24 shrink-0">{i === 0 ? 'Ombre carte' : 'Ombre bouton'}</span>
                       <input type="text" value={merged[k]} onChange={e => setVar(k, e.target.value)}
-                        className="flex-1 bg-transparent border-b border-white/[0.1] text-xs text-white/70 font-mono focus:outline-none focus:border-white/40" />
+                        className="flex-1 bg-transparent border-b border-admin-line text-xs text-admin-fg font-mono focus:outline-none focus:border-admin-line-strong" />
                     </div>
                   ))}
                 </div>
@@ -444,15 +444,15 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
         </div>
 
         {/* ── RIGHT PANEL ─────────────────────────────────────── */}
-        <div className="w-full lg:w-72 shrink-0 border-t lg:border-t-0 lg:border-l border-white/[0.07] flex flex-col sticky top-0 h-fit">
+        <div className="w-full lg:w-72 shrink-0 border-t lg:border-t-0 lg:border-l border-admin-line flex flex-col sticky top-0 h-fit">
 
           {/* Bouton Save */}
-          <div className="p-5 border-b border-white/[0.07]">
+          <div className="p-5 border-b border-admin-line">
             <Button onClick={save} disabled={isPending}
               className={`w-full gap-2 font-semibold transition-colors ${
                 saveStatus === 'ok' ? 'bg-emerald-500 hover:bg-emerald-400 text-white' :
-                saveStatus === 'error' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-                'bg-white text-black hover:bg-white/90'
+                saveStatus === 'error' ? 'bg-red-500/20 text-red-700 border border-red-500/30' :
+                'bg-admin-fg text-white hover:bg-admin-fg/90'
               }`}>
               {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> :
                saveStatus === 'ok' ? <Check className="h-4 w-4" /> :
@@ -463,11 +463,11 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
                'Appliquer sur le site'}
             </Button>
             {saveStatus === 'ok' && (
-              <p className="text-xs text-emerald-400/70 text-center mt-2">
+              <p className="text-xs text-emerald-700/70 text-center mt-2">
                 Rechargez le site public pour voir les changements
               </p>
             )}
-            <p className="text-xs text-white/20 text-center mt-2">
+            <p className="text-xs text-admin-fg-muted text-center mt-2">
               Les aperçus ci-contre changent en <em>temps réel</em>
             </p>
           </div>
@@ -475,16 +475,16 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
           {/* État actuel */}
           <div className="p-5 space-y-5">
             <div>
-              <p className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-3">Template actif</p>
-              <p className="text-sm font-medium text-white/70">{selectedTemplate.preview} {selectedTemplate.name}</p>
+              <p className="text-xs font-semibold text-admin-fg-muted uppercase tracking-widest mb-3">Template actif</p>
+              <p className="text-sm font-medium text-admin-fg">{selectedTemplate.preview} {selectedTemplate.name}</p>
               {Object.keys(vars).length > 0 && (
-                <p className="text-xs text-white/30 mt-0.5">{Object.keys(vars).length} personnalisation(s)</p>
+                <p className="text-xs text-admin-fg-muted mt-0.5">{Object.keys(vars).length} personnalisation(s)</p>
               )}
             </div>
 
             {/* Swatches couleurs */}
             <div>
-              <p className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-3">Couleurs actives</p>
+              <p className="text-xs font-semibold text-admin-fg-muted uppercase tracking-widest mb-3">Couleurs actives</p>
               <div className="space-y-2">
                 {[
                   { label: 'Primaire', key: 'colorPrimary' },
@@ -493,28 +493,28 @@ export function DesignManager({ templates, currentTemplateId, customColors }: Pr
                   { label: 'Hero', key: 'heroBg' },
                 ].map(({ label, key }) => (
                   <div key={key} className="flex items-center gap-2">
-                    <div className="w-5 h-5 rounded border border-white/10 shrink-0" style={{ background: merged[key as keyof TemplateVars] as string }} />
-                    <span className="text-xs text-white/40 flex-1">{label}</span>
-                    <span className="text-xs font-mono text-white/20">{merged[key as keyof TemplateVars] as string}</span>
+                    <div className="w-5 h-5 rounded border border-admin-line shrink-0" style={{ background: merged[key as keyof TemplateVars] as string }} />
+                    <span className="text-xs text-admin-fg-muted flex-1">{label}</span>
+                    <span className="text-xs font-mono text-admin-fg-muted">{merged[key as keyof TemplateVars] as string}</span>
                   </div>
                 ))}
               </div>
             </div>
 
             {/* Typo */}
-            <div className="border-t border-white/[0.07] pt-4 space-y-2">
-              <p className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-2">Typographie</p>
-              <div style={{ fontFamily: merged.fontHeading, fontWeight: Number(merged.fontWeightHeading), color: 'rgba(255,255,255,0.6)', fontSize: '1rem' }}>
+            <div className="border-t border-admin-line pt-4 space-y-2">
+              <p className="text-xs font-semibold text-admin-fg-muted uppercase tracking-widest mb-2">Typographie</p>
+              <div style={{ fontFamily: merged.fontHeading, fontWeight: Number(merged.fontWeightHeading), color: 'var(--admin-fg-muted)', fontSize: '1rem' }}>
                 Titre — {GOOGLE_FONTS.find(f => f.value === merged.fontHeading)?.label ?? 'Custom'}
               </div>
-              <div style={{ fontFamily: merged.fontBody, color: 'rgba(255,255,255,0.35)', fontSize: '0.875rem' }}>
+              <div style={{ fontFamily: merged.fontBody, color: 'var(--admin-fg-muted)', fontSize: '0.875rem' }}>
                 Corps — {GOOGLE_FONTS.find(f => f.value === merged.fontBody)?.label ?? 'Custom'}
               </div>
             </div>
 
             {/* Lien */}
-            <div className="border-t border-white/[0.07] pt-4">
-              <a href="/" target="_blank" className="flex items-center gap-2 text-xs text-white/30 hover:text-white/60 transition-colors">
+            <div className="border-t border-admin-line pt-4">
+              <a href="/" target="_blank" className="flex items-center gap-2 text-xs text-admin-fg-muted hover:text-admin-fg-muted transition-colors">
                 <Eye className="h-3.5 w-3.5" />
                 Ouvrir le site public
               </a>

@@ -61,56 +61,49 @@ export function CvthequeClient({ initialCandidates, loadError }: { initialCandid
   }
 
   return (
-    <div style={{
-      minHeight: '100%',
-      backgroundColor: 'var(--color-background)',
-      backgroundImage: `linear-gradient(rgba(11,29,81,0.55), rgba(11,29,81,0.55)), url('/recruiter-bg.jpg')`,
-      backgroundSize: 'cover',
-      backgroundPosition: 'top center',
-      backgroundRepeat: 'no-repeat',
-      backgroundAttachment: 'fixed',
-    }}>
+    // Fond, bandeau et cartes du back-office (tokens --admin-*), et non ceux du site public.
+    <div style={{ minHeight: '100%', background: 'var(--admin-bg)' }}>
       {/* Header — scrolls away with the page */}
-      <div style={{ background: 'var(--hero-bg)' }}>
+      <div>
         <div className="max-w-6xl mx-auto px-6 pt-8 pb-2">
           <div className="flex items-center gap-2 mb-1">
             <FolderSearch className="h-5 w-5" style={{ color: 'var(--color-accent, #B8860B)' }} />
-            <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>CV Thèque</h1>
+            <h1 style={{ color: 'var(--admin-fg)', fontWeight: 300, fontSize: '1.75rem' }}>CV Thèque</h1>
           </div>
-          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
+          <p style={{ color: 'var(--admin-fg-muted)', fontSize: '0.9rem' }}>
             Recherchez les candidats de la base par compétence, ville ou nom
           </p>
         </div>
       </div>
 
       {/* Search/filter row — only this compact bar stays pinned, and only once it fits on one line */}
-      <div className="sm:sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
+      <div className="sm:sticky top-0 z-20" style={{ background: 'var(--admin-bg)', borderBottom: '1px solid var(--admin-line)' }}>
         <div className="max-w-6xl mx-auto px-6 py-4">
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1 flex items-center gap-2 px-4 rounded-2xl"
               style={{ background: 'rgba(124,58,237,0.18)', border: '1px solid rgba(124,58,237,0.4)', boxShadow: '0 4px 14px rgba(0,0,0,0.12)' }}>
-              <Search className="h-4 w-4 shrink-0" style={{ color: '#c4b5fd' }} />
+              <Search className="h-4 w-4 shrink-0" style={{ color: '#6d28d9' }} />
               <input value={search} onChange={e => setSearch(e.target.value)}
                 placeholder="Nom, compétence, ville, mission…"
-                style={{ background: 'transparent', border: 'none', outline: 'none', color: 'white', width: '100%', padding: '0.8rem 0', fontSize: '0.9rem' }} />
+                style={{ background: 'transparent', border: 'none', outline: 'none', color: 'var(--admin-fg)', width: '100%', padding: '0.8rem 0', fontSize: '0.9rem' }} />
             </div>
             <select value={sectorFilter} onChange={e => setSectorFilter(e.target.value)}
               className="px-4 rounded-2xl text-sm"
-              style={{ background: 'rgba(124,58,237,0.18)', border: '1px solid rgba(124,58,237,0.4)', color: 'white', minWidth: 180 }}>
+              style={{ background: 'rgba(124,58,237,0.18)', border: '1px solid rgba(124,58,237,0.4)', color: 'var(--admin-fg)', minWidth: 180 }}>
               <option value="" style={{ color: '#111' }}>Tous secteurs</option>
               {SECTORS.map(s => <option key={s} value={s} style={{ color: '#111' }}>{s}</option>)}
             </select>
             <div className="flex items-center gap-1.5 p-1 rounded-2xl" style={{ background: 'rgba(124,58,237,0.12)', border: '1px solid rgba(124,58,237,0.3)' }}>
               {([
-                { value: 'all', label: 'Tous', color: '#c4b5fd' },
-                { value: 'available', label: 'Disponible', color: '#34d399' },
-                { value: 'unavailable', label: 'Non disponible', color: '#9ca3af' },
+                { value: 'all', label: 'Tous', color: '#6d28d9' },
+                { value: 'available', label: 'Disponible', color: '#047857' },
+                { value: 'unavailable', label: 'Non disponible', color: '#6b7280' },
               ] as const).map(opt => (
                 <button key={opt.value} type="button" onClick={() => setAvailabilityFilter(opt.value)}
                   className="px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap"
                   style={availabilityFilter === opt.value
-                    ? { background: opt.color, color: opt.value === 'all' ? '#0B1D51' : 'white' }
-                    : { background: 'transparent', color: 'rgba(255,255,255,0.6)' }}>
+                    ? { background: opt.color, color: 'white' }
+                    : { background: 'transparent', color: 'var(--admin-fg-muted)' }}>
                   {opt.value !== 'all' && <span className="w-1.5 h-1.5 rounded-full" style={{ background: availabilityFilter === opt.value ? 'currentColor' : opt.color }} />}
                   {opt.label}
                 </button>
@@ -125,33 +118,33 @@ export function CvthequeClient({ initialCandidates, loadError }: { initialCandid
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <StatCard icon={Users} label="Candidats" value={stats.total} color="#2563eb" />
           <StatCard icon={FileText} label="Avec un CV" value={stats.withCv} color="var(--color-primary)" />
-          <StatCard icon={Sparkles} label="Profils scannés" value={stats.scanned} color="#10b981" />
+          <StatCard icon={Sparkles} label="Profils scannés" value={stats.scanned} color="#047857" />
           <StatCard icon={FolderSearch} label="Résultats" value={filtered.length} color="#7c3aed" />
         </div>
 
         {loadError && (
           <div className="flex items-center gap-3 p-4 rounded-2xl" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}>
             <AlertCircle className="h-4 w-4 shrink-0" style={{ color: '#ef4444' }} />
-            <p className="text-sm" style={{ color: '#ef4444' }}>{loadError}</p>
+            <p className="text-sm" style={{ color: '#b91c1c' }}>{loadError}</p>
           </div>
         )}
         {rowError && (
           <div className="flex items-center gap-3 p-4 rounded-2xl" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}>
             <AlertCircle className="h-4 w-4 shrink-0" style={{ color: '#ef4444' }} />
-            <p className="text-sm" style={{ color: '#ef4444' }}>{rowError}</p>
+            <p className="text-sm" style={{ color: '#b91c1c' }}>{rowError}</p>
           </div>
         )}
 
         {/* Candidate cards */}
         {filtered.length === 0 ? (
           <div className="rounded-3xl py-20 text-center"
-            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 20px 50px -12px rgba(11,29,81,0.14)' }}>
-            <Users className="h-10 w-10 mx-auto mb-3 opacity-20" style={{ color: 'var(--color-text-muted)' }} />
-            <p style={{ color: 'var(--color-text-muted)' }}>Aucun candidat ne correspond à cette recherche</p>
+            style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
+            <Users className="h-10 w-10 mx-auto mb-3 opacity-20" style={{ color: 'var(--admin-fg-muted)' }} />
+            <p style={{ color: 'var(--admin-fg-muted)' }}>Aucun candidat ne correspond à cette recherche</p>
           </div>
         ) : (
           <>
-            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
               {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} sur {filtered.length} candidat{filtered.length > 1 ? 's' : ''}
             </p>
             <div className="space-y-4">
@@ -170,12 +163,12 @@ export function CvthequeClient({ initialCandidates, loadError }: { initialCandid
 function StatCard({ icon: Icon, label, value, color }: { icon: React.ElementType; label: string; value: number; color: string }) {
   return (
     <div className="p-4 rounded-2xl transition-transform duration-300 hover:-translate-y-0.5"
-      style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 8px 24px rgba(11,29,81,0.06)' }}>
+      style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>{label}</span>
+        <span className="text-xs font-medium" style={{ color: 'var(--admin-fg-muted)' }}>{label}</span>
         <Icon className="h-4 w-4" style={{ color }} />
       </div>
-      <p className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>{value}</p>
+      <p className="text-2xl font-bold" style={{ color: 'var(--admin-fg)' }}>{value}</p>
     </div>
   )
 }
@@ -183,46 +176,46 @@ function StatCard({ icon: Icon, label, value, color }: { icon: React.ElementType
 function CandidateCard({ candidate: c, scanning, onScan }: { candidate: CvThequeCandidate; scanning: boolean; onScan: () => void }) {
   return (
     <div className="rounded-3xl p-6 transition-all duration-300 hover:-translate-y-1"
-      style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 10px 30px -10px rgba(11,29,81,0.14)' }}>
+      style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
       <div className="flex items-start gap-4 flex-wrap">
-        <CandidateAvatar photoUrl={c.photoUrl} initials={(c.name || c.email)[0]?.toUpperCase() ?? '?'} size={56} openToWork={c.openToWork} bgColor="var(--color-surface)" />
+        <CandidateAvatar photoUrl={c.photoUrl} initials={(c.name || c.email)[0]?.toUpperCase() ?? '?'} size={56} openToWork={c.openToWork} bgColor="var(--admin-panel)" />
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <p className="font-bold text-base" style={{ color: 'var(--color-text)' }}>{c.name || '—'}</p>
+            <p className="font-bold text-base" style={{ color: 'var(--admin-fg)' }}>{c.name || '—'}</p>
             <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-bold"
-              style={{ background: c.openToWork ? 'rgba(16,185,129,0.12)' : 'rgba(107,114,128,0.12)', color: c.openToWork ? '#10b981' : '#6b7280' }}>
+              style={{ background: c.openToWork ? 'rgba(16,185,129,0.12)' : 'rgba(107,114,128,0.12)', color: c.openToWork ? '#047857' : '#6b7280' }}>
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: c.openToWork ? '#10b981' : '#6b7280' }} />
               {c.openToWork ? 'En recherche' : 'Non disponible'}
             </span>
           </div>
           {c.desiredRoles.length > 0 && (
-            <p className="text-sm font-semibold mb-1.5 flex items-center gap-1.5" style={{ color: 'var(--color-primary)' }}>
+            <p className="text-sm font-semibold mb-1.5 flex items-center gap-1.5" style={{ color: '#b45309' }}>
               <Briefcase className="h-3.5 w-3.5 shrink-0" />{c.desiredRoles.join(' · ')}
             </p>
           )}
 
-          <div className="flex items-center gap-4 flex-wrap text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>
+          <div className="flex items-center gap-4 flex-wrap text-xs mb-2" style={{ color: 'var(--admin-fg-muted)' }}>
             {c.city && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{c.city}</span>}
             {c.mobilityRadiusKm != null && <span className="flex items-center gap-1"><Navigation className="h-3 w-3" />{c.mobilityRadiusKm} km</span>}
             {c.desiredSector.length > 0 && <span className="flex items-center gap-1"><Building2 className="h-3 w-3" />{c.desiredSector.join(', ')}</span>}
           </div>
 
           {c.experienceSummary && (
-            <p className="text-sm mb-3" style={{ color: 'var(--color-text)' }}>{c.experienceSummary}</p>
+            <p className="text-sm mb-3" style={{ color: 'var(--admin-fg)' }}>{c.experienceSummary}</p>
           )}
 
           {c.skills.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               {c.skills.slice(0, 10).map(s => (
                 <span key={s} className="px-2.5 py-1 rounded-full text-[11px] font-semibold"
-                  style={{ background: 'rgba(184,134,11,0.1)', color: 'var(--color-primary)' }}>
+                  style={{ background: 'rgba(184,134,11,0.1)', color: '#b45309' }}>
                   {s}
                 </span>
               ))}
             </div>
           ) : (
-            <p className="text-xs" style={{ color: 'var(--color-text-muted)', opacity: 0.7 }}>Profil non scanné</p>
+            <p className="text-xs" style={{ color: 'var(--admin-fg-muted)', opacity: 0.7 }}>Profil non scanné</p>
           )}
         </div>
 
@@ -230,7 +223,7 @@ function CandidateCard({ candidate: c, scanning, onScan }: { candidate: CvTheque
           {c.cvFileId && (
             <a href={`/api/cv/${c.cvFileId}`} target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold no-underline transition-opacity hover:opacity-90"
-              style={{ background: 'var(--color-primary)', color: 'white', boxShadow: '0 8px 20px rgba(11,29,81,0.25)' }}>
+              style={{ background: 'var(--admin-fg)', color: 'white' }}>
               <ExternalLink className="h-3.5 w-3.5" /> Voir le CV
             </a>
           )}
@@ -252,7 +245,7 @@ function CandidateCard({ candidate: c, scanning, onScan }: { candidate: CvTheque
           {c.phone && (
             <a href={`tel:${c.phone}`}
               className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold no-underline transition-opacity hover:opacity-80"
-              style={{ background: 'rgba(16,185,129,0.08)', color: '#10b981', border: '1px solid rgba(16,185,129,0.15)' }}>
+              style={{ background: 'rgba(16,185,129,0.08)', color: '#047857', border: '1px solid rgba(16,185,129,0.15)' }}>
               <Phone className="h-3.5 w-3.5" /> {c.phone}
             </a>
           )}
