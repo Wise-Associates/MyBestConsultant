@@ -124,6 +124,9 @@ const SCHEMA = [
     attributes: [
       ['string', 'engagement', { size: 20 }],
       ['string', 'technologies', { size: 60, array: true }],
+      // Dernier sourcing d'une offre non publiée (JSON : date, CV analysés, candidats retenus : identifiant, score,
+      // raison ; jamais le nom ni l'e-mail, relus dans la fiche du candidat à l'affichage).
+      ['string', 'sourcing', { size: 5000 }],
     ],
     indexes: [],
   },
