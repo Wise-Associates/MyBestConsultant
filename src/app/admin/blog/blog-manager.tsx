@@ -10,12 +10,12 @@ const EMPTY_FORM: PostForm = { title: '', excerpt: '', content: '', coverImageUr
 
 const FIELD_STYLE: React.CSSProperties = {
   width: '100%', padding: '10px 14px', borderRadius: 10,
-  border: '1.5px solid var(--admin-line)', background: 'var(--admin-panel-raised)',
-  color: 'var(--admin-fg)', fontSize: 14, outline: 'none',
+  border: '1.5px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)',
+  color: 'rgba(255,255,255,0.85)', fontSize: 14, outline: 'none',
 }
 const LABEL_STYLE: React.CSSProperties = {
   display: 'block', fontSize: 11, fontWeight: 600, letterSpacing: '0.08em',
-  textTransform: 'uppercase', color: 'var(--admin-fg-muted)', marginBottom: 6,
+  textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 6,
 }
 
 function PostEditor({ post, onClose, onSaved }: {
@@ -47,27 +47,27 @@ function PostEditor({ post, onClose, onSaved }: {
       style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
       onClick={e => { if (e.target === e.currentTarget && !pending) onClose() }}>
       <div className="relative w-full max-w-2xl rounded-2xl overflow-hidden flex flex-col"
-        style={{ background: '#0f172a', border: '1px solid var(--admin-line)', boxShadow: '0 32px 80px rgba(0,0,0,0.5)', maxHeight: '90vh' }}>
+        style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.09)', boxShadow: '0 32px 80px rgba(0,0,0,0.5)', maxHeight: '90vh' }}>
 
-        <div className="flex items-center justify-between px-7 py-5" style={{ borderBottom: '1px solid var(--admin-line)' }}>
+        <div className="flex items-center justify-between px-7 py-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <div>
-            <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--admin-fg-muted)', textTransform: 'uppercase', marginBottom: 2 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 2 }}>
               {post ? 'Modifier l\'article' : 'Nouvel article'}
             </p>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--admin-fg)' }}>{post?.title || 'Rédiger un article'}</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'white' }}>{post?.title || 'Rédiger un article'}</h2>
           </div>
           <div className="flex items-center gap-3">
             <button onClick={() => set('isPublished', !form.isPublished)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
               style={{
-                background: form.isPublished ? 'rgba(52,211,153,0.12)' : 'var(--admin-panel-raised)',
-                color: form.isPublished ? '#047857' : 'var(--admin-fg-muted)',
-                border: `1px solid ${form.isPublished ? 'rgba(52,211,153,0.25)' : 'var(--admin-line)'}`,
+                background: form.isPublished ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.06)',
+                color: form.isPublished ? '#34d399' : 'rgba(255,255,255,0.35)',
+                border: `1px solid ${form.isPublished ? 'rgba(52,211,153,0.25)' : 'rgba(255,255,255,0.08)'}`,
               }}>
               {form.isPublished ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
               {form.isPublished ? 'Publié' : 'Brouillon'}
             </button>
-            <button onClick={() => !pending && onClose()} className="p-2 rounded-lg hover:opacity-60" style={{ color: 'var(--admin-fg-muted)' }}>
+            <button onClick={() => !pending && onClose()} className="p-2 rounded-lg hover:opacity-60" style={{ color: 'rgba(255,255,255,0.3)' }}>
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -110,10 +110,10 @@ function PostEditor({ post, onClose, onSaved }: {
           )}
         </div>
 
-        <div className="px-7 py-5 flex items-center justify-between" style={{ borderTop: '1px solid var(--admin-line)' }}>
+        <div className="px-7 py-5 flex items-center justify-between" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
           <button onClick={() => !pending && onClose()}
             className="px-5 py-2.5 rounded-xl text-sm font-medium hover:opacity-60"
-            style={{ color: 'var(--admin-fg-muted)', border: '1px solid var(--admin-line)' }}>
+            style={{ color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}>
             Annuler
           </button>
           <button onClick={save} disabled={pending}
@@ -149,7 +149,7 @@ export function BlogManager({ initialPosts }: { initialPosts: BlogPost[] }) {
 
   return (
     <div>
-      <div className="px-6 py-4 flex justify-end" style={{ borderBottom: '1px solid var(--admin-line)' }}>
+      <div className="px-6 py-4 flex justify-end" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <button onClick={() => setEditing('new')}
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90"
           style={{ background: 'linear-gradient(135deg, #B8860B, #DAA520)', color: 'white' }}>
@@ -159,37 +159,37 @@ export function BlogManager({ initialPosts }: { initialPosts: BlogPost[] }) {
       </div>
 
       {posts.length === 0 ? (
-        <div className="px-6 py-16 text-center" style={{ color: 'var(--admin-fg-muted)' }}>
+        <div className="px-6 py-16 text-center" style={{ color: 'rgba(255,255,255,0.3)' }}>
           Aucun article pour l&apos;instant.
         </div>
       ) : (
         <div>
           {posts.map((post, i) => (
             <div key={post.$id} className="flex items-center gap-4 px-6 py-4"
-              style={{ borderTop: i === 0 ? 'none' : '1px solid var(--admin-line)' }}>
+              style={{ borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.06)' }}>
               <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 flex items-center justify-center"
-                style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
                 {post.coverImageUrl
                   // eslint-disable-next-line @next/next/no-img-element
                   ? <img src={post.coverImageUrl} alt="" className="w-full h-full object-cover" />
-                  : <ImageIcon className="h-5 w-5" style={{ color: 'var(--admin-fg-muted)' }} />}
+                  : <ImageIcon className="h-5 w-5" style={{ color: 'rgba(255,255,255,0.2)' }} />}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-admin-fg truncate">{post.title}</p>
-                <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--admin-fg-muted)' }}>{post.excerpt || 'Pas d\'extrait'}</p>
+                <p className="text-sm font-semibold text-white truncate">{post.title}</p>
+                <p className="text-xs mt-0.5 truncate" style={{ color: 'rgba(255,255,255,0.4)' }}>{post.excerpt || 'Pas d\'extrait'}</p>
               </div>
               <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full shrink-0"
                 style={{
-                  background: post.isPublished ? 'rgba(52,211,153,0.12)' : 'var(--admin-panel-raised)',
-                  color: post.isPublished ? '#047857' : 'var(--admin-fg-muted)',
+                  background: post.isPublished ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.06)',
+                  color: post.isPublished ? '#34d399' : 'rgba(255,255,255,0.4)',
                 }}>
                 {post.isPublished ? 'Publié' : 'Brouillon'}
               </span>
               <div className="flex items-center gap-1.5 shrink-0">
-                <button onClick={() => setEditing(post)} className="p-2 rounded-lg hover:bg-admin-panel-raised" style={{ color: 'var(--admin-fg-muted)' }}>
+                <button onClick={() => setEditing(post)} className="p-2 rounded-lg hover:bg-white/5" style={{ color: 'rgba(255,255,255,0.4)' }}>
                   <Edit2 className="h-4 w-4" />
                 </button>
-                <button onClick={() => setConfirmDelete(post)} className="p-2 rounded-lg hover:bg-red-500/10" style={{ color: 'var(--admin-fg-muted)' }}>
+                <button onClick={() => setConfirmDelete(post)} className="p-2 rounded-lg hover:bg-red-500/10" style={{ color: 'rgba(255,255,255,0.4)' }}>
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
@@ -204,11 +204,11 @@ export function BlogManager({ initialPosts }: { initialPosts: BlogPost[] }) {
 
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
-          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: '#0f172a', border: '1px solid var(--admin-line)' }}>
-            <p className="text-sm text-admin-fg mb-1 font-semibold">Supprimer cet article ?</p>
-            <p className="text-xs mb-5" style={{ color: 'var(--admin-fg-muted)' }}>{confirmDelete.title} — action irréversible.</p>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.09)' }}>
+            <p className="text-sm text-white mb-1 font-semibold">Supprimer cet article ?</p>
+            <p className="text-xs mb-5" style={{ color: 'rgba(255,255,255,0.4)' }}>{confirmDelete.title} — action irréversible.</p>
             <div className="flex justify-end gap-3">
-              <button onClick={() => setConfirmDelete(null)} className="px-4 py-2 rounded-lg text-sm" style={{ color: 'var(--admin-fg-muted)' }}>Annuler</button>
+              <button onClick={() => setConfirmDelete(null)} className="px-4 py-2 rounded-lg text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>Annuler</button>
               <button onClick={() => handleDelete(confirmDelete)} disabled={isPending}
                 className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>
                 {isPending ? 'Suppression…' : 'Supprimer'}
