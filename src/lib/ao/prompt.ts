@@ -12,6 +12,8 @@ Pour chaque offre, retourne un objet JSON avec les champs suivants (valeurs en f
 - remote: "onsite" | "hybrid" | "remote"
 - salary: number | null (tarif journalier en € ou salaire annuel brut — nombre uniquement, null si absent)
 - skills: string[] (compétences clés, max 8)
+- technologies: string[] (technologies, langages, frameworks, outils et plateformes cités, ex. "Java", "React", "AWS", max 15 ; [] si aucun)
+- engagement: "assistance" | "forfait" | "" (assistance : profil(s) facturé(s) à l'unité, en régie ou au TJM ; forfait : projet à prix global, engagement de résultat ; "" si le texte ne le dit pas)
 - description: string (description complète et bien rédigée du poste, en markdown, 150-400 mots minimum — inclus contexte, missions, profil recherché)
 - duration: string (durée de la mission si précisée, ex: "6 mois renouvelables", ou "")
 - startDate: string (date de démarrage, SEULEMENT si le texte la désigne comme telle : « démarrage », « début », « à partir du », « ASAP »… ; sinon "")

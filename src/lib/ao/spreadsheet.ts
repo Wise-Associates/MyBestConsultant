@@ -38,7 +38,7 @@ function contentMatches(format: string, content: Buffer): boolean {
   return !start.equals(ZIP_MAGIC) && !content.subarray(0, 8).equals(CFB_MAGIC) && content[0] !== 0x3c && !content.includes(0)
 }
 
-type Column = 'salary' | 'deadline' | 'ignored' | 'remote' | 'location' | 'contract' | 'duration' | 'start' | 'experience' | 'skills' | 'company' | 'description' | 'title'
+type Column = 'salary' | 'deadline' | 'engagement' | 'technologies' | 'ignored' | 'remote' | 'location' | 'contract' | 'duration' | 'start' | 'experience' | 'skills' | 'company' | 'description' | 'title'
 
 /**
  * Noms de colonnes reconnus, normalisés par `norm` (minuscules, sans accents ni parenthèses), essayés DANS CET
@@ -58,10 +58,12 @@ const COLUMNS: [Column, string[]][] = [
   ['remote', ['teletravail', 'tt', 'remote', 'rythme', 'presentiel', 'mode de travail', 'organisation du travail']],
   ['location', ['lieu', 'ville', 'localisation', 'location', 'site', 'region', 'adresse']],
   ['contract', ['type de contrat', 'contrat', 'contract', 'type de mission']],
+  ['engagement', ['assistance technique', 'assistance', 'forfait', 'type de prestation', 'mode d intervention', 'engagement']],
   ['duration', ['duree', 'duration']],
   ['start', ['demarrage', 'debut', 'start', 'disponibilite']],
   ['experience', ['experience', 'seniorite', 'niveau']],
-  ['skills', ['competences', 'competence', 'skills', 'technologies', 'stack', 'mots cles', 'environnement technique', 'outils']],
+  ['technologies', ['technologies', 'technologie', 'stack', 'environnement technique']],
+  ['skills', ['competences', 'competence', 'skills', 'mots cles', 'outils']],
   ['company', ['client', 'entreprise', 'societe', 'company', 'donneur d ordre']],
   ['description', ['description', 'descriptif', 'contexte', 'missions', 'mission', 'activites', 'taches', 'profil', 'prerequis', 'livrables',
     'objectifs', 'detail', 'details', 'contenu', 'besoin']],
@@ -109,6 +111,8 @@ function offerOf(row: string[], { columns }: Header): ExtractedOffer | null {
     remote: first('remote'),
     salary: first('salary'),
     skills: all('skills').map(c => c.value).join(','),
+    technologies: all('technologies').map(c => c.value).join(','),
+    engagement: first('engagement'),
     // Une seule colonne de description : reprise telle quelle. Plusieurs (contexte, missions…) : une section
     // titrée par colonne, que la page admin et la publication découpent ensuite (description-sections.ts).
     description: descriptions.length === 1 ? descriptions[0].value : descriptions.map(d => `### ${d.label}\n${d.value}`).join('\n\n'),

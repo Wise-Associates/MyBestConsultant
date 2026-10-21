@@ -1,13 +1,13 @@
 'use client'
 
 import { useEffect, useState, useTransition, type ReactNode } from 'react'
-import { AlertTriangle, Ban, ExternalLink, Loader2, RotateCcw, Send, X } from 'lucide-react'
+import { AlertTriangle, Ban, Download, ExternalLink, Loader2, Paperclip, RotateCcw, Send, X } from 'lucide-react'
 import type { AoOfferRow } from '@/lib/ao/filters'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
 import { previewAoPublication, publishAoOffer, setAoOfferStatus, type PublicationDraft, type PublicationPreview } from './actions'
 import { AoDescription } from './ao-description'
 import {
-  CONTRACT_LABEL, REMOTE_LABEL, STATUS_UI, control, fieldLabel, formatAmount, formatDay, optionStyle, primaryButton, secondaryButton,
+  CONTRACT_LABEL, ENGAGEMENT_LABEL, REMOTE_LABEL, STATUS_UI, control, fieldLabel, formatAmount, formatDay, optionStyle, primaryButton, secondaryButton,
 } from './labels'
 
 export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () => void }) {
@@ -61,6 +61,7 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
     ['Client', row.companyName || 'Non précisé'],
     ['Ville', row.location || '—'],
     ['Contrat', CONTRACT_LABEL[row.contractType]],
+    ['Assistance / Forfait', ENGAGEMENT_LABEL[row.engagement]],
     ['Télétravail', REMOTE_LABEL[row.remote]],
     ['TJM / salaire', formatAmount(row.salary, row.contractType)],
     ['Durée', row.duration || '—'],
@@ -73,7 +74,8 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
     <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(0,0,0,0.55)' }} onClick={onClose}>
       <aside role="dialog" aria-modal="true" aria-labelledby="ao-offer-title" onClick={e => e.stopPropagation()}
         className="h-full overflow-y-auto p-7 space-y-6"
-        style={{ width: 'min(760px, 100vw)', background: 'var(--admin-panel)', borderLeft: '1px solid var(--admin-line)', color: 'var(--admin-fg)' }}>
+        // ¾ de la zone de contenu (hors menu latéral de 240 px) sur grand écran, 760 px au moins, pleine largeur sur mobile.
+        style={{ width: 'min(100vw, max(760px, calc((100vw - 240px) * 0.75)))', background: 'var(--admin-panel)', borderLeft: '1px solid var(--admin-line)', color: 'var(--admin-fg)' }}>
 
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -112,6 +114,15 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
             </div>
           </section>
         )}
+        {row.technologies.length > 0 && (
+          <section>
+            <p style={fieldLabel}>Technologies</p>
+            <div className="flex flex-wrap gap-1.5">
+              {row.technologies.map(t => <span key={t} className="text-xs px-2 py-1 rounded-md" style={{ background: 'var(--admin-panel-raised)' }}>{t}</span>)}
+            </div>
+          </section>
+        )}
+        <Originals emailId={row.emailId} attachments={row.attachments} />
         <section>
           <p style={{ ...fieldLabel, marginBottom: 12 }}>Description</p>
           <AoDescription text={row.description} />
@@ -195,5 +206,53 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <span style={{ ...fieldLabel, display: 'block' }}>{label}</span>
       {children}
     </label>
+  )
+}
+
+/**
+ * E-mail d'origine et pièces jointes, relus dans la boîte au clic (vérification de l'authenticité : en-têtes, DKIM).
+ * Téléchargés par fetch : une erreur (e-mail supprimé de la boîte…) s'affiche ici au lieu d'être enregistrée en fichier.
+ */
+function Originals({ emailId, attachments }: { emailId: string; attachments: string[] }) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState('')
+  const base = `/api/admin/ao-offers/original/${encodeURIComponent(emailId)}`
+  const files: { key: string; label: string; url: string; filename: string }[] = [
+    { key: 'eml', label: 'E-mail d’origine (.eml)', url: base, filename: `ao-${emailId}.eml` },
+    ...attachments.map(name => ({ key: name, label: name, url: `${base}?attachment=${encodeURIComponent(name)}`, filename: name })),
+  ]
+  const download = async (file: (typeof files)[number]) => {
+    setBusy(file.key)
+    setError('')
+    try {
+      const res = await fetch(file.url)
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null
+        setError(body?.error ?? `Téléchargement impossible (${res.status}).`)
+        return
+      }
+      const url = URL.createObjectURL(await res.blob())
+      const link = Object.assign(document.createElement('a'), { href: url, download: file.filename })
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setError('Téléchargement impossible : connexion interrompue, réessayez.')
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <section>
+      <p style={fieldLabel}>Originaux (relus dans la boîte de réception)</p>
+      <div className="flex flex-wrap gap-2">
+        {files.map(file => (
+          <button key={file.key} type="button" onClick={() => download(file)} disabled={busy !== null} style={{ ...secondaryButton, fontSize: 13 }}>
+            {busy === file.key ? <Loader2 size={14} className="animate-spin" /> : file.key === 'eml' ? <Download size={14} /> : <Paperclip size={14} />}
+            <span className="break-all text-left">{file.label}</span>
+          </button>
+        ))}
+      </div>
+      {error && <p role="alert" className="text-sm mt-2" style={{ color: '#b91c1c' }}>{error}</p>}
+    </section>
   )
 }
