@@ -19,6 +19,7 @@ export function docToAoEmail(d: Models.Document): AoEmail {
   const doc = d as Models.Document & Record<string, unknown>
   return {
     $id: d.$id,
+    sourceId: str(doc.sourceId),
     messageId: str(doc.messageId),
     uid: num(doc.uid),
     fromAddress: str(doc.fromAddress),
@@ -97,12 +98,12 @@ export function batchByLength(values: string[], maxChars = 3000, maxItems = 25):
   return batches
 }
 
-/** Message-ID à ne pas (re)traiter maintenant (voir nextStepFor). */
-export async function settledMessageIds(messageIds: string[], now: Date): Promise<Set<string>> {
+/** Message-ID de la boîte à ne pas (re)traiter maintenant (voir nextStepFor). */
+export async function settledMessageIds(sourceId: string, messageIds: string[], now: Date): Promise<Set<string>> {
   const { databases } = createAdminClient()
   const settled = new Set<string>()
   for (const batch of batchByLength(messageIds)) {
-    const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_EMAILS, [Query.equal('messageId', batch), Query.limit(batch.length)])
+    const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_EMAILS, [Query.equal('sourceId', sourceId), Query.equal('messageId', batch), Query.limit(batch.length)])
     for (const email of res.documents.map(docToAoEmail)) {
       if (nextStepFor(email, now) === 'skip') settled.add(email.messageId)
     }
@@ -121,14 +122,14 @@ export async function getAoEmail(id: string): Promise<AoEmail | null> {
   }
 }
 
-export async function findAoEmailByMessageId(messageId: string): Promise<AoEmail | null> {
+export async function findAoEmailByMessageId(sourceId: string, messageId: string): Promise<AoEmail | null> {
   const { databases } = createAdminClient()
-  const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_EMAILS, [Query.equal('messageId', messageId), Query.limit(1)])
+  const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_EMAILS, [Query.equal('sourceId', sourceId), Query.equal('messageId', messageId), Query.limit(1)])
   return res.documents[0] ? docToAoEmail(res.documents[0]) : null
 }
 
-/** Crée l'e-mail (index unique sur messageId : échoue si un autre traitement l'a déjà pris). */
-export async function createAoEmail(data: Pick<AoEmail, 'messageId' | 'uid' | 'receivedAt'>): Promise<AoEmail> {
+/** Crée l'e-mail (index unique sur sourceId + messageId : échoue si un autre traitement l'a déjà pris). */
+export async function createAoEmail(data: Pick<AoEmail, 'sourceId' | 'messageId' | 'uid' | 'receivedAt'>): Promise<AoEmail> {
   const { databases } = createAdminClient()
   const doc = await databases.createDocument(DB_ID, COLLECTIONS.AO_EMAILS, ID.unique(), {
     ...data,
@@ -153,9 +154,11 @@ export async function listAoEmailsByIds(ids: string[]): Promise<Map<string, AoEm
   return map
 }
 
-export async function listRecentAoEmails(limit: number): Promise<AoEmail[]> {
+/** E-mails récents des boîtes `sourceIds` (aucun si la liste est vide). */
+export async function listRecentAoEmails(sourceIds: string[], limit: number): Promise<AoEmail[]> {
+  if (!sourceIds.length) return []
   const { databases } = createAdminClient()
-  const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_EMAILS, [Query.orderDesc('$createdAt'), Query.limit(limit)])
+  const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_EMAILS, [Query.equal('sourceId', sourceIds), Query.orderDesc('$createdAt'), Query.limit(limit)])
   return res.documents.map(docToAoEmail)
 }
 
@@ -164,9 +167,10 @@ export async function listRecentAoEmails(limit: number): Promise<AoEmail[]> {
  * Les e-mails abandonnés (MAX_ATTEMPTS essais) sont exclus ; un traitement interrompu au dernier essai est clos par le
  * rattrapage quotidien.
  */
-export async function listRetryableAoEmails(now: Date, limit = 50): Promise<AoEmail[]> {
+export async function listRetryableAoEmails(sourceId: string, now: Date, limit = 50): Promise<AoEmail[]> {
   const { databases } = createAdminClient()
   const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_EMAILS, [
+    Query.equal('sourceId', sourceId),
     Query.equal('status', ['failed', 'processing']),
     Query.lessThan('attempts', MAX_ATTEMPTS),
     Query.orderAsc('$updatedAt'),
@@ -252,7 +256,8 @@ export async function purgeAoRecords(before: Date, maxDeletes = 100): Promise<nu
   for (const collection of [COLLECTIONS.AO_OFFERS, COLLECTIONS.AO_EMAILS]) {
     const res = await databases.listDocuments(DB_ID, collection, [Query.lessThan('$createdAt', before.toISOString()), Query.limit(maxDeletes - deleted)])
     for (const doc of res.documents) {
-      await databases.deleteDocument(DB_ID, collection, doc.$id)
+      // 404 : déjà supprimé par le passage d'une autre organisation, lancé en même temps.
+      await databases.deleteDocument(DB_ID, collection, doc.$id).catch(err => { if ((err as { code?: number }).code !== 404) throw err })
       deleted++
     }
     if (deleted >= maxDeletes) break
@@ -262,11 +267,15 @@ export async function purgeAoRecords(before: Date, maxDeletes = 100): Promise<nu
 
 // ── Lignes de la page admin ──────────────────────────────────────
 
-/** Offres récentes avec l'expéditeur, l'objet et la date de l'e-mail d'origine. */
-export async function listAoOfferRows(max = 2000): Promise<AoOfferRow[]> {
+/**
+ * Offres récentes des boîtes `sourceIds`, avec l'expéditeur, l'objet et la date de l'e-mail d'origine. Une offre n'a
+ * pas d'attribut d'organisation (ao_offers est à 16/16) : elle appartient à la boîte de son e-mail.
+ */
+export async function listAoOfferRows(sourceIds: string[], max = 2000): Promise<AoOfferRow[]> {
   const offers = await listAoOffers(max)
   const emails = await listAoEmailsByIds(offers.map(o => o.emailId))
-  return offers.map(offer => {
+  const scope = new Set(sourceIds)
+  return offers.filter(offer => scope.has(emails.get(offer.emailId)?.sourceId ?? '')).map(offer => {
     const email = emails.get(offer.emailId)
     // E-mail transféré : l'expéditeur affiché (et filtré) est celui du message d'origine ; le collaborateur qui l'a
     // transféré est indiqué à part. E-mails lus avant l'enregistrement de l'origine : l'expéditeur de l'e-mail.

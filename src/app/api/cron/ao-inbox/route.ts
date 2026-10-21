@@ -14,6 +14,11 @@ export async function GET(req: NextRequest) {
     const report = await syncAoInbox({ budgetMs: 240_000, holder: 'cron' })
     // Personne ne lit la réponse d'un cron : le journal Vercel est le seul endroit où le voir.
     if (report.aiUnavailable) console.warn('AO inbox: IA indisponible (crédits épuisés ou clé refusée) — e-mails en attente, voir /admin/ao-offers')
+    if (report.errors.length) console.error('AO inbox: erreurs pendant le passage', report.errors.slice(0, 10))
+    // Toutes les boîtes tentées ont échoué : le planificateur (et sa surveillance) doivent le voir comme un échec.
+    if (report.mailboxes > 0 && report.failedMailboxes === report.mailboxes) {
+      return NextResponse.json({ error: 'Aucune boîte AO lisible', detail: report.errors.slice(0, 3).join(' ; '), report }, { status: 502 })
+    }
     return NextResponse.json(report)
   } catch (err) {
     // Connexion IMAP, Appwrite ou IA indisponible : visible dans les logs, réessayé au passage suivant.
