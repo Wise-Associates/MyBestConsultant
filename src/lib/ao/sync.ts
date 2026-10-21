@@ -7,7 +7,8 @@ import { assertCredentialsKey, openMailboxPassword } from './credentials'
 import { withAoInbox, type AoInbox, type AoInboxSettings, type InboxEnvelope } from './imap'
 import { resolveImapHost } from './imap-host'
 import { citedClients, formatSender, originalSender, senderCompany } from './origin'
-import { emailDeadline, TruncatedAnswerError } from './parse'
+import { emailDeadline } from './dates'
+import { TruncatedAnswerError } from './parse'
 import {
   createAoEmail, createAoOffer, findAoDuplicate, findAoEmailByMessageId,
   incrementAoSources, listRetryableAoEmails, nextStepFor, purgeAoRecords, settledMessageIds, updateAoEmail,
@@ -383,12 +384,12 @@ async function processEnvelope(
     if (content.text.trim().length >= 50) {
       const llmWait = Math.min(MAX_LLM_WAIT_MS, timeLeft() - 10_000)
       if (llmWait < MIN_LLM_WAIT_MS) throw new RetryLater('plus assez de temps pour l\'extraction : e-mail repris au prochain passage', !canDefer)
-      fromAi = (await extractOffersFromEmail(content.text, llmWait, aiOrigin, org.name)).offers
+      fromAi = (await extractOffersFromEmail(content.text, llmWait, aiOrigin, org.name, message.receivedAt)).offers
     }
     const read = [...content.tableOffers, ...fromAi]
     // Enregistrés avant la création des offres : une offre ne doit jamais exister sans ce qui permet de la publier
     // anonymisée (clients cités), même si la suite du traitement échoue.
-    await updateAoEmail(emailId, { citedClients: citedClients(read), deadline: emailDeadline(read.map(o => o.deadline)) })
+    await updateAoEmail(emailId, { citedClients: citedClients(read), deadline: emailDeadline(read.map(o => o.deadline), message.receivedAt) })
     // Le client est l'entreprise de l'expéditeur d'origine, pour toutes les offres de l'e-mail (origin.ts). Les noms
     // lus par l'IA ne comptent que si elle avait la signature sous les yeux (corps de l'e-mail confié).
     const company = senderCompany(origin, aiOrigin ? fromAi.map(o => o.companyName) : [], { name: org.name, ownDomains: source.ownDomains })

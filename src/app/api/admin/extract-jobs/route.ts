@@ -4,6 +4,7 @@ import { getLLMConfig } from '@/lib/ai/llm-config-store'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { extractTextFromFile } from '@/lib/import-file-extract'
 import { AO_EXTRACTION_PROMPT } from '@/lib/ao/prompt'
+import { placeUnlabeledDates } from '@/lib/ao/dates'
 
 const SYSTEM = AO_EXTRACTION_PROMPT
 
@@ -62,9 +63,17 @@ export async function POST(req: NextRequest) {
     let raw = result.content.trim()
     raw = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
 
-    const jobs = JSON.parse(raw) as Record<string, unknown>[]
+    const parsed = JSON.parse(raw) as Record<string, unknown>[]
 
-    if (!Array.isArray(jobs)) throw new Error('Réponse LLM invalide : attendu un tableau')
+    if (!Array.isArray(parsed)) throw new Error('Réponse LLM invalide : attendu un tableau')
+    // Même règle qu'AO Offers : les dates citées sans libellé sont placées selon leur jour (lundi : démarrage).
+    const jobs = parsed.map(job => {
+      if (!job || typeof job !== 'object') return job
+      const { otherDates, ...rest } = job
+      const unlabeled = Array.isArray(otherDates) ? otherDates.map(String) : []
+      const labeled = { startDate: typeof rest.startDate === 'string' ? rest.startDate : '', deadline: typeof rest.deadline === 'string' ? rest.deadline : '' }
+      return { ...rest, ...placeUnlabeledDates(labeled, unlabeled, new Date()) }
+    })
 
     return NextResponse.json({ jobs, provider: result.provider, count: jobs.length })
   } catch (err) {

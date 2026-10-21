@@ -14,17 +14,18 @@ Pour chaque offre, retourne un objet JSON avec les champs suivants (valeurs en f
 - skills: string[] (compétences clés, max 8)
 - description: string (description complète et bien rédigée du poste, en markdown, 150-400 mots minimum — inclus contexte, missions, profil recherché)
 - duration: string (durée de la mission si précisée, ex: "6 mois renouvelables", ou "")
-- startDate: string (date de démarrage, seulement si le texte la présente comme telle : « démarrage », « début », « à partir du », « ASAP »… ; sinon "")
-- deadline: string (date limite de réponse, de candidature ou de remise de l'offre si précisée, ou "")
+- startDate: string (date de démarrage, SEULEMENT si le texte la désigne comme telle : « démarrage », « début », « à partir du », « ASAP »… ; sinon "")
+- deadline: string (date limite de réponse, de candidature ou de remise de l'offre, SEULEMENT si le texte la désigne comme telle ; sinon "")
+- otherDates: string[] (dates citées sans libellé qui dise s'il s'agit d'un démarrage ou d'une date limite, recopiées telles quelles avec le jour de la semaine s'il est écrit ; [] s'il n'y en a pas)
 - experience: string (niveau d'expérience requis, ex: "5 ans minimum", ou "")
 
-Une date sans libellé en tête d'un récapitulatif, par exemple :
+Ne classe pas toi-même une date sans libellé, par exemple celle en tête d'un récapitulatif :
 30/10/2026
 Mission longue
 480,00
 Paris
 5 ans et plus
-est la date limite de réponse (deadline), jamais la date de démarrage.
+Mets-la dans otherDates : elle est classée ensuite selon son jour de la semaine.
 
 Réponds UNIQUEMENT avec un tableau JSON valide : [{ ... }, { ... }]
 Aucun texte avant ou après. Aucun markdown. Juste le JSON brut.`
