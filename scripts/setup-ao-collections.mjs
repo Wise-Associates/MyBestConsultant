@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Crée les deux collections du module AO Offers dans un projet Appwrite (idempotent : l'existant est conservé).
+// Crée les collections du module AO Offers dans un projet Appwrite (idempotent : l'existant est conservé).
+// Passage aux boîtes par organisation (ADR 0005) : lancer ensuite scripts/ao-sources-migrate.mts.
 //
 //   npm run ao:setup -- .env.dev                → affiche ce qui manque, ne modifie rien
 //   npm run ao:setup -- .env.dev --apply        → crée ce qui manque (projet DEV)
@@ -13,6 +14,7 @@
 //   APPWRITE_COLLECTION_AO_EMAILS=ao_emails
 //   APPWRITE_COLLECTION_AO_OFFERS=ao_offers
 //   APPWRITE_COLLECTION_AO_STATE=ao_sync_state
+//   APPWRITE_COLLECTION_AO_SOURCES=ao_sources
 // Les collections n'ont aucune permission client : seules la clé API serveur et l'admin y accèdent.
 import { Client, Databases } from 'node-appwrite'
 import { readFileSync } from 'fs'
@@ -32,13 +34,14 @@ if (!file) {
   process.exit(1)
 }
 const apply = flags.includes('--apply')
-if (/(^|\/)\.env$/.test(file) && !flags.includes('--prod')) {
-  console.error('« .env » désigne la production : ajoutez --prod pour confirmer.')
-  process.exit(1)
-}
 const env = readEnv(file)
 for (const key of ['APPWRITE_ENDPOINT', 'APPWRITE_PROJECT_ID', 'APPWRITE_API_KEY', 'APPWRITE_DB_ID']) {
   if (!env[key]) { console.error(`${key} manquant dans ${file}`); process.exit(1) }
+}
+// Garde sur le projet visé, pas sur le nom du fichier : une copie renommée du .env de production ne passe pas.
+if (env.APPWRITE_PROJECT_ID !== 'bestconsultant-dev' && !flags.includes('--prod')) {
+  console.error(`Projet ${env.APPWRITE_PROJECT_ID} : ce n'est pas le projet de développement, ajoutez --prod pour confirmer.`)
+  process.exit(1)
 }
 const db = new Databases(new Client().setEndpoint(env.APPWRITE_ENDPOINT).setProject(env.APPWRITE_PROJECT_ID).setKey(env.APPWRITE_API_KEY))
 const DB = env.APPWRITE_DB_ID
@@ -49,6 +52,8 @@ const SCHEMA = [
     id: 'ao_emails',
     name: 'AO emails',
     attributes: [
+      // Boîte lue (ao_sources) : un même Message-ID reçu par deux boîtes est suivi deux fois.
+      ['string', 'sourceId', { size: 36 }],
       ['string', 'messageId', { size: 500, required: true }],
       ['integer', 'uid', { required: true, min: 0 }],
       ['string', 'fromAddress', { size: 320 }],
@@ -67,7 +72,8 @@ const SCHEMA = [
       ['integer', 'duplicateCount', { min: 0, default: 0 }],
       ['integer', 'attempts', { min: 0, default: 0 }],
     ],
-    indexes: [['messageid_unique', 'unique', ['messageId']], ['receivedat', 'key', ['receivedAt']], ['status', 'key', ['status']]],
+    // L'ancien index unique sur messageId seul (messageid_unique) est supprimé par scripts/ao-sources-migrate.mts.
+    indexes: [['source_message_unique', 'unique', ['sourceId', 'messageId']], ['receivedat', 'key', ['receivedAt']], ['status', 'key', ['status']]],
   },
   {
     id: 'ao_offers',
@@ -109,6 +115,25 @@ const SCHEMA = [
     ],
     indexes: [],
   },
+  {
+    // Boîtes lues : celles de la plateforme (tenantId « admin ») et celles des organisations (src/lib/ao/sources.ts).
+    // Mot de passe chiffré avec AO_CREDENTIALS_KEY (src/lib/ao/credentials.ts), jamais en clair.
+    id: 'ao_sources',
+    name: 'AO sources',
+    attributes: [
+      ['string', 'tenantId', { size: 36, required: true }],
+      ['string', 'label', { size: 200 }],
+      ['string', 'host', { size: 253, required: true }],
+      ['string', 'username', { size: 320, required: true }],
+      ['string', 'passwordSealed', { size: 2000, required: true }],
+      ['string', 'mailbox', { size: 200 }],
+      ['boolean', 'enabled', { default: true }],
+      ['string', 'ownDomains', { size: 253, array: true }],
+      ['datetime', 'lastSyncAt', {}],
+      ['string', 'lastError', { size: 1000 }],
+    ],
+    indexes: [['tenantid', 'key', ['tenantId']], ['enabled', 'key', ['enabled']], ['lastsyncat', 'key', ['lastSyncAt']]],
+  },
 ]
 
 async function exists(fn) {
@@ -121,6 +146,7 @@ function createAttribute(collection, [type, key, o]) {
   if (type === 'string') return db.createStringAttribute(DB, collection, key, o.size, required, def, o.array ?? false)
   if (type === 'integer') return db.createIntegerAttribute(DB, collection, key, required, o.min, o.max, def)
   if (type === 'datetime') return db.createDatetimeAttribute(DB, collection, key, required, def)
+  if (type === 'boolean') return db.createBooleanAttribute(DB, collection, key, required, def)
   throw new Error(`type inconnu : ${type}`)
 }
 
@@ -136,6 +162,20 @@ async function waitForAttributes(collection) {
   throw new Error('Attributs toujours en cours de création après 60 s')
 }
 
+// Les index sont créés en arrière-plan, comme les attributs : un index « failed » ne garantirait plus rien (unicité).
+async function waitForIndexes(collection) {
+  for (let i = 0; i < 60; i++) {
+    const { indexes } = await db.listIndexes(DB, collection)
+    const failed = indexes.filter(x => x.status === 'failed' || x.status === 'stuck')
+    if (failed.length) throw new Error(`Index en échec : ${failed.map(x => `${x.key} (${x.error || x.status})`).join(', ')}`)
+    if (indexes.every(x => x.status === 'available')) return
+    await new Promise(resolve => setTimeout(resolve, 1000))
+  }
+  throw new Error('Index toujours en cours de création après 60 s')
+}
+
+const MAX_ATTRIBUTES = 16
+
 console.log(`Projet ${env.APPWRITE_PROJECT_ID}, base ${DB} — ${apply ? 'CRÉATION' : 'simulation (ajoutez --apply pour créer)'}`)
 for (const c of SCHEMA) {
   const hasCollection = await exists(() => db.getCollection(DB, c.id))
@@ -144,6 +184,14 @@ for (const c of SCHEMA) {
     if (apply) await db.createCollection(DB, c.id, c.name, [], false, true)
   }
   const existingAttrs = hasCollection ? new Set((await db.listAttributes(DB, c.id)).attributes.map(a => a.key)) : new Set()
+  // Limite du projet : le total (attributs existants, y compris hors de ce schéma, et nouveaux) ne doit pas la dépasser.
+  const total = new Set([...existingAttrs, ...c.attributes.map(a => a[1])]).size
+  if (total > MAX_ATTRIBUTES) {
+    console.error(`${c.id} : ${total} attributs après création, limite du projet ${MAX_ATTRIBUTES}. Rien n'est créé pour cette collection.`)
+    process.exitCode = 1
+    continue
+  }
+  console.log(`  ${c.id} : ${total}/${MAX_ATTRIBUTES} attributs`)
   for (const attr of c.attributes) {
     if (existingAttrs.has(attr[1])) continue
     console.log(`  + attribut ${c.id}.${attr[1]} (${attr[0]})`)
@@ -156,6 +204,7 @@ for (const c of SCHEMA) {
     console.log(`  + index ${c.id}.${key} (${type})`)
     if (apply) await db.createIndex(DB, c.id, key, type, attributes)
   }
+  if (apply) await waitForIndexes(c.id)
 }
 console.log(apply ? 'Terminé.' : 'Rien n\'a été modifié.')
-console.log('Variables à définir : APPWRITE_COLLECTION_AO_EMAILS=ao_emails  APPWRITE_COLLECTION_AO_OFFERS=ao_offers  APPWRITE_COLLECTION_AO_STATE=ao_sync_state')
+console.log('Variables à définir : APPWRITE_COLLECTION_AO_EMAILS=ao_emails  APPWRITE_COLLECTION_AO_OFFERS=ao_offers  APPWRITE_COLLECTION_AO_STATE=ao_sync_state  APPWRITE_COLLECTION_AO_SOURCES=ao_sources')

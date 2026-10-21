@@ -14,8 +14,10 @@ import { AiUnavailable, RetryLater, SkipAttachment, formatOf, type Attachment, t
 import { readWithFallback, visionBlockFor, type VisionReader } from './extractors/vision'
 import { openAiContentPart, transcribeWithOpenAI } from './extractors/vision-openai'
 import { batchByLength, nextStepFor } from './repo'
-import { citedClients, companyFromDomain, formatSender, originalSender, parseSender, senderCompany, type Sender } from './origin'
-import { attemptsAfterFailure, manualRetryPatch } from './attempts'
+import { citedClients, companyFromDomain, formatSender, originalSender, parseSender, senderCompany, type Organization, type Sender } from './origin'
+
+const WISE: Organization = { name: 'Wise Associates', ownDomains: ['wise-associates.fr'] }
+import { attemptsAfterFailure, canDeferEmail, manualRetryPatch } from './attempts'
 import { AO_EXCEL_HEADERS, buildAoWorkbook } from './excel'
 import { buildEmailContent } from './extract'
 import { MAX_TABLE_ROWS, readTableAttachment, tableOffersOf } from './spreadsheet'
@@ -121,13 +123,13 @@ describe('anonymisation', () => {
   })
 
   it('masque aussi l\'expéditeur (nom de deux mots ou plus, domaine) mais pas une messagerie publique', () => {
-    const names = namesToHide([], { name: 'Marie Dupont', address: 'marie@esn-conseil.fr' })
+    const names = namesToHide([], [{ name: 'Marie Dupont', address: 'marie@esn-conseil.fr' }])
     assert.equal(scrubContacts('Envoyé par Marie Dupont pour ESN Conseil.', names, 'X'), 'Envoyé par X pour X.')
-    assert.deepEqual(namesToHide([], { name: 'Recrutement', address: 'ao.client@gmail.com' }), [])
+    assert.deepEqual(namesToHide([], [{ name: 'Recrutement', address: 'ao.client@gmail.com' }]), [])
   })
 
   it('masque aussi l\'expéditeur d\'origine d\'un e-mail transféré', () => {
-    const names = namesToHide([], { name: 'Camille Martin', address: 'c.martin@wise-associates.fr' }, { name: 'Dupont, Marie', address: 'marie.dupont@client-exemple.co.uk' })
+    const names = namesToHide([], [{ name: 'Camille Martin', address: 'c.martin@wise-associates.fr' }, { name: 'Dupont, Marie', address: 'marie.dupont@client-exemple.co.uk' }], WISE.ownDomains)
     assert.equal(scrubContacts('Envoyé par Marie Dupont (Dupont, Marie) pour Client Exemple.', names, 'X'), 'Envoyé par X (X) pour X.')
   })
 
@@ -179,7 +181,7 @@ describe('robustesse de la lecture', () => {
 
   const now = new Date('2026-10-19T12:00:00Z')
   const email = (status: AoEmail['status'], attempts: number, minutesAgo: number): AoEmail => ({
-    $id: 'e', messageId: 'm', uid: 1, fromAddress: '', fromName: '', origin: '', deadline: '', citedClients: [], subject: '', receivedAt: '', attachments: [],
+    $id: 'e', sourceId: 's1', messageId: 'm', uid: 1, fromAddress: '', fromName: '', origin: '', deadline: '', citedClients: [], subject: '', receivedAt: '', attachments: [],
     status, error: '', offerCount: 0, duplicateCount: 0, attempts, updatedAt: new Date(now.getTime() - minutesAgo * 60_000).toISOString(),
   })
 
@@ -233,6 +235,14 @@ describe('robustesse de la lecture', () => {
     }
     assert.equal(zipFitsWithin(lying, 1_000), false)
     assert.equal(zipFitsWithin(Buffer.from('pas une archive'), 1_000_000), false)
+  })
+})
+
+describe('report faute de temps', () => {
+  it('traite le premier e-mail d\'une boîte qui a le temps, reporte les autres si besoin', () => {
+    assert.equal(canDeferEmail(0, 120_000, 95_000), false, 'premier e-mail, assez de temps : il passe quoi qu\'il arrive')
+    assert.equal(canDeferEmail(0, 40_000, 95_000), true, 'premier e-mail d\'une boîte lue en fin de passage : reportable')
+    assert.equal(canDeferEmail(3, 200_000, 95_000), true)
   })
 })
 
@@ -752,12 +762,12 @@ describe('expéditeur d\'origine', () => {
   const us = { fromName: 'Camille Martin', fromAddress: 'c.martin@wise-associates.fr' }
 
   it('retrouve l\'expéditeur du message transféré, pas notre collaborateur', () => {
-    assert.deepEqual(originalSender({ ...us, text: forwardedByUs }), { name: 'Dupont, Marie', address: 'marie.dupont@sopra-steria.com' })
+    assert.deepEqual(originalSender({ ...us, text: forwardedByUs }, WISE.ownDomains), { name: 'Dupont, Marie', address: 'marie.dupont@sopra-steria.com' })
   })
 
   it('lit une adresse renvoyée seule à la ligne après « De : »', () => {
     const text = 'De : Marie Dupont (Direction des achats)\n<marie.dupont@client-exemple.fr>\nEnvoyé : lundi'
-    assert.deepEqual(originalSender({ ...us, text }), { name: 'Marie Dupont Direction des achats', address: 'marie.dupont@client-exemple.fr' })
+    assert.deepEqual(originalSender({ ...us, text }, WISE.ownDomains), { name: 'Marie Dupont Direction des achats', address: 'marie.dupont@client-exemple.fr' })
   })
 
   it('remonte au message le plus ancien d\'une chaîne de transferts', () => {
@@ -771,21 +781,21 @@ describe('expéditeur d\'origine', () => {
       '*De :* Achats Client Exemple [mailto:achats@client-exemple.fr]',
       '*Objet :* AO Data engineer',
     ].join('\n')
-    assert.deepEqual(originalSender({ ...us, text }), { name: 'Achats Client Exemple', address: 'achats@client-exemple.fr' })
+    assert.deepEqual(originalSender({ ...us, text }, WISE.ownDomains), { name: 'Achats Client Exemple', address: 'achats@client-exemple.fr' })
   })
 
   it('lit l\'introduction d\'une réponse (« … a écrit : ») et les chevrons encodés', () => {
     const reply = 'Voir ci-dessous.\n\nLe lun. 20 oct. 2026 à 10:12, Marie Martin <marie.martin@client-exemple.fr> a écrit :\n> AO Java'
-    assert.deepEqual(originalSender({ ...us, text: reply }), { name: 'Marie Martin', address: 'marie.martin@client-exemple.fr' })
+    assert.deepEqual(originalSender({ ...us, text: reply }, WISE.ownDomains), { name: 'Marie Martin', address: 'marie.martin@client-exemple.fr' })
     const html = 'De : Marie Dupont &lt;marie.dupont@client-exemple.fr&gt;'
-    assert.deepEqual(originalSender({ ...us, text: html }), { name: 'Marie Dupont', address: 'marie.dupont@client-exemple.fr' })
+    assert.deepEqual(originalSender({ ...us, text: html }, WISE.ownDomains), { name: 'Marie Dupont', address: 'marie.dupont@client-exemple.fr' })
   })
 
   it('lit vite un corps construit pour ralentir la recherche d\'en-têtes', () => {
     const traps = ['Bonjour\n' + '\n'.repeat(1_000_000) + 'Merci', 'De : ' + 'a'.repeat(1_000_000), 'From' + ' \n'.repeat(500_000) + ':']
     for (const text of traps) {
       const started = Date.now()
-      assert.equal(originalSender({ ...us, text }), null)
+      assert.equal(originalSender({ ...us, text }, WISE.ownDomains), null)
       assert.ok(Date.now() - started < 1_000, `${Date.now() - started} ms`)
     }
   })
@@ -800,8 +810,8 @@ describe('expéditeur d\'origine', () => {
 
   it('garde l\'expéditeur de l\'e-mail s\'il n\'y a pas de transfert, et rien s\'il vient de chez nous', () => {
     const direct = { fromName: 'ESN Conseil', fromAddress: 'AO@esn-conseil.fr', text: 'De : 3 à 5 ans d\'expérience\nMission longue' }
-    assert.deepEqual(originalSender(direct), { name: 'ESN Conseil', address: 'ao@esn-conseil.fr' })
-    assert.equal(originalSender({ ...us, text: 'AO saisi à la main : chef de projet à Lyon.' }), null)
+    assert.deepEqual(originalSender(direct, WISE.ownDomains), { name: 'ESN Conseil', address: 'ao@esn-conseil.fr' })
+    assert.equal(originalSender({ ...us, text: 'AO saisi à la main : chef de projet à Lyon.' }, WISE.ownDomains), null)
   })
 })
 
@@ -816,19 +826,19 @@ describe('client d\'une offre AO', () => {
     assert.equal(companyFromDomain('achats@orange.com'), 'Orange', 'orange.fr est grand public, orange.com une entreprise')
     assert.equal(companyFromDomain('x@orange.fr'), '')
     assert.equal(companyFromDomain('rh@caisse-des-depots.fr'), 'Caisse des Depots')
-    assert.equal(companyFromDomain('c.martin@wise-associates.fr'), '')
+    assert.equal(companyFromDomain('c.martin@wise-associates.fr', WISE.ownDomains), '')
     assert.equal(companyFromDomain(''), '')
   })
 
   it('préfère le nom lu par l\'IA dans la signature, sinon le domaine', () => {
-    assert.equal(senderCompany(sopra, ['Sopra Steria Group', '', 'Sopra Steria Group', 'BNP Paribas']), 'Sopra Steria Group')
-    assert.equal(senderCompany(sopra, ['', 'Wise Associates']), 'Sopra Steria', 'jamais notre propre nom')
-    assert.equal(senderCompany(sopra, []), 'Sopra Steria', 'offres lues dans un tableau, sans IA')
-    assert.equal(senderCompany({ name: 'Recrutement', address: 'ao.client@gmail.com' }, []), null, 'entreprise inconnue : chaque offre garde son client')
+    assert.equal(senderCompany(sopra, ['Sopra Steria Group', '', 'Sopra Steria Group', 'BNP Paribas'], WISE), 'Sopra Steria Group')
+    assert.equal(senderCompany(sopra, ['', 'Wise Associates'], WISE), 'Sopra Steria', 'jamais notre propre nom')
+    assert.equal(senderCompany(sopra, [], WISE), 'Sopra Steria', 'offres lues dans un tableau, sans IA')
+    assert.equal(senderCompany({ name: 'Recrutement', address: 'ao.client@gmail.com' }, [], WISE), null, 'entreprise inconnue : chaque offre garde son client')
   })
 
   it('borne le nom tiré d\'un domaine à la taille du champ client', () => {
-    assert.ok(senderCompany({ name: '', address: `a@${'b'.repeat(250)}.fr` }, [])!.length <= 200)
+    assert.ok(senderCompany({ name: '', address: `a@${'b'.repeat(250)}.fr` }, [], WISE)!.length <= 200)
   })
 
   it('garde les clients cités par l\'appel d\'offres pour les masquer à la publication', () => {
@@ -836,11 +846,11 @@ describe('client d\'une offre AO', () => {
     const extracted = [offer({ companyName: 'ESN Conseil', endClient: 'BNP Paribas', title: 'Développeur React - BNP Paribas' }), offer({ companyName: '', endClient: '' })]
     const cited = citedClients(extracted)
     assert.deepEqual(cited, ['ESN Conseil', 'BNP Paribas'])
-    const pub = toPublicOffer({ ...extracted[0], companyName: 'ESN Conseil' }, namesToHide(['ESN Conseil', ...cited], { name: '', address: 'ao@esn-conseil.fr' }))
+    const pub = toPublicOffer({ ...extracted[0], companyName: 'ESN Conseil' }, namesToHide(['ESN Conseil', ...cited], [{ name: '', address: 'ao@esn-conseil.fr' }]))
     assert.ok(!/BNP|ESN/i.test(JSON.stringify(pub)), JSON.stringify(pub))
   })
 
   it('laisse le client lu dans l\'offre quand l\'expéditeur d\'origine est inconnu', () => {
-    assert.equal(senderCompany(null, ['BNP Paribas']), null)
+    assert.equal(senderCompany(null, ['BNP Paribas'], WISE), null)
   })
 })

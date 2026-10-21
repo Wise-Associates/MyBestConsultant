@@ -32,9 +32,10 @@ const words = (text: string) => tokens(text).map(t => t.word)
 /**
  * Noms à masquer, sous forme de suites de mots normalisés (casse, accents et ponctuation ignorés) : chaque client
  * (celui de l'offre et ceux que cite l'appel d'offres) tel qu'extrait, sans forme juridique, son sigle entre
- * parenthèses, puis le nom et le domaine de chaque expéditeur (celui de l'e-mail et celui du message d'origine).
+ * parenthèses, puis le nom et le domaine de chaque expéditeur (celui de l'e-mail et celui du message d'origine),
+ * sauf ceux de l'organisation elle-même (`ownDomains`) et des messageries grand public.
  */
-export function namesToHide(clients: string[], ...senders: Partial<Sender>[]): string[][] {
+export function namesToHide(clients: string[], senders: Partial<Sender>[] = [], ownDomains: string[] = []): string[][] {
   const variants: string[][] = []
   for (const client of clients) {
     const full = words(client)
@@ -49,7 +50,7 @@ export function namesToHide(clients: string[], ...senders: Partial<Sender>[]): s
     // Outlook écrit « Dupont, Marie » ; le texte, lui, dit « Marie Dupont ».
     const [last, first] = (sender.name ?? '').split(',', 2)
     if (first && words(`${first} ${last}`).length >= 2) variants.push(words(`${first} ${last}`))
-    const domain = identifyingLabel(sender.address ?? '')
+    const domain = identifyingLabel(sender.address ?? '', ownDomains)
     if (domain) variants.push(words(domain))
   }
 
