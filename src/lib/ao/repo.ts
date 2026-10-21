@@ -1,4 +1,5 @@
 import { ID, Query, type Models } from 'node-appwrite'
+import { z } from 'zod'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { MAX_ATTEMPTS } from './attempts'
@@ -266,6 +267,47 @@ export async function saveAoOfferDetails(offerId: string, details: AoOfferDetail
   } catch (err) {
     if ((err as { code?: number }).code !== 409) throw err
     await databases.updateDocument(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, offerId, data)
+  }
+}
+
+const SourcingRecordSchema = z.object({
+  at: z.string(),
+  scanned: z.number(),
+  candidates: z.array(z.object({ candidateId: z.string(), score: z.number(), reason: z.string() })),
+})
+/** Dernier sourcing d'une offre AO non publiée : candidats retenus (identifiant, score, raison), sans nom ni e-mail. */
+export type AoSourcingRecord = z.infer<typeof SourcingRecordSchema>
+
+/** Sourcing enregistré d'une offre ; null s'il n'a jamais été fait (ou s'il est illisible : il sera recalculé). */
+export async function getAoOfferSourcing(offerId: string): Promise<AoSourcingRecord | null> {
+  const { databases } = createAdminClient()
+  let raw: unknown
+  try {
+    raw = (await databases.getDocument(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, offerId)).sourcing
+  } catch (err) {
+    if ((err as { code?: number }).code === 404) return null
+    throw err
+  }
+  if (typeof raw !== 'string' || !raw) return null
+  try {
+    const parsed = SourcingRecordSchema.safeParse(JSON.parse(raw))
+    if (parsed.success) return parsed.data
+  } catch {
+    // JSON illisible : traité comme absent (journalisé ci-dessous), le prochain sourcing le remplace.
+  }
+  console.warn('AO: sourcing enregistré illisible, ignoré', offerId)
+  return null
+}
+
+/** Enregistre le dernier sourcing d'une offre (document de détails créé s'il n'existe pas encore). */
+export async function saveAoOfferSourcing(offerId: string, record: AoSourcingRecord): Promise<void> {
+  const { databases } = createAdminClient()
+  const sourcing = JSON.stringify(record).slice(0, 5000)
+  try {
+    await databases.updateDocument(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, offerId, { sourcing })
+  } catch (err) {
+    if ((err as { code?: number }).code !== 404) throw err
+    await databases.createDocument(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, offerId, { engagement: '', technologies: [], sourcing })
   }
 }
 
