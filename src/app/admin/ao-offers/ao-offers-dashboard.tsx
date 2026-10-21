@@ -105,7 +105,7 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, mailbox
       </div>
 
       {!inboxConfigured && (
-        <Banner tone="error" text="Aucune boîte de la plateforme n'est active : la lecture automatique est arrêtée. Enregistrez la boîte ao@ avec npm run ao:migrate-sources (voir docs/adr/0005)." />
+        <Banner tone="error" text="Aucune boîte de la plateforme n'est active : la lecture automatique est arrêtée. Enregistrez la boîte de la plateforme (AO_IMAP_USER) avec npm run ao:migrate-sources (voir docs/adr/0005)." />
       )}
       {mailboxIssues.map(m => (
         <Banner key={m.label} tone="error" text={`Boîte ${m.label}${m.at ? ` (tentative du ${formatDay(m.at)})` : ''} : ${m.error}`} />
