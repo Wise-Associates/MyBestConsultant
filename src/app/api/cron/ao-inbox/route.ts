@@ -12,6 +12,8 @@ export async function GET(req: NextRequest) {
   }
   try {
     const report = await syncAoInbox({ budgetMs: 240_000, holder: 'cron' })
+    // Personne ne lit la réponse d'un cron : le journal Vercel est le seul endroit où le voir.
+    if (report.aiUnavailable) console.warn('AO inbox: IA indisponible (crédits épuisés ou clé refusée) — e-mails en attente, voir /admin/ao-offers')
     return NextResponse.json(report)
   } catch (err) {
     // Connexion IMAP, Appwrite ou IA indisponible : visible dans les logs, réessayé au passage suivant.
