@@ -4,8 +4,10 @@ import { useEffect, useState, useTransition, type ReactNode } from 'react'
 import { AlertTriangle, Ban, Download, ExternalLink, Loader2, Paperclip, RotateCcw, Send, Users, X } from 'lucide-react'
 import type { AoOfferRow } from '@/lib/ao/filters'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
-import { previewAoPublication, publishAoOffer, setAoOfferStatus, sourceAoOfferCandidates, type PublicationDraft, type PublicationPreview } from './actions'
-import type { CandidateMatch } from '@/lib/sourcing-core'
+import {
+  previewAoPublication, publishAoOffer, setAoOfferStatus, sourceAoOfferCandidates, storedAoOfferMatches,
+  type PublicationDraft, type PublicationPreview, type SourcedCandidate, type SourcingResult,
+} from './actions'
 import { AoDescription } from './ao-description'
 import {
   CONTRACT_LABEL, ENGAGEMENT_LABEL, REMOTE_LABEL, STATUS_UI, control, fieldLabel, formatAmount, formatDay, optionStyle, primaryButton, secondaryButton,
@@ -123,7 +125,7 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
             </div>
           </section>
         )}
-        <Sourcing offerId={row.$id} />
+        <Sourcing offerId={row.$id} published={published} />
         <Originals emailId={row.emailId} attachments={row.attachments} />
         <section>
           <p style={{ ...fieldLabel, marginBottom: 12 }}>Description</p>
@@ -259,50 +261,61 @@ function Originals({ emailId, attachments }: { emailId: string; attachments: str
   )
 }
 
+const ORIGIN_LABEL: Record<SourcedCandidate['origin'], string> = { live: 'Base candidats', pool: 'Base candidats', vivier: 'Vivier', application: 'Candidature' }
+
 /**
- * « Sourcing » : candidats de la base les mieux notés pour cette offre, avec la raison donnée par l'IA. Lancé au clic
- * (un appel d'IA, plusieurs CV lus : quelques dizaines de secondes), rien n'est enregistré.
+ * « Sourcing » : candidats les mieux notés pour cette offre, avec la raison donnée par l'IA. Offre publiée : le matching
+ * enregistré à la publication est lu tout de suite (sans appel d'IA), « Recalculer » le refait. Offre non publiée :
+ * calcul à la demande (un appel d'IA, plusieurs CV lus : environ une minute), rien n'est enregistré.
  */
-function Sourcing({ offerId }: { offerId: string }) {
-  const [state, setState] = useState<{ matches: CandidateMatch[]; scanned: number } | null>(null)
-  const [error, setError] = useState('')
+function Sourcing({ offerId, published }: { offerId: string; published: boolean }) {
+  const [result, setResult] = useState<SourcingResult | null>(null)
   const [pending, startTransition] = useTransition()
+  useEffect(() => {
+    if (!published) return
+    startTransition(async () => setResult(await storedAoOfferMatches(offerId)))
+  }, [offerId, published])
   const run = () => startTransition(async () => {
-    setError('')
-    const res = await sourceAoOfferCandidates(offerId)
-    if (res.matches) setState({ matches: res.matches, scanned: res.scanned ?? 0 })
-    else setError(res.error ?? 'Sourcing impossible.')
+    setResult(published ? await storedAoOfferMatches(offerId, true) : await sourceAoOfferCandidates(offerId))
   })
+  const candidates = result?.candidates
+  const label = pending ? (result || !published ? 'Analyse des CV…' : 'Lecture du matching…') : published ? 'Recalculer' : candidates ? 'Relancer le sourcing' : 'Trouver des candidats'
   return (
     <section>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p style={{ ...fieldLabel, marginBottom: 0 }}>Sourcing : candidats correspondants</p>
         <button type="button" onClick={run} disabled={pending} style={{ ...secondaryButton, fontSize: 13 }}>
           {pending ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />}
-          {pending ? 'Analyse des CV…' : state ? 'Relancer le sourcing' : 'Trouver des candidats'}
+          {label}
         </button>
       </div>
       <div aria-live="polite">
-        {error && <p role="alert" className="text-sm mt-2" style={{ color: '#b91c1c' }}>{error}</p>}
-        {state && (
-          state.matches.length === 0 ? (
-            <p className="text-sm mt-2" style={{ color: 'var(--admin-fg-muted)' }}>Aucun candidat proposé parmi les {state.scanned} CV analysés.</p>
-          ) : (
-            <>
-              <p className="text-xs mt-2" style={{ color: 'var(--admin-fg-muted)' }}>{state.matches.length} meilleurs candidats parmi {state.scanned} CV analysés (score de 0 à 100).</p>
-              <ul className="mt-2 space-y-2">
-                {state.matches.map(m => (
-                  <li key={m.candidateId} className="flex items-start gap-3 p-3 rounded-lg" style={{ background: 'var(--admin-panel-raised)' }}>
-                    <span className="text-sm font-semibold w-10 text-right shrink-0" style={{ color: 'var(--admin-fg)', fontVariantNumeric: 'tabular-nums' }}>{m.score}</span>
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium" style={{ color: 'var(--admin-fg)' }}>{m.name || 'Candidat sans nom'}</span>
-                      <span className="block text-xs mt-0.5" style={{ color: 'var(--admin-fg-muted)' }}>{m.reason}</span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )
+        {result?.error && <p role="alert" className="text-sm mt-2" style={{ color: '#b91c1c' }}>{result.error}</p>}
+        {!published && !result && (
+          <p className="text-xs mt-2" style={{ color: 'var(--admin-fg-muted)' }}>À la publication, le matching est calculé et enregistré automatiquement ; d&apos;ici là, il est calculé à la demande.</p>
+        )}
+        {candidates && (
+          <p className="text-xs mt-2" style={{ color: 'var(--admin-fg-muted)' }}>
+            {published
+              ? (result?.computedAt ? `Matching enregistré le ${formatDay(result.computedAt)}` : 'Matching de la base pas encore calculé') + ` : ${candidates.length} meilleurs candidats (score de 0 à 100).`
+              : `${candidates.length} meilleurs candidats parmi ${result?.scanned ?? 0} CV analysés (score de 0 à 100).`}
+          </p>
+        )}
+        {candidates && candidates.length > 0 && (
+          <ul className="mt-2 space-y-2">
+            {candidates.map(c => (
+              <li key={c.id} className="flex items-start gap-3 p-3 rounded-lg" style={{ background: 'var(--admin-panel-raised)' }}>
+                <span className="text-sm font-semibold w-10 text-right shrink-0" style={{ color: 'var(--admin-fg)', fontVariantNumeric: 'tabular-nums' }}>{c.score ?? '—'}</span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium" style={{ color: 'var(--admin-fg)' }}>
+                    {c.name || 'Candidat sans nom'}
+                    <span className="ml-2 text-xs font-normal" style={{ color: 'var(--admin-fg-muted)' }}>{ORIGIN_LABEL[c.origin]}</span>
+                  </span>
+                  <span className="block text-xs mt-0.5" style={{ color: 'var(--admin-fg-muted)' }}>{c.reason || 'Analyse en attente.'}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </section>
