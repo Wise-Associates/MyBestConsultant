@@ -13,7 +13,8 @@ par leur abonnement.
 ## Décision (avec le métier, 2026-10-21)
 
 - **Qui configure** : le propriétaire de l'organisation (`tenants.recruiterId`) saisit ses boîtes IMAP (serveur,
-  identifiant, mot de passe, dossier) ; plusieurs boîtes par organisation. Authentification par mot de passe.
+  identifiant, mot de passe, dossier) ; plusieurs boîtes par organisation, à n'importe quelle adresse (« ao » dans
+  `ao_emails`, `ao_sources` ou `AO_IMAP_*` désigne le module, les appels d'offres, pas l'adresse de la boîte). Authentification par mot de passe.
 - **Qui voit** : tous les recruteurs de l'organisation voient et publient ses offres AO (en offres de leur
   organisation). L'admin de la plateforme voit et exporte les offres de toutes les organisations (filtre par
   organisation), sans agir sur elles ; il garde la main sur les boîtes de la plateforme.
