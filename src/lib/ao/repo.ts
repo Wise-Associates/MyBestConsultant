@@ -4,7 +4,8 @@ import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { MAX_ATTEMPTS } from './attempts'
 import type { AoOfferRow } from './filters'
 import { parseSender } from './origin'
-import type { AoEmail, AoEmailStatus, AoOffer, AoOfferFields, AoOfferStatus } from './types'
+import type { AoEmail, AoEmailStatus, AoOffer, AoOfferDetails, AoOfferFields, AoOfferStatus } from './types'
+import { engagementOf } from './parse'
 
 // Accès aux collections AO_EMAILS et AO_OFFERS (clé API serveur : aucune permission côté client).
 // À n'appeler que depuis le traitement planifié ou des actions admin vérifiées.
@@ -247,13 +248,40 @@ export async function listAoOffers(max = 2000): Promise<AoOffer[]> {
   return offers
 }
 
+// ── Détails des offres (assistance / forfait, technologies) ─────
+
+/** Enregistre les détails d'une offre (document de même identifiant ; mis à jour s'il existe déjà). */
+export async function saveAoOfferDetails(offerId: string, details: AoOfferDetails): Promise<void> {
+  const { databases } = createAdminClient()
+  const data = { engagement: details.engagement, technologies: details.technologies }
+  try {
+    await databases.createDocument(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, offerId, data)
+  } catch (err) {
+    if ((err as { code?: number }).code !== 409) throw err
+    await databases.updateDocument(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, offerId, data)
+  }
+}
+
+/** Détails des offres `offerIds` (absents : offre reçue avant ces détails, ou sans assistance / forfait ni technologie). */
+export async function listAoOfferDetails(offerIds: string[]): Promise<Map<string, AoOfferDetails>> {
+  const { databases } = createAdminClient()
+  const map = new Map<string, AoOfferDetails>()
+  for (const batch of batchByLength([...new Set(offerIds.filter(Boolean))])) {
+    const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, [Query.equal('$id', batch), Query.limit(batch.length)])
+    for (const doc of res.documents as (Models.Document & Record<string, unknown>)[]) {
+      map.set(doc.$id, { engagement: engagementOf(str(doc.engagement)), technologies: Array.isArray(doc.technologies) ? (doc.technologies as string[]) : [] })
+    }
+  }
+  return map
+}
+
 // ── Conservation (RGPD) ──────────────────────────────────────────
 
 /** Supprime les e-mails et offres AO créés avant `before` (les offres publiques déjà créées restent). */
 export async function purgeAoRecords(before: Date, maxDeletes = 100): Promise<number> {
   const { databases } = createAdminClient()
   let deleted = 0
-  for (const collection of [COLLECTIONS.AO_OFFERS, COLLECTIONS.AO_EMAILS]) {
+  for (const collection of [COLLECTIONS.AO_OFFER_DETAILS, COLLECTIONS.AO_OFFERS, COLLECTIONS.AO_EMAILS]) {
     const res = await databases.listDocuments(DB_ID, collection, [Query.lessThan('$createdAt', before.toISOString()), Query.limit(maxDeletes - deleted)])
     for (const doc of res.documents) {
       // 404 : déjà supprimé par le passage d'une autre organisation, lancé en même temps.
@@ -273,7 +301,7 @@ export async function purgeAoRecords(before: Date, maxDeletes = 100): Promise<nu
  */
 export async function listAoOfferRows(sourceIds: string[], max = 2000): Promise<AoOfferRow[]> {
   const offers = await listAoOffers(max)
-  const emails = await listAoEmailsByIds(offers.map(o => o.emailId))
+  const [emails, details] = await Promise.all([listAoEmailsByIds(offers.map(o => o.emailId)), listAoOfferDetails(offers.map(o => o.$id))])
   const scope = new Set(sourceIds)
   return offers.filter(offer => scope.has(emails.get(offer.emailId)?.sourceId ?? '')).map(offer => {
     const email = emails.get(offer.emailId)
@@ -283,10 +311,13 @@ export async function listAoOfferRows(sourceIds: string[], max = 2000): Promise<
     const sender = origin ?? { name: email?.fromName ?? '', address: email?.fromAddress ?? '' }
     return {
       ...offer,
+      engagement: details.get(offer.$id)?.engagement ?? '',
+      technologies: details.get(offer.$id)?.technologies ?? [],
       senderAddress: sender.address,
       senderName: sender.name,
       forwardedBy: email && origin && origin.address !== email.fromAddress.trim().toLowerCase() ? email.fromName || email.fromAddress : '',
       deadline: email?.deadline ?? '',
+      attachments: email?.attachments ?? [],
       subject: email?.subject ?? '',
       receivedAt: email?.receivedAt ?? offer.createdAt,
     }
