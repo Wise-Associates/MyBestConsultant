@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { logoutAction } from '@/app/(auth)/actions'
@@ -31,14 +32,16 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         boxShadow: '2px 0 12px rgba(11,29,81,0.06)',
       }}>
 
-        {/* Logo */}
-        <div className="h-[64px] flex items-center gap-3 px-4" style={{ borderBottom: '1px solid #e8eaf0' }}>
-          <img src="/logo.png" alt="MyBestConsultant" className="h-10 w-auto object-contain shrink-0" />
+        {/* Logo : retour à l'accueil du site */}
+        <Link href="/" title="Accueil du site" aria-label="My Best Consultant : accueil du site"
+          className="h-[64px] flex items-center gap-3 px-4 no-underline transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-[-2px]"
+          style={{ borderBottom: '1px solid #e8eaf0' }}>
+          <img src="/logo.png" alt="" className="h-10 w-auto object-contain shrink-0" />
           <div>
             <p className="text-sm font-bold leading-tight" style={{ color: '#0B1D51' }}>My Best Consultant</p>
             <p className="text-[11px] font-medium leading-tight" style={{ color: '#9298b0' }}>Admin</p>
           </div>
-        </div>
+        </Link>
 
         {/* Nav */}
         <div className="flex-1 overflow-y-auto py-4">
@@ -75,12 +78,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           background: '#13151E',
           borderBottom: '1px solid rgba(255,255,255,0.07)',
         }}>
-          {/* Mobile brand */}
-          <div className="lg:hidden flex items-center gap-2.5">
+          {/* Mobile brand : retour à l'accueil du site */}
+          <Link href="/" title="Accueil du site" aria-label="My Best Consultant : accueil du site"
+            className="lg:hidden flex items-center gap-2.5 no-underline transition-opacity hover:opacity-80">
             <div className="w-7 h-7 rounded-md flex items-center justify-center text-white text-xs font-black"
               style={{ background: 'linear-gradient(135deg, #B8860B 0%, #DAA520 100%)' }}>M</div>
             <span className="text-white font-bold text-sm">Admin</span>
-          </div>
+          </Link>
           {/* Desktop: empty left side - breadcrumb could go here */}
           <div className="hidden lg:block" />
 
