@@ -26,17 +26,16 @@ function StatCard({ label, value, sub, color, icon: Icon, wide }: {
     <div style={{
       gridColumn: wide ? 'span 2' : undefined,
       borderRadius: 16, padding: '1.25rem 1.5rem',
-      background: 'white',
-      border: '1px solid rgba(11,29,81,0.07)',
-      boxShadow: '0 1px 4px rgba(11,29,81,0.05)',
+      background: 'var(--admin-panel)',
+      border: '1px solid var(--admin-line)',
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem' }}>
         <div>
-          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(11,29,81,0.4)', marginBottom: '0.5rem' }}>
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--admin-fg-muted)', marginBottom: '0.5rem' }}>
             {label}
           </p>
-          <p style={{ fontSize: '2rem', fontWeight: 700, color: '#0B1D51', lineHeight: 1 }}>{value}</p>
-          {sub && <p style={{ fontSize: 11, color: 'rgba(11,29,81,0.4)', marginTop: '0.4rem' }}>{sub}</p>}
+          <p style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--admin-fg)', lineHeight: 1 }}>{value}</p>
+          {sub && <p style={{ fontSize: 11, color: 'var(--admin-fg-muted)', marginTop: '0.4rem' }}>{sub}</p>}
         </div>
         <div style={{ width: 40, height: 40, borderRadius: 12, background: `${color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <Icon style={{ width: 18, height: 18, color }} />
@@ -52,17 +51,17 @@ function CompletionDonut({ rate }: { rate: number }) {
   const circ = 2 * Math.PI * r
   const dash = (rate / 100) * circ
   return (
-    <div style={{ borderRadius: 16, padding: '1.25rem 1.5rem', background: 'white', border: '1px solid rgba(11,29,81,0.07)', boxShadow: '0 1px 4px rgba(11,29,81,0.05)', display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+    <div style={{ borderRadius: 16, padding: '1.25rem 1.5rem', background: 'var(--admin-panel)', border: '1px solid var(--admin-line)', display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
       <svg width="100" height="100" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(11,29,81,0.06)" strokeWidth="10" />
+        <circle cx="50" cy="50" r={r} fill="none" strokeWidth="10" style={{ stroke: 'var(--admin-track)' }} />
         <circle cx="50" cy="50" r={r} fill="none" stroke="#10b981" strokeWidth="10"
           strokeDasharray={`${dash} ${circ}`} strokeLinecap="round" transform="rotate(-90 50 50)" />
-        <text x="50" y="54" textAnchor="middle" fontSize="18" fontWeight="700" fill="#0B1D51">{rate}%</text>
+        <text x="50" y="54" textAnchor="middle" fontSize="18" fontWeight="700" style={{ fill: 'white' }}>{rate}%</text>
       </svg>
       <div>
-        <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(11,29,81,0.4)', marginBottom: '0.5rem' }}>Taux de complétion</p>
-        <p style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0B1D51' }}>Entretiens complétés</p>
-        <p style={{ fontSize: 11, color: 'rgba(11,29,81,0.4)', marginTop: '0.25rem' }}>Terminés + analysés / Total</p>
+        <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--admin-fg-muted)', marginBottom: '0.5rem' }}>Taux de complétion</p>
+        <p style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--admin-fg)' }}>Entretiens complétés</p>
+        <p style={{ fontSize: 11, color: 'var(--admin-fg-muted)', marginTop: '0.25rem' }}>Terminés + analysés / Total</p>
       </div>
     </div>
   )
@@ -72,24 +71,24 @@ function CompletionDonut({ rate }: { rate: number }) {
 function JobBars({ data }: { data: AdminInterviewStats['byJob'] }) {
   const max = Math.max(...data.map(d => d.count), 1)
   return (
-    <div style={{ borderRadius: 16, padding: '1.25rem 1.5rem', background: 'white', border: '1px solid rgba(11,29,81,0.07)', boxShadow: '0 1px 4px rgba(11,29,81,0.05)', gridColumn: 'span 2' }}>
-      <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(11,29,81,0.4)', marginBottom: '1.25rem' }}>Entretiens par poste</p>
+    <div style={{ borderRadius: 16, padding: '1.25rem 1.5rem', background: 'var(--admin-panel)', border: '1px solid var(--admin-line)', gridColumn: 'span 2' }}>
+      <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--admin-fg-muted)', marginBottom: '1.25rem' }}>Entretiens par poste</p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         {data.map(d => (
           <div key={d.title}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
-              <p style={{ fontSize: 12, fontWeight: 600, color: '#0B1D51', maxWidth: '70%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</p>
+              <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--admin-fg)', maxWidth: '70%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</p>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <span style={{ fontSize: 11, color: '#10b981', fontWeight: 600 }}>{d.completedCount} ✓</span>
-                <span style={{ fontSize: 11, color: 'rgba(11,29,81,0.4)' }}>{d.count} total</span>
+                <span style={{ fontSize: 11, color: 'var(--admin-fg-muted)' }}>{d.count} total</span>
               </div>
             </div>
-            <div style={{ height: 6, borderRadius: 6, background: 'rgba(11,29,81,0.06)', overflow: 'hidden' }}>
+            <div style={{ height: 6, borderRadius: 6, background: 'var(--admin-track)', overflow: 'hidden' }}>
               <div style={{ height: '100%', borderRadius: 6, background: 'linear-gradient(90deg,#B8860B,#d4a017)', width: `${(d.count / max) * 100}%`, transition: 'width 0.6s ease' }} />
             </div>
           </div>
         ))}
-        {data.length === 0 && <p style={{ color: 'rgba(11,29,81,0.3)', fontSize: 13 }}>Aucune donnée</p>}
+        {data.length === 0 && <p style={{ color: 'var(--admin-fg-muted)', fontSize: 13 }}>Aucune donnée</p>}
       </div>
     </div>
   )
@@ -118,18 +117,18 @@ export function InterviewsClient({
   })
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8f9fc' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--admin-bg)' }}>
 
       {/* Header */}
-      <div style={{ background: 'white', borderBottom: '1px solid rgba(11,29,81,0.08)', padding: '1.75rem 2.5rem' }}>
+      <div style={{ borderBottom: '1px solid var(--admin-line)', padding: '1.75rem 2.5rem' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
           <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: '#B8860B', marginBottom: '0.35rem' }}>
             Recrutement IA
           </p>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: 300, color: '#0B1D51', lineHeight: 1.2 }}>
+          <h1 style={{ fontSize: '1.6rem', fontWeight: 300, color: 'white', lineHeight: 1.2 }}>
             Entretiens <strong style={{ fontWeight: 700 }}>candidats</strong>
           </h1>
-          <p style={{ fontSize: 13, color: 'rgba(11,29,81,0.45)', marginTop: '0.35rem' }}>
+          <p style={{ fontSize: 13, color: 'var(--admin-fg-muted)', marginTop: '0.35rem' }}>
             {stats.total} entretien{stats.total > 1 ? 's' : ''} · {stats.last7days} cette semaine
           </p>
         </div>
@@ -139,7 +138,7 @@ export function InterviewsClient({
 
         {/* Stats grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-          <StatCard label="Total" value={stats.total} sub={`+${stats.last7days} cette semaine`} color="#0B1D51" icon={Users} />
+          <StatCard label="Total" value={stats.total} sub={`+${stats.last7days} cette semaine`} color="#60a5fa" icon={Users} />
           <StatCard label="En attente" value={stats.pending} color="#f59e0b" icon={Clock} />
           <StatCard label="Terminés" value={stats.completed + stats.analysed} color="#10b981" icon={CheckCircle2} />
           <StatCard label="Analysés IA" value={stats.analysed} color="#a78bfa" icon={Brain} />
@@ -155,12 +154,12 @@ export function InterviewsClient({
         <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {/* Search */}
           <div style={{ position: 'relative', flex: 1, minWidth: 240 }}>
-            <Search style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', width: 15, height: 15, color: 'rgba(11,29,81,0.35)' }} />
+            <Search style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', width: 15, height: 15, color: 'var(--admin-fg-subtle)' }} />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Rechercher candidat, email, poste…"
-              style={{ width: '100%', padding: '0.65rem 0.75rem 0.65rem 2.5rem', borderRadius: 12, border: '1.5px solid rgba(11,29,81,0.1)', background: 'white', fontSize: '0.875rem', color: '#0B1D51', outline: 'none', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '0.65rem 0.75rem 0.65rem 2.5rem', borderRadius: 12, border: '1.5px solid var(--admin-line)', background: 'var(--admin-panel-raised)', fontSize: '0.875rem', color: 'var(--admin-fg)', boxSizing: 'border-box' }}
             />
           </div>
 
@@ -175,9 +174,9 @@ export function InterviewsClient({
             ].map(f => (
               <button key={f.key} onClick={() => setFilterStatus(f.key)}
                 style={{
-                  padding: '0.5rem 1rem', borderRadius: 10, border: `1.5px solid ${filterStatus === f.key ? '#B8860B' : 'rgba(11,29,81,0.1)'}`,
-                  background: filterStatus === f.key ? 'rgba(184,134,11,0.08)' : 'white',
-                  color: filterStatus === f.key ? '#B8860B' : 'rgba(11,29,81,0.5)',
+                  padding: '0.5rem 1rem', borderRadius: 10, border: `1.5px solid ${filterStatus === f.key ? '#B8860B' : 'var(--admin-line)'}`,
+                  background: filterStatus === f.key ? 'rgba(184,134,11,0.08)' : 'var(--admin-panel)',
+                  color: filterStatus === f.key ? '#B8860B' : 'var(--admin-fg-muted)',
                   fontSize: 12, fontWeight: 600, cursor: 'pointer',
                 }}>
                 {f.label}
@@ -187,16 +186,16 @@ export function InterviewsClient({
         </div>
 
         {/* Table */}
-        <div style={{ background: 'white', borderRadius: 16, border: '1px solid rgba(11,29,81,0.07)', boxShadow: '0 1px 4px rgba(11,29,81,0.05)', overflow: 'hidden' }}>
+        <div style={{ background: 'var(--admin-panel)', borderRadius: 16, border: '1px solid var(--admin-line)', overflow: 'hidden' }}>
           {/* Table header */}
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1.5fr 1fr 1fr 40px', gap: '0', padding: '0.75rem 1.5rem', background: 'rgba(11,29,81,0.03)', borderBottom: '1px solid rgba(11,29,81,0.06)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1.5fr 1fr 1fr 40px', gap: '0', padding: '0.75rem 1.5rem', background: 'var(--admin-panel-raised)', borderBottom: '1px solid var(--admin-line)' }}>
             {['Candidat', 'Poste', 'Statut', 'Date', 'Réponses', ''].map(col => (
-              <p key={col} style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(11,29,81,0.4)' }}>{col}</p>
+              <p key={col} style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--admin-fg-muted)' }}>{col}</p>
             ))}
           </div>
 
           {filtered.length === 0 ? (
-            <div style={{ padding: '3rem', textAlign: 'center', color: 'rgba(11,29,81,0.3)' }}>
+            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--admin-fg-muted)' }}>
               <p style={{ fontSize: 14 }}>Aucun entretien trouvé</p>
             </div>
           ) : (
@@ -211,26 +210,26 @@ export function InterviewsClient({
                   style={{
                     display: 'grid', gridTemplateColumns: '2fr 2fr 1.5fr 1fr 1fr 40px',
                     gap: 0, padding: '0.875rem 1.5rem',
-                    borderTop: i > 0 ? '1px solid rgba(11,29,81,0.05)' : 'none',
+                    borderTop: i > 0 ? '1px solid var(--admin-line)' : 'none',
                     alignItems: 'center',
                     transition: 'background 0.15s',
                     cursor: 'pointer',
                   }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(184,134,11,0.04)')}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--admin-panel-raised)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
 
                   {/* Candidat */}
                   <div style={{ minWidth: 0 }}>
-                    <p style={{ fontSize: 13, fontWeight: 600, color: '#0B1D51', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--admin-fg)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {row.candidateName}
                     </p>
-                    <p style={{ fontSize: 11, color: 'rgba(11,29,81,0.4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <p style={{ fontSize: 11, color: 'var(--admin-fg-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {row.candidateEmail || '—'}
                     </p>
                   </div>
 
                   {/* Poste */}
-                  <p style={{ fontSize: 12, color: 'rgba(11,29,81,0.6)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '1rem' }}>
+                  <p style={{ fontSize: 12, color: 'var(--admin-fg-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '1rem' }}>
                     {row.jobTitle}
                   </p>
 
@@ -243,17 +242,17 @@ export function InterviewsClient({
 
                   {/* Date */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                    <Calendar style={{ width: 12, height: 12, color: 'rgba(11,29,81,0.3)', flexShrink: 0 }} />
-                    <span style={{ fontSize: 12, color: 'rgba(11,29,81,0.5)' }}>{dateStr}</span>
+                    <Calendar style={{ width: 12, height: 12, color: 'var(--admin-fg-subtle)', flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, color: 'var(--admin-fg-muted)' }}>{dateStr}</span>
                   </div>
 
                   {/* Réponses */}
                   <div>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: row.transcriptLength > 0 ? '#0B1D51' : 'rgba(11,29,81,0.25)' }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: row.transcriptLength > 0 ? 'var(--admin-fg)' : 'var(--admin-fg-subtle)' }}>
                       {row.transcriptLength > 0 ? `${row.transcriptLength} éch.` : '—'}
                     </span>
                     {row.questionCount > 0 && (
-                      <span style={{ fontSize: 10, color: 'rgba(11,29,81,0.3)', marginLeft: 4 }}>/ {row.questionCount}Q</span>
+                      <span style={{ fontSize: 10, color: 'var(--admin-fg-muted)', marginLeft: 4 }}>/ {row.questionCount}Q</span>
                     )}
                   </div>
 
@@ -261,9 +260,9 @@ export function InterviewsClient({
                   <a href={`/interview/${row.id}`}
                     target="_blank" rel="noreferrer"
                     onClick={e => e.stopPropagation()}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 8, color: 'rgba(11,29,81,0.3)', border: '1px solid rgba(11,29,81,0.1)', textDecoration: 'none' }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 8, color: 'var(--admin-fg-subtle)', border: '1px solid var(--admin-line)', textDecoration: 'none' }}
                     onMouseEnter={e => { e.currentTarget.style.color = '#B8860B'; e.currentTarget.style.borderColor = '#B8860B' }}
-                    onMouseLeave={e => { e.currentTarget.style.color = 'rgba(11,29,81,0.3)'; e.currentTarget.style.borderColor = 'rgba(11,29,81,0.1)' }}>
+                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--admin-fg-subtle)'; e.currentTarget.style.borderColor = 'var(--admin-line)' }}>
                     <ExternalLink style={{ width: 13, height: 13 }} />
                   </a>
                 </div>
@@ -273,7 +272,7 @@ export function InterviewsClient({
         </div>
 
         {filtered.length > 0 && (
-          <p style={{ textAlign: 'center', fontSize: 11, color: 'rgba(11,29,81,0.3)', marginTop: '1rem' }}>
+          <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--admin-fg-muted)', marginTop: '1rem' }}>
             {filtered.length} entretien{filtered.length > 1 ? 's' : ''} · cliquez sur une ligne pour voir les détails
           </p>
         )}
