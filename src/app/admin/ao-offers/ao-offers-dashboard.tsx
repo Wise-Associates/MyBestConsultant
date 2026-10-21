@@ -72,7 +72,7 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, loadErr
   }, [notice])
 
   return (
-    <div className="min-h-full p-8 space-y-6" style={{ color: 'var(--admin-fg)' }}>
+    <div className="admin-light min-h-full p-8 space-y-6">
       {/* En-tête */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>

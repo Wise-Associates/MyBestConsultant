@@ -14,9 +14,9 @@ interface Props { config: SiteConfig }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-admin-line bg-admin-panel overflow-hidden">
-      <div className="px-5 py-3 border-b border-admin-line">
-        <h3 className="text-sm font-semibold text-admin-fg">{title}</h3>
+    <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] overflow-hidden">
+      <div className="px-5 py-3 border-b border-white/[0.07]">
+        <h3 className="text-sm font-semibold text-white/70">{title}</h3>
       </div>
       <div className="p-5 space-y-4">{children}</div>
     </div>
@@ -26,14 +26,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs text-admin-fg-muted uppercase tracking-wider">{label}</Label>
+      <Label className="text-xs text-white/50 uppercase tracking-wider">{label}</Label>
       {children}
-      {hint && <p className="text-xs text-admin-fg-muted">{hint}</p>}
+      {hint && <p className="text-xs text-white/25">{hint}</p>}
     </div>
   )
 }
 
-const inputCls = "bg-admin-panel-raised border-admin-line text-admin-fg placeholder:text-admin-fg-subtle focus:border-admin-line-strong focus:ring-0 rounded-lg"
+const inputCls = "bg-white/[0.05] border-white/[0.1] text-white/80 placeholder:text-white/25 focus:border-white/30 focus:ring-0 rounded-lg"
 
 export function ContentEditor({ config }: Props) {
   const [form, setForm] = useState({
@@ -79,21 +79,21 @@ export function ContentEditor({ config }: Props) {
   }
 
   return (
-    <div className="min-h-full bg-admin-bg text-admin-fg">
+    <div className="min-h-full bg-[#0A0C10] text-white">
 
       {/* Header */}
-      <div className="border-b border-admin-line px-8 py-6 flex items-start justify-between gap-4">
+      <div className="border-b border-white/[0.07] px-8 py-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-admin-fg">Contenu du site</h1>
-          <p className="text-sm text-admin-fg-muted mt-1">
+          <h1 className="text-xl font-semibold text-white">Contenu du site</h1>
+          <p className="text-sm text-white/40 mt-1">
             Textes, images et informations affichés sur la page d&apos;accueil publique.
           </p>
         </div>
         <Button onClick={save} disabled={isPending}
           className={`shrink-0 gap-2 font-semibold ${
             saveStatus === 'ok' ? 'bg-emerald-500 hover:bg-emerald-400 text-white' :
-            saveStatus === 'error' ? 'bg-red-500/20 text-red-700 border border-red-500/30' :
-            'bg-admin-fg text-white hover:bg-admin-fg/90'
+            saveStatus === 'error' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+            'bg-white text-black hover:bg-white/90'
           }`}>
           {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> :
            saveStatus === 'ok' ? <Check className="h-4 w-4" /> :
@@ -103,7 +103,7 @@ export function ContentEditor({ config }: Props) {
       </div>
 
       {saveStatus === 'error' && (
-        <div className="mx-8 mt-4 flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-700 text-sm">
+        <div className="mx-8 mt-4 flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{errorMsg}</span>
         </div>
@@ -120,28 +120,28 @@ export function ContentEditor({ config }: Props) {
               <Input value={form.siteTagline} onChange={e => set('siteTagline', e.target.value)} className={inputCls} />
             </Field>
           </div>
-          <div className="border-t border-admin-line pt-4 space-y-3">
+          <div className="border-t border-white/[0.07] pt-4 space-y-3">
             <div className="flex items-center gap-2 mb-1">
-              <ImageIcon className="h-4 w-4 text-admin-fg-muted" />
-              <p className="text-sm font-medium text-admin-fg-muted">Logo du site</p>
+              <ImageIcon className="h-4 w-4 text-white/40" />
+              <p className="text-sm font-medium text-white/60">Logo du site</p>
             </div>
             <ImageUpload label="Logo (SVG, PNG, ou WebP recommandé)" value={form.logoUrl} onChange={v => set('logoUrl', v)} />
             {form.logoUrl && (
-              <div className="flex items-center gap-4 p-3 rounded-lg bg-admin-panel border border-admin-line">
+              <div className="flex items-center gap-4 p-3 rounded-lg bg-white/[0.04] border border-white/[0.08]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={form.logoUrl} alt="Aperçu logo" className="h-10 w-auto object-contain" onError={e => (e.currentTarget.style.opacity = '0.3')} />
                 <div>
-                  <p className="text-xs text-admin-fg-muted">Aperçu navbar</p>
-                  <p className="text-[10px] text-admin-fg-muted mt-0.5">Hauteur fixe 36px — largeur automatique</p>
+                  <p className="text-xs text-white/50">Aperçu navbar</p>
+                  <p className="text-[10px] text-white/25 mt-0.5">Hauteur fixe 36px — largeur automatique</p>
                 </div>
-                <button onClick={() => set('logoUrl', '')} className="ml-auto p-1.5 rounded-lg hover:bg-admin-panel-raised text-admin-fg-muted hover:text-admin-fg-muted transition-colors">
+                <button onClick={() => set('logoUrl', '')} className="ml-auto p-1.5 rounded-lg hover:bg-white/[0.08] text-white/30 hover:text-white/60 transition-colors">
                   <X className="h-3.5 w-3.5" />
                 </button>
               </div>
             )}
-            <p className="text-[11px] text-admin-fg-muted">Si aucun logo n&apos;est uploadé, l&apos;initiale &quot;M&quot; + le nom du site s&apos;affichent.</p>
+            <p className="text-[11px] text-white/25">Si aucun logo n&apos;est uploadé, l&apos;initiale &quot;M&quot; + le nom du site s&apos;affichent.</p>
           </div>
-          <div className="border-t border-admin-line pt-4">
+          <div className="border-t border-white/[0.07] pt-4">
             <Field label="Email de contact" hint="Utilisé pour le lien « Nous contacter » sur la page d'accueil (ouvre le client mail du visiteur)">
               <Input type="email" value={form.contactEmail} onChange={e => set('contactEmail', e.target.value)} className={inputCls} placeholder="contact@mybestconsultant.fr" />
             </Field>
@@ -163,7 +163,7 @@ export function ContentEditor({ config }: Props) {
         </Section>
 
         <Section title="Référencement (SEO)">
-          <p className="text-xs text-admin-fg-muted">
+          <p className="text-xs text-white/40">
             Contrôle ce que Google et les moteurs de recherche affichent pour la page d&apos;accueil. Laissez vide pour garder les valeurs par défaut.
           </p>
           <Field label="Titre SEO" hint="Affiché dans l'onglet du navigateur et les résultats de recherche (60 caractères max recommandé)">
@@ -185,12 +185,12 @@ export function ContentEditor({ config }: Props) {
         </Section>
 
         <Section title="Logos partenaires (« Ils nous ont fait confiance »)">
-          <p className="text-xs text-admin-fg-muted">
+          <p className="text-xs text-white/40">
             Ajoutez les logos des entreprises partenaires — ils défilent automatiquement sur la page d&apos;accueil, taille harmonisée.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {trustedLogos.map((url, i) => (
-              <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-admin-panel border border-admin-line">
+              <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-white/[0.04] border border-white/[0.08]">
                 <ImageUpload
                   label={`Logo ${i + 1}`}
                   value={url}
@@ -198,7 +198,7 @@ export function ContentEditor({ config }: Props) {
                 />
                 <button
                   onClick={() => setTrustedLogos(prev => prev.filter((_, j) => j !== i))}
-                  className="p-1.5 rounded-lg hover:bg-admin-panel-raised text-admin-fg-muted hover:text-red-700 transition-colors shrink-0"
+                  className="p-1.5 rounded-lg hover:bg-white/[0.08] text-white/30 hover:text-red-400 transition-colors shrink-0"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -209,7 +209,7 @@ export function ContentEditor({ config }: Props) {
             type="button"
             variant="outline"
             onClick={() => setTrustedLogos(prev => [...prev, ''])}
-            className="border-admin-line text-admin-fg-muted hover:bg-admin-panel-raised hover:text-admin-fg"
+            className="border-white/[0.1] text-white/60 hover:bg-white/[0.05] hover:text-white/80"
           >
             + Ajouter un logo
           </Button>
