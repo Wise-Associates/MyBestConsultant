@@ -36,6 +36,14 @@ const OfferSchema = z.object({
   experience: shortText(100),
 })
 
+/**
+ * Offre validée et normalisée à partir de champs bruts (réponse de l'IA, ligne de tableau) ; null sans titre exploitable.
+ */
+export function parseOfferFields(raw: Record<string, unknown>): AoOfferFields | null {
+  const parsed = OfferSchema.safeParse(raw)
+  return parsed.success ? parsed.data : null
+}
+
 export interface ParsedOffers {
   offers: AoOfferFields[]
   /** Nombre d'éléments renvoyés par l'IA mais écartés (pas d'objet, pas de titre…). */

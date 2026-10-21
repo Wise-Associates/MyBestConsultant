@@ -1,10 +1,12 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
-import { AlertCircle, CheckCircle2, Copy, Download, Inbox, Loader2, RefreshCcw, Search, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { AlertCircle, CheckCircle2, Copy, Download, Inbox, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
 import { EMPTY_AO_FILTERS, filterAoOffers, filtersToSearchParams, type AoFilters, type AoOfferRow } from '@/lib/ao/filters'
+import { MAX_ATTEMPTS } from '@/lib/ao/attempts'
+import type { AoSyncReport } from '@/lib/ao/sync'
 import type { AoEmail } from '@/lib/ao/types'
-import { syncAoInboxNow } from './actions'
+import { retryAoEmail, syncAoInboxNow } from './actions'
 import { AoOfferPanel } from './ao-offer-panel'
 import {
   BRAND, CONTRACT_LABEL, REMOTE_LABEL, STATUS_UI, control, formatAmount, formatDay, optionStyle, primaryButton, secondaryButton,
@@ -24,6 +26,9 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, loadErr
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice>(null)
   const [syncing, startSync] = useTransition()
+  const [retrying, startRetry] = useTransition()
+  const [retryingId, setRetryingId] = useState<string | null>(null)
+  const noticeRef = useRef<HTMLDivElement>(null)
 
   // Les lignes viennent du serveur (rafraîchies après chaque action) : seul le filtrage est local.
   const filtered = useMemo(() => filterAoOffers(rows, filters), [rows, filters])
@@ -44,21 +49,27 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, loadErr
     startSync(async () => {
       const res = await syncAoInboxNow()
       if (res.error || !res.report) return setNotice({ tone: 'error', text: res.error ?? 'Synchronisation impossible.' })
-      const r = res.report
-      if (!r.configured) return setNotice({ tone: 'error', text: 'La boîte AO n\'est pas configurée (AO_IMAP_USER / AO_IMAP_PASSWORD).' })
-      if (r.skipped) return setNotice({ tone: 'ok', text: 'Une synchronisation est déjà en cours (passage automatique) : les nouvelles offres apparaîtront à la fin. Réessayez dans quelques minutes si besoin.' })
-      const parts = [
-        `${r.processed} e-mail${r.processed > 1 ? 's' : ''} traité${r.processed > 1 ? 's' : ''}`,
-        `${r.offersCreated} nouvelle${r.offersCreated > 1 ? 's' : ''} offre${r.offersCreated > 1 ? 's' : ''}`,
-        r.duplicates ? `${r.duplicates} doublon${r.duplicates > 1 ? 's' : ''} fusionné${r.duplicates > 1 ? 's' : ''}` : '',
-        r.remaining ? `${r.remaining} restant${r.remaining > 1 ? 's' : ''} pour le prochain passage` : '',
-      ].filter(Boolean)
-      setNotice({
-        tone: r.failed ? 'error' : 'ok',
-        text: `${parts.join(' · ')}${r.failed ? ` — ${r.failed} en erreur : ${r.errors.slice(0, 2).join(' ; ')}` : ''}`,
-      })
+      if (res.report.skipped) return setNotice({ tone: 'ok', text: 'Une synchronisation est déjà en cours (passage automatique) : les nouvelles offres apparaîtront à la fin. Réessayez dans quelques minutes si besoin.' })
+      setNotice(noticeOf(res.report))
     })
   }
+
+  function retry(id: string) {
+    setNotice(null)
+    setRetryingId(id)
+    startRetry(async () => {
+      const res = await retryAoEmail(id)
+      setRetryingId(null)
+      if (res.error || !res.report) return setNotice({ tone: 'error', text: res.error ?? 'Relance impossible.' })
+      if (res.report.skipped) return setNotice({ tone: 'ok', text: 'Une synchronisation est en cours : l\'e-mail est remis en file et sera traité juste après.' })
+      setNotice(noticeOf(res.report, 'E-mail retraité : '))
+    })
+  }
+
+  // Le message s'affiche en haut de la page : on l'amène à l'écran, « Réessayer » étant plus bas.
+  useEffect(() => {
+    if (notice) noticeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [notice])
 
   return (
     <div className="min-h-full p-8 space-y-6" style={{ color: 'rgba(255,255,255,0.87)' }}>
@@ -88,7 +99,7 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, loadErr
         <Banner tone="error" text="La lecture automatique est désactivée : renseignez AO_IMAP_USER et AO_IMAP_PASSWORD dans les variables d'environnement (Vercel et fichier .env local)." />
       )}
       {loadError && <Banner tone="error" text={loadError} />}
-      {notice && <Banner tone={notice.tone} text={notice.text} onClose={() => setNotice(null)} />}
+      <div ref={noticeRef}>{notice && <Banner tone={notice.tone} text={notice.text} onClose={() => setNotice(null)} />}</div>
 
       {/* Indicateurs (cliquables : filtrent la liste) */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -213,11 +224,21 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, loadErr
       {failedEmails.length > 0 && (
         <div className="rounded-2xl p-5 space-y-2" style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.15)' }}>
           <h2 className="font-semibold text-sm text-white">E-mails non traités</h2>
-          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>Réessayés automatiquement jusqu&apos;à 3 fois. Au-delà, traitez-les à la main depuis la boîte AO.</p>
+          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>Réessayés une fois, au passage suivant ; ceux en attente de l&apos;IA (crédits épuisés, service indisponible) sont repris à chaque synchronisation. « Réessayer » remet un e-mail en file pour la prochaine synchronisation ; s&apos;il échoue encore, traitez-le à la main depuis la boîte AO.</p>
           <ul className="space-y-1 text-sm">
             {failedEmails.slice(0, 10).map(e => (
               <li key={e.$id} style={{ color: 'rgba(255,255,255,0.75)' }}>
-                <span style={{ color: 'rgba(255,255,255,0.45)' }}>{formatDay(e.receivedAt)}</span> — {e.subject || e.messageId} <span style={{ color: '#f87171' }}>({e.attempts}/3) {e.error}</span>
+                <span style={{ color: 'rgba(255,255,255,0.45)' }}>{formatDay(e.receivedAt)}</span> — {e.subject || e.messageId} <span style={{ color: '#f87171' }}>({e.attempts}/{MAX_ATTEMPTS}) {e.error}</span>
+                <button
+                  type="button"
+                  onClick={() => retry(e.$id)}
+                  disabled={retrying}
+                  aria-label={`Réessayer l'e-mail « ${e.subject || e.messageId} »`}
+                  style={{ ...secondaryButton, padding: '6px 10px', fontSize: 12, marginLeft: 8, verticalAlign: 'middle', opacity: retrying ? 0.6 : 1 }}
+                >
+                  {retryingId === e.$id ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
+                  Réessayer
+                </button>
               </li>
             ))}
           </ul>
@@ -227,6 +248,22 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, loadErr
       {selected && <AoOfferPanel row={selected} onClose={() => setSelectedId(null)} />}
     </div>
   )
+}
+
+/** Message de fin d'une synchronisation (bouton « Synchroniser maintenant » ou « Réessayer »). */
+function noticeOf(r: AoSyncReport, lead = ''): NonNullable<Notice> {
+  if (!r.configured) return { tone: 'error', text: 'La boîte AO n\'est pas configurée (AO_IMAP_USER / AO_IMAP_PASSWORD).' }
+  const parts = [
+    `${r.processed} e-mail${r.processed > 1 ? 's' : ''} traité${r.processed > 1 ? 's' : ''}`,
+    `${r.offersCreated} nouvelle${r.offersCreated > 1 ? 's' : ''} offre${r.offersCreated > 1 ? 's' : ''}`,
+    r.duplicates ? `${r.duplicates} doublon${r.duplicates > 1 ? 's' : ''} fusionné${r.duplicates > 1 ? 's' : ''}` : '',
+    r.remaining ? `${r.remaining} restant${r.remaining > 1 ? 's' : ''} pour le prochain passage` : '',
+    r.aiUnavailable ? 'IA indisponible (crédits épuisés ou clé refusée) : les e-mails concernés attendent, voir « E-mails non traités »' : '',
+  ].filter(Boolean)
+  return {
+    tone: r.failed ? 'error' : 'ok',
+    text: `${lead}${parts.join(' · ')}${r.failed ? ` — ${r.failed} en erreur : ${r.errors.slice(0, 2).join(' ; ')}` : ''}`,
+  }
 }
 
 function Banner({ tone, text, onClose }: { tone: 'ok' | 'error'; text: string; onClose?: () => void }) {
