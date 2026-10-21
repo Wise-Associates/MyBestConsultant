@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useState, useTransition, type ReactNode } from 'react'
-import { AlertTriangle, Ban, Download, ExternalLink, Loader2, Paperclip, RotateCcw, Send, X } from 'lucide-react'
+import { AlertTriangle, Ban, Download, ExternalLink, Loader2, Paperclip, RotateCcw, Send, Users, X } from 'lucide-react'
 import type { AoOfferRow } from '@/lib/ao/filters'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
-import { previewAoPublication, publishAoOffer, setAoOfferStatus, type PublicationDraft, type PublicationPreview } from './actions'
+import { previewAoPublication, publishAoOffer, setAoOfferStatus, sourceAoOfferCandidates, type PublicationDraft, type PublicationPreview } from './actions'
+import type { CandidateMatch } from '@/lib/sourcing-core'
 import { AoDescription } from './ao-description'
 import {
   CONTRACT_LABEL, ENGAGEMENT_LABEL, REMOTE_LABEL, STATUS_UI, control, fieldLabel, formatAmount, formatDay, optionStyle, primaryButton, secondaryButton,
@@ -122,6 +123,7 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
             </div>
           </section>
         )}
+        <Sourcing offerId={row.$id} />
         <Originals emailId={row.emailId} attachments={row.attachments} />
         <section>
           <p style={{ ...fieldLabel, marginBottom: 12 }}>Description</p>
@@ -253,6 +255,56 @@ function Originals({ emailId, attachments }: { emailId: string; attachments: str
         ))}
       </div>
       {error && <p role="alert" className="text-sm mt-2" style={{ color: '#b91c1c' }}>{error}</p>}
+    </section>
+  )
+}
+
+/**
+ * « Sourcing » : candidats de la base les mieux notés pour cette offre, avec la raison donnée par l'IA. Lancé au clic
+ * (un appel d'IA, plusieurs CV lus : quelques dizaines de secondes), rien n'est enregistré.
+ */
+function Sourcing({ offerId }: { offerId: string }) {
+  const [state, setState] = useState<{ matches: CandidateMatch[]; scanned: number } | null>(null)
+  const [error, setError] = useState('')
+  const [pending, startTransition] = useTransition()
+  const run = () => startTransition(async () => {
+    setError('')
+    const res = await sourceAoOfferCandidates(offerId)
+    if (res.matches) setState({ matches: res.matches, scanned: res.scanned ?? 0 })
+    else setError(res.error ?? 'Sourcing impossible.')
+  })
+  return (
+    <section>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p style={{ ...fieldLabel, marginBottom: 0 }}>Sourcing : candidats correspondants</p>
+        <button type="button" onClick={run} disabled={pending} style={{ ...secondaryButton, fontSize: 13 }}>
+          {pending ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />}
+          {pending ? 'Analyse des CV…' : state ? 'Relancer le sourcing' : 'Trouver des candidats'}
+        </button>
+      </div>
+      <div aria-live="polite">
+        {error && <p role="alert" className="text-sm mt-2" style={{ color: '#b91c1c' }}>{error}</p>}
+        {state && (
+          state.matches.length === 0 ? (
+            <p className="text-sm mt-2" style={{ color: 'var(--admin-fg-muted)' }}>Aucun candidat proposé parmi les {state.scanned} CV analysés.</p>
+          ) : (
+            <>
+              <p className="text-xs mt-2" style={{ color: 'var(--admin-fg-muted)' }}>{state.matches.length} meilleurs candidats parmi {state.scanned} CV analysés (score de 0 à 100).</p>
+              <ul className="mt-2 space-y-2">
+                {state.matches.map(m => (
+                  <li key={m.candidateId} className="flex items-start gap-3 p-3 rounded-lg" style={{ background: 'var(--admin-panel-raised)' }}>
+                    <span className="text-sm font-semibold w-10 text-right shrink-0" style={{ color: 'var(--admin-fg)', fontVariantNumeric: 'tabular-nums' }}>{m.score}</span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium" style={{ color: 'var(--admin-fg)' }}>{m.name || 'Candidat sans nom'}</span>
+                      <span className="block text-xs mt-0.5" style={{ color: 'var(--admin-fg-muted)' }}>{m.reason}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )
+        )}
+      </div>
     </section>
   )
 }
