@@ -8,7 +8,7 @@ import { SENIORITY_LABEL, SENIORITY_ORDER, cityName, offersByMonth, seniorityOf,
 import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 import { BarList, ChartCard, MonthlyBars, StatTile } from '@/components/ao/stats-charts'
 
-// Statistiques des offres AO de la plateforme (même périmètre que /admin/ao-offers) : offres par mois, séniorité,
+// Statistiques des offres AO de la plateforme (même périmètre que /admin/candidats) : offres par mois, séniorité,
 // assistance technique ou forfait, compétences, technologies, TJM, clients, villes.
 export const dynamic = 'force-dynamic'
 
@@ -39,8 +39,8 @@ export default async function AoStatsPage() {
   return (
     <div className="admin-light min-h-full p-4 sm:p-8 space-y-6">
       <div>
-        <Link href="/admin/ao-offers" className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--admin-fg-muted)' }}>
-          <ArrowLeft className="h-3.5 w-3.5" /> AO Offers
+        <Link href="/admin/candidats" className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--admin-fg-muted)' }}>
+          <ArrowLeft className="h-3.5 w-3.5" /> Candidats
         </Link>
         <h1 className="font-bold mt-2" style={{ color: 'var(--admin-fg)', fontSize: '1.5rem' }}>Statistiques des appels d&apos;offres</h1>
         <p className="text-sm mt-1" style={{ color: 'var(--admin-fg-muted)' }}>

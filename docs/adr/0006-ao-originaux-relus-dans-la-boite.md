@@ -15,7 +15,7 @@ L'e-mail d'origine (.eml, en-têtes et signatures compris) et ses pièces jointe
 du téléchargement** (`src/lib/ao/originals.ts`), jamais copiés en base ni dans le stockage :
 
 - l'UID enregistré désigne le message, dont le Message-ID est revérifié (boîte reconstruite : refus) ;
-- route `/api/admin/ao-offers/original/[emailId]` : admin, boîtes de la plateforme seulement ; pièce jointe choisie
+- route `/api/admin/candidats/original/[emailId]` (anciennement `/api/admin/ao-offers/…`) : admin, boîtes de la plateforme seulement ; pièce jointe choisie
   parmi celles enregistrées à la lecture de l'e-mail ;
 - contenu venant d'un expéditeur extérieur : toujours en téléchargement (`application/octet-stream`,
   `Content-Disposition: attachment`, `nosniff`, CSP `sandbox`), jamais affiché par le navigateur.

@@ -91,7 +91,7 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
     ignored: rows.filter(r => r.status === 'ignored').length,
     duplicates: rows.reduce((n, r) => n + r.sourceCount - 1, 0),
   }
-  const exportHref = `/api/admin/ao-offers/export?${filtersToSearchParams(filters).toString()}`
+  const exportHref = `/api/admin/candidats/export?${filtersToSearchParams(filters).toString()}`
   const set = <K extends keyof AoFilters>(key: K, value: AoFilters[K]) => setFilters(f => ({ ...f, [key]: value }))
   const amount = (value: string) => (value.trim() === '' || Number.isNaN(Number(value)) ? null : Math.max(0, Number(value)))
 
@@ -171,18 +171,18 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'var(--admin-fg-muted)' }}>RECRUTEMENT</p>
-          <h1 className="text-[28px] font-bold tracking-tight text-admin-fg">AO Offers</h1>
+          <h1 className="text-[28px] font-bold tracking-tight text-admin-fg">Candidats</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
             Appels d&apos;offres reçus dans les boîtes de la plateforme, lus automatiquement.
             {recentEmails[0] ? ` Dernier e-mail : ${formatDay(recentEmails[0].receivedAt)}.` : ''}
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <Link href="/admin/ao-offers/statistiques" style={secondaryButton}>
+          <Link href="/admin/candidats/statistiques" style={secondaryButton}>
             <BarChart3 size={15} />
             Statistiques
           </Link>
-          <Link href="/admin/ao-offers/boites" style={secondaryButton}>
+          <Link href="/admin/candidats/boites" style={secondaryButton}>
             <Inbox size={15} />
             Boîtes de réception
           </Link>
