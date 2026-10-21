@@ -12,6 +12,8 @@ export interface AoOfferRow extends AoOffer, AoOfferDetails {
   forwardedBy: string
   /** Pièces jointes lues de l'e-mail d'origine (noms ; contenu relu dans la boîte à la demande, originals.ts). */
   attachments: string[]
+  /** Nombre de commentaires internes (comments.ts). */
+  commentCount: number
   /** Date limite de réponse, enregistrée sur l'e-mail d'origine. */
   deadline: string
   subject: string
