@@ -117,6 +117,17 @@ const SCHEMA = [
     indexes: [['holder', 'key', ['holder']], ['kind', 'key', ['kind']]],
   },
   {
+    // Détails d'une offre hors du modèle d'import (src/lib/ao/types.ts : AoOfferDetails) : document de même identifiant
+    // que l'offre (ao_offers est à 16/16 attributs), supprimé avec elle par la purge.
+    id: 'ao_offer_details',
+    name: 'AO offer details',
+    attributes: [
+      ['string', 'engagement', { size: 20 }],
+      ['string', 'technologies', { size: 60, array: true }],
+    ],
+    indexes: [],
+  },
+  {
     // Boîtes lues : celles de la plateforme (tenantId « admin ») et celles des organisations (src/lib/ao/sources.ts).
     // Mot de passe chiffré avec AO_CREDENTIALS_KEY (src/lib/ao/credentials.ts), jamais en clair.
     id: 'ao_sources',
@@ -208,4 +219,4 @@ for (const c of SCHEMA) {
   if (apply) await waitForIndexes(c.id)
 }
 console.log(apply ? 'Terminé.' : 'Rien n\'a été modifié.')
-console.log('Variables à définir : APPWRITE_COLLECTION_AO_EMAILS=ao_emails  APPWRITE_COLLECTION_AO_OFFERS=ao_offers  APPWRITE_COLLECTION_AO_STATE=ao_sync_state  APPWRITE_COLLECTION_AO_SOURCES=ao_sources')
+console.log('Variables à définir : APPWRITE_COLLECTION_AO_EMAILS=ao_emails  APPWRITE_COLLECTION_AO_OFFERS=ao_offers  APPWRITE_COLLECTION_AO_STATE=ao_sync_state  APPWRITE_COLLECTION_AO_SOURCES=ao_sources  APPWRITE_COLLECTION_AO_OFFER_DETAILS=ao_offer_details')

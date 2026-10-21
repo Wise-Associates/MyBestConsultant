@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
-import { AlertCircle, CheckCircle2, Copy, Download, Inbox, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
+import { AlertCircle, BarChart3, CheckCircle2, Copy, Download, Inbox, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
 import { EMPTY_AO_FILTERS, filterAoOffers, filtersToSearchParams, type AoFilters, type AoOfferRow } from '@/lib/ao/filters'
 import { MAX_ATTEMPTS } from '@/lib/ao/attempts'
 import type { AoSyncReport } from '@/lib/ao/sync'
@@ -10,8 +10,9 @@ import type { AoEmail } from '@/lib/ao/types'
 import { retryAoEmail, syncAoInboxNow } from './actions'
 import { AoOfferPanel } from './ao-offer-panel'
 import {
-  BRAND, CONTRACT_LABEL, REMOTE_LABEL, STATUS_UI, control, formatAmount, formatDay, optionStyle, primaryButton, secondaryButton,
+  BRAND, CONTRACT_LABEL, ENGAGEMENT_LABEL, REMOTE_LABEL, STATUS_UI, control, formatAmount, formatDay, optionStyle, primaryButton, secondaryButton,
 } from './labels'
+import { SENIORITY_SHORT, seniorityOf } from '@/lib/ao/stats'
 
 interface Props {
   rows: AoOfferRow[]
@@ -94,6 +95,10 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, mailbox
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <Link href="/admin/ao-offers/statistiques" style={secondaryButton}>
+            <BarChart3 size={15} />
+            Statistiques
+          </Link>
           <Link href="/admin/ao-offers/boites" style={secondaryButton}>
             <Inbox size={15} />
             Boîtes de réception
@@ -190,7 +195,7 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, mailbox
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: '1px solid var(--admin-line)' }}>
-                {['Reçue le', 'Offre', 'Ville', 'Contrat', 'TJM / salaire', 'Compétences', 'Sources', 'Statut'].map(h => (
+                {['Reçue le', 'Offre', 'Ville', 'Séniorité', 'Assistance / Forfait', 'Date limite', 'TJM / salaire', 'Compétences', 'Sources', 'Statut'].map(h => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-medium whitespace-nowrap" style={{ color: 'var(--admin-fg-muted)' }}>{h}</th>
                 ))}
               </tr>
@@ -198,7 +203,7 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, mailbox
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-20" style={{ color: 'var(--admin-fg-muted)' }}>
+                  <td colSpan={10} className="text-center py-20" style={{ color: 'var(--admin-fg-muted)' }}>
                     <Inbox className="h-10 w-10 mx-auto mb-3 opacity-30" />
                     <p>{rows.length === 0 ? 'Aucune offre reçue pour l\'instant. Les appels d\'offres envoyés à la boîte AO apparaîtront ici.' : 'Aucune offre ne correspond à ces filtres.'}</p>
                   </td>
@@ -212,7 +217,9 @@ export function AoOffersDashboard({ rows, recentEmails, inboxConfigured, mailbox
                     <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>{r.companyName || 'Client non précisé'} · {r.senderName || r.senderAddress}</p>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">{r.location || '—'}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{CONTRACT_LABEL[r.contractType]} · {REMOTE_LABEL[r.remote]}</td>
+                  <td className="px-4 py-3 whitespace-nowrap" title={r.experience || undefined}>{SENIORITY_SHORT[seniorityOf(r.experience)]}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">{ENGAGEMENT_LABEL[r.engagement]}</td>
+                  <td className="px-4 py-3 whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>{r.deadline || '—'}</td>
                   <td className="px-4 py-3 whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAmount(r.salary, r.contractType)}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1 max-w-[260px]">

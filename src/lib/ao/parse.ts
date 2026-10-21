@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { contractOf, parseNumber, remoteOf } from '@/lib/job-import'
 import { placeUnlabeledDates } from './dates'
-import type { ExtractedOffer } from './types'
+import type { AoEngagement, ExtractedOffer } from './types'
 
 // La réponse de l'IA est une donnée non fiable : on la valide champ par champ, on normalise ce qui peut
 // l'être (contrat, télétravail, montant, compétences) et on écarte les offres sans titre.
@@ -15,6 +15,24 @@ const shortText = (max: number) => z.unknown().optional().transform(v => asText(
 export class TruncatedAnswerError extends Error {}
 
 export const MAX_SKILLS = 10
+export const MAX_TECHNOLOGIES = 15
+
+const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
+/** Liste de libellés courts (tableau, ou texte séparé par , ; | ou retours à la ligne), sans doublon. */
+const textList = (max: number) => z.unknown().optional().transform(v => {
+  const list = Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[,;|\n]/) : []
+  const clean = list.map(s => String(s ?? '').replace(/[<>]/g, '').trim().slice(0, 60)).filter(Boolean)
+  return [...new Set(clean)].slice(0, max)
+})
+
+/** « Assistance technique », « régie », « AT », « au TJM » → assistance ; « forfait » → forfait ; sinon ''. */
+export function engagementOf(value: string): AoEngagement {
+  const n = fold(value)
+  if (/forfait/.test(n)) return 'forfait'
+  if (/assistance|regie|\bat\b|tjm/.test(n)) return 'assistance'
+  return ''
+}
 
 const OfferSchema = z.object({
   title: shortText(200).pipe(z.string().min(2)),
@@ -26,11 +44,9 @@ const OfferSchema = z.object({
     const n = typeof v === 'number' ? Math.round(v) : parseNumber(String(v ?? ''))
     return n && n > 0 && n < 1_000_000 ? n : null
   }),
-  skills: z.unknown().optional().transform(v => {
-    const list = Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[,;|\n]/) : []
-    const clean = list.map(s => String(s ?? '').replace(/[<>]/g, '').trim().slice(0, 60)).filter(Boolean)
-    return [...new Set(clean)].slice(0, MAX_SKILLS)
-  }),
+  skills: textList(MAX_SKILLS),
+  technologies: textList(MAX_TECHNOLOGIES),
+  engagement: z.unknown().optional().transform(v => engagementOf(asText(v))),
   description: text(20_000),
   duration: shortText(100),
   startDate: shortText(100),

@@ -1,15 +1,17 @@
-import type { AoContract, AoOffer, AoOfferStatus, AoRemote } from './types'
+import type { AoContract, AoOffer, AoOfferDetails, AoOfferStatus, AoRemote } from './types'
 
 // Filtres de la page AO Offers, partagés par l'affichage (navigateur) et l'export Excel (serveur) :
 // le fichier téléchargé contient exactement les offres affichées.
 
 /** Offre enrichie des informations de l'e-mail d'origine. */
-export interface AoOfferRow extends AoOffer {
+export interface AoOfferRow extends AoOffer, AoOfferDetails {
   /** Expéditeur du message d'origine (e-mail transféré), sinon de l'e-mail. */
   senderAddress: string
   senderName: string
   /** Collaborateur qui a transféré l'e-mail à la boîte AO ; vide si l'expéditeur l'a envoyé directement. */
   forwardedBy: string
+  /** Pièces jointes lues de l'e-mail d'origine (noms ; contenu relu dans la boîte à la demande, originals.ts). */
+  attachments: string[]
   /** Date limite de réponse, enregistrée sur l'e-mail d'origine. */
   deadline: string
   subject: string
