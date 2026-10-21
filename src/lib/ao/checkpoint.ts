@@ -5,6 +5,11 @@
 // Règles pures (sans IMAP ni base), testées dans ao.test.ts.
 
 export const LOOKBACK_DAYS = 7
+/**
+ * Lecture complète d'une boîte sans aucun e-mail suivi (nouvelle, ou historique effacé) : tout le courrier de la durée de
+ * conservation des e-mails AO (365 jours), plus ancien n'ayant plus d'intérêt (appels d'offres échus).
+ */
+export const FULL_READ_DAYS = 365
 export const RECONCILE_EVERY_MS = 24 * 3_600_000
 
 export interface Checkpoint {
@@ -20,7 +25,10 @@ export type ReadPlan =
   | { mode: 'incremental'; afterUid: number }
   | { mode: 'reconcile'; since: Date }
 
-export function planRead(checkpoint: Checkpoint | null, uidValidity: string, now: Date): ReadPlan {
+export function planRead(checkpoint: Checkpoint | null, uidValidity: string, now: Date, fullRead = false): ReadPlan {
+  // Lecture complète en cours (repérée par la synchronisation, state.ts) : la fenêtre longue est gardée à chaque passage
+  // jusqu'à ce qu'un rattrapage aille au bout ; sinon un passage inachevé retomberait sur 7 jours.
+  if (fullRead) return { mode: 'reconcile', since: new Date(now.getTime() - FULL_READ_DAYS * 24 * 3_600_000) }
   const due =
     !checkpoint ||
     checkpoint.uidValidity !== uidValidity ||
