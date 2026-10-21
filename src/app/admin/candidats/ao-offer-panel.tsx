@@ -221,7 +221,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function Originals({ emailId, attachments }: { emailId: string; attachments: string[] }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState('')
-  const base = `/api/admin/ao-offers/original/${encodeURIComponent(emailId)}`
+  const base = `/api/admin/candidats/original/${encodeURIComponent(emailId)}`
   const files: { key: string; label: string; url: string; filename: string }[] = [
     { key: 'eml', label: 'E-mail d’origine (.eml)', url: base, filename: `ao-${emailId}.eml` },
     ...attachments.map(name => ({ key: name, label: name, url: `${base}?attachment=${encodeURIComponent(name)}`, filename: name })),
