@@ -100,6 +100,8 @@
   /* Shared page background for every recruiter / candidate module (white → warm off-white) */
   --page-bg: linear-gradient(180deg, #FFFFFF 0%, #F8F7F4 45%, #EFEDE8 100%);
   --hero-text: #FFFFFF;
+  /* Orange de marque (AGENTS.md › Design System) — ne dépend pas du template choisi */
+  --color-brand-orange: #F97316;
   --border-radius: 6px;
   --font-heading: 'Inter', system-ui, sans-serif;
   --font-body: 'Inter', system-ui, sans-serif;
@@ -308,8 +310,8 @@ body { overflow-x: clip; max-width: 100%; }
 .mbc-nav-progress {
   position: fixed; top: 0; left: 0; right: 0; height: 3px;
   z-index: 2147483647;
-  background: #F97316;
-  box-shadow: 0 0 8px rgba(249,115,22,0.6);
+  background: var(--color-brand-orange);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-brand-orange) 60%, transparent);
   transform-origin: left;
   pointer-events: none;
   opacity: 0;
