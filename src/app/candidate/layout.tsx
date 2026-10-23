@@ -4,6 +4,7 @@ import { SiteNavbar } from '@/components/shared/site-navbar'
 import { SiteFooter } from '@/components/shared/site-footer'
 import { LoadingProvider } from '@/components/shared/loading-provider'
 import { VerifyEmailBanner } from '@/components/shared/verify-email-banner'
+import { MbcAssistant } from '@/components/assistant/mbc-assistant'
 
 export default async function CandidateLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser()
@@ -16,7 +17,10 @@ export default async function CandidateLayout({ children }: { children: React.Re
           un vide noir fantôme sous la barre. */}
       <SiteNavbar />
       <VerifyEmailBanner verified={user.emailVerification} />
-      <main className="mbc-app">{children}</main>
+      <main className="mbc-app">
+        {children}
+        <MbcAssistant role="candidate" verified={user.emailVerification} />
+      </main>
       <SiteFooter />
     </LoadingProvider>
   )
