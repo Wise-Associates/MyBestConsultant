@@ -14,6 +14,11 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "30mb",
     },
   },
+  // Template Word de l'export de CV au format ESN, lu sur disque par src/lib/cv-export/export.ts : sans cette
+  // inclusion, il ne serait pas copié dans la fonction Vercel de la route.
+  outputFileTracingIncludes: {
+    "/api/admin/cv-export/*": ["./src/lib/cv-export/templates/**/*"],
+  },
   // La page AO Offers s'appelle « Candidats » (2026-10-21) : l'ancienne adresse reste valable.
   async redirects() {
     return [

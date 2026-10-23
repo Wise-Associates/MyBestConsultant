@@ -6,6 +6,8 @@ import { Query } from 'node-appwrite'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { revalidatePath } from 'next/cache'
 import type { CvProfile } from '@/lib/cv-profile-extract'
+import { cvExportErrorName, isCvExportStorageConfigured, listCvExports } from '@/lib/cv-export/store'
+import { CANDIDATE_ID, versionView, type CvExportVersion } from '@/lib/cv-export/stored'
 
 async function requireAdmin() {
   const user = await getCurrentUser()
@@ -86,5 +88,27 @@ export async function scanCandidateCv(candidateId: string): Promise<{ ok?: boole
     return { ok: true }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur lors du scan' }
+  }
+}
+
+/**
+ * Versions enregistrées de l'export « Format ESN » d'un candidat, pour la fenêtre d'export : anonymisation, langue,
+ * date et CV remplacé depuis, sans fichier ni identifiant. `storage: false` : enregistrement non configuré.
+ */
+export async function getCvExportVersions(candidateId: string): Promise<{ versions: CvExportVersion[]; storage: boolean; error?: string }> {
+  await requireAdmin()
+  if (!isCvExportStorageConfigured()) return { versions: [], storage: false }
+  try {
+    if (!CANDIDATE_ID.test(candidateId)) return { versions: [], storage: true, error: 'Candidat introuvable.' }
+    const { databases } = createAdminClient()
+    const [candidate, stored] = await Promise.all([
+      databases.getDocument(DB_ID, COLLECTIONS.USERS, candidateId),
+      listCvExports(candidateId),
+    ])
+    const cvFileId = typeof candidate.cvFileId === 'string' ? candidate.cvFileId : ''
+    return { versions: stored.map(s => versionView(s, cvFileId)), storage: true }
+  } catch (e) {
+    console.error('[cv-export] lecture des versions enregistrées en échec', candidateId, cvExportErrorName(e))
+    return { versions: [], storage: true, error: 'Versions enregistrées illisibles pour le moment.' }
   }
 }
