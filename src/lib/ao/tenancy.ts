@@ -27,9 +27,14 @@ export function lockIdFor(tenantId: string): string {
 /**
  * Préfixe de chaque compteur quotidien (un caractère, distinct pour chacun). Tests de connexion des boîtes : par
  * organisation (c), par boîte visée toutes organisations confondues (m), pour toute la plateforme (g). Messages à
- * l'assistant IA (src/lib/assistant/host.ts) : par utilisateur (a), pour toute la plateforme (b).
+ * l'assistant IA (src/lib/assistant/host.ts) : par utilisateur (a), pour toute la plateforme (b). Générations « Format
+ * ESN » des recruteurs (src/lib/cv-export/access.ts) : par organisation (x), pour toutes les organisations (y) ; dépôts
+ * (u) et aperçus (p) du modèle CV, par organisation.
  */
-const COUNTER_PREFIX = { vision: 'v', tables: 't', mailboxTests: 'c', mailboxTarget: 'm', mailboxTestsAll: 'g', assistantUser: 'a', assistantAll: 'b' } as const
+const COUNTER_PREFIX = {
+  vision: 'v', tables: 't', mailboxTests: 'c', mailboxTarget: 'm', mailboxTestsAll: 'g', assistantUser: 'a', assistantAll: 'b',
+  cvExportOrg: 'x', cvExportAll: 'y', cvTemplateOrg: 'u', cvTemplatePreview: 'p',
+} as const
 export type DailyCounter = keyof typeof COUNTER_PREFIX
 
 /** Compteur quotidien (jour UTC) d'une organisation, ou d'une autre clé (boîte visée, « plateforme ») : 27 caractères. */
