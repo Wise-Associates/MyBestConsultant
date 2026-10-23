@@ -37,6 +37,8 @@ export interface InboxMessage {
   receivedAt: Date
   text: string
   attachments: InboxAttachment[]
+  /** En-tête « X-Wise-Veille: scraping » : offre relevée par la veille des sites publics (à confirmer par fromVeille). */
+  scraping: boolean
 }
 
 // Les listes ne téléchargent que l'enveloppe de chaque message (Message-ID, taille, date) ; le contenu
@@ -163,6 +165,7 @@ async function openAndWork<T>(client: ImapFlow, settings: AoInboxSettings, work:
             attachments: mail.attachments
               .filter(a => !a.related)
               .map(a => ({ filename: a.filename || 'piece-jointe', contentType: a.contentType || '', content: a.content })),
+            scraping: String(mail.headers.get('x-wise-veille') ?? '').trim().toLowerCase() === 'scraping',
           }
         },
       })

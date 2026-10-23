@@ -1,4 +1,4 @@
-import type { AoContract, AoOffer, AoOfferDetails, AoOfferStatus, AoRemote } from './types'
+import type { AoChannel, AoContract, AoOffer, AoOfferDetails, AoOfferStatus, AoRemote } from './types'
 
 // Filtres de la page AO Offers, partagés par l'affichage (navigateur) et l'export Excel (serveur) :
 // le fichier téléchargé contient exactement les offres affichées.
@@ -18,7 +18,12 @@ export interface AoOfferRow extends AoOffer, AoOfferDetails {
   deadline: string
   subject: string
   receivedAt: string
+  /** Canal d'arrivée (colonne « Source » de la page). */
+  channel: AoChannel
 }
+
+/** Libellé du canal d'arrivée, dans la colonne « Source » et le panneau de détail. */
+export const AO_CHANNEL_LABEL: Record<AoChannel, string> = { email: 'E-mails AO', scraping: 'Scraping' }
 
 export interface AoFilters {
   q: string

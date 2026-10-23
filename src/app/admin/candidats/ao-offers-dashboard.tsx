@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { HoverCard } from '@/components/ui/hover-card'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
-import { AlertCircle, BarChart3, CheckCircle2, Copy, Download, Eye, Inbox, MessageSquare, Trash2, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
-import { EMPTY_AO_FILTERS, filterAoOffers, filtersToSearchParams, type AoFilters, type AoOfferRow } from '@/lib/ao/filters'
+import { AlertCircle, BarChart3, CheckCircle2, Download, Eye, Inbox, MessageSquare, Trash2, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
+import { AO_CHANNEL_LABEL, EMPTY_AO_FILTERS, filterAoOffers, filtersToSearchParams, type AoFilters, type AoOfferRow } from '@/lib/ao/filters'
 import { MAX_ATTEMPTS } from '@/lib/ao/attempts'
 import type { AoSyncReport } from '@/lib/ao/sync'
 import type { AoEmail } from '@/lib/ao/types'
@@ -44,7 +44,7 @@ const TABLE_COLUMNS = [
   { key: 'deadline', label: 'Date limite', width: 92, show: 'hidden md:table-cell' },
   { key: 'tjm', label: 'TJM', title: 'TJM ou salaire', width: 80, show: 'hidden sm:table-cell' },
   { key: 'skills', label: 'Compétences', width: 200, show: 'hidden min-[1400px]:table-cell' },
-  { key: 'sources', label: 'Sources', title: 'Nombre d’e-mails ayant apporté cette offre', width: 72, show: 'hidden 2xl:table-cell' },
+  { key: 'sources', label: 'Source', title: 'Canal d’arrivée : e-mails de la boîte AO, ou veille des sites publics (scraping)', width: 88, show: 'hidden 2xl:table-cell' },
   { key: 'status', label: 'Statut', width: 92, show: 'hidden sm:table-cell' },
   { key: 'actions', label: 'Actions', width: 116, show: '' },
 ] as const satisfies readonly { key: string; label: string; title?: string; width: number | undefined; show: string }[]
@@ -360,11 +360,7 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
                     )}
                   </div>
                 </td>
-                <td className={cell('sources')}>
-                  {r.sourceCount > 1
-                    ? <span className="inline-flex items-center gap-1 text-xs" style={{ color: '#1d4ed8' }} title="Reçue dans plusieurs e-mails"><Copy size={12} />{r.sourceCount}</span>
-                    : <span style={{ color: 'var(--admin-fg-muted)' }}>1</span>}
-                </td>
+                <td className={cell('sources')} style={{ color: 'var(--admin-fg-muted)' }}>{AO_CHANNEL_LABEL[r.channel]}</td>
                 <td className={cell('status')}>
                   <span className="text-xs font-medium px-2 py-1 rounded-md" style={{ color: STATUS_UI[r.status].color, background: 'var(--admin-panel-raised)' }}>{STATUS_UI[r.status].label}</span>
                 </td>
