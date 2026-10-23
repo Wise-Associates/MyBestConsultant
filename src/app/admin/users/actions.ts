@@ -5,6 +5,7 @@ import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
 import { getCurrentUser, createUserAccountAndProfile } from '@/lib/appwrite/auth'
 import { deleteAssistantTurnsForUser, isAssistantStorageConfigured } from '@/lib/assistant/host'
+import { cvExportErrorName, deleteCvExportsForCandidate, isCvExportStorageConfigured, isCvExportStorageMissing } from '@/lib/cv-export/store'
 import { revalidatePath } from 'next/cache'
 import type { UserRole } from '@/types'
 
@@ -103,11 +104,15 @@ export async function toggleUserStatus(authId: string, active: boolean): Promise
   }
 }
 
-export async function deleteUserAccount(authId: string, profileId: string | null): Promise<{ ok?: boolean; error?: string }> {
+export async function deleteUserAccount(authId: string, listedProfileId: string | null): Promise<{ ok?: boolean; error?: string }> {
   try {
     const admin = await requireAdmin()
     if (admin.userId === authId) return { error: 'Vous ne pouvez pas supprimer votre propre compte' }
     const { users, databases } = createAdminClient()
+    // Fiche profil retrouvée côté serveur : la liste de l'admin n'en charge que 500, au-delà elle arrive vide et ses
+    // données (exports de CV compris) resteraient. Celle de la liste ne sert que pour une fiche sans lien vers le compte.
+    const linked = await databases.listDocuments(DB_ID, COLLECTIONS.USERS, [Query.equal('userId', authId), Query.limit(1)])
+    const profileId = linked.documents[0]?.$id ?? listedProfileId
     // Conversations avec l'assistant IA (RGPD), avant le compte : si leur suppression échoue, le compte n'est pas
     // supprimé et l'admin peut recommencer.
     if (isAssistantStorageConfigured()) {
@@ -116,6 +121,20 @@ export async function deleteUserAccount(authId: string, profileId: string | null
       } catch (e) {
         console.error('[assistant] suppression des conversations en échec', e instanceof Error ? e.message : String(e))
         return { error: 'Compte non supprimé : la suppression de ses conversations avec l’assistant IA a échoué. Réessayez.' }
+      }
+    }
+    // CV au format ESN enregistrés pour ce candidat (RGPD), même règle : avant le compte.
+    const hasCvExports = isCvExportStorageConfigured()
+    if (profileId && hasCvExports) {
+      try {
+        await deleteCvExportsForCandidate(profileId)
+      } catch (e) {
+        console.error('[cv-export] suppression des exports en échec', profileId, cvExportErrorName(e))
+        return {
+          error: isCvExportStorageMissing(e)
+            ? 'Compte non supprimé : stockage des CV au format ESN introuvable. Vérifiez APPWRITE_COLLECTION_CV_EXPORTS et APPWRITE_STORAGE_CV_EXPORTS (npm run cv-export:setup).'
+            : 'Compte non supprimé : la suppression de ses CV au format ESN a échoué. Réessayez.',
+        }
       }
     }
     await users.delete(authId)
@@ -128,6 +147,12 @@ export async function deleteUserAccount(authId: string, profileId: string | null
       try {
         await databases.deleteDocument(DB_ID, COLLECTIONS.USERS, profileId)
       } catch { /* profile doc may already be gone */ }
+      // Second passage : un export terminé pendant la suppression a pu être enregistré entre-temps (saveCvExports
+      // revérifie l'existence du candidat après avoir écrit). Un échec ici est journalisé : fichiers
+      // « <profileId>_*.docx » du bucket et documents de ce candidat dans cv_exports, à supprimer à la main.
+      if (hasCvExports) {
+        await deleteCvExportsForCandidate(profileId).catch(e => console.error('[cv-export] second passage de suppression en échec, à supprimer à la main', profileId, cvExportErrorName(e)))
+      }
     }
     revalidatePath('/admin/users')
     return { ok: true }
