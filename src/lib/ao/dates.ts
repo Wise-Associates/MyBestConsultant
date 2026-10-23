@@ -66,6 +66,17 @@ export function placeUnlabeledDates(
 }
 
 /**
+ * Date limite lisible et antérieure au jour de `now` : l'offre ne peut plus recevoir de réponse. Une date illisible
+ * ou absente n'est jamais « passée ». Appliqué aux offres de la veille (scraping), dont la date limite vient de la
+ * source elle-même (décision du 2026-10-23).
+ */
+export function isPastDeadline(deadline: string, now: Date): boolean {
+  if (!deadline.trim()) return false
+  const date = parseOfferDate(deadline, now)
+  return date !== null && date.getTime() < Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+}
+
+/**
  * Date limite d'un e-mail, tirée de celles de ses offres (une seule est enregistrée, sur l'e-mail) : la plus proche
  * des dates lisibles — répondre trop tôt ne fait rien perdre —, sinon la première indiquée ; '' si aucune.
  */
