@@ -322,3 +322,20 @@ body { overflow-x: clip; max-width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   .mbc-nav-progress { transition: none; }
 }
+
+/* ── Assistant IA (module portable src/assistant) ─────────────────────────────────────────────
+   Ses variables --assistant-* associées aux jetons du thème. Rendu dans <main class="mbc-app"> :
+   --hero-bg y est l'anthracite des bandeaux de l'espace connecté. */
+.mbc-assistant {
+  --assistant-accent: var(--color-primary);
+  --assistant-accent-fg: var(--color-primary-fg);
+  --assistant-surface: var(--color-surface);
+  --assistant-muted: var(--color-background);
+  --assistant-border: var(--color-border);
+  --assistant-text: var(--color-text);
+  --assistant-text-muted: var(--color-text-muted);
+  --assistant-header-bg: var(--hero-bg);
+  --assistant-header-fg: var(--hero-text);
+  /* --assistant-danger non associé : le rouge 700 du module reste lisible sur le fond d'erreur teinté,
+     --destructive (rouge 600) passe sous 4,5:1. */
+}

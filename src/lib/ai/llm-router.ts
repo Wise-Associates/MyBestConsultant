@@ -15,6 +15,8 @@ interface RuntimeConfig {
   openSourceModels: OpenSourceModel[]
   // Modèle dédié à un module IA (screening, entretien, matching) ; absent = modèle par défaut.
   moduleRouting: Partial<Record<AIModule, string>>
+  // false : Config IA n'a pas pu être lue, ce sont les valeurs par défaut (refusées en mode strict).
+  loaded: boolean
 }
 
 const DEFAULTS: RuntimeConfig = {
@@ -28,6 +30,7 @@ const DEFAULTS: RuntimeConfig = {
   teckiaApiKey: process.env.TECKIA_API_KEY ?? '',
   openSourceModels: [],
   moduleRouting: {},
+  loaded: true,
 }
 
 // La config est relue à chaque appel (un changement admin est donc actif tout de suite, sans
@@ -74,9 +77,11 @@ async function loadRuntimeConfig(): Promise<RuntimeConfig> {
       teckiaApiKey: cfg.teckiaApiKey || DEFAULTS.teckiaApiKey,
       openSourceModels: sanitizeOpenSourceModels(cfg.openSourceModels),
       moduleRouting: (cfg.moduleRouting && typeof cfg.moduleRouting === 'object' ? cfg.moduleRouting : {}) as RuntimeConfig['moduleRouting'],
+      loaded: true,
     }
-  } catch {
-    return DEFAULTS
+  } catch (err) {
+    console.error('[llm] Config IA illisible, valeurs par défaut utilisées (appels stricts refusés)', err instanceof Error ? err.message : String(err))
+    return { ...DEFAULTS, loaded: false }
   }
 }
 
@@ -90,8 +95,8 @@ async function callClaude(messages: LLMMessage[], systemPrompt: string | undefin
     system: systemPrompt,
     messages: messages.map(m => ({ role: m.role === 'system' ? 'user' : m.role, content: m.content })),
   })
-  const block = response.content[0]
-  return block.type === 'text' ? block.text : ''
+  // Tous les blocs de texte, dans l'ordre ; une réponse sans texte (refus, contenu vide) donne une chaîne vide.
+  return response.content.flatMap(block => (block.type === 'text' ? [block.text] : [])).join('')
 }
 
 /**
@@ -237,6 +242,13 @@ export async function callLLM(
   const cfg = await getRuntimeConfig()
 
   const primary = pickPrimary(cfg, opts)
+  if (opts.strict) {
+    // Strict (assistant IA, test d'un modèle) : jamais un autre modèle que celui demandé — ni celui des valeurs par
+    // défaut quand Config IA est illisible, ni le modèle par défaut quand celui demandé a été retiré ou désactivé.
+    if (!cfg.loaded) throw new LLMNotConfiguredError('Config IA illisible : appel refusé (mode sans repli)')
+    const requested = opts.provider ?? (opts.module ? cfg.moduleRouting[opts.module] : undefined)
+    if (requested && requested !== primary) throw new LLMNotConfiguredError(`Modèle ${requested} introuvable ou désactivé (voir /admin/llm-config)`)
+  }
 
   // Try primary provider first
   try {
