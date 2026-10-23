@@ -14,10 +14,14 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "30mb",
     },
   },
-  // Template Word de l'export de CV au format ESN, lu sur disque par src/lib/cv-export/export.ts : sans cette
-  // inclusion, il ne serait pas copié dans la fonction Vercel de la route.
+  // Modèles Word de l'export de CV au format ESN, lus sur disque par src/lib/cv-export/templates.ts (modèle Wise
+  // Associates par défaut de la plateforme, exemple téléchargeable) : sans cette inclusion, ils ne seraient pas copiés
+  // dans les fonctions Vercel de ces routes.
   outputFileTracingIncludes: {
     "/api/admin/cv-export/*": ["./src/lib/cv-export/templates/**/*"],
+    "/api/admin/cv-templates/*": ["./src/lib/cv-export/templates/**/*"],
+    // Les recruteurs n'ont que l'exemple (sans le contact commercial du modèle Wise) : seul ce dossier.
+    "/api/recruiter/cv-templates/example": ["./src/lib/cv-export/templates/example/**/*"],
   },
   // La page AO Offers s'appelle « Candidats » (2026-10-21) : l'ancienne adresse reste valable.
   async redirects() {

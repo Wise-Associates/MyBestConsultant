@@ -5,9 +5,11 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   Users, Sparkles, ExternalLink, AlertCircle, Mail, Phone,
-  MapPin, Navigation, Building2, FolderSearch, ArrowLeft, Maximize2,
+  MapPin, Navigation, Building2, FolderSearch, ArrowLeft, Maximize2, FileDown,
 } from 'lucide-react'
-import type { CvThequeCandidate } from './actions'
+import { deleteRecruiterCvTemplate, getRecruiterCvExportVersions, saveRecruiterCvTemplate, type CvThequeCandidate } from './actions'
+import { EsnExportDialog } from '@/components/cv-export/esn-export-dialog'
+import { CvTemplateManager, type CvTemplateView } from '@/components/cv-export/cv-template-manager'
 import { SECTORS } from '@/lib/candidate-taxonomy'
 import { Pagination } from '@/components/shared/pagination'
 import { CandidateAvatar } from '@/components/shared/candidate-avatar'
@@ -41,7 +43,20 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function CvthequeClient({ initialCandidates, loadError }: { initialCandidates: CvThequeCandidate[]; loadError?: string }) {
+/** « Format ESN » de l'organisation : son modèle (null : à déposer), et raisons d'un refus de générer ou de déposer. */
+export interface CvExportAccess {
+  template: CvTemplateView | null
+  generationDenied: string | null
+  uploadDenied: string | null
+}
+
+export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExportError }: {
+  initialCandidates: CvThequeCandidate[]
+  loadError?: string
+  cvExport: CvExportAccess | null
+  cvExportError?: string
+}) {
+  const [exportFor, setExportFor] = useState<CvThequeCandidate | null>(null)
   const [includeRows, setIncludeRows] = useState<KeywordRow[]>(emptyKeywordRows())
   const [excludeRows, setExcludeRows] = useState<KeywordRow[]>(emptyKeywordRows())
   const [radiusRange, setRadiusRange] = useState<[number, number]>([0, RADIUS_MAX])
@@ -116,13 +131,21 @@ export function CvthequeClient({ initialCandidates, loadError }: { initialCandid
             style={{ color: 'rgba(255,255,255,0.6)' }}>
             <ArrowLeft className="h-3.5 w-3.5" /> Retour à l&apos;espace recruteur
           </Link>
-          <div className="flex items-center gap-2 mb-1">
-            <FolderSearch className="h-5 w-5" style={{ color: 'var(--color-primary)' }} />
-            <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>CV Thèque</h1>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <FolderSearch className="h-5 w-5" style={{ color: 'var(--color-primary)' }} />
+                <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>CV Thèque</h1>
+              </div>
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
+                Recherchez des profils par compétence, secteur ou mission recherchée
+              </p>
+            </div>
+            {cvExport && (
+              <CvTemplateManager kind="organisation" template={cvExport.template} storage uploadDenied={cvExport.uploadDenied}
+                save={saveRecruiterCvTemplate} remove={deleteRecruiterCvTemplate} />
+            )}
           </div>
-          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-            Recherchez des profils par compétence, secteur ou mission recherchée
-          </p>
         </div>
       </div>
 
@@ -222,6 +245,12 @@ export function CvthequeClient({ initialCandidates, loadError }: { initialCandid
               <p className="text-sm" style={{ color: '#ef4444' }}>{loadError}</p>
             </div>
           )}
+          {cvExportError && (
+            <div role="status" className="flex items-center gap-3 p-4 rounded-2xl" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
+              <AlertCircle className="h-4 w-4 shrink-0" style={{ color: '#b45309' }} />
+              <p className="text-sm" style={{ color: '#b45309' }}>{cvExportError}</p>
+            </div>
+          )}
 
           {filtered.length === 0 ? (
             <div className="rounded-3xl py-20 text-center"
@@ -235,7 +264,10 @@ export function CvthequeClient({ initialCandidates, loadError }: { initialCandid
                 {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} sur {filtered.length} profil{filtered.length > 1 ? 's' : ''}
               </p>
               <div className="space-y-4">
-                {paged.map(c => <CandidateCard key={c.$id} candidate={c} onOpenProfile={() => setOpenProfile(c)} />)}
+                {paged.map(c => (
+                  <CandidateCard key={c.$id} candidate={c} onOpenProfile={() => setOpenProfile(c)}
+                    onExport={cvExport?.template && c.cvFileId ? () => setExportFor(c) : undefined} />
+                ))}
               </div>
               <Pagination page={page} totalPages={totalPages} onChange={setPage} accentColor="var(--color-primary)" />
             </>
@@ -244,6 +276,13 @@ export function CvthequeClient({ initialCandidates, loadError }: { initialCandid
       </div>
 
       {openProfile && <CandidateProfileModal candidate={openProfile} onClose={() => setOpenProfile(null)} />}
+
+      {cvExport?.template && (
+        // key : choix et compte rendu remis à zéro pour chaque candidat
+        <EsnExportDialog key={exportFor?.$id ?? 'none'} candidate={exportFor && { id: exportFor.$id, name: exportFor.name }}
+          onClose={() => setExportFor(null)} endpoint="/api/recruiter/cv-export" loadVersions={getRecruiterCvExportVersions}
+          esn={cvExport.template.esn} generationDenied={cvExport.generationDenied} quotaLimited />
+      )}
 
       <style>{`
         @keyframes mbc-float { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(30px, -20px) scale(1.08); } }
@@ -268,7 +307,7 @@ function StatCard({ icon: Icon, label, value, color }: { icon: React.ElementType
   )
 }
 
-function CandidateCard({ candidate: c, onOpenProfile }: { candidate: CvThequeCandidate; onOpenProfile: () => void }) {
+function CandidateCard({ candidate: c, onOpenProfile, onExport }: { candidate: CvThequeCandidate; onOpenProfile: () => void; onExport?: () => void }) {
   return (
     <div className="rounded-3xl p-6 transition-all duration-300 hover:-translate-y-1"
       style={{
@@ -326,6 +365,16 @@ function CandidateCard({ candidate: c, onOpenProfile }: { candidate: CvThequeCan
               style={{ background: 'var(--color-primary)', color: 'white', boxShadow: '0 8px 20px rgba(11,29,81,0.25)' }}>
               <ExternalLink className="h-3.5 w-3.5" /> Voir le CV
             </a>
+          )}
+          {onExport && (
+            <button type="button" onClick={onExport}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-opacity hover:opacity-90"
+              style={{
+                background: 'color-mix(in srgb, var(--color-primary) 10%, transparent)', color: 'var(--color-primary)',
+                border: '1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)',
+              }}>
+              <FileDown className="h-3.5 w-3.5" /> Format ESN
+            </button>
           )}
           {c.email && (
             <a href={`mailto:${c.email}`}
