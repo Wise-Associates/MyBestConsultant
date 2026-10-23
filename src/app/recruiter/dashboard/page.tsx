@@ -15,6 +15,10 @@ import type { CandidateApp } from './applications-panel'
 import { JobsListClient } from './jobs-list-client'
 import type { Application } from '@/types'
 
+// Les Server Actions de cette page (création d'offre, import, « Publier sur les réseaux ») envoient la publication
+// en arrière-plan : photo de l'affiche par OpenAI (jusqu'à 2 min) puis envoi à Make.
+export const maxDuration = 300
+
 // "Matching IA" badge on the jobs list — how many candidates (pool + vivier) the AI has
 // already matched for each job, without opening the dedicated Matching page per job.
 async function countMatchesByJob(tenantId: string): Promise<Record<string, number>> {

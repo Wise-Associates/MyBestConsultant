@@ -11,14 +11,14 @@ import { testZernioInstagramAction } from './actions'
 const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }
 const field = { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)' }
 
-const KIE_BODY = `{"model":"gpt-image-2-image-to-image","input":{"prompt":"{{1.content.escaped.imagePrompt}}","input_urls":["{{1.content.image.logoUrl}}"],"aspect_ratio":"{{1.content.image.aspectRatio}}","resolution":"1K","output_format":"png"}}`
-const BUFFER_BODY = `{"query":"mutation Publier($input: CreatePostInput!) { createPost(input: $input) { ... on PostActionSuccess { post { id } } ... on MutationError { message } } }","variables":{"input":{"channelId":"ID_DU_CANAL","text":"{{1.content.escaped.linkedin}}","schedulingType":"automatic","mode":"shareNow","assets":[{"image":{"url":"URL_IMAGE"}}]}}}`
+const BUFFER_BODY = `{"query":"mutation Publier($input: CreatePostInput!) { createPost(input: $input) { ... on PostActionSuccess { post { id } } ... on MutationError { message } } }","variables":{"input":{"channelId":"ID_DU_CANAL","text":"{{1.content.escaped.linkedin}}","schedulingType":"automatic","mode":"shareNow","assets":[{"image":{"url":"{{1.content.image.url}}"}}]}}}`
 const BUFFER_IG = `"metadata":{"instagram":{"type":"post","shouldShareToFeed":true}}`
 const CALLBACK_NET = `{"publicationId":"{{1.publicationId}}","results":[{"network":"linkedin","status":"{{if(BUFFER.data.data.createPost.post.id; "published"; "failed")}}","error":"{{BUFFER.data.data.createPost.message}}"}]}`
 
-export function SocialDevPanel({ env, callbackUrl, zernioEnv }: {
+export function SocialDevPanel({ env, callbackUrl, posterEnv, zernioEnv }: {
   env: { webhook: boolean; secret: boolean; configured: boolean }; callbackUrl: string
-  zernioEnv?: { kie: boolean; key: boolean; account: boolean }
+  posterEnv: { openai: boolean; scenes: boolean }
+  zernioEnv?: { key: boolean; account: boolean }
 }) {
   const [copied, setCopied] = useState(false)
   const [secret, setSecret] = useState('')
@@ -81,17 +81,46 @@ export function SocialDevPanel({ env, callbackUrl, zernioEnv }: {
         <button type="button" onClick={() => setGuide(g => !g)} className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: '#e8a33d' }}>{guide ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}Guide de configuration du scénario Make</button>
         {guide && <MakeGuide />}
       </section>
+      <PosterPanel env={posterEnv} />
       {zernioEnv && <ZernioPilot env={zernioEnv} />}
     </>
   )
 }
 
+// Affiche dessinée par la plateforme (ADR 0015) : la photo de la scène est facultative, l'affiche part sans elle.
+function PosterPanel({ env }: { env: { openai: boolean; scenes: boolean } }) {
+  const checks = [
+    { ok: env.openai, label: 'Clé OpenAI', hint: 'Config IA (clé OpenAI) ou variable OPENAI_API_KEY — modèle : OPENAI_IMAGE_MODEL, gpt-image-2 par défaut' },
+    { ok: env.scenes, label: 'Stockage des photos', hint: 'Variable APPWRITE_STORAGE_SOCIAL_SCENES (npm run social:setup)' },
+  ]
+  return (
+    <section className="rounded-2xl p-5 space-y-4" style={card}>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h2 style={{ fontSize: '1rem' }} className="font-semibold text-white">Affiche des publications</h2>
+        <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: env.openai && env.scenes ? 'rgba(52,211,153,0.15)' : 'rgba(232,163,61,0.15)', color: env.openai && env.scenes ? '#34d399' : '#e8a33d' }}>{env.openai && env.scenes ? '● Avec photo' : '● Sans photo'}</span>
+      </div>
+      <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
+        La plateforme dessine l’affiche (logo, textes, charte) ; OpenAI ne génère que la photo de la scène. Sans clé OpenAI ou sans stockage, ou si OpenAI échoue (crédits, délai), l’affiche part sans photo et la raison s’affiche sur la publication.
+      </p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {checks.map(c => (
+          <div key={c.label} className="flex items-start gap-2.5 rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
+            {c.ok ? <CheckCircle2 className="h-4 w-4 mt-0.5 text-emerald-400 shrink-0" /> : <XCircle className="h-4 w-4 mt-0.5 text-red-400 shrink-0" />}
+            <div><p className="text-sm font-semibold text-white/85">{c.label}</p><p className="text-[11px] text-white/40 mt-0.5">{c.hint}</p></div>
+          </div>
+        ))}
+      </div>
+      <a href="/api/social/poster/exemple.png" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: '#e8a33d' }}><ExternalLink className="h-3.5 w-3.5" />Voir l’affiche d’exemple (sans photo)</a>
+    </section>
+  )
+}
+
 // Pilote : publication directe sur Instagram via Zernio, en parallèle de Make + Buffer qui reste le flux de
 // production pour LinkedIn. But : comparer les deux avant de généraliser à d'autres réseaux (voir lib/zernio.ts).
-function ZernioPilot({ env }: { env: { kie: boolean; key: boolean; account: boolean } }) {
+function ZernioPilot({ env }: { env: { key: boolean; account: boolean } }) {
   const [testing, setTesting] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string; permalink?: string } | null>(null)
-  const ready = env.kie && env.key && env.account
+  const ready = env.key && env.account
 
   async function test() {
     setTesting(true); setMsg(null)
@@ -100,7 +129,6 @@ function ZernioPilot({ env }: { env: { kie: boolean; key: boolean; account: bool
   }
 
   const checks = [
-    { ok: env.kie, label: 'Clé kie.ai', hint: 'Variable KIE_API_KEY — la même que dans Make' },
     { ok: env.key, label: 'Clé API Zernio', hint: 'Variable ZERNIO_API_KEY (créée sur zernio.com › API keys)' },
     { ok: env.account, label: 'Compte Instagram connecté', hint: 'Variable ZERNIO_INSTAGRAM_ACCOUNT_ID (après connexion sur zernio.com)' },
   ]
@@ -114,7 +142,7 @@ function ZernioPilot({ env }: { env: { kie: boolean; key: boolean; account: bool
       <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
         LinkedIn reste sur Make + Buffer. Ce bloc teste Zernio uniquement sur Instagram, en parallèle, pour comparer les deux avant de généraliser.
       </p>
-      <div className="grid sm:grid-cols-3 gap-3">
+      <div className="grid sm:grid-cols-2 gap-3">
         {checks.map(c => (
           <div key={c.label} className="flex items-start gap-2.5 rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
             {c.ok ? <CheckCircle2 className="h-4 w-4 mt-0.5 text-emerald-400 shrink-0" /> : <XCircle className="h-4 w-4 mt-0.5 text-red-400 shrink-0" />}
@@ -142,7 +170,7 @@ function ZernioPilot({ env }: { env: { kie: boolean; key: boolean; account: bool
           </span>
         )}
       </div>
-      <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.35)' }}>Ce bouton publie pour de vrai sur le compte Instagram connecté (offre d’exemple) — à utiliser une seule fois pour vérifier, pas comme test répétable.</p>
+      <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.35)' }}>Ce bouton publie pour de vrai sur le compte Instagram connecté (offre et affiche d’exemple) — à utiliser une seule fois pour vérifier, pas comme test répétable. Zernio télécharge l’affiche à son adresse publique : ne fonctionne pas en local.</p>
     </section>
   )
 }
@@ -162,16 +190,11 @@ function MakeGuide() {
   return (
     <ol className="space-y-4 pt-1 list-none p-0">
       {step(1, 'Webhooks › Custom webhook', <>Créez le webhook, activez « Get request headers », copiez son URL dans <code>MAKE_SOCIAL_WEBHOOK_URL</code>. Cliquez sur « Run once » dans Make puis sur « Envoyer un test » sur cette page : Make apprend la structure d’un exemple complet. Ajoutez un filtre sur la flèche suivante : <code>event</code> égal à <code>job.published</code> ET l’en-tête <code>x-mbc-secret</code> égal à votre mot de passe partagé. Le test est ainsi stoppé : rien n’est publié.</>)}
-      {step(2, 'HTTP › Make a request — kie.ai (création de l’image)', <>POST <code>https://api.kie.ai/api/v1/jobs/createTask</code>, en-têtes <code>Authorization: Bearer VOTRE_CLE_KIE</code> et <code>Content-Type: application/json</code>, corps « Raw / JSON », « Parse response » activé :<Code>{KIE_BODY}</Code></>)}
-      {step(3, 'Tools › Sleep', <>90 secondes : le temps que kie.ai génère l’image.</>)}
-      {step(4, 'HTTP › Make a request — kie.ai (récupération)', <>GET <code>https://api.kie.ai/api/v1/jobs/recordInfo?taskId=</code> suivi de <code>data.data.taskId</code> du module 2, même en-tête <code>Authorization</code>, « Parse response » activé. Le résultat contient <code>state</code> (<code>success</code> quand l’image est prête) et <code>resultJson</code>.</>)}
-      {step(5, 'Router après le module 4 — 2 routes', <><strong>Route « image prête »</strong> : filtre <code>data.data.state</code> égal à <code>success</code>, puis les étapes 6 à 10. <strong>Route « échec »</strong> (sans filtre) : un HTTP POST vers <code>{'{{1.callbackUrl}}'}</code>, en-tête <code>Authorization: Bearer VOTRE_MOT_DE_PASSE</code>, corps <code>{'{"publicationId":"{{1.publicationId}}","status":"failed","error":"Image non générée"}'}</code>.</>)}
-      {step(6, 'JSON › Parse JSON (route « image prête »)', <>Champ « JSON string » = <code>data.data.resultJson</code> du module 4. Structure de données : générez-la avec l’exemple <code>{'{"resultUrls":["https://exemple.com/image.png"]}'}</code>. L’URL de l’image est ensuite <code>resultUrls</code> (1er élément).</>)}
-      {step(7, 'HTTP › Make a request — rappel « image prête »', <>POST <code>{'{{1.callbackUrl}}'}</code>, en-tête <code>Authorization: Bearer VOTRE_MOT_DE_PASSE</code>, corps <code>{'{"publicationId":"{{1.publicationId}}","status":"images_ready","images":["URL_IMAGE"]}'}</code>. La plateforme affiche alors « Visuels prêts ».</>)}
-      {step(8, 'Router — 4 routes, une par réseau', <>LinkedIn, Instagram, Facebook, X. Filtre de chaque route : <code>{'{{1.networks.linkedin}}'}</code> (puis <code>instagram</code>, <code>facebook</code>, <code>x</code>) égal à <code>true</code>. Un réseau désactivé dans les réglages est ainsi sauté.</>)}
-      {step(9, 'LinkedIn, Instagram, X : HTTP › Buffer', <>Réutilisez le module Buffer qui fonctionne déjà ailleurs et changez seulement trois valeurs : <code>channelId</code>, le texte (<code>{'{{1.content.escaped.linkedin}}'}</code>, puis <code>instagram</code>, <code>x</code>) et l’URL de l’image. Modèle de corps :<Code>{BUFFER_BODY}</Code>Pour <strong>Instagram</strong>, ajoutez aussi dans <code>input</code> :<Code>{BUFFER_IG}</Code></>)}
-      {step(10, 'Facebook : module natif « Facebook Pages › Create a Photo »', <>Pas besoin de Buffer. Choisissez la Page, source de la photo « URL » = l’URL de l’image, message = <code>{'{{1.content.captions.facebook}}'}</code> (ici le texte NON protégé, pas <code>escaped</code>).</>)}
-      {step(11, 'Dans chaque route : HTTP › rappel du résultat', <>POST <code>{'{{1.callbackUrl}}'}</code>, en-tête <code>Authorization: Bearer VOTRE_MOT_DE_PASSE</code>, corps (adaptez <code>network</code>) :<Code>{CALLBACK_NET}</Code>Pour Facebook, sans module Buffer : <code>{'{"publicationId":"{{1.publicationId}}","results":[{"network":"facebook","status":"published"}]}'}</code>. Quand les 4 réseaux ont répondu, la publication passe à « Publié », « Partiel » ou « Échec ».</>)}
+      {step(2, 'Router — 4 routes, une par réseau', <>LinkedIn, Instagram, Facebook, X. Filtre de chaque route : <code>{'{{1.networks.linkedin}}'}</code> (puis <code>instagram</code>, <code>facebook</code>, <code>x</code>) égal à <code>true</code>. Un réseau désactivé dans les réglages est ainsi sauté. L’affiche est déjà prête : son adresse est <code>{'{{1.content.image.url}}'}</code>, la plateforme la dessine (aucun module de génération d’image dans Make).</>)}
+      {step(3, 'LinkedIn, Instagram, X : HTTP › Buffer', <>Réutilisez le module Buffer qui fonctionne déjà ailleurs et changez seulement deux valeurs : <code>channelId</code> et le texte (<code>{'{{1.content.escaped.linkedin}}'}</code>, puis <code>instagram</code>, <code>x</code>). L’image est <code>{'{{1.content.image.url}}'}</code>. Modèle de corps :<Code>{BUFFER_BODY}</Code>Pour <strong>Instagram</strong>, ajoutez aussi dans <code>input</code> :<Code>{BUFFER_IG}</Code></>)}
+      {step(4, 'Facebook : module natif « Facebook Pages › Create a Photo »', <>Pas besoin de Buffer. Choisissez la Page, source de la photo « URL » = <code>{'{{1.content.image.url}}'}</code>, message = <code>{'{{1.content.captions.facebook}}'}</code> (ici le texte NON protégé, pas <code>escaped</code>).</>)}
+      {step(5, 'Dans chaque route : HTTP › rappel du résultat', <>POST <code>{'{{1.callbackUrl}}'}</code>, en-tête <code>Authorization: Bearer VOTRE_MOT_DE_PASSE</code>, corps (adaptez <code>network</code>) :<Code>{CALLBACK_NET}</Code>Pour Facebook, sans module Buffer : <code>{'{"publicationId":"{{1.publicationId}}","results":[{"network":"facebook","status":"published"}]}'}</code>. Quand les réseaux activés ont répondu, la publication passe à « Publié », « Partiel » ou « Échec ».</>)}
+      {step(6, 'Ancien scénario (avec kie.ai) : à simplifier', <>Supprimez les modules kie.ai (création de l’image, pause de 90 s, récupération), le routeur « image prête / échec », la lecture JSON et le rappel « visuels prêts ». Reliez le webhook directement au routeur des réseaux, et remplacez l’ancienne URL d’image par <code>{'{{1.content.image.url}}'}</code> dans les modules Buffer et Facebook. Videz la file du webhook avant de réactiver le scénario : sinon les anciennes demandes seraient publiées d’un coup.</>)}
     </ol>
   )
 }
