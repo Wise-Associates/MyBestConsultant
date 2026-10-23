@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
 import { getCurrentUser, createUserAccountAndProfile } from '@/lib/appwrite/auth'
+import { deleteAssistantTurnsForUser, isAssistantStorageConfigured } from '@/lib/assistant/host'
 import { revalidatePath } from 'next/cache'
 import type { UserRole } from '@/types'
 
@@ -107,7 +108,22 @@ export async function deleteUserAccount(authId: string, profileId: string | null
     const admin = await requireAdmin()
     if (admin.userId === authId) return { error: 'Vous ne pouvez pas supprimer votre propre compte' }
     const { users, databases } = createAdminClient()
+    // Conversations avec l'assistant IA (RGPD), avant le compte : si leur suppression échoue, le compte n'est pas
+    // supprimé et l'admin peut recommencer.
+    if (isAssistantStorageConfigured()) {
+      try {
+        await deleteAssistantTurnsForUser(authId)
+      } catch (e) {
+        console.error('[assistant] suppression des conversations en échec', e instanceof Error ? e.message : String(e))
+        return { error: 'Compte non supprimé : la suppression de ses conversations avec l’assistant IA a échoué. Réessayez.' }
+      }
+    }
     await users.delete(authId)
+    // Second passage, sessions désormais révoquées : un message envoyé pendant la suppression a pu être enregistré.
+    // Un échec ici est journalisé ; la purge des 90 jours supprimera ce reste.
+    if (isAssistantStorageConfigured()) {
+      await deleteAssistantTurnsForUser(authId).catch(e => console.error('[assistant] second passage de suppression en échec', e instanceof Error ? e.message : String(e)))
+    }
     if (profileId) {
       try {
         await databases.deleteDocument(DB_ID, COLLECTIONS.USERS, profileId)

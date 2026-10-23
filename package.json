@@ -15,7 +15,8 @@
     "ao:poll": "node scripts/ao-poll.mjs",
     "ao:poll:start": "node scripts/ao-poll.mjs start",
     "ao:poll:stop": "node scripts/ao-poll.mjs stop",
-    "ao:poll:status": "node scripts/ao-poll.mjs status"
+    "ao:poll:status": "node scripts/ao-poll.mjs status",
+    "assistant:setup": "node --network-family-autoselection-attempt-timeout=2000 scripts/setup-assistant-collections.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",
