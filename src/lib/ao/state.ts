@@ -161,8 +161,12 @@ export async function takeDailySlot(counter: DailyCounter, key: string, now: Dat
   return false
 }
 
-/** Supprime les compteurs et places quotidiens créés avant `before` (passages planifiés ; 100 au plus par appel). */
-export async function purgeDailyState(before: Date): Promise<void> {
+/**
+ * Supprime les compteurs et places quotidiens créés avant `before` (passages planifiés ; 100 au plus par appel).
+ * Renvoie le nombre de documents trouvés : 100 signifie qu'il en reste peut-être (la purge de l'assistant IA rappelle
+ * alors la fonction, ses places de quota étant bien plus nombreuses).
+ */
+export async function purgeDailyState(before: Date): Promise<number> {
   const { databases } = createAdminClient()
   const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_STATE, [
     Query.equal('kind', ['counter', 'slot']), Query.lessThan('$createdAt', before.toISOString()), Query.limit(100),
@@ -170,6 +174,7 @@ export async function purgeDailyState(before: Date): Promise<void> {
   for (const doc of res.documents) {
     await databases.deleteDocument(DB_ID, COLLECTIONS.AO_STATE, doc.$id).catch(err => { if (codeOf(err) !== 404) throw err })
   }
+  return res.documents.length
 }
 
 /** Compteur quotidien (document à identifiant fixe de AO_STATE) : ajoute `amount` si `limit` n'est pas dépassée. */

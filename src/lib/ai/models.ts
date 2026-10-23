@@ -1,12 +1,14 @@
 // Catalogue et règles de sélection des modèles IA (Module 10) — pur, sans accès base ni clé :
 // partagé par le routeur serveur (llm-router.ts) et l'écran admin /admin/llm-config.
 
-export type AIModule = 'screening' | 'interview' | 'matching'
+export type AIModule = 'screening' | 'interview' | 'matching' | 'assistant'
 
 export const AI_MODULES: { id: AIModule; label: string; description: string }[] = [
   { id: 'screening', label: 'Screening CV', description: 'Score et analyse des candidatures' },
   { id: 'interview', label: 'Entretiens IA', description: 'Questions, relances et analyse des entretiens' },
   { id: 'matching', label: 'Matching IA', description: 'Correspondance offres / profils et sourcing' },
+  // Sans repli (callLLM strict, src/lib/assistant/host.ts) : les conversations ne partent que chez le modèle choisi ici.
+  { id: 'assistant', label: 'Assistant IA', description: 'Questions d’aide des candidats et recruteurs — sans repli : en cas de panne, l’assistant affiche une erreur' },
 ]
 
 export const BUILTIN_MODEL_IDS = ['claude', 'gpt4o', 'teckia'] as const
