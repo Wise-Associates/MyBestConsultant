@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { afterBatch } from '@/lib/ao/sync-loop'
 import { AoOfferPanel } from './ao-offer-panel'
 import {
-  BRAND, CONTRACT_LABEL, ENGAGEMENT_LABEL, REMOTE_LABEL, STATUS_UI, control, formatAmount, formatDay, optionStyle, primaryButton, secondaryButton,
+  BRAND, CONTRACT_LABEL, ENGAGEMENT_LABEL, REMOTE_LABEL, STATUS_UI, control, formatAmount, formatDay, optionStyle, secondaryButton,
 } from './labels'
 import { SENIORITY_SHORT, seniorityOf } from '@/lib/ao/stats'
 
@@ -55,6 +55,13 @@ const SMALL_TEXT = new Set<ColumnKey>(['received', 'city', 'seniority', 'engagem
 const cell = (key: ColumnKey) => `${TABLE_COLUMNS.find(c => c.key === key)!.show} px-3 py-3 truncate${SMALL_TEXT.has(key) ? ' text-xs' : ''}`
 /** Bouton icône de la colonne Actions (cible de 32 px, focus visible). */
 const iconButton = 'inline-flex items-center justify-center w-8 h-8 rounded-lg hover:bg-admin-panel-raised focus-visible:ring-2 focus-visible:ring-offset-1'
+// Barre d'actions de l'en-tête : trois natures, trois traitements. Les pages de la section (Statistiques, Boîtes) sont
+// groupées et discrètes ; la synchronisation devient un contrôle double « en cours | Arrêter » ; l'export est le seul
+// bouton plein, avec le nombre d'offres exportées. Hauteur commune de 40 px, pas d'ombre (page claire). Texte sombre
+// sur l'orange de la marque : le blanc n'y atteint que 2,8:1.
+const toolbarGroup = 'inline-flex items-stretch h-10 rounded-[10px] border border-admin-line-strong bg-admin-panel overflow-hidden'
+const toolbarSegment =
+  'inline-flex items-center gap-2 px-3.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#F97316] disabled:cursor-not-allowed'
 /** Libellé court dans le tableau ; le libellé complet est en infobulle et dans le panneau. */
 const ENGAGEMENT_SHORT = { assistance: 'AT', forfait: 'Forfait', '': '—' } as const
 /** Date courte du tableau (21/10/26) ; la date complète est en infobulle. */
@@ -205,27 +212,40 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <Link href="/admin/candidats/statistiques" style={secondaryButton}>
-            <BarChart3 size={15} />
-            Statistiques
-          </Link>
-          <Link href="/admin/candidats/boites" style={secondaryButton}>
-            <Inbox size={15} />
-            Boîtes de réception
-          </Link>
-          <button type="button" onClick={sync} disabled={syncing || !inboxConfigured} style={{ ...secondaryButton, opacity: syncing || !inboxConfigured ? 0.6 : 1 }}>
-            {syncing ? <Loader2 size={15} className="animate-spin" /> : <RefreshCcw size={15} />}
-            {syncing ? 'Lecture de la boîte…' : 'Synchroniser maintenant'}
-          </button>
-          {syncing && (
-            <button type="button" onClick={() => { stopRequested.current = true }} style={secondaryButton}>
-              <X size={15} />
-              Arrêter
+          <nav aria-label="Pages de la section" className={toolbarGroup}>
+            <Link href="/admin/candidats/statistiques" aria-label="Statistiques" title="Statistiques"
+              className={`${toolbarSegment} text-admin-fg-muted hover:bg-admin-hover hover:text-admin-fg`}>
+              <BarChart3 size={15} aria-hidden />
+              <span className="hidden md:inline">Statistiques</span>
+            </Link>
+            <Link href="/admin/candidats/boites" aria-label="Boîtes de réception" title="Boîtes de réception"
+              className={`${toolbarSegment} border-l border-admin-line text-admin-fg-muted hover:bg-admin-hover hover:text-admin-fg`}>
+              <Inbox size={15} aria-hidden />
+              <span className="hidden md:inline">Boîtes de réception</span>
+            </Link>
+          </nav>
+          <div className={toolbarGroup}>
+            <button type="button" onClick={sync} disabled={syncing || !inboxConfigured}
+              className={`${toolbarSegment} text-admin-fg enabled:hover:bg-admin-hover ${!syncing && !inboxConfigured ? 'opacity-50' : ''}`}>
+              {syncing ? <Loader2 size={15} className="animate-spin motion-reduce:animate-none" aria-hidden /> : <RefreshCcw size={15} aria-hidden />}
+              {syncing ? 'Lecture de la boîte…' : 'Synchroniser maintenant'}
             </button>
-          )}
-          <a href={exportHref} download style={primaryButton}>
-            <Download size={15} />
-            Télécharger Excel ({filtered.length})
+            {syncing && (
+              <button type="button" onClick={() => { stopRequested.current = true }}
+                className={`${toolbarSegment} border-l border-admin-line text-[#b91c1c] hover:bg-[#b91c1c0f]`}>
+                <X size={15} aria-hidden />
+                Arrêter
+              </button>
+            )}
+          </div>
+          <a href={exportHref} download aria-label={`Télécharger Excel (${filtered.length} offres)`}
+            title={`Exporte les ${filtered.length} offres affichées, filtres compris`}
+            className="inline-flex items-center gap-2.5 h-10 pl-3.5 pr-1.5 rounded-[10px] bg-[#F97316] text-[13px] font-semibold text-admin-fg transition-colors hover:bg-[#FB923C] active:bg-[#EA580C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-fg focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg">
+            <Download size={15} aria-hidden />
+            Télécharger Excel
+            <span className="inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-md bg-admin-fg text-white text-xs font-semibold tabular-nums">
+              {filtered.length}
+            </span>
           </a>
         </div>
       </div>
