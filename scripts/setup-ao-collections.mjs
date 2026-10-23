@@ -141,6 +141,9 @@ const SCHEMA = [
       // Dernier sourcing d'une offre non publiée (JSON : date, CV analysés, candidats retenus : identifiant, score,
       // raison ; jamais le nom ni l'e-mail, relus dans la fiche du candidat à l'affichage).
       ['string', 'sourcing', { size: 5000 }],
+      // Canal d'arrivée (src/lib/ao/types.ts : AoChannel) : « scraping » pour la veille des sites publics, absent pour
+      // un e-mail ordinaire. Colonne « Source » de /admin/candidats.
+      ['string', 'channel', { size: 20 }],
     ],
     indexes: [],
   },

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition, type ReactNode } from 'react'
 import { AlertTriangle, Ban, Check, Copy, Download, ExternalLink, Loader2, Paperclip, RotateCcw, Send, Users, X } from 'lucide-react'
-import type { AoOfferRow } from '@/lib/ao/filters'
+import { AO_CHANNEL_LABEL, type AoOfferRow } from '@/lib/ao/filters'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
 import {
   aoOfferSourcing, previewAoPublication, publishAoOffer, setAoOfferStatus,
@@ -91,6 +91,7 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
               Reçue le {formatDay(row.receivedAt)} de {row.senderName ? `${row.senderName} <${row.senderAddress}>` : row.senderAddress || 'expéditeur inconnu'}
               {row.forwardedBy ? `, transférée par ${row.forwardedBy}` : ''}
               {row.subject ? ` · « ${row.subject} »` : ''}
+              {` · source : ${AO_CHANNEL_LABEL[row.channel]}`}
               {row.sourceCount > 1 ? ` · reçue dans ${row.sourceCount} e-mails` : ''}
             </p>
           </div>
