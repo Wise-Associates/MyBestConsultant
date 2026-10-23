@@ -44,8 +44,11 @@ personnelles.
   1 000 pour toute la plateforme, avec un message différent selon la limite atteinte.
 
 **Données :** collection `assistant_turns` (conversation, utilisateur, question, réponse, modèle), un document par
-échange, enregistré après la réponse (jamais de question sans réponse), sans permission client. Conservation 90 jours
-(purge quotidienne `/api/cron/assistant-purge`, qui purge aussi les places de quota de plus de 7 jours) ; supprimées
+échange, enregistré après la réponse (jamais de question sans réponse), sans permission client. Conservation **30 jours**
+(décision du 2026-10-23, `ASSISTANT_RETENTION_DAYS` ; annoncée dans la fenêtre de chat et dans le contenu d'aide) :
+de quoi reprendre une conversation ou la transmettre au support dans le mois, sans garder plus longtemps du texte libre
+qui peut contenir des données personnelles. Purge quotidienne `/api/cron/assistant-purge`, qui purge aussi les places
+de quota de plus de 7 jours. Supprimées
 avec le compte, par l'admin (`deleteUserAccount`, avant puis après la suppression du compte) comme par le retrait
 d'un membre d'équipe (`removeMember`).
 
@@ -66,7 +69,7 @@ alors plus jamais supprimées).
   - `callLLM` renvoie le raisonnement d'un modèle Qwen quand sa réponse est vide (comportement commun à tous les
     modules) ; l'appel à Claude n'a pas de délai propre (délai de la plateforme Vercel).
 - Une conversation transmise au support devient un message de ticket : elle suit la conservation du Help Desk, qui
-  n'a pas encore de règle de suppression (à définir par le responsable du traitement), et non les 90 jours.
+  n'a pas encore de règle de suppression (à définir par le responsable du traitement), et non les 30 jours.
 - La politique de confidentialité doit mentionner l'assistant, le fournisseur du modèle choisi et la durée de
   conservation (à faire par le responsable du traitement).
 - **Mise en service et retour arrière :** créer la collection sur DEV (`--apply`), variable en portée Preview, tester ;

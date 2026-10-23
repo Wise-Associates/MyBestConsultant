@@ -45,7 +45,8 @@ const DB = env.APPWRITE_DB_ID
 const SCHEMA = [
   {
     // Un document par échange : la question et la réponse sont enregistrées ensemble. Données personnelles
-    // possibles (texte libre) : supprimées après 90 jours (/api/cron/assistant-purge) et avec le compte.
+    // possibles (texte libre) : supprimées après ASSISTANT_RETENTION_DAYS (src/lib/assistant/host.ts, 30 jours) par
+    // /api/cron/assistant-purge, et avec le compte.
     id: 'assistant_turns',
     name: 'Assistant turns',
     attributes: [
