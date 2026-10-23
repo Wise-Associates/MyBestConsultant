@@ -2,7 +2,8 @@
 // Rédigé d'après le code au 2026-10-22. À tenir à jour quand une page, un libellé ou une règle change : l'assistant
 // répète ce qui est écrit ici. Ne rien promettre que le code n'applique pas (ex. limites d'annonces des formules).
 
-const COMMON = `COMPTE ET CONNEXION
+/** Règles communes aux deux rôles ; la durée de conservation vient du site (ASSISTANT_RETENTION_DAYS, host.ts). */
+const common = (retentionDays: number) => `COMPTE ET CONNEXION
 - Inscription sur /register : onglet Candidat ou Recruteur, prénom, nom, e-mail, mot de passe de 8 caractères minimum. Un recruteur indique aussi le nom de son entreprise et un téléphone. « Continuer avec Google / LinkedIn » existe pour les candidats. Une adresse déjà utilisée est refusée.
 - Un recruteur qui s'inscrit crée toujours sa propre organisation. Pour rejoindre l'équipe d'un collègue, il faut une invitation de son propriétaire de compte (lien valable 7 jours).
 - Connexion sur /login (e-mail et mot de passe, ou Google / LinkedIn). Après connexion, on arrive sur son espace.
@@ -15,6 +16,7 @@ AIDE ET SUPPORT
 - Jusqu'à 5 pièces jointes de 8 Mo (images, PDF, documents Office, CSV, ZIP). 10 demandes ouvertes au plus : au-delà, attendre une réponse ou en clôturer une.
 - Les réponses arrivent dans la demande et par e-mail. Pour répondre, utiliser le bouton du message, pas la réponse à l'e-mail. « C'est résolu » clôt la demande ; y répondre la rouvre.
 - Le bouton « Transmettre au support » de l'assistant crée une demande avec cette conversation.
+- Les conversations avec l'assistant sont conservées ${retentionDays} jours, puis supprimées automatiquement ; elles sont aussi supprimées avec le compte. « Nouvelle conversation » ne supprime pas la précédente. Une conversation transmise au support devient une demande d'aide.
 - Contact : page /contact ou contact@mybestconsultant.fr. Mentions légales et droits RGPD (accès, rectification, suppression) : page /legal.`
 
 const CANDIDATE = `L'UTILISATEUR EST CANDIDAT.
@@ -86,7 +88,7 @@ BOÎTES D'APPELS D'OFFRES
 ABONNEMENT
 - Page /abonnement : formules affichées Essai (gratuit), Essentiel (99 € par mois) et Pro (199 € par mois) ; paiement par carte. Pour le détail des formules, la résiliation, un changement de formule ou une facture : demande au support, catégorie « Facturation & abonnement ».`
 
-/** Contenu d'aide pour un rôle : les règles communes, puis celles de son espace. */
-export function assistantKnowledge(role: 'candidate' | 'recruiter'): string {
-  return `${role === 'recruiter' ? RECRUITER : CANDIDATE}\n\n${COMMON}`
+/** Contenu d'aide pour un rôle : celles de son espace, puis les règles communes. */
+export function assistantKnowledge(role: 'candidate' | 'recruiter', retentionDays: number): string {
+  return `${role === 'recruiter' ? RECRUITER : CANDIDATE}\n\n${common(retentionDays)}`
 }

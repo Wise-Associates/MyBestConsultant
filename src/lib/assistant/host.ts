@@ -18,8 +18,12 @@ import { assistantKnowledge } from './knowledge'
 /** Rôles qui ont l'assistant (v1) : ni les chasseurs, ni l'admin, ni les visiteurs. */
 const ASSISTANT_ROLES = new Set(['candidate', 'recruiter'])
 
-/** Conversations supprimées après 90 jours (purge quotidienne : /api/cron/assistant-purge). */
-export const ASSISTANT_RETENTION_DAYS = 90
+/**
+ * Conversations supprimées après 30 jours (décision du 2026-10-23, ADR 0007) par la purge quotidienne
+ * (/api/cron/assistant-purge). Affichée dans la fenêtre de chat : la changer ici suffit, puis mettre à jour l'ADR,
+ * AGENTS.md et la politique de confidentialité.
+ */
+export const ASSISTANT_RETENTION_DAYS = 30
 
 /** Messages par jour (UTC) : par utilisateur, et pour toute la plateforme (plafond de coût). */
 export const ASSISTANT_DAILY_LIMITS = { perUser: 30, platform: 1000 } as const
@@ -192,7 +196,7 @@ export function createAssistantHost(): AssistantHost {
       }
     },
 
-    knowledge: user => assistantKnowledge(user.role === 'recruiter' ? 'recruiter' : 'candidate'),
+    knowledge: user => assistantKnowledge(user.role === 'recruiter' ? 'recruiter' : 'candidate', ASSISTANT_RETENTION_DAYS),
 
     async handoff(user, transcript) {
       // getUser vient de lire ce profil (le module l'appelle toujours d'abord) ; sinon, on ne crée rien.

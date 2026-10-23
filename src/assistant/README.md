@@ -39,7 +39,7 @@ react/assistant-chat.tsx fenêtre de chat (React, sans Next.js) et sa feuille de
 3. Exposer trois actions serveur (ou routes) qui créent un hôte par requête et appellent `runTurn`, `loadLatest`,
    `handoffToSupport` ; traduire une exception (base indisponible) en erreur affichable. Modèle :
    `src/lib/assistant-actions.ts`.
-4. Afficher `<AssistantChat welcome="…" send={…} loadLatest={…} handoff={…} />` dans les pages des utilisateurs
+4. Afficher `<AssistantChat welcome="…" retentionDays={…} send={…} loadLatest={…} handoff={…} />` dans les pages des utilisateurs
    connectés, dans un élément qui définit les variables de style :
    `--assistant-accent`, `--assistant-accent-fg`, `--assistant-surface`, `--assistant-muted`, `--assistant-border`,
    `--assistant-text`, `--assistant-text-muted`, `--assistant-header-bg`, `--assistant-header-fg`,
