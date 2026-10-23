@@ -6,8 +6,8 @@ import { DUPLICATE_WINDOW_DAYS, offerFingerprint } from './fingerprint'
 import { assertCredentialsKey } from './credentials'
 import { inboxSettingsFor } from './inbox-settings'
 import { withAoInbox, type AoInbox, type AoInboxSettings, type InboxEnvelope } from './imap'
-import { citedClients, formatSender, originalSender, senderCompany } from './origin'
-import { emailDeadline } from './dates'
+import { citedClients, formatSender, fromVeille, originalSender, senderCompany } from './origin'
+import { emailDeadline, isPastDeadline } from './dates'
 import { TruncatedAnswerError } from './parse'
 import {
   createAoEmail, createAoOffer, findAoDuplicate, findAoEmailByMessageId,
@@ -19,7 +19,7 @@ import {
   acquireSyncLock, checkpointIdFor, endFullRead, getCheckpoint, isFullReadPending, purgeDailyState, startFullRead, releaseDailyVisionCall, releaseSyncLock, saveCheckpoint, takeDailyTableOffers, takeDailyVisionCall,
 } from './state'
 import { getAoSource, listEnabledSources, loadOrganizations, recordSourceError, recordSourceSync, type AoOrganization, type AoSource } from './sources'
-import { lockIdFor } from './tenancy'
+import { lockIdFor, PLATFORM_TENANT_ID } from './tenancy'
 import type { AoEmail, ExtractedOffer } from './types'
 
 // Lecture planifiée des boîtes AO (route /api/cron/ao-inbox appelée par un planificateur, ou bouton « Synchroniser »)
@@ -349,6 +349,8 @@ async function processEnvelope(
     if (envelope.size > MAX_MESSAGE_BYTES) throw new PermanentError('Message trop volumineux (plus de 25 Mo) : à traiter à la main.')
     const message = await inbox.read(envelope.uid)
     const origin = originalSender(message, source.ownDomains)
+    // La veille n'écrit qu'à la boîte de la plateforme : l'en-tête est ignoré dans les boîtes des organisations.
+    const scraping = org.tenantId === PLATFORM_TENANT_ID && fromVeille(message, source.ownDomains)
     // Enregistré avant la lecture des pièces jointes : un e-mail en attente de l'IA reste reconnaissable
     // (expéditeur, objet) dans la liste des e-mails en erreur de /admin/candidats.
     await updateAoEmail(emailId, {
@@ -391,9 +393,17 @@ async function processEnvelope(
       fromAi = (await extractOffersFromEmail(content.text, llmWait, aiOrigin, org.name, message.receivedAt)).offers
     }
     const read = [...content.tableOffers, ...fromAi]
+    // Veille (scraping) : une offre dont la date limite est déjà passée n'a plus d'intérêt, elle n'est pas créée
+    // (décision du 2026-10-23). Seulement si le texte désigne lui-même la date limite : une date sans libellé
+    // (publication…) classée en date limite par dates.ts ferait perdre une offre. Les autres e-mails gardent toutes
+    // leurs offres.
+    const isOutdated = (o: ExtractedOffer) => scraping && o.deadlineFromText === true && isPastDeadline(o.deadline, now)
     // Enregistrés avant la création des offres : une offre ne doit jamais exister sans ce qui permet de la publier
     // anonymisée (clients cités), même si la suite du traitement échoue.
-    await updateAoEmail(emailId, { citedClients: citedClients(read), deadline: emailDeadline(read.map(o => o.deadline), message.receivedAt) })
+    await updateAoEmail(emailId, {
+      citedClients: citedClients(read),
+      deadline: emailDeadline(read.filter(o => !isOutdated(o)).map(o => o.deadline), message.receivedAt),
+    })
     // Le client est l'entreprise de l'expéditeur d'origine, pour toutes les offres de l'e-mail (origin.ts). Les noms
     // lus par l'IA ne comptent que si elle avait la signature sous les yeux (corps de l'e-mail confié).
     const company = senderCompany(origin, aiOrigin ? fromAi.map(o => o.companyName) : [], { name: org.name, ownDomains: source.ownDomains })
@@ -401,17 +411,26 @@ async function processEnvelope(
     const offers = extracted.slice(0, MAX_OFFERS_PER_EMAIL)
     let created = 0
     let duplicates = 0
+    let outdated = 0
     const seen = new Set<string>()
     for (const offer of offers) {
       const fingerprint = offerFingerprint(offer, org.tenantId)
       if (seen.has(fingerprint)) { duplicates++; continue } // même offre dans le corps et une pièce jointe
       seen.add(fingerprint)
       const duplicate = await findAoDuplicate(fingerprint, new Date(now.getTime() - DUPLICATE_WINDOW_DAYS * DAY_MS))
-      const details = offer.engagement || offer.technologies.length ? { engagement: offer.engagement, technologies: offer.technologies } : null
+      // Offre de la veille : détails toujours enregistrés, ils portent le canal affiché dans la colonne « Source ».
+      const details =
+        scraping || offer.engagement || offer.technologies.length ? { engagement: offer.engagement, technologies: offer.technologies } : null
+      const channel = scraping ? 'scraping' : 'email'
       // Créée par un essai interrompu de ce même e-mail : c'est la sienne, pas un doublon (ses détails ont pu manquer).
+      // Vérifié avant l'échéance : une reprise le lendemain de la date limite complète l'offre déjà créée.
       if (duplicate?.emailId === emailId) {
-        if (details) await saveAoOfferDetails(duplicate.$id, details)
+        if (details) await saveAoOfferDetails(duplicate.$id, details, channel)
         created++
+        continue
+      }
+      if (isOutdated(offer)) {
+        outdated++
         continue
       }
       if (duplicate) {
@@ -419,19 +438,22 @@ async function processEnvelope(
         duplicates++
       } else {
         const saved = await createAoOffer(offer, { fingerprint, emailId })
-        if (details) await saveAoOfferDetails(saved.$id, details)
+        if (details) await saveAoOfferDetails(saved.$id, details, channel)
         created++
       }
     }
 
     const notes = [
+      outdated ? `${outdated} offre(s) de la veille écartée(s) : date limite passée` : '',
       content.skipped.length ? `Pièces jointes ignorées : ${content.skipped.join(', ')}` : '',
       content.tableRowsSkipped ? `${content.tableRowsSkipped} ligne(s) de tableau sans intitulé ignorée(s)` : '',
       content.tablesTruncated ? `Tableau trop long : seules les ${MAX_TABLE_ROWS} premières lignes sont lues.` : '',
       extracted.length > MAX_OFFERS_PER_EMAIL ? `${extracted.length} offres trouvées, seules les ${MAX_OFFERS_PER_EMAIL} premières sont reprises : importez le document depuis « Offres ».` : '',
     ].filter(Boolean)
     await updateAoEmail(emailId, {
-      status: offers.length ? 'processed' : 'no_offer',
+      // Toutes les offres d'un e-mail ordinaire sont créées ou comptées en doublon ; seules celles de la veille échues
+      // ne sont ni l'un ni l'autre : un e-mail de la veille dont l'offre est échue n'a « aucune offre ».
+      status: created + duplicates > 0 ? 'processed' : 'no_offer',
       offerCount: created,
       duplicateCount: duplicates,
       error: notes.join(' — ').slice(0, 1000),
