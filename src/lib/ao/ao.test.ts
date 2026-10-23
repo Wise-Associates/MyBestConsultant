@@ -17,7 +17,7 @@ import { AiUnavailable, RetryLater, SkipAttachment, formatOf, type Attachment, t
 import { readWithFallback, visionBlockFor, type VisionReader } from './extractors/vision'
 import { openAiContentPart, transcribeWithOpenAI } from './extractors/vision-openai'
 import { batchByLength, nextStepFor } from './repo'
-import { citedClients, companyFromDomain, formatSender, originalSender, parseSender, senderCompany, type Organization, type Sender } from './origin'
+import { citedClients, companyFromDomain, formatSender, fromVeille, originalSender, parseSender, senderCompany, type Organization, type Sender } from './origin'
 
 const WISE: Organization = { name: 'Wise Associates', ownDomains: ['wise-associates.fr'] }
 import { attemptsAfterFailure, canDeferEmail, manualRetryPatch } from './attempts'
@@ -260,7 +260,7 @@ describe('report faute de temps', () => {
 describe('filtres', () => {
   const row = (over: Partial<AoOfferRow> = {}): AoOfferRow => ({
     ...offer(), $id: 'o1', createdAt: '2026-10-10T08:00:00.000Z', fingerprint: 'f', emailId: 'e1', status: 'to_review',
-    jobId: null, sourceCount: 1, senderAddress: 'ao@esn.fr', senderName: 'ESN Conseil', forwardedBy: '', attachments: [], commentCount: 0, subject: 'AO React', receivedAt: '2026-10-10T08:00:00.000Z',
+    jobId: null, sourceCount: 1, senderAddress: 'ao@esn.fr', senderName: 'ESN Conseil', forwardedBy: '', attachments: [], commentCount: 0, subject: 'AO React', receivedAt: '2026-10-10T08:00:00.000Z', channel: 'email',
     ...over,
   })
   const rows = [row(), row({ $id: 'o2', location: 'Lyon', contractType: 'cdi', salary: 55000, status: 'published', receivedAt: '2026-10-15T08:00:00.000Z' })]
@@ -736,7 +736,7 @@ describe('tableaux d\'offres joints (lecture directe, sans IA)', () => {
     const empty = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(empty, XLSX.utils.aoa_to_sheet([[...AO_EXCEL_HEADERS]]), 'AO')
     const message = {
-      uid: 2, messageId: '<v@x>', fromAddress: '', fromName: '', subject: 'Besoin', receivedAt: new Date(), text: 'Nous cherchons un développeur Java à Lyon, démarrage ASAP.',
+      uid: 2, messageId: '<v@x>', fromAddress: '', fromName: '', subject: 'Besoin', receivedAt: new Date(), scraping: false, text: 'Nous cherchons un développeur Java à Lyon, démarrage ASAP.',
       attachments: [{ filename: 'vide.xlsx', contentType: '', content: XLSX.write(empty, { type: 'buffer', bookType: 'xlsx' }) as Buffer }],
     }
     const ctx: ExtractionContext = { deadline: Date.now() + 60_000, canDefer: true, reserveVisionCall: async () => true, releaseVisionCall: async () => {}, pass: { visionUnavailable: null } }
@@ -747,7 +747,7 @@ describe('tableaux d\'offres joints (lecture directe, sans IA)', () => {
 
   it('n\'envoie pas à l\'IA le corps d\'un e-mail dont le tableau a été lu', async () => {
     const message = {
-      uid: 1, messageId: '<t@x>', fromAddress: '', fromName: '', subject: 'Liste des AO', receivedAt: new Date(), text: 'Bonjour, voici nos besoins du mois.',
+      uid: 1, messageId: '<t@x>', fromAddress: '', fromName: '', subject: 'Liste des AO', receivedAt: new Date(), scraping: false, text: 'Bonjour, voici nos besoins du mois.',
       attachments: [{ filename: 'suivi.xlsx', contentType: '', content: buildAoWorkbook([offer(), offer({ title: 'Data engineer' })]) }],
     }
     const ctx: ExtractionContext = { deadline: Date.now() + 60_000, canDefer: true, reserveVisionCall: async () => true, releaseVisionCall: async () => {}, pass: { visionUnavailable: null } }
@@ -870,5 +870,34 @@ describe('client d\'une offre AO', () => {
 
   it('laisse le client lu dans l\'offre quand l\'expéditeur d\'origine est inconnu', () => {
     assert.equal(senderCompany(null, ['BNP Paribas'], WISE), null)
+  })
+})
+
+describe('offres de la veille (scraping)', () => {
+  const own = ['wise-associates.fr']
+
+  it('reconnaît un e-mail de la veille : en-tête X-Wise-Veille et expéditeur de nos domaines', () => {
+    assert.equal(fromVeille({ scraping: true, fromAddress: 'veille@wise-associates.fr' }, own), true)
+  })
+
+  it('ne se fie pas à l\'en-tête seul : un expéditeur extérieur reste un e-mail ordinaire', () => {
+    assert.equal(fromVeille({ scraping: true, fromAddress: 'ao@esn-conseil.fr' }, own), false)
+    assert.equal(fromVeille({ scraping: false, fromAddress: 'veille@wise-associates.fr' }, own), false)
+  })
+
+  it('exige le domaine exact (ou un sous-domaine), pas un domaine voisin au même nom', () => {
+    assert.equal(fromVeille({ scraping: true, fromAddress: 'veille@wise-associates.com' }, own), false)
+    assert.equal(fromVeille({ scraping: true, fromAddress: 'veille@wise-associates.fr.evil.test' }, own), false)
+    assert.equal(fromVeille({ scraping: true, fromAddress: 'veille@mail.wise-associates.fr' }, own), true)
+  })
+
+  it('ne marque « date limite du texte » que les dates que l\'IA a lues comme telles', () => {
+    const raw = (deadline: string, otherDates: string[]) => JSON.stringify([{ ...offer(), deadline, otherDates }])
+    // Date de publication rangée par l'IA dans otherDates : classée en date limite (mardi), mais jamais « du texte ».
+    const [fromUnlabeled] = parseOffersJson(raw('', ['20/10/2026']), RECEIVED).offers
+    assert.equal(fromUnlabeled?.deadline, '20/10/2026')
+    assert.equal(fromUnlabeled?.deadlineFromText, false)
+    const [labeled] = parseOffersJson(raw('16/11/2026', []), RECEIVED).offers
+    assert.equal(labeled?.deadlineFromText, true)
   })
 })

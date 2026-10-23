@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseOfferDate, placeUnlabeledDates } from './dates'
+import { isPastDeadline, parseOfferDate, placeUnlabeledDates } from './dates'
 
 // E-mail reçu le mercredi 21 octobre 2026 : référence pour les dates écrites sans année.
 const received = new Date('2026-10-21T09:00:00Z')
@@ -34,5 +34,24 @@ describe('dates d\'un appel d\'offres', () => {
   it('ne déplace jamais une date que le texte désigne lui-même', () => {
     // « Démarrage : vendredi 30/10 » reste un démarrage ; « Date limite : lundi 02/11 » reste une date limite.
     assert.deepEqual(placeUnlabeledDates({ startDate: '30/10/2026', deadline: '02/11/2026' }, ['06/11/2026', '09/11/2026'], received), { startDate: '30/10/2026', deadline: '02/11/2026' })
+  })
+})
+
+describe('date limite passée (offres de la veille)', () => {
+  const now = new Date('2026-10-23T05:00:00Z')
+
+  it('reconnaît une date limite antérieure au jour du traitement', () => {
+    assert.equal(isPastDeadline('22/10/2026', now), true)
+    assert.equal(isPastDeadline('2026-09-30', now), true)
+  })
+
+  it('garde une offre dont la date limite est aujourd\'hui ou plus tard', () => {
+    assert.equal(isPastDeadline('23/10/2026', now), false, 'le jour même : on peut encore répondre')
+    assert.equal(isPastDeadline('16/11/2026 à 18:00', now), false)
+  })
+
+  it('ne juge jamais passée une date absente ou illisible', () => {
+    assert.equal(isPastDeadline('', now), false)
+    assert.equal(isPastDeadline('ASAP', now), false)
   })
 })

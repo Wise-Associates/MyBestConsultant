@@ -5,7 +5,7 @@ import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { MAX_ATTEMPTS } from './attempts'
 import type { AoOfferRow } from './filters'
 import { parseSender } from './origin'
-import type { AoEmail, AoEmailStatus, AoOffer, AoOfferDetails, AoOfferFields, AoOfferStatus } from './types'
+import type { AoChannel, AoEmail, AoEmailStatus, AoOffer, AoOfferDetails, AoOfferFields, AoOfferStatus } from './types'
 import { engagementOf } from './parse'
 
 // Accès aux collections AO_EMAILS et AO_OFFERS (clé API serveur : aucune permission côté client).
@@ -269,10 +269,13 @@ export async function deleteAoOfferAndDetails(offerId: string): Promise<void> {
 
 // ── Détails des offres (assistance / forfait, technologies) ─────
 
-/** Enregistre les détails d'une offre (document de même identifiant ; mis à jour s'il existe déjà). */
-export async function saveAoOfferDetails(offerId: string, details: AoOfferDetails): Promise<void> {
+/**
+ * Enregistre les détails d'une offre (document de même identifiant ; mis à jour s'il existe déjà). Le canal n'est écrit
+ * que pour la veille : absent, l'offre vient d'un e-mail (et les e-mails ordinaires n'exigent pas l'attribut `channel`).
+ */
+export async function saveAoOfferDetails(offerId: string, details: AoOfferDetails, channel?: AoChannel): Promise<void> {
   const { databases } = createAdminClient()
-  const data = { engagement: details.engagement, technologies: details.technologies }
+  const data = { engagement: details.engagement, technologies: details.technologies, ...(channel === 'scraping' ? { channel } : {}) }
   try {
     await databases.createDocument(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, offerId, data)
   } catch (err) {
@@ -322,14 +325,21 @@ export async function saveAoOfferSourcing(offerId: string, record: AoSourcingRec
   }
 }
 
-/** Détails des offres `offerIds` (absents : offre reçue avant ces détails, ou sans assistance / forfait ni technologie). */
-export async function listAoOfferDetails(offerIds: string[]): Promise<Map<string, AoOfferDetails>> {
+/**
+ * Détails des offres `offerIds` (absents : offre reçue avant ces détails, ou e-mail sans assistance / forfait ni
+ * technologie). Canal absent ou inconnu : e-mail.
+ */
+export async function listAoOfferDetails(offerIds: string[]): Promise<Map<string, AoOfferDetails & { channel: AoChannel }>> {
   const { databases } = createAdminClient()
-  const map = new Map<string, AoOfferDetails>()
+  const map = new Map<string, AoOfferDetails & { channel: AoChannel }>()
   for (const batch of batchByLength([...new Set(offerIds.filter(Boolean))])) {
     const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, [Query.equal('$id', batch), Query.limit(batch.length)])
     for (const doc of res.documents as (Models.Document & Record<string, unknown>)[]) {
-      map.set(doc.$id, { engagement: engagementOf(str(doc.engagement)), technologies: Array.isArray(doc.technologies) ? (doc.technologies as string[]) : [] })
+      map.set(doc.$id, {
+        engagement: engagementOf(str(doc.engagement)),
+        technologies: Array.isArray(doc.technologies) ? (doc.technologies as string[]) : [],
+        channel: doc.channel === 'scraping' ? 'scraping' : 'email',
+      })
     }
   }
   return map
@@ -386,6 +396,7 @@ export async function listAoOfferRows(sourceIds: string[], max = 2000): Promise<
       commentCount: comments.get(offer.$id) ?? 0,
       subject: email?.subject ?? '',
       receivedAt: email?.receivedAt ?? offer.createdAt,
+      channel: details.get(offer.$id)?.channel ?? 'email',
     }
   })
 }
