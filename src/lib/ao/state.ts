@@ -146,19 +146,40 @@ export async function takeDailyTableOffers(tenantId: string, now: Date, amount: 
  * connexion), où takeDaily, qui lit puis réécrit un total, laisserait passer des rafales.
  */
 export async function takeDailySlot(counter: DailyCounter, key: string, now: Date, limit: number): Promise<boolean> {
+  return (await takeDailySlotId(counter, key, now, limit)) !== null
+}
+
+/** Comme takeDailySlot, mais renvoie l'identifiant de la place prise (null si toutes le sont), pour pouvoir la rendre. */
+export async function takeDailySlotId(counter: DailyCounter, key: string, now: Date, limit: number): Promise<string | null> {
   const { databases } = createAdminClient()
   const base = counterIdFor(counter, key, now)
   // Places déjà prises : on commence la recherche après elles (sinon chaque demande essaierait toutes les places).
+  // Une place rendue (releaseDailySlot) laisse un trou avant elles : il ne sera repris que si toutes les suivantes le sont.
   const used = (await databases.listDocuments(DB_ID, COLLECTIONS.AO_STATE, [Query.equal('holder', base), Query.limit(1)])).total
   for (let slot = used; slot < limit; slot++) {
     try {
       await databases.createDocument(DB_ID, COLLECTIONS.AO_STATE, `${base}_${slot}`, { kind: 'slot', holder: base })
-      return true
+      return `${base}_${slot}`
     } catch (err) {
       if (codeOf(err) !== 409) throw err
     }
   }
-  return false
+  // Toutes les places au-delà des prises sont occupées : un trou laissé par une place rendue est peut-être libre.
+  for (let slot = 0; slot < Math.min(used, limit); slot++) {
+    try {
+      await databases.createDocument(DB_ID, COLLECTIONS.AO_STATE, `${base}_${slot}`, { kind: 'slot', holder: base })
+      return `${base}_${slot}`
+    } catch (err) {
+      if (codeOf(err) !== 409) throw err
+    }
+  }
+  return null
+}
+
+/** Rend une place prise par takeDailySlotId (demande abandonnée sans frais). */
+export async function releaseDailySlot(slotId: string): Promise<void> {
+  const { databases } = createAdminClient()
+  await databases.deleteDocument(DB_ID, COLLECTIONS.AO_STATE, slotId).catch(err => { if (codeOf(err) !== 404) throw err })
 }
 
 /**

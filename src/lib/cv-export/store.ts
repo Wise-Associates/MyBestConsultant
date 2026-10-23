@@ -4,13 +4,15 @@ import { InputFile } from 'node-appwrite/file'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { BUCKETS, COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { CvExportError, type CvExportDocx } from './export'
-import { parseStoredExport, serializeNotes, type StoredCvExport } from './stored'
+import { parseStoredExport, serializeNotes, versionView, type CvExportVersion, type StoredCvExport } from './stored'
 import type { AnonymizationMode, CvLang } from './types'
 
-// Versions enregistrées des exports au format ESN (ADR 0009) : collection `cv_exports` (un document par candidat,
-// anonymisation et langue, index unique) et bucket privé `cv_exports` (les .docx), créés par
-// `npm run cv-export:setup`. Aucune permission client : seule la clé API serveur y accède, depuis la route admin
-// /api/admin/cv-export et les actions de la CV Thèque. Facultatif : sans les deux variables, rien n'est enregistré.
+// Versions enregistrées des exports au format ESN (ADR 0009, 0010) : collection `cv_exports` (un document par
+// organisation, candidat, anonymisation et langue, index unique) et bucket privé `cv_exports` (les .docx), créés par
+// `npm run cv-export:setup`. Aucune permission client : seule la clé API serveur y accède, depuis les routes
+// /api/admin/cv-export et /api/recruiter/cv-export et les actions des deux CV Thèques. Chaque lecture et écriture
+// porte sur l'organisation de l'appelant ; seule la suppression avec le compte du candidat les couvre toutes.
+// Facultatif : sans les deux variables, rien n'est enregistré.
 
 export const isCvExportStorageConfigured = () => !!COLLECTIONS.CV_EXPORTS && !!BUCKETS.CV_EXPORTS
 
@@ -19,6 +21,7 @@ const LANGS: CvLang[] = ['fr', 'en']
 
 // Nom du fichier dans le bucket (le nom téléchargé est celui du document) : sans donnée personnelle, et retrouvable
 // par candidat pour la suppression avec le compte, même quand plus aucun document ne le référence (voir saveCvExports).
+// Sans l'organisation : la suppression avec le compte retrouve ainsi les fichiers de toutes les organisations.
 const storageName = (candidateId: string, mode: AnonymizationMode, lang: CvLang) => `${candidateId}_${mode}_${lang}.docx`
 
 // Par type et non par code : un bucket ou une collection introuvable (configuration) répond aussi 404.
@@ -33,19 +36,64 @@ export const cvExportErrorName = (err: unknown) =>
 export const isCvExportStorageMissing = (err: unknown) =>
   isAppwrite(err, 'collection_not_found') || isAppwrite(err, 'storage_bucket_not_found')
 
-async function listDocs(candidateId: string): Promise<Models.Document[]> {
+async function listDocs(tenantId: string, candidateId: string): Promise<Models.Document[]> {
   const { databases } = createAdminClient()
-  // 4 versions au plus (2 anonymisations × 2 langues) : la marge couvre des doublons écrits à la main.
-  const res = await databases.listDocuments(DB_ID, COLLECTIONS.CV_EXPORTS, [Query.equal('candidateId', candidateId), Query.limit(25)])
+  // 4 versions au plus par organisation (2 anonymisations × 2 langues) : la marge couvre des doublons écrits à la main.
+  const res = await databases.listDocuments(DB_ID, COLLECTIONS.CV_EXPORTS, [
+    Query.equal('tenantId', tenantId), Query.equal('candidateId', candidateId), Query.limit(25),
+  ])
   return res.documents
 }
 
-export async function listCvExports(candidateId: string): Promise<StoredCvExport[]> {
-  return (await listDocs(candidateId)).flatMap(doc => {
+/** Toutes les versions d'un candidat, toutes organisations confondues : pour sa suppression avec le compte seulement. */
+async function listAllDocs(candidateId: string): Promise<Models.Document[]> {
+  const { databases } = createAdminClient()
+  const docs: Models.Document[] = []
+  for (let offset = 0; ; offset += 100) {
+    const res = await databases.listDocuments(DB_ID, COLLECTIONS.CV_EXPORTS, [Query.equal('candidateId', candidateId), Query.limit(100), Query.offset(offset)])
+    docs.push(...res.documents)
+    if (res.documents.length < 100) return docs
+  }
+}
+
+export async function listCvExports(tenantId: string, candidateId: string): Promise<StoredCvExport[]> {
+  return (await listDocs(tenantId, candidateId)).flatMap(doc => {
     const stored = parseStoredExport(doc)
     if (!stored) console.warn('[cv-export] version enregistrée incomplète, ignorée', doc.$id)
     return stored ? [stored] : []
   })
+}
+
+export interface CvExportVersions {
+  versions: CvExportVersion[]
+  /** false : enregistrement non configuré, chaque export est régénéré. */
+  storage: boolean
+  error?: string
+}
+
+/**
+ * Versions d'un candidat pour la fenêtre d'export d'une organisation (l'appelant a vérifié qui elle est) : anonymisation,
+ * langue, date et CV remplacé depuis, sans fichier ni identifiant.
+ */
+export async function loadCvExportVersions(tenantId: string, candidateId: string, templateUploadedAt = ''): Promise<CvExportVersions> {
+  if (!isCvExportStorageConfigured()) return { versions: [], storage: false }
+  try {
+    const { databases } = createAdminClient()
+    const [candidate, stored] = await Promise.all([
+      databases.getDocument(DB_ID, COLLECTIONS.USERS, candidateId),
+      listCvExports(tenantId, candidateId),
+    ])
+    const cvFileId = typeof candidate.cvFileId === 'string' ? candidate.cvFileId : ''
+    return { versions: stored.map(s => versionView(s, cvFileId, templateUploadedAt)), storage: true }
+  } catch (err) {
+    console.error('[cv-export] lecture des versions enregistrées en échec', candidateId, cvExportErrorName(err))
+    if (isAppwrite(err, 'document_not_found')) return { versions: [], storage: true, error: 'Candidat introuvable : il a peut-être supprimé son compte.' }
+    // Structure absente ou pas encore migrée (attribut tenantId, ADR 0010) : réessayer ne servira à rien.
+    if (isCvExportStorageMissing(err) || isAppwrite(err, 'general_query_invalid') || isAppwrite(err, 'attribute_not_found')) {
+      return { versions: [], storage: true, error: 'Enregistrement des versions pas encore prêt (configuration en cours) : réessayez plus tard ou contactez-nous.' }
+    }
+    return { versions: [], storage: true, error: 'Versions enregistrées illisibles pour le moment.' }
+  }
 }
 
 async function deleteFileIfPresent(fileId: string): Promise<void> {
@@ -62,6 +110,7 @@ async function deleteFileIfPresent(fileId: string): Promise<void> {
  * langue. `candidate-gone` : candidat supprimé pendant la génération (1 à 3 min), rien n'est gardé.
  */
 export async function saveCvExports(input: {
+  tenantId: string
   candidateId: string
   mode: AnonymizationMode
   sourceCvFileId: string
@@ -86,12 +135,12 @@ export async function saveCvExports(input: {
     const uploaded = await storage.createFile(BUCKETS.CV_EXPORTS, ID.unique(),
       InputFile.fromBuffer(Buffer.from(file.bytes), storageName(input.candidateId, input.mode, file.lang)))
     const data = {
-      candidateId: input.candidateId, mode: input.mode, lang: file.lang, fileId: uploaded.$id, fileName: file.fileName,
+      tenantId: input.tenantId, candidateId: input.candidateId, mode: input.mode, lang: file.lang, fileId: uploaded.$id, fileName: file.fileName,
       sourceCvFileId: input.sourceCvFileId, notes, generatedAt: input.now.toISOString(),
     }
     // Documents bruts, pas seulement ceux que parseStoredExport accepte : un document incomplet (modifié à la main) est
     // remplacé ; ignoré, il bloquerait cette version pour toujours (index unique).
-    const findCurrent = async () => (await listDocs(input.candidateId)).find(d => d.mode === input.mode && d.lang === file.lang)
+    const findCurrent = async () => (await listDocs(input.tenantId, input.candidateId)).find(d => d.mode === input.mode && d.lang === file.lang)
     const fileIdOf = (doc: Models.Document) => (typeof doc.fileId === 'string' && doc.fileId ? doc.fileId : undefined)
 
     let previousFileId: string | undefined
@@ -156,13 +205,17 @@ export async function readCvExportFiles(versions: StoredCvExport[]): Promise<CvE
  */
 export async function deleteCvExportsForCandidate(candidateId: string): Promise<void> {
   const { databases, storage } = createAdminClient()
-  const docs = await listDocs(candidateId)
+  const docs = await listAllDocs(candidateId)
   for (const doc of docs) {
     if (typeof doc.fileId === 'string' && doc.fileId) await deleteFileIfPresent(doc.fileId)
   }
   const names = MODES.flatMap(mode => LANGS.map(lang => storageName(candidateId, mode, lang)))
-  const leftovers = await storage.listFiles(BUCKETS.CV_EXPORTS, [Query.equal('name', names), Query.limit(100)])
-  for (const file of leftovers.files) await deleteFileIfPresent(file.$id)
+  // Toutes organisations : plus de 100 fichiers peuvent porter ces noms ; relu jusqu'à ce qu'il n'en reste plus.
+  for (;;) {
+    const leftovers = await storage.listFiles(BUCKETS.CV_EXPORTS, [Query.equal('name', names), Query.limit(100)])
+    for (const file of leftovers.files) await deleteFileIfPresent(file.$id)
+    if (leftovers.files.length < 100) break
+  }
   for (const doc of docs) {
     try {
       await databases.deleteDocument(DB_ID, COLLECTIONS.CV_EXPORTS, doc.$id)

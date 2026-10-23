@@ -5,8 +5,9 @@ import {
   Search, Users, FileText, Sparkles, ScanSearch, ExternalLink, AlertCircle,
   Loader2, MapPin, Navigation, Building2, Briefcase, Mail, Phone, FolderSearch, FileDown,
 } from 'lucide-react'
-import { scanCandidateCv, getCvthequeCandidates, type CvThequeCandidate } from './actions'
-import { EsnExportDialog } from './esn-export-dialog'
+import { scanCandidateCv, getCvthequeCandidates, getCvExportVersions, saveCvTemplate, deleteCvTemplate, type CvThequeCandidate } from './actions'
+import { EsnExportDialog } from '@/components/cv-export/esn-export-dialog'
+import { CvTemplateManager, type CvTemplateView } from '@/components/cv-export/cv-template-manager'
 import { BRAND } from '@/app/admin/candidats/labels'
 import { SECTORS } from '@/lib/candidate-taxonomy'
 import { Pagination } from '@/components/shared/pagination'
@@ -14,7 +15,15 @@ import { CandidateAvatar } from '@/components/shared/candidate-avatar'
 
 const PAGE_SIZE = 50
 
-export function CvthequeClient({ initialCandidates, loadError }: { initialCandidates: CvThequeCandidate[]; loadError?: string }) {
+export function CvthequeClient({ initialCandidates, loadError, exportEsn, template, templateError, templateStorage }: {
+  initialCandidates: CvThequeCandidate[]
+  loadError?: string
+  exportEsn: string
+  /** Modèle « Format ESN » de la plateforme ; null si sa lecture a échoué (templateError). */
+  template: CvTemplateView | null
+  templateError?: string
+  templateStorage: boolean
+}) {
   const [candidates, setCandidates] = useState(initialCandidates)
   const [search, setSearch] = useState('')
   const [sectorFilter, setSectorFilter] = useState('')
@@ -73,14 +82,17 @@ export function CvthequeClient({ initialCandidates, loadError }: { initialCandid
     }}>
       {/* Header — scrolls away with the page */}
       <div style={{ background: 'var(--hero-bg)' }}>
-        <div className="max-w-6xl mx-auto px-6 pt-8 pb-2">
-          <div className="flex items-center gap-2 mb-1">
-            <FolderSearch className="h-5 w-5" style={{ color: 'var(--color-accent, #B8860B)' }} />
-            <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>CV Thèque</h1>
+        <div className="max-w-6xl mx-auto px-6 pt-8 pb-2 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <FolderSearch className="h-5 w-5" style={{ color: 'var(--color-accent, #B8860B)' }} />
+              <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>CV Thèque</h1>
+            </div>
+            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
+              Recherchez les candidats de la base par compétence, ville ou nom
+            </p>
           </div>
-          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-            Recherchez les candidats de la base par compétence, ville ou nom
-          </p>
+          {template && <CvTemplateManager kind="platform" template={template} storage={templateStorage} save={saveCvTemplate} remove={deleteCvTemplate} />}
         </div>
       </div>
 
@@ -136,6 +148,12 @@ export function CvthequeClient({ initialCandidates, loadError }: { initialCandid
             <p className="text-sm" style={{ color: '#ef4444' }}>{loadError}</p>
           </div>
         )}
+        {templateError && (
+          <div role="status" className="flex items-center gap-3 p-4 rounded-2xl" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
+            <AlertCircle className="h-4 w-4 shrink-0" style={{ color: '#b45309' }} />
+            <p className="text-sm" style={{ color: '#b45309' }}>{templateError}</p>
+          </div>
+        )}
         {rowError && (
           <div className="flex items-center gap-3 p-4 rounded-2xl" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}>
             <AlertCircle className="h-4 w-4 shrink-0" style={{ color: '#ef4444' }} />
@@ -166,7 +184,8 @@ export function CvthequeClient({ initialCandidates, loadError }: { initialCandid
       </div>
 
       {/* key : choix et compte rendu remis à zéro pour chaque candidat */}
-      <EsnExportDialog key={exportFor?.$id ?? 'none'} candidate={exportFor && { id: exportFor.$id, name: exportFor.name }} onClose={() => setExportFor(null)} />
+      <EsnExportDialog key={exportFor?.$id ?? 'none'} candidate={exportFor && { id: exportFor.$id, name: exportFor.name }} onClose={() => setExportFor(null)}
+        endpoint="/api/admin/cv-export" loadVersions={getCvExportVersions} esn={exportEsn} />
     </div>
   )
 }
