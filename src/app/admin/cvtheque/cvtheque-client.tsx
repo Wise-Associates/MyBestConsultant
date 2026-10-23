@@ -1,11 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import {
   Search, Users, FileText, Sparkles, ScanSearch, ExternalLink, AlertCircle,
-  Loader2, MapPin, Navigation, Building2, Briefcase, Mail, Phone, FolderSearch,
+  Loader2, MapPin, Navigation, Building2, Briefcase, Mail, Phone, FolderSearch, FileDown,
 } from 'lucide-react'
 import { scanCandidateCv, getCvthequeCandidates, type CvThequeCandidate } from './actions'
+import { EsnExportDialog } from './esn-export-dialog'
+import { BRAND } from '@/app/admin/candidats/labels'
 import { SECTORS } from '@/lib/candidate-taxonomy'
 import { Pagination } from '@/components/shared/pagination'
 import { CandidateAvatar } from '@/components/shared/candidate-avatar'
@@ -20,6 +22,7 @@ export function CvthequeClient({ initialCandidates, loadError }: { initialCandid
   const [page, setPage] = useState(1)
   const [scanningId, setScanningId] = useState<string | null>(null)
   const [rowError, setRowError] = useState('')
+  const [exportFor, setExportFor] = useState<CvThequeCandidate | null>(null)
   const [, startTransition] = useTransition()
 
   const stats = useMemo(() => ({
@@ -39,8 +42,6 @@ export function CvthequeClient({ initialCandidates, loadError }: { initialCandid
       return haystack.includes(q)
     })
   }, [candidates, search, sectorFilter, availabilityFilter])
-
-  useEffect(() => { setPage(1) }, [search, sectorFilter, availabilityFilter])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -90,11 +91,11 @@ export function CvthequeClient({ initialCandidates, loadError }: { initialCandid
             <div className="flex-1 flex items-center gap-2 px-4 rounded-2xl"
               style={{ background: 'rgba(124,58,237,0.18)', border: '1px solid rgba(124,58,237,0.4)', boxShadow: '0 4px 14px rgba(0,0,0,0.12)' }}>
               <Search className="h-4 w-4 shrink-0" style={{ color: '#c4b5fd' }} />
-              <input value={search} onChange={e => setSearch(e.target.value)}
+              <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }}
                 placeholder="Nom, compétence, ville, mission…"
                 style={{ background: 'transparent', border: 'none', outline: 'none', color: 'white', width: '100%', padding: '0.8rem 0', fontSize: '0.9rem' }} />
             </div>
-            <select value={sectorFilter} onChange={e => setSectorFilter(e.target.value)}
+            <select value={sectorFilter} onChange={e => { setSectorFilter(e.target.value); setPage(1) }}
               className="px-4 rounded-2xl text-sm"
               style={{ background: 'rgba(124,58,237,0.18)', border: '1px solid rgba(124,58,237,0.4)', color: 'white', minWidth: 180 }}>
               <option value="" style={{ color: '#111' }}>Tous secteurs</option>
@@ -106,7 +107,7 @@ export function CvthequeClient({ initialCandidates, loadError }: { initialCandid
                 { value: 'available', label: 'Disponible', color: '#34d399' },
                 { value: 'unavailable', label: 'Non disponible', color: '#9ca3af' },
               ] as const).map(opt => (
-                <button key={opt.value} type="button" onClick={() => setAvailabilityFilter(opt.value)}
+                <button key={opt.value} type="button" onClick={() => { setAvailabilityFilter(opt.value); setPage(1) }}
                   className="px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap"
                   style={availabilityFilter === opt.value
                     ? { background: opt.color, color: opt.value === 'all' ? '#0B1D51' : 'white' }
@@ -156,13 +157,16 @@ export function CvthequeClient({ initialCandidates, loadError }: { initialCandid
             </p>
             <div className="space-y-4">
               {paged.map(c => (
-                <CandidateCard key={c.$id} candidate={c} scanning={scanningId === c.$id} onScan={() => scan(c.$id)} />
+                <CandidateCard key={c.$id} candidate={c} scanning={scanningId === c.$id} onScan={() => scan(c.$id)} onExport={() => setExportFor(c)} />
               ))}
             </div>
             <Pagination page={page} totalPages={totalPages} onChange={setPage} accentColor="#7c3aed" />
           </>
         )}
       </div>
+
+      {/* key : choix et compte rendu remis à zéro pour chaque candidat */}
+      <EsnExportDialog key={exportFor?.$id ?? 'none'} candidate={exportFor && { id: exportFor.$id, name: exportFor.name }} onClose={() => setExportFor(null)} />
     </div>
   )
 }
@@ -180,7 +184,7 @@ function StatCard({ icon: Icon, label, value, color }: { icon: React.ElementType
   )
 }
 
-function CandidateCard({ candidate: c, scanning, onScan }: { candidate: CvThequeCandidate; scanning: boolean; onScan: () => void }) {
+function CandidateCard({ candidate: c, scanning, onScan, onExport }: { candidate: CvThequeCandidate; scanning: boolean; onScan: () => void; onExport: () => void }) {
   return (
     <div className="rounded-3xl p-6 transition-all duration-300 hover:-translate-y-1"
       style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 10px 30px -10px rgba(11,29,81,0.14)' }}>
@@ -240,6 +244,13 @@ function CandidateCard({ candidate: c, scanning, onScan }: { candidate: CvTheque
               style={{ background: 'rgba(124,58,237,0.1)', color: '#7c3aed', border: '1px solid rgba(124,58,237,0.25)', cursor: scanning ? 'default' : 'pointer' }}>
               {scanning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScanSearch className="h-3.5 w-3.5" />}
               {c.skills.length > 0 ? 'Rescanner' : 'Scanner'}
+            </button>
+          )}
+          {c.cvFileId && (
+            <button type="button" onClick={onExport}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-opacity hover:opacity-90"
+              style={{ background: `${BRAND}18`, color: '#c2410c', border: `1px solid ${BRAND}40`, cursor: 'pointer' }}>
+              <FileDown className="h-3.5 w-3.5" /> Format ESN
             </button>
           )}
           {c.email && (
