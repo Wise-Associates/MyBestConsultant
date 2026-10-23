@@ -6,6 +6,7 @@ import {
 
 const DOC = {
   $id: 'doc1',
+  tenantId: 'admin',
   candidateId: 'cand1',
   mode: 'standard',
   lang: 'fr',
@@ -17,7 +18,7 @@ const DOC = {
 }
 
 const version = (mode: CvExportVersion['mode'], lang: CvExportVersion['lang'], generatedAt: string): CvExportVersion =>
-  ({ mode, lang, generatedAt, stale: false })
+  ({ mode, lang, generatedAt, stale: null })
 
 describe('parseStoredExport', () => {
   it('lit un document complet', () => {
@@ -32,6 +33,7 @@ describe('parseStoredExport', () => {
     assert.equal(parseStoredExport({ ...DOC, mode: 'autre' }), null)
     assert.equal(parseStoredExport({ ...DOC, lang: 'de' }), null)
     assert.equal(parseStoredExport({ ...DOC, fileId: '' }), null)
+    assert.equal(parseStoredExport({ ...DOC, tenantId: undefined }), null) // à reprendre par npm run cv-export:setup
     assert.equal(parseStoredExport({ ...DOC, generatedAt: undefined }), null)
   })
 
@@ -76,8 +78,16 @@ describe('versionView', () => {
   it('signale une version tirée d\'un CV remplacé depuis', () => {
     const stored = parseStoredExport(DOC)
     assert.ok(stored)
-    assert.equal(versionView(stored, 'cv1').stale, false)
-    assert.equal(versionView(stored, 'cv2').stale, true)
+    assert.equal(versionView(stored, 'cv1').stale, null)
+    assert.equal(versionView(stored, 'cv2').stale, 'cv')
+  })
+
+  it('signale une version antérieure au modèle actuel de l\'organisation', () => {
+    const stored = parseStoredExport(DOC)
+    assert.ok(stored)
+    assert.equal(versionView(stored, 'cv1', '2026-10-23T11:00:00.000+00:00').stale, 'template')
+    assert.equal(versionView(stored, 'cv1', '2026-10-23T09:00:00.000+00:00').stale, null)
+    assert.equal(versionView(stored, 'cv2', '2026-10-23T11:00:00.000+00:00').stale, 'cv') // le CV d'abord
   })
 
   it('ne transmet ni fichier ni identifiant à la fenêtre', () => {

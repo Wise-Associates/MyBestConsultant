@@ -7,11 +7,12 @@ import { LocalTime } from '@/components/shared/local-time'
 import { fieldLabel, primaryButton, secondaryButton } from '@/app/admin/candidats/labels'
 import { LANGS_OF, initialChoice, storedFor, type CvExportVersion, type LangChoice } from '@/lib/cv-export/stored'
 import type { AnonymizationMode } from '@/lib/cv-export/types'
-import { getCvExportVersions } from './actions'
 
-// Export d'un candidat au format de l'ESN (template Wise Associates) : route /api/admin/cv-export/[candidateId].
-// POST génère et enregistre (1 à 3 min d'IA), GET retélécharge la version enregistrée. Téléchargé par fetch : une
-// erreur (IA indisponible, fuite détectée…) s'affiche ici au lieu d'être enregistrée en fichier.
+// Export d'un candidat au format de l'ESN, partagé par la CV Thèque admin (modèle de la plateforme, route
+// /api/admin/cv-export) et celle des recruteurs (modèle de leur organisation, /api/recruiter/cv-export) : chaque page
+// fournit sa route et la lecture de ses versions enregistrées. POST génère et enregistre (1 à 3 min d'IA), GET
+// retélécharge la version enregistrée. Téléchargé par fetch : une erreur (IA indisponible, fuite détectée…) s'affiche
+// ici au lieu d'être enregistrée en fichier.
 
 type SaveStatus = 'saved' | 'failed' | 'off'
 type Stored = { versions: CvExportVersion[]; storage: boolean; error?: string }
@@ -52,9 +53,9 @@ function notesOf(res: Response): string[] | null {
   }
 }
 
-async function fetchVersions(candidateId: string): Promise<Stored> {
+async function fetchVersions(loadVersions: (candidateId: string) => Promise<Stored>, candidateId: string): Promise<Stored> {
   try {
-    return await getCvExportVersions(candidateId)
+    return await loadVersions(candidateId)
   } catch (err) {
     console.error('[cv-export] lecture des versions enregistrées impossible', err)
     return { versions: [], storage: true, error: 'Versions enregistrées illisibles : connexion interrompue.' }
@@ -120,15 +121,35 @@ function SavedStatus({ stored, saved, onRetry }: { stored: Stored | null; saved:
       {saved.some(v => v.stale) && (
         <p className="flex items-start gap-2 text-xs" style={{ color: '#b45309' }}>
           <AlertTriangle size={14} className="mt-px shrink-0" aria-hidden />
-          Le candidat a remplacé son CV depuis : générez une nouvelle version pour en tenir compte.
+          {saved.some(v => v.stale === 'cv')
+            ? 'Le candidat a remplacé son CV depuis : générez une nouvelle version pour en tenir compte.'
+            : 'Le modèle Word a été remplacé depuis : générez une nouvelle version pour l\'utiliser.'}
         </p>
       )}
     </div>
   )
 }
 
+export interface EsnExportDialogProps {
+  candidate: { id: string; name: string } | null
+  onClose: () => void
+  /** Route d'export de la page, sans l'identifiant du candidat (« /api/admin/cv-export »). */
+  endpoint: string
+  /** Action serveur de la page qui lit les versions enregistrées de son organisation. */
+  loadVersions: (candidateId: string) => Promise<Stored>
+  /** ESN du modèle utilisé, affiché dans la fenêtre. */
+  esn: string
+  /** Raison pour laquelle la génération est refusée (abonnement, adresse e-mail) ; les versions enregistrées restent téléchargeables. */
+  generationDenied?: string | null
+  /**
+   * Générations comptées dans un quota (recruteurs) : pas de génération tant que les versions enregistrées sont
+   * illisibles, elle referait peut-être une version qui existe déjà.
+   */
+  quotaLimited?: boolean
+}
+
 /** Fenêtre « Format ESN » d'un candidat : choix des langues et de l'anonymisation, téléchargement ou génération. */
-export function EsnExportDialog({ candidate, onClose }: { candidate: { id: string; name: string } | null; onClose: () => void }) {
+export function EsnExportDialog({ candidate, onClose, endpoint, loadVersions, esn, generationDenied, quotaLimited }: EsnExportDialogProps) {
   const candidateId = candidate?.id
   const [stored, setStored] = useState<Stored | null>(null)
   // Choix de l'admin ; tant qu'il n'a rien choisi, celui de la dernière version enregistrée.
@@ -142,9 +163,9 @@ export function EsnExportDialog({ candidate, onClose }: { candidate: { id: strin
   useEffect(() => {
     if (!candidateId) return
     let cancelled = false
-    void fetchVersions(candidateId).then(result => { if (!cancelled) setStored(result) })
+    void fetchVersions(loadVersions, candidateId).then(result => { if (!cancelled) setStored(result) })
     return () => { cancelled = true }
-  }, [candidateId])
+  }, [candidateId, loadVersions])
 
   // Sur mobile, le compte rendu et l'erreur apparaissent sous les choix, hors de l'écran : amenés à la vue une fois,
   // à leur arrivée (pas à chaque rendu, l'admin peut remonter changer un choix).
@@ -154,7 +175,7 @@ export function EsnExportDialog({ candidate, onClose }: { candidate: { id: strin
   async function retryVersions() {
     if (!candidateId) return
     setStored(null)
-    setStored(await fetchVersions(candidateId))
+    setStored(await fetchVersions(loadVersions, candidateId))
   }
 
   const choice = picked ?? initialChoice(stored?.versions ?? [])
@@ -185,7 +206,7 @@ export function EsnExportDialog({ candidate, onClose }: { candidate: { id: strin
     setBusy(kind)
     setError('')
     setDone(null)
-    const url = `/api/admin/cv-export/${encodeURIComponent(candidateId)}`
+    const url = `${endpoint}/${encodeURIComponent(candidateId)}`
     try {
       if (kind === 'download') {
         const query = new URLSearchParams([['mode', choice.mode], ...LANGS_OF[choice.langs].map(lang => ['lang', lang])])
@@ -203,12 +224,18 @@ export function EsnExportDialog({ candidate, onClose }: { candidate: { id: strin
       const status = res.headers.get('X-Cv-Export-Saved')
       setDone({ ...file, saved: status === 'saved' || status === 'failed' ? status : 'off' })
       // Même en échec : une partie a pu être enregistrée (une langue sur deux), la fenêtre affiche ce qui l'est.
-      if (status === 'saved' || status === 'failed') setStored(await fetchVersions(candidateId))
+      if (status === 'saved' || status === 'failed') setStored(await fetchVersions(loadVersions, candidateId))
     } catch (err) {
       console.error('[cv-export] export interrompu', err)
-      setError(err instanceof TypeError
-        ? 'Export impossible : connexion interrompue, réessayez.'
-        : 'Export impossible : erreur inattendue dans la page. Rechargez-la et réessayez.')
+      if (kind === 'generate') {
+        // Le serveur a peut-être terminé et enregistré la version : la relire évite de la payer une seconde fois.
+        setError('Connexion interrompue pendant la génération : la version a peut-être été enregistrée, vérifiez ci-dessus avant de relancer.')
+        setStored(await fetchVersions(loadVersions, candidateId))
+      } else {
+        setError(err instanceof TypeError
+          ? 'Téléchargement impossible : connexion interrompue, réessayez.'
+          : 'Téléchargement impossible : erreur inattendue dans la page. Rechargez-la et réessayez.')
+      }
     } finally {
       setBusy(null)
     }
@@ -226,13 +253,16 @@ export function EsnExportDialog({ candidate, onClose }: { candidate: { id: strin
   const [secondary, primary] = !saved ? [null, generateButton] : stale ? [downloadButton, generateButton] : [generateButton, downloadButton]
   // Pendant la recherche des versions, aucune action : « Générer » lancerait l'IA alors qu'une version existe peut-être.
   const locked = busy !== null || stored === null
-  const actionButton = (action: typeof generateButton | typeof downloadButton, isPrimary: boolean) => (
-    <button type="button" onClick={() => run(action.kind)} disabled={locked}
-      style={{ ...(isPrimary ? primaryButton : secondaryButton), justifyContent: 'center', opacity: locked ? 0.7 : 1, cursor: locked ? 'default' : 'pointer' }}>
+  const actionButton = (action: typeof generateButton | typeof downloadButton, isPrimary: boolean) => {
+    const disabled = locked || (action.kind === 'generate' && (!!generationDenied || (!!quotaLimited && !!stored?.error)))
+    return (
+    <button type="button" onClick={() => run(action.kind)} disabled={disabled}
+      style={{ ...(isPrimary ? primaryButton : secondaryButton), justifyContent: 'center', opacity: disabled ? 0.7 : 1, cursor: disabled ? 'default' : 'pointer' }}>
       {busy === action.kind ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <action.Icon size={15} aria-hidden />}
       {action.label}
     </button>
-  )
+    )
+  }
 
   return (
     <Dialog open={candidate !== null} onOpenChange={open => { if (!open && !busy) onClose() }}>
@@ -241,7 +271,7 @@ export function EsnExportDialog({ candidate, onClose }: { candidate: { id: strin
           <DialogHeader>
             <DialogTitle className="text-admin-fg" style={{ fontSize: '1.05rem' }}>Exporter au format ESN</DialogTitle>
             <DialogDescription style={{ color: 'var(--admin-fg-muted)' }}>
-              Dossier de compétences anonymisé de {candidate.name || 'ce candidat'}, dans le modèle Wise Associates (Word, modifiable).
+              Dossier de compétences anonymisé de {candidate.name || 'ce candidat'}, dans le modèle {esn} (Word, modifiable).
             </DialogDescription>
           </DialogHeader>
 
@@ -251,6 +281,7 @@ export function EsnExportDialog({ candidate, onClose }: { candidate: { id: strin
             onChange={mode => setPicked({ ...choice, mode })} disabled={busy !== null} />
 
           <SavedStatus stored={stored} saved={saved} onRetry={retryVersions} />
+          {generationDenied && <p className="text-sm" style={{ color: '#b45309' }}>{generationDenied}</p>}
 
           <div aria-live="polite" className="grid gap-2">
             {busy === 'generate' && (

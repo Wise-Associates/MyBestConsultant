@@ -1,7 +1,8 @@
 import type { AnonymizationMode, CvLang } from './types'
 
-// Versions enregistrées de l'export au format ESN (ADR 0009) : une par candidat, anonymisation et langue, remplacée à
-// chaque nouvelle génération et supprimée avec le compte. Règles pures, sans dépendance (la fenêtre d'export les
+// Versions enregistrées de l'export au format ESN (ADR 0009, 0010) : une par organisation, candidat, anonymisation et
+// langue (chaque organisation exporte dans son propre modèle), remplacée à chaque nouvelle génération et supprimée avec
+// le compte du candidat. Règles pures, sans dépendance (la fenêtre d'export les
 // importe aussi), testées dans stored.test.ts ; lecture et écriture dans store.ts.
 
 /** Taille de l'attribut `notes` de la collection (scripts/setup-cv-export-storage.mjs). */
@@ -16,6 +17,8 @@ export const LANGS_OF: Record<LangChoice, CvLang[]> = { both: ['fr', 'en'], fr: 
 
 export interface StoredCvExport {
   id: string
+  /** Organisation qui a généré la version (« admin » : la plateforme) : seule elle la voit. */
+  tenantId: string
   candidateId: string
   mode: AnonymizationMode
   lang: CvLang
@@ -32,8 +35,8 @@ export interface CvExportVersion {
   mode: AnonymizationMode
   lang: CvLang
   generatedAt: string
-  /** Le candidat a remplacé son CV depuis cette génération. */
-  stale: boolean
+  /** Version dépassée : le candidat a remplacé son CV (« cv ») ou l'organisation son modèle (« template ») depuis. */
+  stale: 'cv' | 'template' | null
 }
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
@@ -54,9 +57,9 @@ export function parseStoredExport(doc: Record<string, unknown>): StoredCvExport 
   const { mode, lang } = doc
   if (mode !== 'standard' && mode !== 'renforcee') return null
   if (lang !== 'fr' && lang !== 'en') return null
-  const [id, candidateId, fileId, fileName, generatedAt] = [doc.$id, doc.candidateId, doc.fileId, doc.fileName, doc.generatedAt].map(str)
-  if (!id || !candidateId || !fileId || !fileName || !generatedAt) return null
-  return { id, candidateId, mode, lang, fileId, fileName, sourceCvFileId: str(doc.sourceCvFileId), notes: parseNotes(doc.notes), generatedAt }
+  const [id, tenantId, candidateId, fileId, fileName, generatedAt] = [doc.$id, doc.tenantId, doc.candidateId, doc.fileId, doc.fileName, doc.generatedAt].map(str)
+  if (!id || !tenantId || !candidateId || !fileId || !fileName || !generatedAt) return null
+  return { id, tenantId, candidateId, mode, lang, fileId, fileName, sourceCvFileId: str(doc.sourceCvFileId), notes: parseNotes(doc.notes), generatedAt }
 }
 
 /** Compte rendu enregistré avec la version : les dernières remarques sont abandonnées si elles dépassent l'attribut. */
@@ -72,8 +75,12 @@ export function storedFor<T extends { mode: AnonymizationMode; lang: CvLang }>(v
   return found.every((v): v is T => v !== undefined) ? found : null
 }
 
-export function versionView(stored: StoredCvExport, currentCvFileId: string): CvExportVersion {
-  return { mode: stored.mode, lang: stored.lang, generatedAt: stored.generatedAt, stale: stored.sourceCvFileId !== currentCvFileId }
+/** `templateUploadedAt` : dépôt du modèle de l'organisation ; vide pour le modèle Wise Associates du dépôt (plateforme). */
+export function versionView(stored: StoredCvExport, currentCvFileId: string, templateUploadedAt = ''): CvExportVersion {
+  const stale = stored.sourceCvFileId !== currentCvFileId ? 'cv'
+    : templateUploadedAt && Date.parse(stored.generatedAt) < Date.parse(templateUploadedAt) ? 'template'
+      : null
+  return { mode: stored.mode, lang: stored.lang, generatedAt: stored.generatedAt, stale }
 }
 
 /**

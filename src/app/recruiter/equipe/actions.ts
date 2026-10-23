@@ -22,7 +22,13 @@ export async function inviteMemberAction(input: { firstName: string; lastName: s
 }> {
   try {
     const { tenantId, invitedBy } = await requireOwner()
-    const res = await inviteMember({ tenantId, invitedBy, ...input })
+    // Champs repris un par un : une action serveur reçoit n'importe quel objet, et un `tenantId` ou un `invitedBy` envoyé
+    // par le navigateur ne doit jamais remplacer ceux de la session (sinon : invitation dans une autre organisation).
+    const { firstName, lastName, email } = input
+    if (typeof firstName !== 'string' || typeof lastName !== 'string' || typeof email !== 'string') {
+      return { error: 'Prénom, nom et adresse e-mail requis.' }
+    }
+    const res = await inviteMember({ tenantId, invitedBy, firstName, lastName, email })
     if (!res.error) revalidatePath('/recruiter/equipe')
     return res
   } catch (e) {

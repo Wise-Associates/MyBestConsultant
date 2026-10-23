@@ -65,6 +65,8 @@ SUIVRE LES CANDIDATS
 
 CV THÈQUE ET VIVIER
 - CV Thèque (/recruiter/cvtheque) : candidats inscrits qui ont un CV ; filtres par mots-clés, mobilité, séniorité, localisation, secteur, disponibilité ; « Voir le CV », « Contacter » (e-mail), WhatsApp.
+- Modèle CV (CV Thèque, bouton « Modèle CV » / « Ajouter votre modèle CV » en haut de la page) : tout recruteur de l'organisation dépose le modèle Word de dossier de compétences de l'organisation (.docx, 2 Mo au plus) avec sa cartographie template_map.json, qui indique où va chaque rubrique ; elle se prépare avec la skill Claude cv-esn-anonymise, sinon contactez le support. Un exemple à adapter est téléchargeable dans la même fenêtre. Le modèle est vérifié en y mettant un candidat fictif en français et en anglais (aperçu téléchargeable) ; adresse e-mail vérifiée, 20 dépôts et 30 aperçus par jour. « Retirer » enlève « Format ESN » de la CV Thèque.
+- « Format ESN » (CV Thèque) : quand votre organisation a déposé son modèle CV, le CV du candidat est mis dans ce modèle par l'IA, anonymisé (nom, coordonnées, liens retirés ; en anonymisation renforcée, clients et employeurs aussi), en français et/ou en anglais. Génération en 1 à 3 minutes : abonnement actif (essai compris), adresse e-mail vérifiée, 20 générations par jour et par organisation. La dernière version est enregistrée pour votre organisation et se retélécharge sans nouvelle génération. Relisez toujours le document dans Word avant de l'envoyer.
 - Vivier (/recruiter/vivier) : vos propres CV par offre, visibles de vous seul. Dépôt de plusieurs CV à la fois (PDF, DOC, DOCX, 10 Mo chacun) ; l'IA crée les fiches. « Analyser à nouveau », « Profil complet », « Supprimer ».
 
 IA
