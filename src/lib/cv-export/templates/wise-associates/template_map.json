@@ -1,0 +1,175 @@
+{
+  "esn": "Wise Associates",
+  "body_start": 1,
+  "body_end": null,
+  "fixed": [
+    {
+      "path": [
+        0,
+        0,
+        1,
+        2
+      ],
+      "fields": [
+        "{identifiant}"
+      ]
+    },
+    {
+      "path": [
+        0,
+        0,
+        1,
+        3
+      ],
+      "fields": [
+        "{titre}"
+      ]
+    },
+    {
+      "path": [
+        0,
+        0,
+        1,
+        6
+      ],
+      "fields": [
+        " {experience} "
+      ]
+    }
+  ],
+  "protos": {
+    "section_summary": 1,
+    "summary": 2,
+    "spacer": 3,
+    "section_education": 8,
+    "edu_rule": 9,
+    "edu_item": 10,
+    "lang_line": 12,
+    "section_skills": 13,
+    "skill_item": 14,
+    "section_experiences": 16,
+    "exp_pad": 17,
+    "exp_header": 18,
+    "exp_role": 19,
+    "exp_context": 20,
+    "exp_bullet": 21,
+    "exp_gap": 23
+  },
+  "fields": {
+    "summary": [
+      "{text}"
+    ],
+    "edu_rule": [
+      ""
+    ],
+    "edu_item": [
+      "{annees} : ",
+      "{intitule}",
+      "[[ · {etablissement}]]",
+      "[[ — {details_joined}]]"
+    ],
+    "lang_line": [
+      "{lbl_languages_label}",
+      "{langues_joined}"
+    ],
+    "skill_item": [
+      "{categorie} : ",
+      "{contenu}"
+    ],
+    "exp_header": [
+      "{dates}",
+      "{client}"
+    ],
+    "exp_role": [
+      "{text}"
+    ],
+    "exp_context": [
+      "{contexte}"
+    ],
+    "exp_bullet": [
+      "{text}"
+    ]
+  },
+  "joins": {
+    "langues_joined": {
+      "list": "langues",
+      "item": "{langue} ({niveau})",
+      "sep": " - "
+    }
+  },
+  "tab_stop": {
+    "pos": 9666,
+    "align": "right"
+  },
+  "tab_stop_on": [
+    "exp_header"
+  ],
+  "requires": {
+    "exp_context": "contexte",
+    "exp_env": "environnement"
+  },
+  "sections": [
+    "summary",
+    "education",
+    {
+      "layout": [
+        "spacer",
+        "lang_line"
+      ],
+      "keep_with_previous": true
+    },
+    "skills",
+    "experiences"
+  ],
+  "layouts": {
+    "summary_item": [
+      "summary",
+      "spacer"
+    ],
+    "education_head": [
+      "edu_rule"
+    ],
+    "education_item": [
+      "edu_item"
+    ],
+    "skills_head": [],
+    "skills_item": [
+      "skill_item"
+    ],
+    "skills_tail": [
+      "spacer"
+    ],
+    "experiences_head": [
+      "spacer:exp_pad"
+    ],
+    "experiences_item": [
+      "exp_header",
+      "exp_role*",
+      "exp_context",
+      "exp_bullet*",
+      "exp_env",
+      "spacer:exp_gap"
+    ]
+  },
+  "labels": {
+    "fr": {
+      "summary": "RESUME EXPERIENCE PROFESSIONNELLE",
+      "education": "FORMATION – LANGUES",
+      "skills": "COMPETENCES FONCTIONNELLES ET TECHNIQUES",
+      "experiences": "EXPERIENCE PROFESSIONNELLE",
+      "languages_label": "Langues : ",
+      "environment": "Environnement : "
+    },
+    "en": {
+      "summary": "PROFESSIONAL SUMMARY",
+      "education": "EDUCATION – LANGUAGES",
+      "skills": "FUNCTIONAL AND TECHNICAL SKILLS",
+      "experiences": "PROFESSIONAL EXPERIENCE",
+      "languages_label": "Languages: ",
+      "environment": "Environment: "
+    }
+  },
+  "header_footer_replacements_en": {
+    " sur ": " of "
+  }
+}

@@ -10,14 +10,24 @@ if (typeof globalThis.DOMMatrix === 'undefined') {
   }
 }
 
-const MAX_CHARS = 15_000
+const DEFAULT_MAX_CHARS = 15_000
 
-export async function extractTextFromFile(buffer: Buffer, filename: string): Promise<string> {
+interface ExtractOptions {
+  /** 15 000 caractères suffisent pour une offre ; un CV complet (export au format ESN) en demande davantage. */
+  maxChars?: number
+  /**
+   * Fichier illisible (protégé, abîmé, faux format) : erreur levée au lieu du texte de repli tiré des octets bruts,
+   * qui partirait tel quel à l'IA (export de CV au format ESN).
+   */
+  strict?: boolean
+}
+
+export async function extractTextFromFile(buffer: Buffer, filename: string, { maxChars = DEFAULT_MAX_CHARS, strict = false }: ExtractOptions = {}): Promise<string> {
   const ext = filename.split('.').pop()?.toLowerCase() ?? ''
 
   // CSV / TXT — direct
   if (['csv', 'txt', 'tsv', 'md'].includes(ext)) {
-    return buffer.toString('utf-8').slice(0, MAX_CHARS)
+    return buffer.toString('utf-8').slice(0, maxChars)
   }
 
   // PDF — real parser
@@ -25,10 +35,11 @@ export async function extractTextFromFile(buffer: Buffer, filename: string): Pro
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const pdfParse = require('pdf-parse/lib/pdf-parse.js') as (buf: Buffer, options?: { max?: number }) => Promise<{ text: string }>
-      // 50 premières pages : le texte est de toute façon tronqué à MAX_CHARS, inutile de lire un document entier.
+      // 50 premières pages : le texte est de toute façon tronqué à maxChars, inutile de lire un document entier.
       const data = await pdfParse(buffer, { max: 50 })
-      return data.text.slice(0, MAX_CHARS)
-    } catch {
+      return data.text.slice(0, maxChars)
+    } catch (err) {
+      if (strict) throw err
       return buffer.toString('utf-8', 0, 5_000).replace(/[^\x20-\x7E\n]/g, ' ')
     }
   }
@@ -38,10 +49,11 @@ export async function extractTextFromFile(buffer: Buffer, filename: string): Pro
     try {
       const mammoth = await import('mammoth')
       const result = await mammoth.extractRawText({ buffer })
-      return result.value.slice(0, MAX_CHARS)
-    } catch {
+      return result.value.slice(0, maxChars)
+    } catch (err) {
+      if (strict) throw err
       const raw = buffer.toString('utf-8', 0, Math.min(buffer.length, 500_000))
-      return raw.replace(/<w:p[ >]/g, '\n').replace(/<[^>]+>/g, '').slice(0, MAX_CHARS)
+      return raw.replace(/<w:p[ >]/g, '\n').replace(/<[^>]+>/g, '').slice(0, maxChars)
     }
   }
 
@@ -50,7 +62,7 @@ export async function extractTextFromFile(buffer: Buffer, filename: string): Pro
     try {
       const mammoth = await import('mammoth')
       const result = await mammoth.extractRawText({ buffer })
-      if (result.value && result.value.trim().length > 30) return result.value.slice(0, MAX_CHARS)
+      if (result.value && result.value.trim().length > 30) return result.value.slice(0, maxChars)
     } catch { /* fall through */ }
 
     try {
@@ -58,14 +70,16 @@ export async function extractTextFromFile(buffer: Buffer, filename: string): Pro
       const WordExtractor = require('word-extractor') as new () => { extract: (buf: Buffer) => Promise<{ getBody: () => string }> }
       const extractor = new WordExtractor()
       const doc = await extractor.extract(buffer)
-      return doc.getBody().slice(0, MAX_CHARS)
-    } catch { /* fall through */ }
+      return doc.getBody().slice(0, maxChars)
+    } catch (err) {
+      if (strict) throw err
+    }
 
     return buffer.toString('latin1')
       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, ' ')
       .replace(/\s{3,}/g, '\n')
       .trim()
-      .slice(0, MAX_CHARS)
+      .slice(0, maxChars)
   }
 
   // XLS / XLSX — real spreadsheet parser (handles formulas, dates, multiple sheets,
@@ -77,7 +91,7 @@ export async function extractTextFromFile(buffer: Buffer, filename: string): Pro
       const csv = workbook.SheetNames
         .map(name => `--- ${name} ---\n${XLSX.utils.sheet_to_csv(workbook.Sheets[name])}`)
         .join('\n\n')
-      return csv.slice(0, MAX_CHARS)
+      return csv.slice(0, maxChars)
     } catch {
       return ''
     }
@@ -90,7 +104,7 @@ export async function extractTextFromFile(buffer: Buffer, filename: string): Pro
       const ast = await officeParser.parseOffice(buffer, { fileType: ext as 'pptx' | 'rtf' | 'odt' | 'ods' | 'odp' })
       const result = await ast.to('text')
       const text = typeof result === 'string' ? result : result.value
-      return text.slice(0, MAX_CHARS)
+      return text.slice(0, maxChars)
     } catch {
       return ''
     }

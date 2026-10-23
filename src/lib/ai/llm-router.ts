@@ -85,16 +85,24 @@ async function loadRuntimeConfig(): Promise<RuntimeConfig> {
   }
 }
 
-async function callClaude(messages: LLMMessage[], systemPrompt: string | undefined, model: string, apiKey: string): Promise<string> {
+/** Bornes d'un appel : longueur de la réponse et délai (défauts : 4096 jetons ; 55 s, ou le délai du SDK pour Claude). */
+interface CallLimits {
+  maxTokens?: number
+  timeoutMs?: number
+}
+
+async function callClaude(messages: LLMMessage[], systemPrompt: string | undefined, model: string, apiKey: string, limits: CallLimits): Promise<string> {
   // Claude est le dernier recours de pickPrimary, même sans clé : échec explicite plutôt qu'une erreur du SDK.
   if (!apiKey) throw new LLMNotConfiguredError('Claude non configuré (clé manquante dans /admin/llm-config)')
   const client = new Anthropic({ apiKey })
+  // Délai imposé par l'appelant : pas de nouvel essai automatique, qui le dépasserait.
+  const requestOptions = limits.timeoutMs ? { timeout: limits.timeoutMs, maxRetries: 0 } : undefined
   const response = await client.messages.create({
     model,
-    max_tokens: 4096,
+    max_tokens: limits.maxTokens ?? 4096,
     system: systemPrompt,
     messages: messages.map(m => ({ role: m.role === 'system' ? 'user' : m.role, content: m.content })),
-  })
+  }, requestOptions)
   // Tous les blocs de texte, dans l'ordre ; une réponse sans texte (refus, contenu vide) donne une chaîne vide.
   return response.content.flatMap(block => (block.type === 'text' ? [block.text] : [])).join('')
 }
@@ -140,9 +148,11 @@ async function callOpenAICompat(
   model: string,
   apiUrl: string,
   apiKey: string,
+  limits: CallLimits,
 ): Promise<string> {
+  const timeoutMs = limits.timeoutMs ?? 55_000
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 55_000)
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
   let res: Response
   try {
     res = await fetch(`${apiUrl}/chat/completions`, {
@@ -154,7 +164,7 @@ async function callOpenAICompat(
         // 800 truncated long responses mid-JSON (e.g. multi-offer imports with full,
         // untruncated descriptions) — the model output cut off mid-property, so
         // JSON.parse threw a confusing "Expected ',' or '}'" error on the client.
-        max_tokens: 4096,
+        max_tokens: limits.maxTokens ?? 4096,
         // "think" désactive le mode raisonnement de Qwen3 (TeckiA) — propriété non standard que
         // les autres API compatibles OpenAI (Groq, GPT-4o, autres modèles open source) refusent.
         ...(model.toLowerCase().includes('qwen') ? { think: false } : {}),
@@ -168,7 +178,7 @@ async function callOpenAICompat(
     // Le message de fetch peut recopier l'en-tête refusé, donc la clé (valeur avec un retour à la ligne) :
     // seule la nature de l'échec est gardée.
     const code = (err as { cause?: { code?: string } })?.cause?.code
-    const reason = controller.signal.aborted ? 'pas de réponse après 55 s' : code ?? (err instanceof Error ? err.name : 'réseau')
+    const reason = controller.signal.aborted ? `pas de réponse après ${Math.round(timeoutMs / 1000)} s` : code ?? (err instanceof Error ? err.name : 'réseau')
     throw new LLMUnreachableError(controller.signal.aborted, reason)
   } finally {
     clearTimeout(timeout)
@@ -197,24 +207,25 @@ async function tryCall(
   cfg: RuntimeConfig,
   messages: LLMMessage[],
   systemPrompt: string | undefined,
+  limits: CallLimits,
 ): Promise<string> {
   if (isCustomId(provider)) {
     const m = findCustom(cfg, provider)
     if (!m) throw new LLMNotConfiguredError(`Modèle ${provider} introuvable ou désactivé (voir /admin/llm-config)`)
     if (!m.apiUrl) throw new LLMNotConfiguredError(`Modèle « ${m.label} » : URL de l'API manquante (voir /admin/llm-config)`)
-    return callOpenAICompat(messages, systemPrompt, m.model, m.apiUrl, m.apiKey)
+    return callOpenAICompat(messages, systemPrompt, m.model, m.apiUrl, m.apiKey, limits)
   }
   switch (provider) {
     case 'gpt4o':
-      return callOpenAICompat(messages, systemPrompt, cfg.gpt4oModel, 'https://api.openai.com/v1', cfg.openaiApiKey)
+      return callOpenAICompat(messages, systemPrompt, cfg.gpt4oModel, 'https://api.openai.com/v1', cfg.openaiApiKey, limits)
     case 'teckia':
       // An empty apiUrl becomes a relative URL server-side ("fetch failed", not a
       // real HTTP error) — fail fast with a message that actually explains why.
       if (!cfg.teckiaApiUrl) throw new LLMNotConfiguredError('TeckiA non configuré (URL manquante dans /admin/llm-config)')
-      return callOpenAICompat(messages, systemPrompt, cfg.teckiaModel, cfg.teckiaApiUrl, cfg.teckiaApiKey)
+      return callOpenAICompat(messages, systemPrompt, cfg.teckiaModel, cfg.teckiaApiUrl, cfg.teckiaApiKey, limits)
     case 'claude':
     default:
-      return callClaude(messages, systemPrompt, cfg.claudeModel, cfg.claudeApiKey)
+      return callClaude(messages, systemPrompt, cfg.claudeModel, cfg.claudeApiKey, limits)
   }
 }
 
@@ -225,6 +236,10 @@ export interface CallLLMOptions {
   module?: AIModule
   /** Pas de repli automatique — pour tester réellement un modèle sans qu'un autre réponde à sa place. */
   strict?: boolean
+  /** Longueur maximale de la réponse (jetons), 4096 par défaut. */
+  maxTokens?: number
+  /** Délai de chaque modèle essayé (ms) ; défaut : 55 s pour les API compatibles OpenAI, délai du SDK pour Claude. */
+  timeoutMs?: number
 }
 
 /** callLLM lié à un module : `const callLLM = callLLMForModule('interview')` suffit à router tout un fichier. */
@@ -250,9 +265,10 @@ export async function callLLM(
     if (requested && requested !== primary) throw new LLMNotConfiguredError(`Modèle ${requested} introuvable ou désactivé (voir /admin/llm-config)`)
   }
 
+  const limits: CallLimits = { maxTokens: opts.maxTokens, timeoutMs: opts.timeoutMs }
   // Try primary provider first
   try {
-    const content = await tryCall(primary, cfg, messages, systemPrompt)
+    const content = await tryCall(primary, cfg, messages, systemPrompt, limits)
     return { content, provider: primary }
   } catch (primaryErr) {
     if (opts.strict) throw primaryErr
@@ -264,7 +280,7 @@ export async function callLLM(
 
     for (const fallback of fallbacks) {
       try {
-        const content = await tryCall(fallback, cfg, messages, systemPrompt)
+        const content = await tryCall(fallback, cfg, messages, systemPrompt, limits)
         return { content, provider: fallback }
       } catch (fallbackErr) {
         failures.push({ provider: fallback, error: fallbackErr })
