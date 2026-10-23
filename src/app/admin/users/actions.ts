@@ -120,7 +120,7 @@ export async function deleteUserAccount(authId: string, profileId: string | null
     }
     await users.delete(authId)
     // Second passage, sessions désormais révoquées : un message envoyé pendant la suppression a pu être enregistré.
-    // Un échec ici est journalisé ; la purge des 90 jours supprimera ce reste.
+    // Un échec ici est journalisé ; la purge quotidienne (ASSISTANT_RETENTION_DAYS) supprimera ce reste.
     if (isAssistantStorageConfigured()) {
       await deleteAssistantTurnsForUser(authId).catch(e => console.error('[assistant] second passage de suppression en échec', e instanceof Error ? e.message : String(e)))
     }
