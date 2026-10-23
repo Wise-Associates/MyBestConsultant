@@ -1,19 +1,22 @@
-import { createHmac, timingSafeEqual } from 'crypto'
-import { ID, Query, type Models } from 'node-appwrite'
+import { createHash, createHmac, timingSafeEqual } from 'crypto'
+import { AppwriteException, ID, Query, type Models } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { getJobById } from '@/lib/appwrite/jobs'
 import { callLLM } from '@/lib/ai/llm-router'
 import { CALENDLY_URL } from '@/lib/site-links'
 import {
-  DEFAULT_SOCIAL_CONFIG, NETWORKS, buildContent, fallbackCopy, normalizeCopy, sanitizeSocialConfig,
-  type CopyDraft, type JobLite, type Network, type SocialConfig, type SocialContent,
+  DEFAULT_SOCIAL_CONFIG, NETWORKS, SAMPLE_JOB, buildContent, fallbackCopy, normalizeCopy, sanitizeSocialConfig,
+  type CopyDraft, type JobLite, type Network, type PostImage, type SocialConfig, type SocialContent,
 } from '@/lib/social-content'
+import { SAMPLE_POSTER_ID, SCENE_DAILY_LIMITS, isQueuedOverdue, parsePosterImage, posterUrl, sceneTimeoutMs } from '@/lib/social-poster/rules'
 import type { Job } from '@/types'
 
 // Publication multi-réseaux (Modules 9 et 15) — orchestration côté plateforme.
-// Flux : offre créée → contenu préparé (lib/social-content) → webhook Make (kie.ai génère l'image, Buffer publie
-// sur LinkedIn / Instagram / Facebook / X, une seule image) → Make rappelle /api/social/callback avec les liens.
+// Flux (ADR 0015) : offre créée → contenu préparé (lib/social-content, textes par l'IA de Config IA) et publication
+// « queued » (prepareSocialPost) → en arrière-plan, photo de la scène par OpenAI puis envoi au webhook Make
+// (deliverSocialPost) → Make publie via Buffer l'affiche dessinée par la plateforme (/api/social/poster/<id>.png) sur
+// LinkedIn / Instagram / Facebook / X → Make rappelle /api/social/callback avec les liens.
 
 export type SocialStatus = 'queued' | 'sent' | 'images_ready' | 'published' | 'partial' | 'failed'
 
@@ -22,6 +25,8 @@ export interface NetworkResult { network: Network; status: 'published' | 'schedu
 export interface SocialPost {
   /** Envoyée à Make mais aucune confirmation reçue depuis plus de 10 minutes (Make n'a pas rappelé la plateforme). */
   stale: boolean
+  /** Raison pour laquelle l'affiche est partie sans photo (vide : photo présente, ou publication pas encore envoyée). */
+  posterNote: string
   id: string
   jobId: string
   jobTitle: string
@@ -108,7 +113,13 @@ function docToPost(d: Models.Document): SocialPost {
   const s = (k: string) => (typeof r[k] === 'string' ? (r[k] as string) : '')
   const results = parse<NetworkResult[]>(r.resultsJson, [])
   let status = (s('status') || 'queued') as SocialStatus
+  let error = s('error')
   const now = Date.now()
+  // Photo puis envoi à Make durent 300 s au plus : au-delà, la fonction a été interrompue, rien n'est parti.
+  if (status === 'queued' && isQueuedOverdue(d.$createdAt, now)) {
+    status = 'failed'
+    error ||= 'Préparation interrompue (délai dépassé) : relancez la publication.'
+  }
   // Des résultats sont arrivés (ex. LinkedIn) mais pas ceux des autres réseaux activés — et plus rien depuis 3 min : on conclut sur ce qui a été reçu.
   if (status === 'images_ready' && results.length > 0 && now - Date.parse(d.$updatedAt) > IDLE_MS) {
     const counted = results.filter(x => x.status !== 'skipped')
@@ -119,9 +130,10 @@ function docToPost(d: Models.Document): SocialPost {
   const lastActivity = Date.parse((r.sentAt as string | null) || d.$createdAt)
   return {
     stale: inFlight && now - Math.max(lastActivity, Date.parse(d.$updatedAt)) > STALE_MS,
+    posterNote: (() => { const note = parse<{ posterNote?: unknown } | null>(r.payloadJson, null)?.posterNote; return typeof note === 'string' ? note : '' })(),
     id: d.$id, jobId: s('jobId'), jobTitle: s('jobTitle'), tenantId: s('tenantId'), status,
     trigger: r.trigger === 'manual' ? 'manual' : 'auto', requestedBy: s('requestedBy'), caption: s('caption'),
-    images: parse<string[]>(r.imagesJson, []), results, error: s('error'),
+    images: parse<string[]>(r.imagesJson, []), results, error,
     attempts: typeof r.attempts === 'number' ? r.attempts : 0, createdAt: d.$createdAt,
     sentAt: (r.sentAt as string | null) || null, completedAt: (r.completedAt as string | null) || null,
   }
@@ -154,10 +166,12 @@ export async function getPost(id: string): Promise<SocialPost | null> {
 
 const plain = (s: string) => s.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
 
+/** Champs bornés : le corps envoyé à Make (et enregistré dans payloadJson, 20 000 caractères) doit tenir à coup sûr. */
 export function jobToLite(job: Job, company: string): JobLite {
   return {
-    id: job.$id, title: job.title, company: company || job.companyName || '', location: job.location, contractType: job.contractType,
-    remote: job.remote, salary: job.salary, skills: job.skills ?? [], description: plain(job.description ?? '').slice(0, 1800),
+    id: job.$id, title: job.title.slice(0, 200), company: (company || job.companyName || '').slice(0, 120), location: (job.location ?? '').slice(0, 120),
+    contractType: job.contractType, remote: job.remote, salary: job.salary,
+    skills: (job.skills ?? []).slice(0, 15).map(k => k.slice(0, 40)), description: plain(job.description ?? '').slice(0, 1800),
   }
 }
 
@@ -170,10 +184,12 @@ export async function generateCopy(job: JobLite): Promise<CopyDraft> {
       content: `Offre : ${job.title}\nEntreprise : ${job.company}\nLieu : ${job.location}\nCompétences : ${job.skills.join(', ')}\nDescription : ${job.description}`,
     }], `Tu es community manager d'une plateforme de recrutement IT. À partir d'une offre d'emploi, rédige en français un contenu pour les réseaux sociaux : percutant, sobre, sans emoji, sans promesse inventée, uniquement des informations présentes dans l'offre.
 Réponds UNIQUEMENT avec un JSON valide, sans markdown :
-{"hook":"accroche de 70 caractères maximum","tagline":"une phrase d'accroche inspirante de 85 caractères maximum, propre à ce poste, sans point d'exclamation","pitch":"2 à 3 phrases de présentation","missionBullets":["3 puces de 80 caractères maximum sur la mission"],"profileBullets":["3 à 5 compétences ou qualités clés, 35 caractères maximum chacune"]}`)
+{"hook":"accroche de 70 caractères maximum","tagline":"une phrase d'accroche inspirante de 85 caractères maximum, propre à ce poste, sans point d'exclamation","pitch":"2 à 3 phrases de présentation","missionBullets":["3 puces de 80 caractères maximum sur la mission"],"profileBullets":["3 à 5 compétences ou qualités clés, 35 caractères maximum chacune"]}`, { timeoutMs: 30_000 })
     const m = content.match(/\{[\s\S]*\}/)
     return normalizeCopy(m ? JSON.parse(m[0]) : null, job)
-  } catch {
+  } catch (e) {
+    // Repli prévu : la publication ne dépend jamais de l'IA, mais l'admin doit pouvoir savoir pourquoi.
+    console.warn('[social] textes par repli, IA indisponible :', e instanceof Error ? e.message.slice(0, 200) : e)
     return fallbackCopy(job)
   }
 }
@@ -193,9 +209,9 @@ export function signBody(body: string): string {
  */
 function withEscaped(payload: Record<string, unknown>): Record<string, unknown> {
   const c = payload.content as SocialContent | undefined
-  if (!c?.captions || !c.image) return payload
+  if (!c?.captions) return payload
   const esc = (t: string) => JSON.stringify(t).slice(1, -1)
-  return { ...payload, content: { ...c, escaped: { imagePrompt: esc(c.image.prompt), linkedin: esc(c.captions.linkedin), instagram: esc(c.captions.instagram), facebook: esc(c.captions.facebook), x: esc(c.captions.x) } } }
+  return { ...payload, content: { ...c, escaped: { linkedin: esc(c.captions.linkedin), instagram: esc(c.captions.instagram), facebook: esc(c.captions.facebook), x: esc(c.captions.x) } } }
 }
 
 export async function postToMake(payload: Record<string, unknown>): Promise<{ ok: boolean; status: number; error?: string }> {
@@ -220,14 +236,15 @@ export async function postToMake(payload: Record<string, unknown>): Promise<{ ok
   }
 }
 
-function buildPayload(publicationId: string, job: JobLite, content: SocialContent, cfg: SocialConfig, callback: string) {
+/** Corps envoyé à Make. `content.image.url` : l'affiche à publier, dessinée par la plateforme à cette adresse. */
+function buildPayload(publicationId: string, job: JobLite, content: SocialContent, cfg: SocialConfig, site: string, posterId = publicationId) {
   return {
     event: 'job.published',
     publicationId,
-    callbackUrl: callback,
+    callbackUrl: `${site}/api/social/callback`,
     job: { id: job.id, title: job.title, company: job.company, location: job.location, contract: job.contractType ?? null, remote: job.remote ?? null, salary: job.salary ?? null, skills: job.skills, url: content.jobUrl },
     networks: cfg.networks,
-    content,
+    content: { ...content, image: { ...content.image, url: posterUrl(site, posterId) } },
     brand: { name: 'My Best Consultant', website: 'https://mybestconsultant.fr', colors: { dark: '#2C2C2E', accent: '#E8A33D' } },
   }
 }
@@ -235,58 +252,70 @@ function buildPayload(publicationId: string, job: JobLite, content: SocialConten
 /**
  * Test de connexion : envoie un exemple COMPLET (offre fictive) pour que Make apprenne toute la structure des données.
  * L'évènement vaut « test » (et non « job.published ») : le filtre du scénario l'arrête, rien n'est publié.
+ * L'affiche jointe est l'affiche d'exemple (sans photo) : aucun appel à OpenAI.
  */
 export async function sendTestToMake(): Promise<{ ok: boolean; status: number; error?: string }> {
   const cfg = await getSocialConfig()
-  const lite: JobLite = {
-    id: 'exemple', title: 'Architecte Cloud AWS', company: 'Entreprise exemple', location: 'Paris', contractType: 'freelance', remote: 'hybrid', salary: 650,
-    skills: ['AWS', 'Terraform', 'Kubernetes', 'CI/CD'], description: 'Conception et mise en œuvre d’une plateforme cloud. Pilotage technique de l’équipe DevOps. Migration des applications existantes.',
-  }
   const site = await canonicalOrigin()
-  const content = buildContent(lite, fallbackCopy(lite), cfg, { baseUrl: site, calendlyUrl: resolveCalendly(cfg) })
-  return postToMake({ ...buildPayload('test', lite, content, cfg, `${site}/api/social/callback`), event: 'test', sentAt: new Date().toISOString() })
+  const content = buildContent(SAMPLE_JOB, fallbackCopy(SAMPLE_JOB), cfg, { baseUrl: site, calendlyUrl: resolveCalendly(cfg) })
+  return postToMake({ ...buildPayload('test', SAMPLE_JOB, content, cfg, site, SAMPLE_POSTER_ID), event: 'test', sentAt: new Date().toISOString() })
 }
 
 /**
- * Pilote Zernio : même exemple que sendTestToMake, mais l'image est générée directement (kie.ai) et publiée
- * pour de vrai sur Instagram via Zernio, au lieu de passer par Make + Buffer. LinkedIn reste sur Make + Buffer
- * (voir sendTestToMake / publishJobSocially) — ceci ne fait que comparer les deux flux sur Instagram.
+ * Pilote Zernio : publie pour de vrai sur Instagram, via Zernio au lieu de Make + Buffer, l'affiche d'exemple (sans
+ * photo). Zernio télécharge l'affiche à son adresse publique : ne fonctionne que sur un site déployé.
  */
 export async function testZernioInstagram(): Promise<{ ok: boolean; status?: string; permalink?: string; error?: string }> {
   const cfg = await getSocialConfig()
-  const lite: JobLite = {
-    id: 'exemple', title: 'Architecte Cloud AWS', company: 'Entreprise exemple', location: 'Paris', contractType: 'freelance', remote: 'hybrid', salary: 650,
-    skills: ['AWS', 'Terraform', 'Kubernetes', 'CI/CD'], description: 'Conception et mise en œuvre d’une plateforme cloud. Pilotage technique de l’équipe DevOps. Migration des applications existantes.',
-  }
   const site = await canonicalOrigin()
-  const content = buildContent(lite, fallbackCopy(lite), cfg, { baseUrl: site, calendlyUrl: resolveCalendly(cfg) })
-
-  const { generatePosterImage } = await import('@/lib/kie-image')
-  const image = await generatePosterImage(content.image)
-  if ('error' in image) return { ok: false, error: `Génération de l’image (kie.ai) : ${image.error}` }
-
+  const content = buildContent(SAMPLE_JOB, fallbackCopy(SAMPLE_JOB), cfg, { baseUrl: site, calendlyUrl: resolveCalendly(cfg) })
   const { postImageToInstagramViaZernio } = await import('@/lib/zernio')
-  const result = await postImageToInstagramViaZernio({ caption: content.captions.instagram, imageUrl: image.url })
+  const result = await postImageToInstagramViaZernio({ caption: content.captions.instagram, imageUrl: posterUrl(site, SAMPLE_POSTER_ID) })
   return result.ok ? { ok: true, status: result.status, permalink: result.permalink } : { ok: false, error: result.error }
 }
 
 // ── Publication d'une offre ──────────────────────────────────────────────────────────────────
 
-const IN_FLIGHT: SocialStatus[] = ['queued', 'sent', 'images_ready', 'published', 'partial']
+/** En cours (photo, envoi, ou Make n'a pas encore tout confirmé) et pas abandonnée : jamais de seconde publication. */
+const inProgress = (p: SocialPost) => (p.status === 'queued' || p.status === 'sent' || p.status === 'images_ready') && !p.stale
+/** Déjà publiée : une nouvelle publication n'est faite que sur demande explicite (« Republier »). */
+const alreadyPublished = (p: SocialPost) => p.status === 'published' || p.status === 'partial'
 
-export async function publishJobSocially(jobId: string, opts: { trigger: 'auto' | 'manual'; requestedBy: string; force?: boolean }): Promise<{ id?: string; status?: SocialStatus; skipped?: boolean; error?: string }> {
+// Verrou par offre pendant la préparation (contrôle puis création du document) : la publication automatique et un clic
+// sur « Publier », ou deux onglets, ne créent pas deux publications. Document de ao_sync_state (36 caractères au plus).
+const prepareLockId = (jobId: string) => `social_${createHash('sha1').update(jobId).digest('hex').slice(0, 16)}`
+
+/** Échéance de l'envoi en arrière-plan : début de la requête + maxDuration (300 s) moins une marge. */
+export const deliveryDeadline = (requestStart: number) => requestStart + 270_000
+
+/**
+ * Prépare la publication d'une offre : contrôles, textes (IA de Config IA, quelques secondes) et document « queued »
+ * qui contient déjà tout ce qui partira chez Make. L'envoi suit avec deliverSocialPost, en arrière-plan (after()) :
+ * la photo de l'affiche prend jusqu'à 2 min et ne doit pas faire attendre le recruteur.
+ */
+export async function prepareSocialPost(jobId: string, opts: { trigger: 'auto' | 'manual'; requestedBy: string; force?: boolean }): Promise<{ id?: string; status?: SocialStatus; skipped?: boolean; error?: string }> {
   const cfg = await getSocialConfig()
   if (!isMakeConfigured()) return { error: 'La publication sur les réseaux n’est pas encore configurée.' }
   if (!NETWORKS.some(n => cfg.networks[n])) return { error: 'Aucun réseau n’est activé.' }
   const job = await getJobById(jobId)
   if (!job || !job.isActive) return { error: 'Offre introuvable ou inactive.' }
 
-  const { databases } = createAdminClient()
-  if (!opts.force) {
-    const prev = await databases.listDocuments(DB_ID, COLLECTIONS.SOCIAL_POSTS, [Query.equal('jobId', jobId), Query.orderDesc('$createdAt'), Query.limit(5)])
-    const active = prev.documents.map(docToPost).find(p => IN_FLIGHT.includes(p.status))
-    if (active) return { id: active.id, status: active.status, skipped: true }
+  const { acquireSyncLock, releaseSyncLock } = await import('@/lib/ao/state')
+  const lock = await acquireSyncLock(prepareLockId(jobId), `social:${opts.trigger}`, new Date())
+  if (!lock) return { error: 'La diffusion de cette offre est déjà en cours de préparation.' }
+  try {
+    return await prepareLocked(job, opts, cfg)
+  } finally {
+    await releaseSyncLock(lock)
   }
+}
+
+async function prepareLocked(job: Job, opts: { trigger: 'auto' | 'manual'; requestedBy: string; force?: boolean }, cfg: SocialConfig): Promise<{ id?: string; status?: SocialStatus; skipped?: boolean; error?: string }> {
+  const jobId = job.$id
+  const { databases } = createAdminClient()
+  const prev = (await databases.listDocuments(DB_ID, COLLECTIONS.SOCIAL_POSTS, [Query.equal('jobId', jobId), Query.orderDesc('$createdAt'), Query.limit(5)])).documents.map(docToPost)
+  const active = prev.find(p => inProgress(p) || (!opts.force && alreadyPublished(p)))
+  if (active) return { id: active.id, status: active.status, skipped: true }
 
   let company = job.companyName ?? ''
   if (job.tenantId) { try { company = ((await databases.getDocument(DB_ID, COLLECTIONS.TENANTS, job.tenantId)).name as string) || company } catch { /* nom facultatif */ } }
@@ -295,41 +324,131 @@ export async function publishJobSocially(jobId: string, opts: { trigger: 'auto' 
   const site = await canonicalOrigin()
   const content = buildContent(lite, copy, cfg, { baseUrl: site, calendlyUrl: resolveCalendly(cfg) })
 
-  const doc = await databases.createDocument(DB_ID, COLLECTIONS.SOCIAL_POSTS, ID.unique(), {
+  // Identifiant choisi avant l'écriture : l'adresse de l'affiche en dépend et part dans le même document.
+  const id = ID.unique()
+  // Corps d'environ 10 Ko (légendes bornées par buildContent, champs par jobToLite) ; vérifié contre l'attribut (20 000).
+  const payloadJson = JSON.stringify(buildPayload(id, lite, content, cfg, site))
+  if (payloadJson.length > 19_500) return { error: 'Contenu de la publication trop long : raccourcissez l’intitulé ou les compétences de l’offre.' }
+  await databases.createDocument(DB_ID, COLLECTIONS.SOCIAL_POSTS, id, {
     jobId, tenantId: job.tenantId ?? '', jobTitle: job.title.slice(0, 200), status: 'queued', trigger: opts.trigger,
     requestedBy: opts.requestedBy.slice(0, 100), caption: content.captions.linkedin.slice(0, 3000), attempts: 0,
+    payloadJson,
   })
-  const payload = buildPayload(doc.$id, lite, content, cfg, `${site}/api/social/callback`)
-  const json = JSON.stringify(payload)
-  const sent = await postToMake(payload)
-  await databases.updateDocument(DB_ID, COLLECTIONS.SOCIAL_POSTS, doc.$id, {
-    status: sent.ok ? 'sent' : 'failed', attempts: 1, sentAt: new Date().toISOString(), error: sent.ok ? null : (sent.error ?? 'Échec').slice(0, 500),
-    payloadJson: json.length <= 19_500 ? json : JSON.stringify({ ...payload, content: { ...content, image: { ...content.image, prompt: '' } } }).slice(0, 19_500),
-  })
-  return { id: doc.$id, status: sent.ok ? 'sent' : 'failed', error: sent.ok ? undefined : sent.error }
+  return { id, status: 'queued' }
 }
 
-/** Renvoie à Make le contenu déjà préparé (même texte, mêmes consignes d'image) — bouton « Réessayer ». */
-export async function retryPost(id: string): Promise<{ status?: SocialStatus; error?: string }> {
+/** Photo de la scène si possible ; renvoie la raison d'une affiche sans photo (vide si la photo est là). */
+async function ensureScene(id: string, tenantId: string, image: PostImage, deadline: number): Promise<string> {
+  const { isSceneStorageConfigured, hasScene, storeScene } = await import('@/lib/social-poster/store')
+  if (!isSceneStorageConfigured()) return 'stockage des photos non configuré (APPWRITE_STORAGE_SOCIAL_SCENES)'
+  try {
+    if (await hasScene(id)) return ''
+    const timeoutMs = sceneTimeoutMs(deadline, Date.now())
+    if (timeoutMs === null) return 'plus assez de temps pour la photo (la préparation a été longue)'
+    // Quota de l'organisation d'abord : celle qui a épuisé le sien ne prend plus de place sur celui de la plateforme.
+    const { takeDailySlot } = await import('@/lib/ao/state')
+    const { PLATFORM_TENANT_ID } = await import('@/lib/ao/tenancy')
+    const now = new Date()
+    if (!(await takeDailySlot('socialScenes', tenantId || PLATFORM_TENANT_ID, now, SCENE_DAILY_LIMITS.perTenant))) {
+      return `quota du jour atteint (${SCENE_DAILY_LIMITS.perTenant} photos par organisation)`
+    }
+    if (!(await takeDailySlot('socialScenesAll', PLATFORM_TENANT_ID, now, SCENE_DAILY_LIMITS.platform))) {
+      console.warn('[social] quota de photos de la plateforme atteint', SCENE_DAILY_LIMITS.platform)
+      return `quota du jour de la plateforme atteint (${SCENE_DAILY_LIMITS.platform} photos)`
+    }
+    const { generateScene } = await import('@/lib/social-poster/scene')
+    const scene = await generateScene(image, timeoutMs)
+    if (!scene.ok) {
+      console.warn('[social] affiche sans photo', id, scene.reason)
+      return scene.reason
+    }
+    await storeScene(id, scene)
+    return ''
+  } catch (e) {
+    // Compteur de quota ou bucket injoignable : l'affiche part sans photo plutôt que de bloquer la publication.
+    const detail = e instanceof AppwriteException ? `${e.type} ${e.code}` : e instanceof Error ? e.name : String(e)
+    console.error('[social] photo de l’affiche impossible', id, detail)
+    return `photo impossible (base ou stockage indisponible : ${detail})`
+  }
+}
+
+/**
+ * Envoie à Make une publication préparée : photo de la scène d'abord (sans elle, l'affiche part quand même), puis le
+ * contenu enregistré. « sent » est écrit avant l'appel à Make : un rappel de Make arrivé dans la foulée n'est jamais
+ * écrasé, et une erreur après l'envoi ne fait pas croire à un échec (qui pousserait à republier). Conclut toujours le
+ * document, sauf si la fonction est interrompue (docToPost la tient alors pour échouée après QUEUED_MAX_MS).
+ */
+export async function deliverSocialPost(id: string, deadline = deliveryDeadline(Date.now())): Promise<{ status: SocialStatus; error?: string }> {
+  let attempts = 0
+  let sentToMake = false
+  try {
+    const { databases } = createAdminClient()
+    const doc = await databases.getDocument(DB_ID, COLLECTIONS.SOCIAL_POSTS, id)
+    attempts = typeof doc.attempts === 'number' ? doc.attempts : 0
+    const stored = parse<Record<string, unknown> | null>(doc.payloadJson, null)
+    const rawImage = (stored?.content as { image?: { url?: unknown } } | undefined)?.image
+    if (!stored || typeof rawImage?.url !== 'string') throw new Error('contenu de la publication illisible')
+    const image = parsePosterImage(rawImage)
+    if (!image) throw new Error('intitulé de l’offre vide : l’affiche ne peut pas être dessinée')
+    const payload = { ...stored }
+    delete payload.posterNote // note pour l'admin, pas envoyée à Make
+    const posterNote = await ensureScene(id, typeof doc.tenantId === 'string' ? doc.tenantId : '', image, deadline)
+    await databases.updateDocument(DB_ID, COLLECTIONS.SOCIAL_POSTS, id, {
+      status: 'sent', attempts: attempts + 1, sentAt: new Date().toISOString(), completedAt: null, error: null,
+      resultsJson: '[]', imagesJson: JSON.stringify([rawImage.url]), payloadJson: JSON.stringify({ ...payload, posterNote }),
+    })
+    sentToMake = true
+    const sent = await postToMake(payload)
+    if (sent.ok) return { status: 'sent' }
+    const error = (sent.error ?? 'Échec').slice(0, 500)
+    await databases.updateDocument(DB_ID, COLLECTIONS.SOCIAL_POSTS, id, { status: 'failed', error })
+    return { status: 'failed', error }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'erreur inattendue'
+    console.error('[social] envoi impossible', id, sentToMake ? '(après l’appel à Make)' : '', message)
+    // Make a peut-être reçu la publication : on ne la déclare pas en échec (une relance la publierait deux fois).
+    if (sentToMake) return { status: 'sent', error: `Envoyée, mais état non enregistré : ${message}` }
+    const failure = { status: 'failed' as const, attempts: attempts + 1, error: `Envoi impossible : ${message}`.slice(0, 500) }
+    const { databases } = createAdminClient()
+    // Un second essai d'écriture : sinon la publication resterait « en file » jusqu'à QUEUED_MAX_MS.
+    await databases.updateDocument(DB_ID, COLLECTIONS.SOCIAL_POSTS, id, failure)
+      .catch(() => databases.updateDocument(DB_ID, COLLECTIONS.SOCIAL_POSTS, id, failure))
+      .catch(err => console.error('[social] publication restée « en file »', id, err instanceof Error ? err.message : err))
+    return { status: 'failed', error: failure.error }
+  }
+}
+
+/** Prépare puis envoie (création automatique d'une offre, déjà lancée en arrière-plan par l'appelant). */
+export async function publishJobSocially(jobId: string, opts: { trigger: 'auto' | 'manual'; requestedBy: string; force?: boolean }, deadline?: number): Promise<{ id?: string; status?: SocialStatus; skipped?: boolean; error?: string }> {
+  const prepared = await prepareSocialPost(jobId, opts)
+  if (!prepared.id || prepared.skipped || prepared.error) return prepared
+  return { id: prepared.id, ...(await deliverSocialPost(prepared.id, deadline)) }
+}
+
+/**
+ * « Relancer la publication » : remet en file le contenu déjà préparé (même texte, même affiche, photo gardée) ; l'envoi
+ * suit avec deliverSocialPost, en arrière-plan. Refusé tant que la publication est en cours. Une publication d'avant
+ * l'affiche dessinée par la plateforme (sans adresse d'affiche) est remplacée par une nouvelle.
+ */
+export async function retryPost(id: string): Promise<{ id?: string; status?: SocialStatus; error?: string }> {
   const { databases } = createAdminClient()
   const doc = await databases.getDocument(DB_ID, COLLECTIONS.SOCIAL_POSTS, id).catch(() => null)
   if (!doc || doc.status === 'config') return { error: 'Publication introuvable.' }
   const post = docToPost(doc)
-  let payload = parse<Record<string, unknown> | null>(doc.payloadJson, null)
-  const hasPrompts = !!(payload && (payload.content as SocialContent | undefined)?.image?.prompt)
-  if (!payload || !hasPrompts) {
-    // Contenu absent ou allégé : on repart d'une préparation complète.
-    const r = await publishJobSocially(post.jobId, { trigger: 'manual', requestedBy: 'Relance', force: true })
-    return { status: r.status, error: r.error }
+  if (inProgress(post)) return { error: 'Publication en cours : attendez son résultat avant de la relancer.' }
+  const payload = parse<Record<string, unknown> | null>(doc.payloadJson, null)
+  const content = payload?.content as { captions?: unknown; image?: { url?: unknown } } | undefined
+  if (!payload || !content?.captions || typeof content.image?.url !== 'string') {
+    const r = await prepareSocialPost(post.jobId, { trigger: 'manual', requestedBy: 'Relance', force: true })
+    if (r.error || !r.id) return { error: r.error ?? 'Publication déjà en cours pour cette offre.' }
+    await databases.updateDocument(DB_ID, COLLECTIONS.SOCIAL_POSTS, id, { status: 'failed', error: 'Remplacée par une nouvelle publication.' })
+    return { id: r.id, status: r.status }
   }
-  payload = { ...payload, publicationId: id, callbackUrl: await canonicalCallbackUrl() }
-  const sent = await postToMake(payload)
   await databases.updateDocument(DB_ID, COLLECTIONS.SOCIAL_POSTS, id, {
-    status: sent.ok ? 'sent' : 'failed', attempts: post.attempts + 1, sentAt: new Date().toISOString(), completedAt: null,
-    resultsJson: '[]', imagesJson: '[]',
-    error: sent.ok ? null : (sent.error ?? 'Échec').slice(0, 500),
+    status: 'queued', error: null, completedAt: null, resultsJson: '[]',
+    payloadJson: JSON.stringify({ ...payload, publicationId: id, callbackUrl: await canonicalCallbackUrl() }),
   })
-  return { status: sent.ok ? 'sent' : 'failed', error: sent.ok ? undefined : sent.error }
+  return { id, status: 'queued' }
 }
 
 // ── Retour de Make ───────────────────────────────────────────────────────────────────────────
@@ -394,13 +513,15 @@ export async function handleCallback(body: unknown): Promise<{ ok: boolean; erro
  * Quand LinkedIn est pris en charge par ce circuit, l'ancienne publication LinkedIn directe est sautée (pas de doublon) ;
  * si l'envoi à Make échoue, elle sert de secours.
  */
-export async function tryAutoPublishJob(job: Job & { $id: string }): Promise<void> {
+export async function tryAutoPublishJob(job: Job & { $id: string }, deadline?: number): Promise<void> {
   let linkedInHandled = false
   try {
     const cfg = await getSocialConfig()
     if (cfg.autoPublish && isMakeConfigured()) {
-      const r = await publishJobSocially(job.$id, { trigger: 'auto', requestedBy: 'Automatique' })
-      linkedInHandled = cfg.networks.linkedin && r.status !== 'failed' && !!r.id
+      const r = await publishJobSocially(job.$id, { trigger: 'auto', requestedBy: 'Automatique' }, deadline)
+      // Une publication existe (même en échec : elle se relance depuis /admin/social) : pas de publication LinkedIn
+      // directe en plus, Make a pu la recevoir et cela ferait un doublon sur la page.
+      linkedInHandled = cfg.networks.linkedin && !!r.id
     }
   } catch (e) {
     console.error('[social] publication automatique échouée :', e instanceof Error ? e.message : e)
@@ -409,6 +530,9 @@ export async function tryAutoPublishJob(job: Job & { $id: string }): Promise<voi
     try {
       const { tryAutoPostJobToLinkedIn } = await import('@/lib/linkedin-publish')
       await tryAutoPostJobToLinkedIn(job)
-    } catch { /* silencieux : la création d'offre ne dépend jamais des réseaux */ }
+    } catch (e) {
+      // La création d'offre ne dépend jamais des réseaux : journalisé seulement.
+      console.error('[social] publication LinkedIn directe échouée :', e instanceof Error ? e.message : e)
+    }
   }
 }

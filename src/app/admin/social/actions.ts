@@ -1,8 +1,9 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { getCurrentUser } from '@/lib/appwrite/auth'
-import { listRecentPosts, publishJobSocially, retryPost, saveSocialConfig, sendTestToMake, testZernioInstagram, type SocialPost } from '@/lib/social'
+import { deliverSocialPost, deliveryDeadline, listRecentPosts, prepareSocialPost, retryPost, saveSocialConfig, sendTestToMake, testZernioInstagram, type SocialPost } from '@/lib/social'
 import type { SocialConfig } from '@/lib/social-content'
 
 async function requireAdmin() {
@@ -40,21 +41,31 @@ export async function testZernioInstagramAction(): Promise<{ ok: boolean; messag
 }
 
 export async function publishJobAction(jobId: string, force = false): Promise<{ id?: string; message: string; error?: string }> {
+  const requestStart = Date.now()
   try {
     const who = await requireAdmin()
-    const r = await publishJobSocially(jobId, { trigger: 'manual', requestedBy: who, force })
+    const r = await prepareSocialPost(jobId, { trigger: 'manual', requestedBy: who, force })
     revalidatePath('/admin/social')
     if (r.error) return { error: r.error, message: r.error }
-    return { id: r.id, message: r.skipped ? 'Cette offre a déjà une publication en cours ou terminée (utilisez « Republier » pour la refaire).' : 'Publication lancée : le visuel est en cours de création.' }
+    if (r.skipped || !r.id) return { id: r.id, message: 'Cette offre a déjà une publication en cours ou terminée (utilisez « Republier » pour la refaire).' }
+    // Photo de l'affiche (jusqu'à 2 min) puis envoi à Make, après la réponse.
+    const id = r.id
+    after(() => deliverSocialPost(id, deliveryDeadline(requestStart)))
+    return { id, message: 'Publication lancée : le visuel est en cours de création.' }
   } catch (e) { return { error: fail(e).error, message: fail(e).error } }
 }
 
 export async function retryPostAction(id: string): Promise<{ status?: string; error?: string }> {
+  const requestStart = Date.now()
   try {
     await requireAdmin()
     const r = await retryPost(id)
     revalidatePath('/admin/social')
-    return r
+    if (r.error || !r.id) return { error: r.error ?? 'Relance impossible.' }
+    // Photo (si elle manque) puis envoi à Make, après la réponse.
+    const queuedId = r.id
+    after(() => deliverSocialPost(queuedId, deliveryDeadline(requestStart)))
+    return { status: r.status }
   } catch (e) { return fail(e) }
 }
 

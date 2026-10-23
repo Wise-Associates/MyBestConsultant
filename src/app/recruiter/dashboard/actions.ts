@@ -8,6 +8,8 @@ import type { ApplicationStatus } from '@/types'
 import type { Job } from '@/types'
 
 export async function createJobAction(formData: FormData): Promise<{ error?: string }> {
+  // Début de la requête : la publication sur les réseaux, en arrière-plan, doit finir avant maxDuration (page.tsx).
+  const requestStart = Date.now()
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) return { error: 'Non autorisé' }
 
@@ -48,8 +50,8 @@ export async function createJobAction(formData: FormData): Promise<{ error?: str
 
     // Publication sur les réseaux de MyBestConsultant (Make → Buffer) en arrière-plan ; à défaut, ancien auto-post LinkedIn.
     // Puis Sourcing IA automatique (silent failure).
-    const { tryAutoPublishJob } = await import('@/lib/social')
-    after(() => tryAutoPublishJob(job))
+    const { tryAutoPublishJob, deliveryDeadline } = await import('@/lib/social')
+    after(() => tryAutoPublishJob(job, deliveryDeadline(requestStart)))
     const { tryAutoSourceCandidates } = await import('@/lib/auto-source-candidates')
     await tryAutoSourceCandidates(job)
 
@@ -96,18 +98,27 @@ export async function setApplicationStatusAction(applicationId: string, status: 
 // offres du recruteur. « Republier » n'est permis que si la précédente diffusion est terminée
 // (jamais pendant qu'elle est encore en cours, pour ne rien publier en double).
 export async function publishJobToSocialAction(jobId: string, again = false): Promise<{ ok: boolean; message: string }> {
+  const requestStart = Date.now()
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) return { ok: false, message: 'Non autorisé.' }
-  const { getJobById } = await import('@/lib/appwrite/jobs')
-  const job = await getJobById(jobId)
-  if (!job || job.tenantId !== user.tenantId) return { ok: false, message: 'Offre introuvable.' }
-  const { latestPostsByJob, publishJobSocially } = await import('@/lib/social')
-  const last = (await latestPostsByJob(user.tenantId))[jobId]
-  const finished = !last || last.stale || ['published', 'partial', 'failed'].includes(last.status)
-  if (!finished) return { ok: false, message: 'La diffusion est déjà en cours.' }
-  const r = await publishJobSocially(jobId, { trigger: 'manual', requestedBy: `${user.firstName} ${user.lastName}`.trim() || user.email, force: again })
-  revalidatePath('/recruiter/dashboard')
-  if (r.error) return { ok: false, message: r.error }
-  if (r.skipped) return { ok: true, message: 'Cette offre est déjà diffusée.' }
-  return { ok: true, message: 'Diffusion lancée : les visuels sont en cours de création.' }
+  try {
+    const { getJobById } = await import('@/lib/appwrite/jobs')
+    const job = await getJobById(jobId)
+    if (!job || job.tenantId !== user.tenantId) return { ok: false, message: 'Offre introuvable.' }
+    const { latestPostsByJob, prepareSocialPost, deliverSocialPost, deliveryDeadline } = await import('@/lib/social')
+    const last = (await latestPostsByJob(user.tenantId))[jobId]
+    const finished = !last || last.stale || ['published', 'partial', 'failed'].includes(last.status)
+    if (!finished) return { ok: false, message: 'La diffusion est déjà en cours.' }
+    const r = await prepareSocialPost(jobId, { trigger: 'manual', requestedBy: `${user.firstName} ${user.lastName}`.trim() || user.email, force: again })
+    revalidatePath('/recruiter/dashboard')
+    if (r.error) return { ok: false, message: r.error }
+    if (r.skipped || !r.id) return { ok: true, message: 'Cette offre est déjà diffusée.' }
+    // Photo de l'affiche (jusqu'à 2 min) puis envoi à Make, après la réponse : la pastille suit l'avancement.
+    const id = r.id
+    after(() => deliverSocialPost(id, deliveryDeadline(requestStart)))
+    return { ok: true, message: 'Diffusion lancée : le visuel est en cours de création.' }
+  } catch (e) {
+    console.error('[social] diffusion non préparée', jobId, e instanceof Error ? e.message : e)
+    return { ok: false, message: 'La diffusion n’a pas pu être préparée. Réessayez dans quelques minutes.' }
+  }
 }
