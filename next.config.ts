@@ -22,6 +22,8 @@ const nextConfig: NextConfig = {
     "/api/admin/cv-templates/*": ["./src/lib/cv-export/templates/**/*"],
     // Les recruteurs n'ont que l'exemple (sans le contact commercial du modèle Wise) : seul ce dossier.
     "/api/recruiter/cv-templates/example": ["./src/lib/cv-export/templates/example/**/*"],
+    // Affiche des publications sur les réseaux : polices Inter et logo lus sur disque au rendu (lib/social-poster).
+    "/api/social/poster/*": ["./src/lib/social-poster/fonts/**/*", "./public/logo.png"],
   },
   // La page AO Offers s'appelle « Candidats » (2026-10-21) : l'ancienne adresse reste valable.
   async redirects() {
