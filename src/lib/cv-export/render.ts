@@ -85,8 +85,34 @@ const insertAfter = (ref: Node, node: Node) => parentOf(ref).insertBefore(node, 
 const prependChild = (parent: Element, node: Node) => parent.insertBefore(node, elements(parent)[0] ?? null)
 const detach = (node: Node) => node.parentNode?.removeChild(node)
 
+/** Modèle refusé pour sa taille ou sa structure, avant tout rendu : message pour qui le dépose. */
+export class TemplateStructureError extends Error {}
+
 function parseXml(bytes: Uint8Array): Document {
   return new DOMParser({ onError: onErrorStopParsing }).parseFromString(strFromU8(bytes), 'text/xml')
+}
+
+// xmldom réindexe tous les frères à chaque retrait (removeChild) : le coût des retraits du rendu croît avec le carré du
+// nombre d'enfants d'un élément, et quelques centaines d'octets compressés de paragraphes vides bloquaient le serveur
+// des dizaines de secondes (revue de sécurité du 2026-10-24). Bornes pour tout le modèle (corps, en-têtes, pieds de
+// page, notes, propriétés), larges : le modèle Wise compte 1 300 éléments et au plus 25 enfants sous un même élément.
+const MAX_TEMPLATE_ELEMENTS = 20_000
+const MAX_CHILDREN_PER_ELEMENT = 500
+
+/** Refuse un modèle dont les parties lues par le rendu dépassent ces bornes, avant tout traitement. */
+function assertBoundedStructure(files: Unzipped) {
+  let count = 0
+  for (const [name, bytes] of Object.entries(files)) {
+    if (!STORY_PART.test(name) && name !== 'docProps/core.xml') continue
+    const root = parseXml(bytes).documentElement
+    const pending: Element[] = root ? [root] : []
+    for (let el = pending.pop(); el; el = pending.pop()) {
+      if (++count > MAX_TEMPLATE_ELEMENTS || el.childNodes.length > MAX_CHILDREN_PER_ELEMENT) {
+        throw new TemplateStructureError(`Modèle Word trop complexe : ${MAX_TEMPLATE_ELEMENTS.toLocaleString('fr-FR')} éléments au plus et ${MAX_CHILDREN_PER_ELEMENT} sous un même élément (paragraphes vides en grand nombre ?).`)
+      }
+      pending.push(...elements(el))
+    }
+  }
 }
 
 const serializer = new XMLSerializer()
@@ -551,7 +577,10 @@ const EMPTY_CUSTOM_PROPERTIES = '<?xml version="1.0" encoding="UTF-8" standalone
   + '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" '
   + 'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"/>'
 
-/** Nettoie le paquet de ce que le template peut avoir laissé : propriétés personnalisées, titre / société, commentaires. */
+/**
+ * Nettoie le paquet de ce que le template peut avoir laissé : propriétés personnalisées, titre / société, commentaires,
+ * modèle Word d'origine (chemin local, qui porte souvent le nom de session Windows de son auteur).
+ */
 function scrubPackage(files: Unzipped, esn: string) {
   for (const part of DROP_PARTS) delete files[part]
   if (files['docProps/custom.xml']) files['docProps/custom.xml'] = strToU8(EMPTY_CUSTOM_PROPERTIES)
@@ -560,7 +589,15 @@ function scrubPackage(files: Unzipped, esn: string) {
       .replace(/<TitlesOfParts>[\s\S]*?<\/TitlesOfParts>/g, '')
       .replace(/<HeadingPairs>[\s\S]*?<\/HeadingPairs>/g, '')
       .replace(/<Company>[\s\S]*?<\/Company>/g, '<Company></Company>')
+      .replace(/<Template>[\s\S]*?<\/Template>/g, '<Template></Template>')
       .replace(/<Manager>[\s\S]*?<\/Manager>/g, ''))
+  }
+  if (files['word/settings.xml']) {
+    files['word/settings.xml'] = strToU8(strFromU8(files['word/settings.xml']).replace(/<w:attachedTemplate\b[^>]*\/>/g, ''))
+  }
+  if (files['word/_rels/settings.xml.rels']) {
+    files['word/_rels/settings.xml.rels'] = strToU8(strFromU8(files['word/_rels/settings.xml.rels'])
+      .replace(/<Relationship\b[^>]*Type="[^"]*\/attachedTemplate"[^>]*\/>/g, ''))
   }
   if (files['[Content_Types].xml']) {
     let txt = strFromU8(files['[Content_Types].xml'])
@@ -594,9 +631,31 @@ function replaceInHeadersFooters(files: Unzipped, replacements: [string, string]
   }
 }
 
+// Tailles décompressées maximales d'un modèle, et de chacune de ses parties XML (le modèle Wise : 28 Ko pour le corps,
+// 77 Ko pour les styles). fflate réserve la mémoire de chaque fichier d'après sa taille annoncée : borner ces tailles
+// avant toute décompression arrête une archive piégée (y compris ZIP64). Au dépôt, zipFitsWithin a vérifié que les
+// tailles annoncées sont les tailles réelles.
+const MAX_UNZIPPED_BYTES = 50 * 1024 * 1024
+const MAX_XML_PART_BYTES = 5 * 1024 * 1024
+
+function unzipTemplate(template: Uint8Array): Unzipped {
+  let total = 0
+  return unzipSync(template, {
+    filter: file => {
+      total += file.originalSize
+      if (total > MAX_UNZIPPED_BYTES) throw new TemplateStructureError('Modèle Word trop volumineux une fois décompressé (50 Mo au plus).')
+      if (/\.(xml|rels)$/.test(file.name) && file.originalSize > MAX_XML_PART_BYTES) {
+        throw new TemplateStructureError(`Partie ${file.name} du modèle Word trop volumineuse (5 Mo au plus).`)
+      }
+      return true
+    },
+  })
+}
+
 /** Construit le .docx du CV : template de l'ESN + cartographie + données (déjà anonymisées) d'une langue. */
 export function renderCv(template: Uint8Array, map: TemplateMap, data: CvData, lang: CvLang): Uint8Array {
-  const files = unzipSync(template)
+  const files = unzipTemplate(template)
+  assertBoundedStructure(files)
   const documentXml = files['word/document.xml']
   if (!documentXml) throw new Error('Template Word invalide : word/document.xml absent')
   const doc = parseXml(documentXml)

@@ -6,8 +6,11 @@ import { Query } from 'node-appwrite'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { revalidatePath } from 'next/cache'
 import type { CvProfile } from '@/lib/cv-profile-extract'
-import { cvExportErrorName, isCvExportStorageConfigured, listCvExports } from '@/lib/cv-export/store'
-import { CANDIDATE_ID, versionView, type CvExportVersion } from '@/lib/cv-export/stored'
+import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
+import { cvExportErrorName, isCvExportStorageConfigured, loadCvExportVersions, type CvExportVersions } from '@/lib/cv-export/store'
+import { CANDIDATE_ID } from '@/lib/cv-export/stored'
+import { readTemplateUpload, removeTemplate, saveUploadedTemplate } from '@/lib/cv-export/template-upload'
+import { getEsnTemplateInfo } from '@/lib/cv-export/templates'
 
 async function requireAdmin() {
   const user = await getCurrentUser()
@@ -91,24 +94,43 @@ export async function scanCandidateCv(candidateId: string): Promise<{ ok?: boole
   }
 }
 
-/**
- * Versions enregistrées de l'export « Format ESN » d'un candidat, pour la fenêtre d'export : anonymisation, langue,
- * date et CV remplacé depuis, sans fichier ni identifiant. `storage: false` : enregistrement non configuré.
- */
-export async function getCvExportVersions(candidateId: string): Promise<{ versions: CvExportVersion[]; storage: boolean; error?: string }> {
+/** Versions enregistrées de l'export « Format ESN » de la plateforme pour un candidat (fenêtre d'export). */
+export async function getCvExportVersions(candidateId: string): Promise<CvExportVersions> {
   await requireAdmin()
-  if (!isCvExportStorageConfigured()) return { versions: [], storage: false }
+  if (!CANDIDATE_ID.test(candidateId)) return { versions: [], storage: isCvExportStorageConfigured(), error: 'Candidat introuvable.' }
+  let templateUploadedAt = ''
   try {
-    if (!CANDIDATE_ID.test(candidateId)) return { versions: [], storage: true, error: 'Candidat introuvable.' }
-    const { databases } = createAdminClient()
-    const [candidate, stored] = await Promise.all([
-      databases.getDocument(DB_ID, COLLECTIONS.USERS, candidateId),
-      listCvExports(candidateId),
-    ])
-    const cvFileId = typeof candidate.cvFileId === 'string' ? candidate.cvFileId : ''
-    return { versions: stored.map(s => versionView(s, cvFileId)), storage: true }
-  } catch (e) {
-    console.error('[cv-export] lecture des versions enregistrées en échec', candidateId, cvExportErrorName(e))
-    return { versions: [], storage: true, error: 'Versions enregistrées illisibles pour le moment.' }
+    templateUploadedAt = (await getEsnTemplateInfo(PLATFORM_TENANT_ID))?.uploadedAt ?? ''
+  } catch (err) {
+    // Sans la date du modèle, une version antérieure à son remplacement n'est simplement pas signalée.
+    console.error('[cv-export] date du modèle de la plateforme illisible', cvExportErrorName(err))
   }
+  return loadCvExportVersions(PLATFORM_TENANT_ID, candidateId, templateUploadedAt)
+}
+
+/** Identifiant de l'admin connecté ; null sinon (message rendu : une erreur levée par une action est masquée en production). */
+async function adminId(): Promise<string | null> {
+  const user = await getCurrentUser()
+  return user?.role === 'admin' ? user.userId : null
+}
+
+const ADMIN_SESSION_EXPIRED = 'Session expirée ou droits insuffisants : reconnectez-vous en admin.'
+
+/** Dépose le modèle Word de la plateforme (.docx + template_map.json), à la place de celui du dépôt ou du précédent. */
+export async function saveCvTemplate(formData: FormData): Promise<{ error?: string }> {
+  const uploadedBy = await adminId()
+  if (!uploadedBy) return { error: ADMIN_SESSION_EXPIRED }
+  const files = readTemplateUpload(formData)
+  if ('error' in files) return files
+  const res = await saveUploadedTemplate({ tenantId: PLATFORM_TENANT_ID, files, uploadedBy, now: new Date() })
+  if (!res.error) revalidatePath('/admin/cvtheque')
+  return res
+}
+
+/** Retire le modèle déposé : la plateforme revient au modèle Wise Associates du dépôt. */
+export async function deleteCvTemplate(): Promise<{ error?: string }> {
+  if (!(await adminId())) return { error: ADMIN_SESSION_EXPIRED }
+  const res = await removeTemplate(PLATFORM_TENANT_ID)
+  if (!res.error) revalidatePath('/admin/cvtheque')
+  return res
 }

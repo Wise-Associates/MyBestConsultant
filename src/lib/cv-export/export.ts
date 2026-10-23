@@ -1,6 +1,4 @@
 import 'server-only'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 import Anthropic from '@anthropic-ai/sdk'
 import { AppwriteException } from 'node-appwrite'
 import { zipSync } from 'fflate'
@@ -16,17 +14,13 @@ import {
 import { findLeaks, identityTerms, leakMessage } from './leak-check'
 import { extractionPrompt, translationPrompt } from './prompt'
 import { renderCv } from './render'
-import wiseAssociatesMap from './templates/wise-associates/template_map.json'
-import type { AnonymizationMode, CvLang, TemplateMap } from './types'
+import type { EsnTemplate } from './templates'
+import type { AnonymizationMode, CvLang } from './types'
 
-// Export d'un candidat de la CV Thèque au format de l'ESN (ADR 0009) : CV lu dans le stockage, extrait et anonymisé
-// par l'IA (ligne « Export CV » de Config IA, sans repli), traduit si besoin, rendu dans le template Wise Associates,
-// contrôlé (aucune donnée d'identité restante) puis livré. La route enregistre ensuite les fichiers (store.ts) pour
-// qu'ils soient retéléchargés sans nouvel appel d'IA.
-
-// Le template est lu sur disque : next.config.ts l'inclut dans la fonction de la route (outputFileTracingIncludes).
-const TEMPLATE_PATH = path.join(process.cwd(), 'src', 'lib', 'cv-export', 'templates', 'wise-associates', 'template.docx')
-const TEMPLATE_MAP: TemplateMap = wiseAssociatesMap
+// Export d'un candidat d'une CV Thèque au format de l'ESN (ADR 0009, 0010) : CV lu dans le stockage, extrait et
+// anonymisé par l'IA (ligne « Export CV » de Config IA, sans repli), traduit si besoin, rendu dans le modèle de
+// l'organisation qui exporte (templates.ts), contrôlé (aucune donnée d'identité restante) puis livré. La route
+// enregistre ensuite les fichiers (store.ts) pour qu'ils soient retéléchargés sans nouvel appel d'IA.
 
 // Budget de la route (maxDuration = 300 s) : extraction, puis traduction si l'autre langue est demandée, le tout fini
 // 265 s après le début pour laisser à la route le temps d'enregistrer la version (route.ts, SAVE_DEADLINE_MS).
@@ -181,13 +175,16 @@ async function askModel<T>(system: string, content: string, timeoutMs: number, p
   }
 }
 
-/** Dossier de compétences anonymisé d'un candidat : un .docx par langue demandée. */
-export async function exportCandidateCv(candidateId: string, options: CvExportOptions): Promise<CvExportResult> {
+/**
+ * Dossier de compétences anonymisé d'un candidat, dans le modèle de l'organisation : un .docx par langue demandée.
+ * `beforeAi` s'exécute juste avant le premier appel d'IA (quota du jour) : un CV introuvable ou illisible ne le consomme pas.
+ */
+export async function exportCandidateCv(candidateId: string, options: CvExportOptions, template: EsnTemplate, beforeAi?: () => Promise<void>): Promise<CvExportResult> {
   const deadline = Date.now() + AI_DEADLINE_MS
   const candidate = await loadCandidate(candidateId)
   const cv = await readCvText(candidateId, candidate.cvFileId)
-  const template = new Uint8Array(await readFile(TEMPLATE_PATH))
 
+  await beforeAi?.()
   const cutNotice = cv.truncated ? 'Le CV est trop long : sa fin manque ci-dessous. N\'invente rien pour la compléter.\n' : ''
   const extraction = await askModel(extractionPrompt(options.mode), `${cutNotice}<cv>\n${cv.text}\n</cv>`,
     Math.min(EXTRACTION_TIMEOUT_MS, deadline - Date.now()), parseExtraction)
@@ -208,9 +205,16 @@ export async function exportCandidateCv(candidateId: string, options: CvExportOp
   const files = options.langs.map(lang => {
     const content = contents.get(lang)
     if (!content) throw new Error(`Contenu ${lang} absent après traduction`)
-    const fitted = fitToTemplate({ ...content, identifiant: initialsOf(candidate.firstName, candidate.lastName, lang) }, TEMPLATE_MAP)
-    const bytes = renderCv(template, TEMPLATE_MAP, fitted.data, lang)
-    const leaks = findLeaks(bytes, template, identity, TEMPLATE_MAP.esn)
+    const fitted = fitToTemplate({ ...content, identifiant: initialsOf(candidate.firstName, candidate.lastName, lang) }, template.map)
+    let bytes: Uint8Array
+    try {
+      bytes = renderCv(template.bytes, template.map, fitted.data, lang)
+    } catch (err) {
+      // Modèle vérifié au dépôt (checkTemplate) : un échec ici vient d'un fichier modifié ou du moteur, pas du candidat.
+      throw new CvExportError('Le modèle Word de l\'organisation est inutilisable : déposez-le à nouveau (bouton « Modèle CV » de la CV Thèque).', 500, { cause: err })
+    }
+    // Comparé au modèle de l'organisation : son bloc contact commercial lui appartient.
+    const leaks = findLeaks(bytes, template.bytes, identity, template.map.esn)
     if (leaks.length > 0) {
       // Journal : types seulement, jamais les valeurs (données personnelles).
       console.warn('[cv-export] export bloqué : fuite détectée', candidateId, lang, leaks.map(l => l.kind).join(','))
@@ -228,7 +232,7 @@ export async function exportCandidateCv(candidateId: string, options: CvExportOp
     cvTruncated: cv.truncated,
   })
   // Titre de la version rendue et contrôlée (celui de la langue du CV n'est pas rendu si seule l'autre langue est demandée).
-  const baseName = exportBaseName(TEMPLATE_MAP.esn, first.data.identifiant, first.data.titre)
+  const baseName = exportBaseName(template.map.esn, first.data.identifiant, first.data.titre)
   return {
     files: files.map(f => ({ lang: f.lang, fileName: `${baseName}_${LANG_SUFFIX[f.lang]}.docx`, bytes: f.bytes })),
     notes,

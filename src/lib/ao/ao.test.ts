@@ -245,6 +245,16 @@ describe('robustesse de la lecture', () => {
       lying.writeUInt32LE(1, i + 24)
     }
     assert.equal(zipFitsWithin(lying, 1_000), false)
+    // Même sous la limite : une taille annoncée fausse est refusée (un lecteur qui s'y fie décompresserait davantage).
+    assert.equal(zipFitsWithin(lying, 1_000_000), false)
+    const eocd = xlsx.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]))
+    // Nombres d'entrées discordants : fflate lit l'un, la vérification lisait l'autre (0 entrée = rien de vérifié).
+    const noEntries = Buffer.from(xlsx)
+    noEntries.writeUInt16LE(0, eocd + 10)
+    assert.equal(zipFitsWithin(noEntries, 1_000_000), false)
+    const zip64 = Buffer.from(xlsx)
+    zip64.writeUInt32LE(0x07064b50, eocd - 20)
+    assert.equal(zipFitsWithin(zip64, 1_000_000), false)
     assert.equal(zipFitsWithin(Buffer.from('pas une archive'), 1_000_000), false)
   })
 })

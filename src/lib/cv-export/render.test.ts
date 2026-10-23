@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { DOMParser, type Element } from '@xmldom/xmldom'
-import { strFromU8, unzipSync } from 'fflate'
-import { fmt, renderCv } from './render'
+import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
+import { TemplateStructureError, fmt, renderCv } from './render'
 import wiseMap from './templates/wise-associates/template_map.json'
 import type { CvData, TemplateMap } from './types'
 
@@ -118,6 +118,16 @@ describe('renderCv — template Wise Associates', () => {
     assert.match(core, /<cp:lastModifiedBy>Wise Associates<\/cp:lastModifiedBy>/)
     assert.equal(part(fr, 'word/comments.xml'), undefined)
     assert.doesNotMatch(part(fr, 'word/document.xml') ?? '', /<w:(ins|del)\b/)
+    // Modèle Word d'origine du template : chemin local avec le nom de session Windows de son auteur.
+    assert.doesNotMatch(part(fr, 'word/settings.xml') ?? '', /attachedTemplate/)
+    assert.doesNotMatch(part(fr, 'word/_rels/settings.xml.rels') ?? '', /attachedTemplate|file:\/\/\//)
+    assert.match(part(fr, 'docProps/app.xml') ?? '', /<Template><\/Template>/)
+  })
+
+  it('refuse un modèle trop complexe avant tout traitement (paragraphes vides en grand nombre)', () => {
+    const files = unzipSync(TEMPLATE)
+    files['word/document.xml'] = strToU8(strFromU8(files['word/document.xml']).replace('<w:sectPr', '<w:p/>'.repeat(500) + '<w:sectPr'))
+    assert.throws(() => renderCv(zipSync(files), MAP, DATA, 'fr'), TemplateStructureError)
   })
 
   it('version anglaise : libellés traduits et « Page 1 sur 2 » devenu « of »', () => {

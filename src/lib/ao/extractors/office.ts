@@ -41,7 +41,9 @@ export const officeTextExtractor: AttachmentExtractor = {
  * Vrai si l'archive zip se décompresse en `maxBytes` au plus. Les tailles écrites dans l'archive ne sont
  * pas crues (l'expéditeur les choisit) : chaque fichier est réellement décompressé, avec une limite de
  * sortie qui interrompt la décompression dès qu'elle est dépassée. Archive illisible, zip64 ou
- * compression inconnue : faux.
+ * compression inconnue : faux. Vrai garantit aussi que chaque taille annoncée est la taille réelle et que
+ * les deux nombres d'entrées de l'archive concordent : un lecteur qui se fie aux tailles annoncées (fflate,
+ * qui lit l'autre nombre d'entrées) ne peut pas décompresser davantage que ce qui a été vérifié ici.
  */
 export function zipFitsWithin(zip: Buffer, maxBytes: number): boolean {
   try {
@@ -51,21 +53,28 @@ export function zipFitsWithin(zip: Buffer, maxBytes: number): boolean {
       if (zip.readUInt32LE(i) === 0x06054b50) { eocd = i; break }
     }
     if (eocd < 0) return false
+    // Zip64 (localisateur juste avant) : refusé, ses tailles et nombres d'entrées sont ailleurs.
+    if (eocd >= 20 && zip.readUInt32LE(eocd - 20) === 0x07064b50) return false
     const entries = zip.readUInt16LE(eocd + 10)
+    if (zip.readUInt16LE(eocd + 8) !== entries || entries === 0xffff) return false
     let offset = zip.readUInt32LE(eocd + 16)
     let total = 0
     for (let n = 0; n < entries; n++) {
       if (zip.readUInt32LE(offset) !== 0x02014b50) return false
       const method = zip.readUInt16LE(offset + 10)
       const compressedSize = zip.readUInt32LE(offset + 20)
+      const announcedSize = zip.readUInt32LE(offset + 24)
       const local = zip.readUInt32LE(offset + 42)
       if (compressedSize === 0xffffffff || local === 0xffffffff || zip.readUInt32LE(local) !== 0x04034b50) return false
       const start = local + 30 + zip.readUInt16LE(local + 26) + zip.readUInt16LE(local + 28)
       const data = zip.subarray(start, start + compressedSize)
       if (data.length !== compressedSize) return false
-      if (method === 0) total += compressedSize
-      else if (method === 8) total += inflateRawSync(data, { maxOutputLength: Math.max(1, maxBytes - total) }).length
+      let size: number
+      if (method === 0) size = compressedSize
+      else if (method === 8) size = inflateRawSync(data, { maxOutputLength: Math.max(1, maxBytes - total) }).length
       else return false
+      if (size !== announcedSize) return false
+      total += size
       if (total > maxBytes) return false
       offset += 46 + zip.readUInt16LE(offset + 28) + zip.readUInt16LE(offset + 30) + zip.readUInt16LE(offset + 32)
     }

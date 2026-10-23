@@ -3,13 +3,79 @@
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { ID, Query } from 'node-appwrite'
+import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import type { CvProfile, CvExperience, CvEducation, CvLanguage } from '@/lib/cv-profile-extract'
+import { cvExportErrorName, isCvExportStorageConfigured, loadCvExportVersions, type CvExportVersions } from '@/lib/cv-export/store'
+import { getEsnTemplateInfo } from '@/lib/cv-export/templates'
+import { CANDIDATE_ID } from '@/lib/cv-export/stored'
+import { templateUploadDenial } from '@/lib/cv-export/access'
+import { takeTemplateSlot } from '@/lib/cv-export/recruiter'
+import { readTemplateUpload, removeTemplate, saveUploadedTemplate } from '@/lib/cv-export/template-upload'
 
 async function requireRecruiter() {
   const user = await getCurrentUser()
   if (!user || (user.role !== 'recruiter' && user.role !== 'admin')) throw new Error('Non autorisé')
   return user
+}
+
+/** Versions « Format ESN » enregistrées par l'organisation du recruteur pour un candidat (organisation de la session). */
+export async function getRecruiterCvExportVersions(candidateId: string): Promise<CvExportVersions> {
+  const storage = isCvExportStorageConfigured()
+  const user = await getCurrentUser()
+  // Message rendu plutôt que levé : une erreur levée par une action serveur est masquée en production.
+  if (!user || user.role !== 'recruiter' || !user.tenantId) return { versions: [], storage, error: 'Session expirée : rechargez la page et reconnectez-vous.' }
+  if (!CANDIDATE_ID.test(candidateId)) return { versions: [], storage, error: 'Candidat introuvable.' }
+  let templateUploadedAt = ''
+  try {
+    templateUploadedAt = (await getEsnTemplateInfo(user.tenantId))?.uploadedAt ?? ''
+  } catch (err) {
+    // Sans la date du modèle, une version antérieure à son remplacement n'est simplement pas signalée.
+    console.error('[cv-export] date du modèle illisible', user.tenantId, cvExportErrorName(err))
+  }
+  return loadCvExportVersions(user.tenantId, candidateId, templateUploadedAt)
+}
+
+const RECRUITER_SESSION_EXPIRED = 'Session expirée : rechargez la page et reconnectez-vous.'
+
+/** Recruteur rattaché à une organisation (celle de la session : jamais lue dans le formulaire) ; null sinon. */
+async function recruiterOfSession() {
+  const user = await getCurrentUser()
+  return user && user.role === 'recruiter' && user.tenantId ? { user, tenantId: user.tenantId } : null
+}
+
+/**
+ * Dépose le modèle Word de l'organisation (.docx + template_map.json), à la place du précédent. Tout recruteur de
+ * l'organisation (décision du 2026-10-24), à l'adresse e-mail vérifiée, dans le quota du jour (ADR 0010).
+ */
+export async function saveRecruiterCvTemplate(formData: FormData): Promise<{ error?: string }> {
+  const current = await recruiterOfSession()
+  if (!current) return { error: RECRUITER_SESSION_EXPIRED }
+  const denied = templateUploadDenial({ emailVerified: current.user.emailVerification })
+  if (denied) return { error: denied }
+  const files = readTemplateUpload(formData)
+  if ('error' in files) return files
+  const now = new Date()
+  let refused: string | null
+  try {
+    refused = await takeTemplateSlot('upload', current.tenantId, now)
+  } catch (err) {
+    console.error('[cv-export] quota de dépôt de modèle illisible', current.tenantId, cvExportErrorName(err))
+    return { error: 'Dépôt impossible pour le moment : réessayez dans quelques instants.' }
+  }
+  if (refused) return { error: refused }
+  const res = await saveUploadedTemplate({ tenantId: current.tenantId, files, uploadedBy: current.user.userId, now })
+  if (!res.error) revalidatePath('/recruiter/cvtheque')
+  return res
+}
+
+/** Retire le modèle de l'organisation : « Format ESN » disparaît de sa CV Thèque ; les versions enregistrées restent. */
+export async function deleteRecruiterCvTemplate(): Promise<{ error?: string }> {
+  const current = await recruiterOfSession()
+  if (!current) return { error: RECRUITER_SESSION_EXPIRED }
+  const res = await removeTemplate(current.tenantId)
+  if (!res.error) revalidatePath('/recruiter/cvtheque')
+  return res
 }
 
 // Fetched on demand when a candidate's profile modal opens, rather than joined into the
