@@ -15,6 +15,8 @@ export interface AssistantChatProps {
   title?: string
   /** Texte d'accueil d'une conversation vide (propre au site). */
   welcome: string
+  /** Durée de conservation des conversations, annoncée dans l'en-tête (information des personnes, RGPD). */
+  retentionDays: number
   send(conversationId: string | null, text: string): Promise<TurnResult>
   loadLatest(): Promise<LatestResult>
   handoff(conversationId: string): Promise<HandoffOutcome>
@@ -26,7 +28,7 @@ type Handoff = { step: 'idle' } | { step: 'confirm' } | { step: 'sending' } | { 
 /** Le compteur n'apparaît qu'à l'approche de la limite. */
 const COUNTER_FROM = Math.floor(MAX_MESSAGE_LENGTH * 0.8)
 
-export function AssistantChat({ title = 'Assistant IA', welcome, send, loadLatest, handoff }: AssistantChatProps) {
+export function AssistantChat({ title = 'Assistant IA', welcome, retentionDays, send, loadLatest, handoff }: AssistantChatProps) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState<Loading>('idle')
   const [conversationId, setConversationId] = useState<string | null>(null)
@@ -175,7 +177,9 @@ export function AssistantChat({ title = 'Assistant IA', welcome, send, loadLates
           <header className={styles.header}>
             <div>
               <h2 id={titleId} className={styles.headerTitle}>{title}</h2>
-              <p className={styles.headerNote}>Réponses générées par une IA, parfois inexactes. Ne partagez ni mot de passe ni données bancaires.</p>
+              <p className={styles.headerNote}>
+                Réponses générées par une IA, parfois inexactes. Conversations conservées {retentionDays} jours. Ne partagez ni mot de passe ni données bancaires.
+              </p>
             </div>
             <div className={styles.headerActions}>
               <button type="button" className={styles.iconButton} onClick={newConversation}

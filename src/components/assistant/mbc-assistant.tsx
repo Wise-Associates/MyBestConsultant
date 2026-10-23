@@ -2,7 +2,7 @@ import { AssistantChat } from '@/assistant/react/assistant-chat'
 import {
   loadAssistantConversation, sendAssistantConversationToSupport, sendAssistantMessage,
 } from '@/lib/assistant-actions'
-import { isAssistantEnabled } from '@/lib/assistant/host'
+import { ASSISTANT_RETENTION_DAYS, isAssistantEnabled } from '@/lib/assistant/host'
 
 const WELCOME = {
   candidate: 'Posez votre question sur l’utilisation de MyBestConsultant : profil, CV, recherche d’offres, candidatures, entretiens, support…',
@@ -18,7 +18,8 @@ export function MbcAssistant({ role, verified }: { role: keyof typeof WELCOME; v
   if (!verified || !isAssistantEnabled()) return null
   return (
     <div className="mbc-assistant">
-      <AssistantChat welcome={WELCOME[role]} send={sendAssistantMessage} loadLatest={loadAssistantConversation} handoff={sendAssistantConversationToSupport} />
+      <AssistantChat welcome={WELCOME[role]} retentionDays={ASSISTANT_RETENTION_DAYS}
+        send={sendAssistantMessage} loadLatest={loadAssistantConversation} handoff={sendAssistantConversationToSupport} />
     </div>
   )
 }
