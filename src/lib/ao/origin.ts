@@ -42,6 +42,20 @@ const isOwn = (address: string, ownDomains: string[]) => {
   return !!label && ownDomains.some(d => domainLabel(`x@${d}`) === label)
 }
 
+/**
+ * E-mail de la veille des sites publics (scraping) : en-tête X-Wise-Veille ET expéditeur d'un de nos domaines exacts
+ * (ou d'un sous-domaine). N'importe qui peut écrire un en-tête : un e-mail extérieur qui le porte reste un e-mail
+ * ordinaire. Comparaison stricte, pas par label comme `isOwn` : « wise-associates.com » n'est pas « wise-associates.fr ».
+ * L'enjeu reste faible (libellé « Scraping », offres échues de ce seul e-mail écartées).
+ */
+export function fromVeille(message: { scraping: boolean; fromAddress: string }, ownDomains: string[]): boolean {
+  const domain = message.fromAddress.split('@')[1]?.trim().toLowerCase() ?? ''
+  return message.scraping && !!domain && ownDomains.some(own => {
+    const d = own.trim().toLowerCase()
+    return !!d && (domain === d || domain.endsWith(`.${d}`))
+  })
+}
+
 /** Label du domaine s'il nomme l'entreprise de l'expéditeur ; '' pour une messagerie grand public ou l'organisation elle-même. */
 export function identifyingLabel(address: string, ownDomains: string[] = []): string {
   const label = domainLabel(address)

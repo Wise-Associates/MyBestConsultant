@@ -30,6 +30,13 @@ export interface AoOfferFields {
 export type AoEngagement = 'assistance' | 'forfait' | ''
 
 /**
+ * Canal d'arrivée d'une offre : e-mail reçu dans la boîte AO (client, intermédiaire, transfert) ou veille des sites
+ * publics (« scraping » : projet veille-marches-emplois, qui envoie chaque offre relevée dans son propre e-mail, avec
+ * l'en-tête X-Wise-Veille). Enregistré dans ao_offer_details ; absent = e-mail.
+ */
+export type AoChannel = 'email' | 'scraping'
+
+/**
  * Détails d'une offre hors des 11 colonnes du modèle : collection AO_OFFER_DETAILS (un document par offre, de même
  * identifiant), ao_offers étant à 16/16 attributs.
  */
@@ -46,6 +53,11 @@ export interface AoOfferDetails {
 export interface ExtractedOffer extends AoOfferFields, AoOfferDetails {
   deadline: string
   endClient: string
+  /**
+   * Date limite désignée comme telle par le texte ou le tableau, et non déduite d'une date sans libellé
+   * (`placeUnlabeledDates`). Seule une telle date peut faire écarter une offre de la veille comme échue.
+   */
+  deadlineFromText?: boolean
 }
 
 export interface AoOffer extends AoOfferFields {

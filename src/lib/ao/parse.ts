@@ -106,7 +106,7 @@ export function parseOffersJson(raw: string, reference: Date): ParsedOffers {
       continue
     }
     const { otherDates, ...offer } = parsed.data
-    offers.push({ ...offer, ...placeUnlabeledDates(offer, otherDates, reference) })
+    offers.push({ ...offer, ...placeUnlabeledDates(offer, otherDates, reference), deadlineFromText: Boolean(offer.deadline.trim()) })
   }
   return { offers, rejected }
 }
