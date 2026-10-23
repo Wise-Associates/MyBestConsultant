@@ -11,7 +11,7 @@ import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 const NET_COLOR: Record<Network, string> = { linkedin: '#0a66c2', instagram: '#e1306c', facebook: '#1877f2', x: '#e5e7eb' }
 const STATUS: Record<SocialStatus, { label: string; color: string }> = {
-  queued: { label: 'En file', color: '#9ca3af' }, sent: { label: 'Création du visuel', color: '#60a5fa' }, images_ready: { label: 'Visuels prêts', color: '#a78bfa' },
+  queued: { label: 'Création du visuel', color: '#9ca3af' }, sent: { label: 'Envoyée à Make', color: '#60a5fa' }, images_ready: { label: 'Visuels prêts', color: '#a78bfa' },
   published: { label: 'Publié', color: '#34d399' }, partial: { label: 'Partiel', color: '#fbbf24' }, failed: { label: 'Échec', color: '#f87171' },
 }
 const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }
@@ -41,6 +41,7 @@ export function SocialClient({ initialConfig, initialPosts, jobs, env, devPanel 
   const [open, setOpen] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const [busy, setBusy] = useState<string | null>(null)
+  const [retryError, setRetryError] = useState<{ id: string; message: string } | null>(null)
 
   const set = <K extends keyof SocialConfig>(k: K, v: SocialConfig[K]) => { setCfg(c => ({ ...c, [k]: v })); setSaved(false) }
 
@@ -62,15 +63,22 @@ export function SocialClient({ initialConfig, initialPosts, jobs, env, devPanel 
   }
 
   async function retry(id: string) {
-    setBusy(id)
-    await retryPostAction(id)
-    await reload(); setBusy(null)
+    setBusy(id); setRetryError(null)
+    try {
+      const r = await retryPostAction(id)
+      if (r.error) setRetryError({ id, message: r.error })
+      await reload()
+    } catch {
+      setRetryError({ id, message: 'Relance impossible : connexion interrompue, réessayez.' })
+    } finally {
+      setBusy(null)
+    }
   }
 
   return (
     <div className="min-h-full p-6 sm:p-8 max-w-5xl mx-auto space-y-6" style={{ color: 'rgba(255,255,255,0.87)' }}>
       <AdminPageHeader title="Publication multi-réseaux"
-        description="Chaque offre publiée par un recruteur est diffusée sur LinkedIn, Instagram, Facebook et X avec une image générée par IA, le lien de l’offre et le Calendly de My Best Consultant." />
+        description="Chaque offre publiée par un recruteur est diffusée sur LinkedIn, Instagram, Facebook et X avec une affiche dessinée par la plateforme (photo de la scène par l’IA), le lien de l’offre et le Calendly de My Best Consultant." />
 
       <StatusBanner configured={env.configured} />
       {devPanel}
@@ -101,7 +109,7 @@ export function SocialClient({ initialConfig, initialPosts, jobs, env, devPanel 
           </div>
           <div>
             <p className="text-sm font-semibold text-white/90 mb-1.5">Visuel</p>
-            <p className="text-xs leading-relaxed rounded-lg px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.5)' }}>Une affiche portrait (1080 × 1350) générée par IA, avec le logo My Best Consultant et une scène propre à chaque poste, identique sur tous les réseaux. YouTube Shorts (vidéo) viendra dans une seconde étape.</p>
+            <p className="text-xs leading-relaxed rounded-lg px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.5)' }}>Une affiche portrait (1080 × 1350) dessinée par la plateforme, avec le logo My Best Consultant, les textes de l’offre et une photo de scène propre à chaque poste (générée par OpenAI, facultative), identique sur tous les réseaux. YouTube Shorts (vidéo) viendra dans une seconde étape.</p>
           </div>
         </div>
         <div>
@@ -151,6 +159,7 @@ export function SocialClient({ initialConfig, initialPosts, jobs, env, devPanel 
               {isOpen && (
                 <div className="px-5 pb-5 space-y-3">
                   {p.error && <p className="text-xs flex items-start gap-1.5 text-red-400"><AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />{p.error}</p>}
+                  {p.posterNote && <p className="text-xs flex items-start gap-1.5 text-amber-400"><ImageIcon className="h-3.5 w-3.5 mt-0.5 shrink-0" />Affiche sans photo : {p.posterNote}</p>}
                   {p.results.length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {p.results.map(r => (
@@ -163,7 +172,7 @@ export function SocialClient({ initialConfig, initialPosts, jobs, env, devPanel 
                   )}
                   {p.images.length > 0 && (
                     <div className="flex flex-wrap gap-2">
-                      {p.images.map(u => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)' }}><ImageIcon className="h-3 w-3" />Slide</a>)}
+                      {p.images.map(u => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)' }}><ImageIcon className="h-3 w-3" />Affiche</a>)}
                     </div>
                   )}
                   {p.caption && <pre className="text-[11px] leading-relaxed whitespace-pre-wrap rounded-xl p-3 max-h-48 overflow-auto" style={{ background: 'rgba(0,0,0,0.25)', color: 'rgba(255,255,255,0.6)', fontFamily: 'inherit' }}>{p.caption}</pre>}
@@ -173,6 +182,7 @@ export function SocialClient({ initialConfig, initialPosts, jobs, env, devPanel 
                     </button>
                     <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{p.attempts} envoi{p.attempts > 1 ? 's' : ''}</span>
                   </div>
+                  {retryError?.id === p.id && <p role="alert" className="text-xs text-red-400">{retryError.message}</p>}
                 </div>
               )}
             </div>

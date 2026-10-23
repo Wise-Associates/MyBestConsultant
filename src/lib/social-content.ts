@@ -1,11 +1,9 @@
-import { BRAND_LOGO_URL } from '@/lib/site-links'
-
-// Publication multi-réseaux (Modules 9 et 15) — construction du CONTENU : textes par réseau, consigne de génération
-// de l'image unique, lien Calendly de My Best Consultant. Pur (aucun accès base/réseau) : testable seul.
+// Publication multi-réseaux (Modules 9 et 15) — construction du CONTENU : textes par réseau, textes de l'affiche
+// unique, lien Calendly de My Best Consultant. Pur (aucun accès base/réseau) : testable seul.
 //
-// Répartition des rôles : la plateforme prépare tout le contenu (cohérent avec la charte et identique sur tous les
-// réseaux) puis l'envoie à Make ; Make génère les visuels (kie.ai / GPT image), les publie via Buffer et rappelle
-// la plateforme avec le résultat. Voir /admin/social pour le guide de configuration.
+// Répartition des rôles (ADR 0015) : la plateforme prépare tout le contenu et dessine l'affiche (lib/social-poster,
+// photo de la scène par un modèle d'image d'OpenAI) ; Make la publie via Buffer depuis son adresse et rappelle la
+// plateforme avec le résultat. Voir /admin/social pour le guide de configuration.
 
 // YouTube Shorts viendra en phase 2 (il exige une vidéo, pas une image).
 export const NETWORKS = ['linkedin', 'instagram', 'facebook', 'x'] as const
@@ -54,6 +52,12 @@ export interface JobLite {
   contractType?: string; remote?: string; salary?: number; skills: string[]; description: string
 }
 
+/** Offre fictive des tests (connexion à Make, pilote Zernio) et de l'affiche d'exemple : rien de réel n'est publié avec. */
+export const SAMPLE_JOB: JobLite = {
+  id: 'exemple', title: 'Architecte Cloud AWS', company: 'Entreprise exemple', location: 'Paris', contractType: 'freelance', remote: 'hybrid', salary: 650,
+  skills: ['AWS', 'Terraform', 'Kubernetes', 'CI/CD'], description: 'Conception et mise en œuvre d’une plateforme cloud. Pilotage technique de l’équipe DevOps. Migration des applications existantes.',
+}
+
 /** Texte rédigé (par l'IA, ou repli automatique) dont sont tirés tous les supports. */
 export interface CopyDraft {
   hook: string             // accroche courte (≤ 70 car.)
@@ -63,9 +67,8 @@ export interface CopyDraft {
   profileBullets: string[] // 3-5 puces
 }
 
-/** L'affiche unique publiée partout. 4:5 = le plus haut format accepté par le fil Instagram (le 9:16 y est refusé), et bien reçu par LinkedIn, Facebook et X. */
+/** Textes de l'affiche unique publiée partout (dessinée par lib/social-poster, au format 4:5). */
 export interface PostImage {
-  prompt: string; aspectRatio: '4:5'; size: '1080x1350'; logoUrl: string
   title: string; company: string; location: string; facts: string[]; skills: string[]; tagline: string
 }
 
@@ -120,38 +123,6 @@ export function normalizeCopy(raw: unknown, job: JobLite): CopyDraft {
   }
 }
 
-const PALETTE = 'Strict brand palette: deep anthracite #2C2C2E (dominant background and overlays), warm orange-gold #E8A33D (accents, separator, pills, highlights), pure white #FFFFFF (text). No other dominant colours.'
-
-/**
- * Consigne de génération de l'affiche (modèle image-vers-image : le logo est fourni en image de référence).
- * Tous les textes sont donnés mot pour mot : le modèle doit les écrire tels quels, sans rien ajouter.
- */
-function imagePrompt(i: Omit<PostImage, 'prompt'>): string {
-  const where = [i.company, i.location].filter(Boolean).join(' — ')
-  return [
-    `Ultra-premium professional job-recruitment poster for the consulting brand "My Best Consultant", portrait ${i.aspectRatio} format (${i.size}), luxury editorial magazine look, 4K ultra sharp, every text perfectly legible.`,
-    PALETTE,
-    '',
-    'LOGO — The attached reference image is the official My Best Consultant round logo badge (white "MBC" monogram inside an orange-gold ring). Place it exactly as provided, centered at the top, about 16% of the poster width, with a soft warm orange glow behind it. Do NOT redraw, restyle, translate or alter the logo or its lettering in any way.',
-    '',
-    `SCENE — It must PERFECTLY match this specific job: "${i.title}"${i.skills.length ? `, key skills: ${i.skills.join(', ')}` : ''}. Generate a photorealistic, cinematic workplace scene made for this exact role: the real environment, tools and activity of a "${i.title}" (examples: a data engineer at dual monitors with pipelines and dashboards; a cybersecurity consultant in a security operations room; a project manager leading a workshop at a whiteboard; a cloud architect reviewing architecture diagrams; a business analyst facilitating a meeting; a developer coding in an IDE). One or two diverse, natural, smiling professionals in smart business attire actively doing that work, candid confident expression, high-end editorial photography, shallow depth of field, cinematic bokeh, warm orange accent light, modern premium office. The scene occupies about 42% of the poster height and fades smoothly into anthracite #2C2C2E toward the text area.`,
-    '',
-    'LAYOUT, top to bottom:',
-    '(1) The logo, top center.',
-    '(2) A thin orange-gold separator line.',
-    '(3) The workplace scene (about 42% of the height), blended into the anthracite background.',
-    `(4) GIANT bold white sans-serif title with a short orange underline, the most prominent text: "${i.title}"`,
-    where ? `(5) Semi-bold white line: "${where}"` : null,
-    i.facts.length ? `(6) A row of orange-gold rounded pills with dark anthracite text, one per item: ${i.facts.map(f => `"${f}"`).join(', ')}` : null,
-    i.skills.length ? `(7) A row of small outlined rounded tags (white text, thin orange outline): ${i.skills.map(k => `"${k}"`).join(', ')}` : null,
-    `(8) One inspiring sentence in white italic: "${i.tagline}"`,
-    '(9) A prominent orange-gold rounded button with dark anthracite text: "Postulez sur mybestconsultant.fr"',
-    '(10) A slim dark anthracite footer with the small white wordmark "My Best Consultant" and "mybestconsultant.fr".',
-    '',
-    'TEXT RULES — Write the quoted texts EXACTLY as given, in French, with correct spelling and all accents. Add NO other text, numbers, placeholders, lorem ipsum, phone numbers or watermarks. Keep generous margins and strong contrast so nothing is cropped or hard to read.',
-  ].filter((l): l is string => l !== null).join('\n')
-}
-
 export function shortUrl(url: string): string { return url.replace(/^https?:\/\//, '').replace(/\/$/, '') }
 
 export function jobUrl(baseUrl: string, jobId: string, network?: Network): string {
@@ -172,11 +143,9 @@ export function buildContent(job: JobLite, copy: CopyDraft, cfg: SocialConfig, o
 
   // ── Affiche unique ──
   const facts = conditions.filter(l => !l.startsWith('📍'))
-  const base = {
-    aspectRatio: '4:5' as const, size: '1080x1350' as const, logoUrl: BRAND_LOGO_URL,
+  const image: PostImage = {
     title: clip(job.title, 80), company: job.company, location: job.location, facts, skills: copy.profileBullets.slice(0, 4), tagline: copy.tagline,
   }
-  const image: PostImage = { ...base, prompt: imagePrompt(base) }
 
   // ── Textes par réseau ──
   // Même trame partout (accroche, lieu et conditions, missions, profil, liens), adaptée à la longueur et aux usages de chaque réseau.

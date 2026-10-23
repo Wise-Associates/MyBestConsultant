@@ -23,7 +23,7 @@ export function SocialStatus({ jobId, info, canPublish }: { jobId: string; info?
   const working = !!info && WORKING.includes(info.status) && !info.stale
   const unconfirmed = !!info && WORKING.includes(info.status) && !!info.stale
 
-  // Tant que Make travaille, on rafraîchit l'état toutes les 10 s (bornées : 5 min max).
+  // Tant que la publication est en cours (visuel puis Make), on rafraîchit l'état toutes les 10 s (bornées : 5 min max).
   useEffect(() => {
     if (!working) return
     let n = 0
@@ -47,7 +47,7 @@ export function SocialStatus({ jobId, info, canPublish }: { jobId: string; info?
     <div className="flex items-center gap-2 flex-wrap mt-2.5" onClick={e => e.stopPropagation()}>
       {working && (
         <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full" style={{ background: 'rgba(139,92,246,0.12)', color: '#7c3aed' }}>
-          <Loader2 className="h-3 w-3 animate-spin" />{info!.status === 'images_ready' ? 'Visuels prêts, publication…' : 'Création des visuels…'}
+          <Loader2 className="h-3 w-3 animate-spin" />{info!.status === 'queued' ? 'Création du visuel…' : 'Publication en cours…'}
         </span>
       )}
       {unconfirmed && (

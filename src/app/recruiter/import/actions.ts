@@ -191,12 +191,13 @@ export async function improveExtractedJob(
 
 // ── Confirm import: save selected jobs to Appwrite ────────────────
 export async function confirmImport(jobs: ExtractedJob[]): Promise<{ imported: number; error?: string }> {
+  const requestStart = Date.now()
   try {
     const user = await getCurrentUser()
     if (!user || user.role !== 'recruiter') return { imported: 0, error: 'Non autorisé' }
 
     const { databases } = createAdminClient()
-    const { tryAutoPublishJob } = await import('@/lib/social')
+    const { tryAutoPublishJob, deliveryDeadline } = await import('@/lib/social')
     const { tryAutoSourceCandidates } = await import('@/lib/auto-source-candidates')
 
     const tenantId = user.tenantId ?? ''
@@ -220,7 +221,7 @@ export async function confirmImport(jobs: ExtractedJob[]): Promise<{ imported: n
         expiresAt: oneMonthFromNow(),
       })
       const created = { ...doc, $id: doc.$id } as never
-      after(() => tryAutoPublishJob(created))
+      after(() => tryAutoPublishJob(created, deliveryDeadline(requestStart)))
       await tryAutoSourceCandidates({ ...doc, $id: doc.$id } as never)
       imported++
     }
@@ -246,6 +247,7 @@ export async function importJobsChunk(
   jobs: ExtractedJob[],
   opts: { bulk: boolean },
 ): Promise<{ created: number; failed: { title: string; error: string }[]; error?: string }> {
+  const requestStart = Date.now()
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter') return { created: 0, failed: [], error: 'Non autorisé' }
   if (!Array.isArray(jobs) || jobs.length === 0) return { created: 0, failed: [] }
@@ -276,9 +278,9 @@ export async function importJobsChunk(
       expiresAt: oneMonthFromNow(),
     })
     if (!opts.bulk) {
-      const { tryAutoPublishJob } = await import('@/lib/social')
+      const { tryAutoPublishJob, deliveryDeadline } = await import('@/lib/social')
       const { tryAutoSourceCandidates } = await import('@/lib/auto-source-candidates')
-      after(() => tryAutoPublishJob({ ...doc, $id: doc.$id } as never))
+      after(() => tryAutoPublishJob({ ...doc, $id: doc.$id } as never, deliveryDeadline(requestStart)))
       await tryAutoSourceCandidates({ ...doc, $id: doc.$id } as never).catch(() => undefined)
     }
   }
