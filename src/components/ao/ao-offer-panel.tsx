@@ -82,7 +82,9 @@ export function AoOfferPanel({ row, actions, paths, publishNote, onClose }: Prop
   ]
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(0,0,0,0.55)' }} onClick={onClose}>
+    // Au-dessus de la barre de navigation fixe de l'espace recruteur (z-index 9000, site-navbar-client.tsx), qui
+    // cachait le haut du panneau et son bouton de fermeture : même niveau que les autres fenêtres du site (10000).
+    <div className="fixed inset-0 z-10000 flex justify-end" style={{ background: 'rgba(0,0,0,0.55)' }} onClick={onClose}>
       <aside role="dialog" aria-modal="true" aria-labelledby="ao-offer-title" onClick={e => e.stopPropagation()}
         className="h-full overflow-y-auto p-7 space-y-6"
         // ¾ de la zone de contenu (hors menu latéral de 240 px) sur grand écran, 760 px au moins, pleine largeur sur mobile.
