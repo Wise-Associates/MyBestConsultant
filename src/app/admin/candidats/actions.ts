@@ -1,239 +1,58 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
-import { z } from 'zod'
 import { requireAdmin } from '@/lib/appwrite/auth'
-import { getActiveJobs } from '@/lib/appwrite/jobs'
 import { adminJobExists, createAdminJob } from '@/lib/admin-job'
-import { DEFAULT_CLIENT_LABEL, namesToHide, revealsName, toPublicOffer } from '@/lib/ao/anonymize'
-import { parseSender } from '@/lib/ao/origin'
-import { getAoSource } from '@/lib/ao/sources'
+import { isDocumentId } from '@/lib/ao/access'
+import type { PublicationDraft, SourcingResult } from '@/lib/ao/dashboard-types'
+import {
+  addAoOfferCommentOf, aoAccessFor, deleteAoOfferCommentOf, deleteAoOfferOf, listAoOfferCommentsOf, previewAoPublicationOf,
+  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, syncAoNow,
+} from '@/lib/ao/offer-actions'
+import { getAoOfferSourcing, listAoOfferDetails, saveAoOfferSourcing } from '@/lib/ao/repo'
 import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
-import { loadPlatformAoView } from '@/lib/ao/platform-view'
-import { createAoComment, deleteAoComment, deleteAoCommentsOfOffer, getAoComment, listAoComments, type AoComment } from '@/lib/ao/comments'
-import { canDeleteComment, parseCommentBody } from '@/lib/ao/comment-input'
-import type { AoOfferRow } from '@/lib/ao/filters'
-import { descriptionForPublication } from '@/lib/description-sections'
-import { cityKey, titleKey } from '@/lib/ao/fingerprint'
-import { manualRetryPatch } from '@/lib/ao/attempts'
-import { deleteAoOfferAndDetails, getAoEmail, getAoOffer, getAoOfferSourcing, listAoEmailsByIds, listAoOfferDetails, saveAoOfferSourcing, updateAoEmail, updateAoOffer } from '@/lib/ao/repo'
 import { candidateNames, matchCandidatesForOffer } from '@/lib/sourcing-core'
 import { bestMatches } from '@/lib/sourcing-rules'
-import { getJobMatches, runPoolMatching, type JobMatchResult } from '@/lib/matching-core'
-import type { AoEmail, AoOffer } from '@/lib/ao/types'
-import { syncAoEmail, syncAoInbox, type AoSyncReport } from '@/lib/ao/sync'
-import type { AoContract, AoRemote } from '@/lib/ao/types'
+import { getJobMatches, runPoolMatching } from '@/lib/matching-core'
 
-// Les offres publiées depuis AO Offers sont rattachées à l'admin, comme l'import manuel d'appels d'offres.
+// Actions de /admin/candidats : chacune vérifie l'admin elle-même (une Server Action est un point d'entrée public),
+// puis agit sur les seules boîtes de la plateforme (ADR 0005, cœur partagé : src/lib/ao/offer-actions.ts).
+
+const PATH = '/admin/candidats'
+// Les offres publiées depuis cette page sont rattachées à l'admin, comme l'import manuel d'appels d'offres.
 const ADMIN_TENANT_ID = 'admin'
 
 const errorOf = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
-/**
- * Noms à masquer : client de l'offre et clients cités par l'appel d'offres (avec leurs sigles), nom et domaine de
- * l'expéditeur de l'e-mail et de celui du message d'origine (sauf ceux de l'organisation qui lit la boîte).
- */
-async function hiddenNamesFor(offer: AoOffer): Promise<string[][]> {
-  const email = (await listAoEmailsByIds([offer.emailId])).get(offer.emailId)
-  const source = email?.sourceId ? await getAoSource(email.sourceId) : null
-  return namesToHide(
-    [offer.companyName, ...(email?.citedClients ?? [])],
-    [{ name: email?.fromName, address: email?.fromAddress }, parseSender(email?.origin ?? '') ?? {}],
-    source?.ownDomains ?? [],
-  )
-}
-
-/**
- * E-mail d'une boîte de la plateforme ; null sinon. L'admin voit les offres des organisations mais n'agit que sur
- * celles de la plateforme (ADR 0005) : vérifié avant toute écriture.
- */
-async function platformEmail(emailId: string): Promise<AoEmail | null> {
-  const email = await getAoEmail(emailId)
-  const source = email?.sourceId ? await getAoSource(email.sourceId) : null
-  return email && source?.tenantId === PLATFORM_TENANT_ID ? email : null
-}
-
-/** Offre AO de la plateforme (voir platformEmail) ; null si elle n'existe pas ou appartient à une organisation. */
-async function platformOffer(id: string): Promise<AoOffer | null> {
-  const offer = await getAoOffer(id)
-  return offer && (await platformEmail(offer.emailId)) ? offer : null
-}
-
-/**
- * Un petit passage du bouton « Synchroniser maintenant » : la page les enchaîne jusqu'à ce que la boîte soit lue
- * (sync-loop.ts) et le tableau se met à jour après chacun (revalidatePath). Peu d'e-mails par passage : les offres
- * apparaissent au fil de l'eau. Boîtes de la plateforme seulement : celles des organisations ont leurs passages.
- */
-export async function syncAoInboxNow(): Promise<{ report?: AoSyncReport; rows?: AoOfferRow[]; recentEmails?: AoEmail[]; error?: string }> {
+export async function syncAoInboxNow() {
   await requireAdmin()
-  try {
-    const report = await syncAoInbox({ maxEmails: 2, budgetMs: 120_000, holder: 'admin', tenantId: PLATFORM_TENANT_ID })
-    // Données à jour renvoyées avec le compte rendu : la page les affiche tout de suite. Un rafraîchissement de la page
-    // (revalidatePath, router.refresh) serait abandonné par Next.js au profit du passage suivant, lancé aussitôt.
-    const { rows, recentEmails } = await loadPlatformAoView()
-    return { report, rows, recentEmails }
-  } catch (err) {
-    return { error: `Synchronisation impossible : ${errorOf(err)}` }
-  }
+  return syncAoNow(PLATFORM_TENANT_ID, 'admin')
 }
 
-/** Identifiant de document Appwrite (36 caractères au plus, lettres, chiffres, « . », « _ », « - »). */
-const DocumentId = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,35}$/)
-
-/**
- * Bouton « Réessayer » d'un e-mail non traité : il est remis en file, quels que soient ses essais déjà comptés,
- * puis traité tout de suite (même traitement et même verrou qu'une synchronisation). Si ce traitement immédiat
- * échoue ou qu'une synchronisation est en cours, il reste en file pour la suivante.
- */
-export async function retryAoEmail(id: string): Promise<{ report?: AoSyncReport; error?: string }> {
+export async function retryAoEmail(id: string) {
   await requireAdmin()
-  const parsed = DocumentId.safeParse(id)
-  if (!parsed.success) return { error: 'Identifiant d\'e-mail invalide.' }
-  let email
-  try {
-    email = await platformEmail(parsed.data)
-    if (!email) return { error: 'E-mail introuvable : rechargez la page.' }
-    const patch = manualRetryPatch(email)
-    if (!patch) return { error: 'Cet e-mail n\'est plus en erreur : rechargez la page.' }
-    await updateAoEmail(email.$id, patch)
-  } catch (err) {
-    return { error: `Relance impossible : ${errorOf(err)}` }
-  }
-  try {
-    // Plus court que le passage planifié : l'admin attend la réponse.
-    return { report: await syncAoEmail(email, { budgetMs: 150_000, holder: 'admin', tenantId: PLATFORM_TENANT_ID }) }
-  } catch (err) {
-    return { error: `Traitement immédiat impossible (${errorOf(err)}) : l'e-mail est remis en file pour la prochaine synchronisation.` }
-  } finally {
-    revalidatePath('/admin/candidats')
-  }
-}
-
-export interface PublicationDraft {
-  title: string
-  companyName: string
-  description: string
-  location: string
-  contractType: AoContract
-  remote: AoRemote
-  salary: number | null
-  skills: string[]
-}
-
-export interface PublicationPreview {
-  draft: PublicationDraft
-  /** Offres déjà en ligne au même intitulé et dans la même ville (risque de doublon). */
-  similarJobs: { id: string; title: string; location: string }[]
+  return retryAoEmailOf(PLATFORM_TENANT_ID, id, { holder: 'admin', path: PATH, reset: true })
 }
 
 /** Version anonymisée proposée à l'admin avant publication. */
-export async function previewAoPublication(id: string): Promise<{ preview?: PublicationPreview; error?: string }> {
+export async function previewAoPublication(id: string) {
   await requireAdmin()
-  try {
-    const offer = await platformOffer(id)
-    if (!offer) return { error: 'Offre introuvable.' }
-    const pub = toPublicOffer(offer, await hiddenNamesFor(offer))
-    const key = `${titleKey(offer.title)}|${cityKey(offer.location)}`
-    const similarJobs = (await getActiveJobs())
-      .filter(job => `${titleKey(job.title)}|${cityKey(job.location)}` === key)
-      .slice(0, 5)
-      .map(job => ({ id: job.$id, title: job.title, location: job.location }))
-    return {
-      preview: {
-        draft: {
-          ...pub,
-          // Mise en forme (sections, puces) après l'anonymisation, qui retire les lignes de contact d'après
-          // leur début de ligne. L'admin relit ce texte : il est publié tel quel, sur le site et sur LinkedIn.
-          description: descriptionForPublication(pub.description),
-          contractType: offer.contractType, remote: offer.remote, salary: offer.salary,
-        },
-        similarJobs,
-      },
-    }
-  } catch (err) {
-    return { error: errorOf(err) }
-  }
+  return previewAoPublicationOf(PLATFORM_TENANT_ID, id)
 }
 
-const PublishSchema = z.object({
-  title: z.string().trim().min(2).max(200),
-  companyName: z.string().trim().min(2).max(200),
-  description: z.string().trim().min(20).max(20_000),
-  location: z.string().trim().max(200),
-  contractType: z.enum(['cdi', 'cdd', 'freelance', 'mission']),
-  remote: z.enum(['onsite', 'hybrid', 'remote']),
-  salary: z.number().int().positive().max(999_999).nullable(),
-  skills: z.array(z.string().trim().min(1).max(60)).max(10),
-})
-
-export async function publishAoOffer(id: string, input: PublicationDraft): Promise<{ jobId?: string; error?: string }> {
+export async function publishAoOffer(id: string, input: PublicationDraft) {
   await requireAdmin()
-  const parsed = PublishSchema.safeParse(input)
-  if (!parsed.success) return { error: 'Champs invalides : vérifiez le titre, la description (20 caractères minimum) et le montant.' }
-  try {
-    const offer = await platformOffer(id)
-    if (!offer) return { error: 'Offre introuvable.' }
-    if (offer.status === 'published' || offer.jobId) return { error: 'Cette offre est déjà publiée.' }
-
-    const names = await hiddenNamesFor(offer)
-    // Le client reste masqué sur le site, même si l'admin a saisi son nom (ou celui de l'expéditeur) comme libellé.
-    const label = revealsName(parsed.data.companyName, names) ? DEFAULT_CLIENT_LABEL : parsed.data.companyName
-    // Filet de sécurité : tout le texte édité repasse par l'anonymisation avant d'être publié.
-    const pub = toPublicOffer({ ...offer, ...parsed.data, duration: '', startDate: '', experience: '' }, names, label)
-
-    // Identifiant fixe : une double publication (deux onglets, nouvel essai après une erreur) échoue en 409
-    // au lieu de créer une seconde offre, un second post LinkedIn et un second sourcing.
-    const jobId = `ao${offer.$id}`
-    await updateAoOffer(id, { status: 'published', jobId })
-    try {
-      await createAdminJob({ ...parsed.data, ...pub }, ADMIN_TENANT_ID, jobId)
-    } catch (err) {
-      if (!(await adminJobExists(jobId))) {
-        await updateAoOffer(id, { status: 'to_review', jobId: null }).catch(() => undefined)
-        throw err
-      }
-      // L'offre existe déjà (publication simultanée, ou erreur pendant la diffusion) : elle reste publiée.
-    }
-    revalidatePath('/admin/candidats')
-    revalidatePath('/admin/jobs')
-    return { jobId }
-  } catch (err) {
-    return { error: `Publication impossible : ${errorOf(err)}` }
-  }
+  return publishAoOfferOf(
+    PLATFORM_TENANT_ID,
+    id,
+    input,
+    { create: async (job, jobId) => { await createAdminJob(job, ADMIN_TENANT_ID, jobId) }, exists: adminJobExists },
+    [PATH, '/admin/jobs'],
+  )
 }
 
-export async function setAoOfferStatus(id: string, status: 'to_review' | 'ignored'): Promise<{ error?: string }> {
+export async function setAoOfferStatus(id: string, status: 'to_review' | 'ignored') {
   await requireAdmin()
-  if (status !== 'to_review' && status !== 'ignored') return { error: 'Statut invalide.' }
-  try {
-    const offer = await platformOffer(id)
-    if (!offer) return { error: 'Offre introuvable.' }
-    if (offer.status === 'published') return { error: 'Une offre publiée se gère depuis « Offres ».' }
-    await updateAoOffer(id, { status })
-    revalidatePath('/admin/candidats')
-    return {}
-  } catch (err) {
-    return { error: errorOf(err) }
-  }
-}
-
-/** Candidat retenu pour une offre AO (les 5 meilleurs notés 65 ou plus, sourcing-rules.ts). */
-export interface SourcedCandidate {
-  id: string
-  name: string
-  score: number | null
-  reason: string
-  /** pool : base candidats ; vivier : CV ajouté à l'offre publiée ; application : candidature reçue. */
-  origin: JobMatchResult['source']
-}
-
-export interface SourcingResult {
-  candidates?: SourcedCandidate[]
-  /** Date du calcul (null : jamais calculé pour cette offre). */
-  computedAt?: string | null
-  /** CV analysés (offre non publiée). */
-  scanned?: number
-  error?: string
+  return setAoOfferStatusOf(PLATFORM_TENANT_ID, id, status, PATH)
 }
 
 /**
@@ -242,14 +61,14 @@ export interface SourcingResult {
  *   getJobMatches (base candidats, vivier, candidatures) ;
  * - offre non publiée : dernier calcul à la demande, enregistré dans ao_offer_details (identifiants, scores, raisons).
  * `recompute` : recalcule d'abord (un appel d'IA, environ une minute). Seuls les 5 meilleurs notés 65 ou plus sont
- * renvoyés (même règle que l'e-mail automatique de la publication). Offres de la plateforme seulement.
+ * renvoyés (même règle que l'e-mail automatique de la publication). Offres de la plateforme seulement ; les recruteurs
+ * n'ont pas ce bouton (décision du 2026-10-25).
  */
 export async function aoOfferSourcing(id: string, recompute = false): Promise<SourcingResult> {
   await requireAdmin()
-  const parsed = DocumentId.safeParse(id)
-  if (!parsed.success) return { error: 'Offre introuvable : rechargez la page.' }
+  if (!isDocumentId(id)) return { error: 'Offre introuvable : rechargez la page.' }
   try {
-    const offer = await platformOffer(parsed.data)
+    const offer = await aoAccessFor(PLATFORM_TENANT_ID).offer(id)
     if (!offer) return { error: 'Offre introuvable : rechargez la page.' }
 
     if (offer.jobId) {
@@ -294,98 +113,22 @@ export async function aoOfferSourcing(id: string, recompute = false): Promise<So
   }
 }
 
-// ── Commentaires ────────────────────────────────────────────────
-
-/** Commentaire tel qu'affiché : `mine` permet de proposer la suppression à son auteur seulement. */
-export interface AoCommentView {
-  id: string
-  authorName: string
-  body: string
-  createdAt: string
-  mine: boolean
-}
-
-/** Message d'erreur d'une action sur les commentaires ; la collection manquante a déjà son message complet. */
-function commentsError(err: unknown, action: string): string {
-  const message = errorOf(err)
-  return message.startsWith('Commentaires indisponibles') ? message : `${action} : ${message}`
-}
-
-const toCommentView = (c: AoComment, userId: string): AoCommentView => ({
-  id: c.$id, authorName: c.authorName || 'Utilisateur', body: c.body, createdAt: c.createdAt, mine: canDeleteComment(c, userId),
-})
-
-/** Commentaires d'une offre AO de la plateforme, du plus ancien au plus récent. */
-export async function listAoOfferComments(offerId: string): Promise<{ comments?: AoCommentView[]; error?: string }> {
+export async function listAoOfferComments(offerId: string) {
   const user = await requireAdmin()
-  const parsed = DocumentId.safeParse(offerId)
-  if (!parsed.success) return { error: 'Offre introuvable : rechargez la page.' }
-  try {
-    if (!(await platformOffer(parsed.data))) return { error: 'Offre introuvable : rechargez la page.' }
-    return { comments: (await listAoComments(parsed.data)).map(c => toCommentView(c, user.userId)) }
-  } catch (err) {
-    return { error: commentsError(err, 'Commentaires illisibles') }
-  }
+  return listAoOfferCommentsOf(PLATFORM_TENANT_ID, user.userId, offerId)
 }
 
-export async function addAoOfferComment(offerId: string, body: string): Promise<{ comment?: AoCommentView; error?: string }> {
+export async function addAoOfferComment(offerId: string, body: string) {
   const user = await requireAdmin()
-  const parsed = DocumentId.safeParse(offerId)
-  if (!parsed.success) return { error: 'Offre introuvable : rechargez la page.' }
-  const text = parseCommentBody(body)
-  if (!text.ok) return { error: text.error }
-  try {
-    if (!(await platformOffer(parsed.data))) return { error: 'Offre introuvable : rechargez la page.' }
-    const comment = await createAoComment({
-      offerId: parsed.data,
-      tenantId: PLATFORM_TENANT_ID,
-      authorId: user.userId,
-      authorName: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email,
-      body: text.body,
-    })
-    return { comment: toCommentView(comment, user.userId) }
-  } catch (err) {
-    return { error: commentsError(err, 'Commentaire non enregistré') }
-  }
+  return addAoOfferCommentOf(PLATFORM_TENANT_ID, user, offerId, body)
 }
 
-/** Supprime un commentaire : son auteur seulement, sur une offre de la plateforme. */
-export async function deleteAoOfferComment(commentId: string): Promise<{ error?: string }> {
+export async function deleteAoOfferComment(commentId: string) {
   const user = await requireAdmin()
-  const parsed = DocumentId.safeParse(commentId)
-  if (!parsed.success) return { error: 'Commentaire introuvable : rechargez la page.' }
-  try {
-    const comment = await getAoComment(parsed.data)
-    if (!comment || comment.tenantId !== PLATFORM_TENANT_ID || !(await platformOffer(comment.offerId))) return { error: 'Commentaire introuvable : rechargez la page.' }
-    if (!canDeleteComment(comment, user.userId)) return { error: 'Seul l\'auteur d\'un commentaire peut le supprimer.' }
-    await deleteAoComment(comment.$id)
-    return {}
-  } catch (err) {
-    return { error: commentsError(err, 'Suppression impossible') }
-  }
+  return deleteAoOfferCommentOf(PLATFORM_TENANT_ID, user.userId, commentId)
 }
 
-// ── Suppression d'une offre ──────────────────────────────────────
-
-/**
- * Supprime définitivement une offre AO de la plateforme, avec ses commentaires et ses détails. Refusé pour une offre
- * publiée : son offre publique resterait en ligne sans son appel d'offres. L'e-mail reste enregistré, l'offre n'est
- * donc pas recréée par la synchronisation suivante (« Ignorer », lui, la garde en la masquant).
- */
-export async function deleteAoOffer(id: string): Promise<{ error?: string }> {
+export async function deleteAoOffer(id: string) {
   await requireAdmin()
-  const parsed = DocumentId.safeParse(id)
-  if (!parsed.success) return { error: 'Offre introuvable : rechargez la page.' }
-  try {
-    const offer = await platformOffer(parsed.data)
-    if (!offer) return { error: 'Offre introuvable : rechargez la page.' }
-    if (offer.status === 'published' || offer.jobId) {
-      return { error: 'Offre publiée : retirez d\'abord l\'offre publique dans « Offres », sinon elle resterait en ligne sans son appel d\'offres.' }
-    }
-    await deleteAoCommentsOfOffer(offer.$id)
-    await deleteAoOfferAndDetails(offer.$id)
-    return {}
-  } catch (err) {
-    return { error: `Suppression impossible : ${errorOf(err)}` }
-  }
+  return deleteAoOfferOf(PLATFORM_TENANT_ID, id)
 }

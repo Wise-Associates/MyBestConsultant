@@ -160,9 +160,10 @@ export async function createJob(data: {
   salary?: number
   companyName?: string
   expiresAt?: string
-}): Promise<Job> {
+}, id?: string): Promise<Job> {
   const { databases } = createAdminClient()
-  const doc = await databases.createDocument(DB_ID, COLLECTIONS.JOBS, ID.unique(), {
+  // `id` fixe (offre publiée depuis un appel d'offres) : une seconde création échoue (409) au lieu de faire un doublon.
+  const doc = await databases.createDocument(DB_ID, COLLECTIONS.JOBS, id ? ID.custom(id) : ID.unique(), {
     ...data,
     isActive: true,
   })
