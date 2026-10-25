@@ -6,6 +6,7 @@ import { getPendingGroupsCount } from './linkedin-groups/actions'
 import { AdminNav } from './admin-nav'
 import { countTicketsNeedingSupport } from '@/lib/support'
 import { VerifyEmailBanner } from '@/components/shared/verify-email-banner'
+import { AoSyncProvider } from '@/components/ao/ao-sync-provider'
 import { LogOut, Bell } from 'lucide-react'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -103,7 +104,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
         {/* Main content */}
         <main className="flex-1 overflow-y-auto" style={{ color: 'rgba(255,255,255,0.87)' }}>
-          {children}
+          {/* « Synchroniser maintenant » de /admin/candidats continue d'une page admin à l'autre. */}
+          <AoSyncProvider endpoint="/api/admin/candidats/sync" pagePath="/admin/candidats" scope="de la plateforme">
+            {children}
+          </AoSyncProvider>
         </main>
       </div>
     </div>

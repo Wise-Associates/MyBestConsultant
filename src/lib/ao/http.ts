@@ -1,14 +1,26 @@
 import 'server-only'
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { buildAoWorkbook } from './excel'
 import { filterAoOffers, filtersFromSearchParams } from './filters'
 import { OriginalUnavailable, fetchOriginal, fetchOriginalAttachment } from './originals'
-import { aoAccessFor } from './offer-actions'
+import { aoAccessFor, syncAoNow } from './offer-actions'
 import { listAoOfferRows } from './repo'
 import { listSources } from './sources'
 
 // Cœur des routes de téléchargement du tableau AO, pour /api/admin/candidats/… (plateforme) et /api/recruiter/ao/…
 // (organisation du recruteur) : chaque route vérifie l'appelant puis passe l'organisation de SA session.
+
+/**
+ * Un passage de « Synchroniser maintenant » (POST). Une route et non une Server Action : le navigateur exécute les
+ * Server Actions une par une, et ces passages (jusqu'à 2 min chacun) enchaînés en arrière-plan par AoSyncProvider
+ * retiendraient toutes les autres actions du site. Comme le cookie de session ne suffit pas pour un POST qui coûte des
+ * appels d'IA, la demande doit venir d'une page du site (un navigateur envoie toujours Sec-Fetch-Site).
+ */
+export async function aoSyncResponse(req: NextRequest, tenantId: string, holder: string): Promise<NextResponse> {
+  const site = req.headers.get('sec-fetch-site')
+  if (site && site !== 'same-origin') return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+  return NextResponse.json(await syncAoNow(tenantId, holder), { headers: { 'Cache-Control': 'no-store' } })
+}
 
 /**
  * Excel des offres AO affichées (mêmes filtres que la page, passés dans l'URL). Contient les vraies données, client
