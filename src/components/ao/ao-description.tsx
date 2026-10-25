@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import { Building2, CalendarClock, ListChecks, UserCheck, type LucideIcon } from 'lucide-react'
 import { parseDescription, type DescriptionBlock, type DescriptionSection, type SectionKind } from '@/lib/description-sections'
-import { BRAND } from './labels'
+import { BRAND } from '@/app/admin/candidats/labels'
 
 // Description d'une offre AO lue par l'admin : les missions demandées et le profil attendu sont
 // mis en avant (cartes), le contexte et les modalités restent en texte simple, aéré.

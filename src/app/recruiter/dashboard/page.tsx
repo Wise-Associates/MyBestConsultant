@@ -245,7 +245,7 @@ export default async function RecruiterDashboard() {
           <ToolTile href="/recruiter/funnel" title="Processus de recrutement" subtitle="Pipelines, phases et statuts" rgb="245,158,11" iconColor="#d97706"><GitBranch className="h-5 w-5" /></ToolTile>
           <ToolTile href="/recruiter/marque-employeur" title="Marque employeur" subtitle="Votre page publique" rgb="236,72,153" iconColor="#db2777"><Building2 className="h-5 w-5" /></ToolTile>
           <ToolTile href="/recruiter/equipe" title="Mon équipe" subtitle="Inviter et partager" rgb="20,184,166" iconColor="#0d9488"><TeamIcon className="h-5 w-5" /></ToolTile>
-          <ToolTile href="/recruiter/parametres/boites-ao" title="Boîtes d'appels d'offres" subtitle="E-mails lus automatiquement" rgb="14,165,233" iconColor="#0284c7"><Inbox className="h-5 w-5" /></ToolTile>
+          <ToolTile href="/recruiter/parametres/boites-ao" title="Appels d'offres" subtitle="Reçus dans vos boîtes e-mail" rgb="14,165,233" iconColor="#0284c7"><Inbox className="h-5 w-5" /></ToolTile>
         </div>
 
         {/* Stats */}
