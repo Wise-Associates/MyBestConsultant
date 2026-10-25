@@ -1,6 +1,8 @@
 import 'server-only'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { createAdminClient } from '@/lib/appwrite/client'
+import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { getActiveJobs } from '@/lib/appwrite/jobs'
 import type { AdminJobInput } from '@/lib/admin-job'
 import { descriptionForPublication } from '@/lib/description-sections'
@@ -13,7 +15,7 @@ import { createAoComment, deleteAoComment, deleteAoCommentsOfOffer, getAoComment
 import { getJobMatches, runPoolMatching } from '@/lib/matching-core'
 import { candidateNames, matchCandidatesForOffer } from '@/lib/sourcing-core'
 import { bestMatches } from '@/lib/sourcing-rules'
-import type { AoCommentView, AoDashboardActions, PublicationDraft, PublicationPreview, SourcingResult } from './dashboard-types'
+import type { AoCommentView, AoDashboardActions, AoSyncPassResult, PublicationDraft, PublicationPreview, SourcingResult } from './dashboard-types'
 import { cityKey, titleKey } from './fingerprint'
 import { parseSender } from './origin'
 import { loadAoView } from './platform-view'
@@ -34,6 +36,13 @@ const errorOf = (err: unknown) => (err instanceof Error ? err.message : String(e
 
 export const aoAccessFor = (tenantId: string) => aoAccess({ getEmail: getAoEmail, getSource: getAoSource, getOffer: getAoOffer }, tenantId)
 
+/** Statut d'abonnement d'une organisation (null : aucun), pour les droits qui en dépendent (tenancy.ts, sourcing-access.ts). */
+export async function tenantSubscriptionStatus(tenantId: string): Promise<string | null> {
+  const { databases } = createAdminClient()
+  const tenant = await databases.getDocument(DB_ID, COLLECTIONS.TENANTS, tenantId)
+  return typeof tenant.subscriptionStatus === 'string' ? tenant.subscriptionStatus : null
+}
+
 /**
  * Noms à masquer : client de l'offre et clients cités par l'appel d'offres (avec leurs sigles), nom et domaine de
  * l'expéditeur de l'e-mail et de celui du message d'origine (sauf ceux de l'organisation qui lit la boîte).
@@ -49,11 +58,11 @@ async function hiddenNamesFor(offer: AoOffer): Promise<string[][]> {
 }
 
 /**
- * Un petit passage du bouton « Synchroniser maintenant » : la page les enchaîne jusqu'à ce que les boîtes soient lues
- * (sync-loop.ts). Peu d'e-mails par passage : les offres apparaissent au fil de l'eau. Boîtes de l'organisation
+ * Un petit passage du bouton « Synchroniser maintenant » : AoSyncProvider les enchaîne jusqu'à ce que les boîtes soient
+ * lues (sync-loop.ts). Peu d'e-mails par passage : les offres apparaissent au fil de l'eau. Boîtes de l'organisation
  * seulement (verrou par organisation : un passage planifié en cours fait répondre `skipped`).
  */
-export async function syncAoNow(tenantId: string, holder: string): ReturnType<AoDashboardActions['syncNow']> {
+export async function syncAoNow(tenantId: string, holder: string): Promise<AoSyncPassResult> {
   try {
     const report = await syncAoInbox({ maxEmails: 2, budgetMs: 120_000, holder, tenantId })
     // Données à jour renvoyées avec le compte rendu : la page les affiche tout de suite. Un rafraîchissement de la page

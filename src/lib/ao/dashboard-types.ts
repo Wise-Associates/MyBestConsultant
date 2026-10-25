@@ -52,8 +52,18 @@ export interface AoCommentView {
   mine: boolean
 }
 
+/**
+ * Réponse d'un passage de « Synchroniser maintenant » (route POST …/sync de l'espace, enchaînée par AoSyncProvider),
+ * avec les données à jour du tableau.
+ */
+export interface AoSyncPassResult {
+  report?: AoSyncReport
+  rows?: AoOfferRow[]
+  recentEmails?: AoEmail[]
+  error?: string
+}
+
 export interface AoDashboardActions {
-  syncNow(): Promise<{ report?: AoSyncReport; rows?: AoOfferRow[]; recentEmails?: AoEmail[]; error?: string }>
   retryEmail(id: string): Promise<{ report?: AoSyncReport; error?: string }>
   deleteOffer(id: string): Promise<{ error?: string }>
   previewPublication(id: string): Promise<{ preview?: PublicationPreview; error?: string }>

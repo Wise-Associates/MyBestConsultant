@@ -2,13 +2,11 @@
 
 import { after } from 'next/server'
 import { getCurrentUser } from '@/lib/appwrite/auth'
-import { createAdminClient } from '@/lib/appwrite/client'
-import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { createJob, getJobById, oneMonthFromNow } from '@/lib/appwrite/jobs'
 import type { PublicationDraft } from '@/lib/ao/dashboard-types'
 import {
   addAoOfferCommentOf, aoOfferSourcingOf, deleteAoOfferCommentOf, deleteAoOfferOf, listAoOfferCommentsOf, previewAoPublicationOf,
-  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, syncAoNow, type AoJobPublisher,
+  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, tenantSubscriptionStatus, type AoJobPublisher,
 } from '@/lib/ao/offer-actions'
 import { AO_SOURCING_DAILY_LIMITS, SOURCING_QUOTA_MESSAGE, sourcingDenial } from '@/lib/ao/sourcing-access'
 import { releaseDailySlot, takeDailySlotId } from '@/lib/ao/state'
@@ -19,6 +17,7 @@ import type { UserProfile } from '@/types'
 // elle-même le recruteur (une Server Action est un point d'entrée public) et agit sur l'organisation de SA session,
 // jamais sur un identifiant reçu du navigateur. Tous les recruteurs de l'organisation voient, commentent, publient,
 // suppriment ses offres AO et y cherchent des candidats (ADR 0005 ; recherche par l'IA dans un quota quotidien).
+// « Synchroniser maintenant » passe par la route /api/recruiter/ao/sync (AoSyncProvider), pas par une action.
 
 const PATH = '/recruiter/parametres/boites-ao'
 const SESSION_EXPIRED = 'Session expirée : rechargez la page et reconnectez-vous.'
@@ -29,15 +28,9 @@ async function recruiter(): Promise<{ user: UserProfile; tenantId: string } | nu
   return user && user.role === 'recruiter' && user.tenantId ? { user, tenantId: user.tenantId } : null
 }
 
-async function subscriptionStatusOf(tenantId: string): Promise<string | null> {
-  const { databases } = createAdminClient()
-  const tenant = await databases.getDocument(DB_ID, COLLECTIONS.TENANTS, tenantId)
-  return typeof tenant.subscriptionStatus === 'string' ? tenant.subscriptionStatus : null
-}
-
 /** L'IA qui lit les e-mails est à nos frais : seules les organisations abonnées font lire leurs boîtes (tenancy.ts). */
 async function entitled(tenantId: string): Promise<boolean> {
-  return canUseAoSourcing(tenantId, await subscriptionStatusOf(tenantId))
+  return canUseAoSourcing(tenantId, await tenantSubscriptionStatus(tenantId))
 }
 
 /**
@@ -46,7 +39,7 @@ async function entitled(tenantId: string): Promise<boolean> {
  * messages de l'assistant.
  */
 async function sourcingSlot(user: UserProfile, tenantId: string): Promise<string | null> {
-  const denial = sourcingDenial({ tenantId, subscriptionStatus: await subscriptionStatusOf(tenantId), emailVerified: user.emailVerification })
+  const denial = sourcingDenial({ tenantId, subscriptionStatus: await tenantSubscriptionStatus(tenantId), emailVerified: user.emailVerification })
   if (denial) return denial
   const now = new Date()
   const own = await takeDailySlotId('aoSourcingOrg', tenantId, now, AO_SOURCING_DAILY_LIMITS.perOrganisation)
@@ -65,13 +58,6 @@ export async function recruiterAoOfferSourcing(id: string, recompute = false) {
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
   return aoOfferSourcingOf(me.tenantId, id, { recompute, beforeAi: () => sourcingSlot(me.user, me.tenantId) })
-}
-
-export async function syncRecruiterAoInbox() {
-  const me = await recruiter()
-  if (!me) return { error: SESSION_EXPIRED }
-  if (!(await entitled(me.tenantId))) return { error: NOT_ENTITLED }
-  return syncAoNow(me.tenantId, 'recruiter')
 }
 
 export async function retryRecruiterAoEmail(id: string) {

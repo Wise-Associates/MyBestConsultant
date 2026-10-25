@@ -5,10 +5,11 @@ import { loadPlatformAoView } from '@/lib/ao/platform-view'
 import { AoOffersDashboard, type MailboxIssue } from '@/components/ao/ao-offers-dashboard'
 import {
   addAoOfferComment, aoOfferSourcing, deleteAoOffer, deleteAoOfferComment, listAoOfferComments, previewAoPublication, publishAoOffer,
-  retryAoEmail, setAoOfferStatus, syncAoInboxNow,
+  retryAoEmail, setAoOfferStatus,
 } from './actions'
 
-// La synchronisation manuelle (Server Action de cette page) lit et analyse jusqu'à 5 e-mails.
+// « Réessayer » (Server Action de cette page) traite un e-mail tout de suite (150 s au plus). « Synchroniser
+// maintenant » passe par /api/admin/candidats/sync, enchaîné par AoSyncProvider (layout admin).
 export const maxDuration = 300
 
 export default async function AdminAoOffersPage() {
@@ -38,7 +39,7 @@ export default async function AdminAoOffersPage() {
       mailboxIssues={mailboxIssues}
       loadError={loadError}
       actions={{
-        syncNow: syncAoInboxNow, retryEmail: retryAoEmail, deleteOffer: deleteAoOffer, previewPublication: previewAoPublication,
+        retryEmail: retryAoEmail, deleteOffer: deleteAoOffer, previewPublication: previewAoPublication,
         publish: publishAoOffer, setStatus: setAoOfferStatus, sourcing: aoOfferSourcing,
         listComments: listAoOfferComments, addComment: addAoOfferComment, deleteComment: deleteAoOfferComment,
       }}

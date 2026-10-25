@@ -5,21 +5,17 @@ import { adminJobExists, createAdminJob } from '@/lib/admin-job'
 import type { PublicationDraft, SourcingResult } from '@/lib/ao/dashboard-types'
 import {
   addAoOfferCommentOf, aoOfferSourcingOf, deleteAoOfferCommentOf, deleteAoOfferOf, listAoOfferCommentsOf, previewAoPublicationOf,
-  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, syncAoNow,
+  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf,
 } from '@/lib/ao/offer-actions'
 import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 
 // Actions de /admin/candidats : chacune vérifie l'admin elle-même (une Server Action est un point d'entrée public),
 // puis agit sur les seules boîtes de la plateforme (ADR 0005, cœur partagé : src/lib/ao/offer-actions.ts).
+// « Synchroniser maintenant » passe par la route /api/admin/candidats/sync (AoSyncProvider), pas par une action.
 
 const PATH = '/admin/candidats'
 // Les offres publiées depuis cette page sont rattachées à l'admin, comme l'import manuel d'appels d'offres.
 const ADMIN_TENANT_ID = 'admin'
-
-export async function syncAoInboxNow() {
-  await requireAdmin()
-  return syncAoNow(PLATFORM_TENANT_ID, 'admin')
-}
 
 export async function retryAoEmail(id: string) {
   await requireAdmin()
