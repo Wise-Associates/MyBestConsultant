@@ -8,6 +8,7 @@ import { LoadingProvider } from '@/components/shared/loading-provider'
 import { VerifyEmailBanner } from '@/components/shared/verify-email-banner'
 import { RecruiterIdentityProvider } from '@/components/recruiter/identity-context'
 import { MbcAssistant } from '@/components/assistant/mbc-assistant'
+import { AoSyncProvider } from '@/components/ao/ao-sync-provider'
 
 export default async function RecruiterLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser()
@@ -32,7 +33,10 @@ export default async function RecruiterLayout({ children }: { children: React.Re
       <VerifyEmailBanner verified={user.emailVerification} />
       <RecruiterIdentityProvider value={{ name: `${user.firstName} ${user.lastName}`.trim(), company }}>
         <main className="mbc-app">
-          {children}
+          {/* « Synchroniser maintenant » des appels d'offres continue d'une page de l'espace recruteur à l'autre. */}
+          <AoSyncProvider endpoint="/api/recruiter/ao/sync" pagePath="/recruiter/parametres/boites-ao" scope="de votre organisation">
+            {children}
+          </AoSyncProvider>
           <MbcAssistant role="recruiter" verified={user.emailVerification} />
         </main>
       </RecruiterIdentityProvider>
