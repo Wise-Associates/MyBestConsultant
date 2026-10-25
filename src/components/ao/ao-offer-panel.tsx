@@ -3,17 +3,25 @@
 import { useEffect, useState, useTransition, type ReactNode } from 'react'
 import { AlertTriangle, Ban, Check, Copy, Download, ExternalLink, Loader2, Paperclip, RotateCcw, Send, Users, X } from 'lucide-react'
 import { AO_CHANNEL_LABEL, type AoOfferRow } from '@/lib/ao/filters'
+import type {
+  AoDashboardActions, AoDashboardPaths, PublicationDraft, PublicationPreview, SourcedCandidate, SourcingResult,
+} from '@/lib/ao/dashboard-types'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
-import {
-  aoOfferSourcing, previewAoPublication, publishAoOffer, setAoOfferStatus,
-  type PublicationDraft, type PublicationPreview, type SourcedCandidate, type SourcingResult,
-} from './actions'
 import { AoDescription } from './ao-description'
 import {
   CONTRACT_LABEL, ENGAGEMENT_LABEL, REMOTE_LABEL, STATUS_UI, control, fieldLabel, formatAmount, formatDay, optionStyle, primaryButton, secondaryButton,
-} from './labels'
+} from '@/app/admin/candidats/labels'
 
-export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () => void }) {
+interface Props {
+  row: AoOfferRow
+  actions: Pick<AoDashboardActions, 'previewPublication' | 'publish' | 'setStatus' | 'sourcing'>
+  paths: Pick<AoDashboardPaths, 'originalApi' | 'jobs'>
+  /** Sous le formulaire de publication : ce que la publication déclenche dans cet espace. */
+  publishNote: string
+  onClose: () => void
+}
+
+export function AoOfferPanel({ row, actions, paths, publishNote, onClose }: Props) {
   const [preview, setPreview] = useState<PublicationPreview | null>(null)
   const [draft, setDraft] = useState<PublicationDraft | null>(null)
   const [skillsText, setSkillsText] = useState('')
@@ -30,7 +38,7 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
   function prepare() {
     setError('')
     start(async () => {
-      const res = await previewAoPublication(row.$id)
+      const res = await actions.previewPublication(row.$id)
       if (!res.preview) return setError(res.error ?? 'Aperçu impossible.')
       setPreview(res.preview)
       setDraft(res.preview.draft)
@@ -43,7 +51,7 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
     setError('')
     start(async () => {
       const skills = skillsText.split(',').map(s => s.trim()).filter(Boolean).slice(0, 10)
-      const res = await publishAoOffer(row.$id, { ...draft, skills })
+      const res = await actions.publish(row.$id, { ...draft, skills })
       if (!res.jobId) return setError(res.error ?? 'Publication impossible.')
       setJobId(res.jobId)
       setDraft(null)
@@ -53,7 +61,7 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
   function changeStatus(status: 'to_review' | 'ignored') {
     setError('')
     start(async () => {
-      const res = await setAoOfferStatus(row.$id, status)
+      const res = await actions.setStatus(row.$id, status)
       if (res.error) setError(res.error)
     })
   }
@@ -127,8 +135,8 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
             </div>
           </section>
         )}
-        <Sourcing offerId={row.$id} />
-        <Originals emailId={row.emailId} attachments={row.attachments} />
+        {actions.sourcing && <Sourcing offerId={row.$id} sourcing={actions.sourcing} />}
+        <Originals emailId={row.emailId} attachments={row.attachments} originalApi={paths.originalApi} />
         <section>
           <p style={{ ...fieldLabel, marginBottom: 12 }}>Description</p>
           <AoDescription text={row.description} />
@@ -136,7 +144,7 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
 
         {/* Actions */}
         {published ? (
-          <a href={jobId ? `/jobs/${jobId}` : '/admin/jobs'} target="_blank" rel="noreferrer" style={primaryButton}>
+          <a href={jobId ? `/jobs/${jobId}` : paths.jobs} target="_blank" rel="noreferrer" style={primaryButton}>
             <ExternalLink size={15} />Voir l&apos;offre publiée
           </a>
         ) : !draft && (
@@ -196,9 +204,7 @@ export function AoOfferPanel({ row, onClose }: { row: AoOfferRow; onClose: () =>
               </button>
               <button type="button" onClick={() => setDraft(null)} disabled={pending} style={secondaryButton}>Annuler</button>
             </div>
-            <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
-              Comme pour l&apos;import d&apos;offres, la publication déclenche la diffusion LinkedIn et le sourcing automatiques s&apos;ils sont activés.
-            </p>
+            <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>{publishNote}</p>
           </section>
         )}
       </aside>
@@ -219,10 +225,10 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
  * E-mail d'origine et pièces jointes, relus dans la boîte au clic (vérification de l'authenticité : en-têtes, DKIM).
  * Téléchargés par fetch : une erreur (e-mail supprimé de la boîte…) s'affiche ici au lieu d'être enregistrée en fichier.
  */
-function Originals({ emailId, attachments }: { emailId: string; attachments: string[] }) {
+function Originals({ emailId, attachments, originalApi }: { emailId: string; attachments: string[]; originalApi: string }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState('')
-  const base = `/api/admin/candidats/original/${encodeURIComponent(emailId)}`
+  const base = `${originalApi}/${encodeURIComponent(emailId)}`
   const files: { key: string; label: string; url: string; filename: string }[] = [
     { key: 'eml', label: 'E-mail d’origine (.eml)', url: base, filename: `ao-${emailId}.eml` },
     ...attachments.map(name => ({ key: name, label: name, url: `${base}?attachment=${encodeURIComponent(name)}`, filename: name })),
@@ -270,16 +276,16 @@ const ORIGIN_LABEL: Record<SourcedCandidate['origin'], string> = { pool: 'Base c
  * lu à l'ouverture (matching de la publication, ou dernier calcul à la demande) : aucun appel d'IA tant qu'on ne clique
  * pas sur « Trouver des candidats » / « Recalculer » (un appel d'IA, environ une minute).
  */
-function Sourcing({ offerId }: { offerId: string }) {
+function Sourcing({ offerId, sourcing }: { offerId: string; sourcing: NonNullable<AoDashboardActions['sourcing']> }) {
   const [result, setResult] = useState<SourcingResult | null>(null)
   const [computing, setComputing] = useState(false)
   const [pending, startTransition] = useTransition()
   useEffect(() => {
-    startTransition(async () => setResult(await aoOfferSourcing(offerId)))
-  }, [offerId])
+    startTransition(async () => setResult(await sourcing(offerId)))
+  }, [offerId, sourcing])
   const run = () => startTransition(async () => {
     setComputing(true)
-    setResult(await aoOfferSourcing(offerId, true))
+    setResult(await sourcing(offerId, true))
     setComputing(false)
   })
   const candidates = result?.candidates

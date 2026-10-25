@@ -1,7 +1,8 @@
 # 0005 — AO Offers : boîtes de réception par organisation
 
 - Statut : accepté (phase A : socle serveur et migration ; phase B : écrans de configuration des boîtes, avec test
-  de connexion ; phases C et D : page AO Offers des organisations, vue admin)
+  de connexion ; phase C : page des appels d'offres des organisations, livrée le 2026-10-25 ; phase D : vue admin
+  des offres des organisations)
 - Date : 2026-10-21
 
 ## Contexte
@@ -77,3 +78,23 @@ par leur abonnement.
   IDLE de la branche `ao-realtime`).
 - Le point de reprise de la boîte de la plateforme repart de zéro : le premier passage relit 7 jours, sans
   retraiter les e-mails déjà suivis.
+
+## Phase C (2026-10-25)
+
+- `/recruiter/parametres/boites-ao` affiche le tableau de `/admin/candidats`, limité aux boîtes de l'organisation ; la
+  configuration des boîtes passe en sous-page `/recruiter/parametres/boites-ao/boites` (comme `/admin/candidats/boites`).
+- Mêmes composants et même cœur serveur pour les deux espaces (`src/components/ao/`, `src/lib/ao/offer-actions.ts`,
+  `src/lib/ao/http.ts`) : chaque action reçoit l'organisation de la session de l'appelant et ne voit que les offres de
+  ses boîtes (`src/lib/ao/access.ts`, testé). La règle « l'admin n'agit que sur la plateforme » en est un cas.
+- **Publication** par un recruteur : offre de son organisation (identifiant `ao<id de l'offre AO>`), anonymisée par
+  les mêmes règles, suivie de la diffusion sur les réseaux et du sourcing automatiques de ses autres offres.
+- **Pas de sourcing à la demande** pour les recruteurs (« Trouver des candidats » appelle l'IA à nos frais, sans
+  quota par organisation) : à ajouter avec un quota quotidien si le besoin se confirme. « Synchroniser » et
+  « Réessayer » sont ouverts aux recruteurs (abonnement actif exigé) : ils lisent plus tôt le courrier que le passage
+  planifié aurait lu de toute façon. « Réessayer » d'un recruteur ne remet pas les essais à zéro (`canRetryEarly`,
+  `attempts.ts`) : un e-mail abandonné ne peut pas être refacturé indéfiniment ; la remise à zéro reste à l'admin.
+- Limite connue, commune aux deux espaces : `listAoOfferRows` lit les 2 000 offres les plus récentes toutes
+  organisations confondues avant de garder celles de l'organisation : au-delà, les plus anciennes d'une organisation
+  disparaissent de son tableau, de ses statistiques et de son export, et une organisation qui reçoit beaucoup d'offres
+  (tableaux joints : 500 par jour) peut le provoquer pour les autres. Chaque affichage lit aussi ces 2 000 offres. À
+  corriger en lisant les e-mails de l'organisation puis leurs offres (index sur `ao_offers.emailId`, `ao:setup`).
