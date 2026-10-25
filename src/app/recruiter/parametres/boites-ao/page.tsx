@@ -10,12 +10,12 @@ import { AoOffersDashboard, type MailboxIssue } from '@/components/ao/ao-offers-
 import {
   addRecruiterAoOfferComment, deleteRecruiterAoOffer, deleteRecruiterAoOfferComment, listRecruiterAoOfferComments,
   previewRecruiterAoPublication, publishRecruiterAoOffer, recruiterAoOfferSourcing, retryRecruiterAoEmail, setRecruiterAoOfferStatus,
-  syncRecruiterAoInbox,
 } from './actions'
 
 // Appels d'offres reçus dans les boîtes de l'organisation du recruteur (ADR 0005, phase C) : même tableau que
 // /admin/candidats, limité à ses boîtes ; tous ses recruteurs le voient. Boîtes : ./boites.
-// La synchronisation manuelle (Server Action de cette page) lit et analyse quelques e-mails par passage.
+// « Réessayer » (Server Action de cette page) traite un e-mail tout de suite (150 s au plus). « Synchroniser
+// maintenant » passe par /api/recruiter/ao/sync, enchaîné par AoSyncProvider (layout recruteur).
 export const maxDuration = 300
 
 export default async function RecruiterAoOffersPage() {
@@ -53,7 +53,7 @@ export default async function RecruiterAoOffersPage() {
       loadError={loadError}
       accessAlert={accessAlert}
       actions={{
-        syncNow: syncRecruiterAoInbox, retryEmail: retryRecruiterAoEmail, deleteOffer: deleteRecruiterAoOffer,
+        retryEmail: retryRecruiterAoEmail, deleteOffer: deleteRecruiterAoOffer,
         previewPublication: previewRecruiterAoPublication, publish: publishRecruiterAoOffer, setStatus: setRecruiterAoOfferStatus,
         sourcing: recruiterAoOfferSourcing,
         listComments: listRecruiterAoOfferComments, addComment: addRecruiterAoOfferComment, deleteComment: deleteRecruiterAoOfferComment,
