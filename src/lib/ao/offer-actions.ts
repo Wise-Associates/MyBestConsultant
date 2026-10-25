@@ -10,11 +10,17 @@ import { DEFAULT_CLIENT_LABEL, namesToHide, revealsName, toPublicOffer } from '.
 import { canRetryEarly, manualRetryPatch } from './attempts'
 import { canDeleteComment, parseCommentBody } from './comment-input'
 import { createAoComment, deleteAoComment, deleteAoCommentsOfOffer, getAoComment, listAoComments, type AoComment } from './comments'
-import type { AoCommentView, AoDashboardActions, PublicationDraft, PublicationPreview } from './dashboard-types'
+import { getJobMatches, runPoolMatching } from '@/lib/matching-core'
+import { candidateNames, matchCandidatesForOffer } from '@/lib/sourcing-core'
+import { bestMatches } from '@/lib/sourcing-rules'
+import type { AoCommentView, AoDashboardActions, PublicationDraft, PublicationPreview, SourcingResult } from './dashboard-types'
 import { cityKey, titleKey } from './fingerprint'
 import { parseSender } from './origin'
 import { loadAoView } from './platform-view'
-import { deleteAoOfferAndDetails, getAoEmail, getAoOffer, listAoEmailsByIds, updateAoEmail, updateAoOffer } from './repo'
+import {
+  deleteAoOfferAndDetails, getAoEmail, getAoOffer, getAoOfferSourcing, listAoEmailsByIds, listAoOfferDetails, saveAoOfferSourcing,
+  updateAoEmail, updateAoOffer,
+} from './repo'
 import { getAoSource } from './sources'
 import { syncAoEmail, syncAoInbox } from './sync'
 import type { AoOffer } from './types'
@@ -193,6 +199,72 @@ export async function setAoOfferStatusOf(tenantId: string, id: string, status: '
     return {}
   } catch (err) {
     return { error: errorOf(err) }
+  }
+}
+
+// ── Sourcing (meilleurs candidats pour une offre) ─────────────────
+
+/**
+ * Sourcing d'une offre AO, toujours enregistré pour ne pas refaire d'appel d'IA à chaque ouverture :
+ * - offre publiée : matching calculé à la publication (tryAutoSourceCandidates → runPoolMatching), lu avec
+ *   getJobMatches (base candidats, vivier, candidatures) ;
+ * - offre non publiée : dernier calcul à la demande, enregistré dans ao_offer_details (identifiants, scores, raisons).
+ * `recompute` : recalcule d'abord (un appel d'IA, environ une minute). `beforeAi` est appelé juste avant cet appel, une
+ * fois l'offre vérifiée : un message de refus l'empêche (quota du jour des recruteurs) ; sans recalcul, aucun appel.
+ * Seuls les 5 meilleurs notés 65 ou plus sont renvoyés (même règle que l'e-mail automatique de la publication).
+ */
+export async function aoOfferSourcingOf(
+  tenantId: string,
+  id: string,
+  { recompute, beforeAi }: { recompute: boolean; beforeAi?: () => Promise<string | null> },
+): Promise<SourcingResult> {
+  try {
+    const offer = await aoAccessFor(tenantId).offer(id)
+    if (!offer) return { error: 'Offre introuvable : rechargez la page.' }
+
+    if (offer.jobId) {
+      if (recompute) {
+        const refused = await beforeAi?.()
+        if (refused) return { error: refused }
+        const run = await runPoolMatching(offer.jobId)
+        if (run.error) return { error: run.error }
+      }
+      const { matches, poolComputedAt } = await getJobMatches(offer.jobId)
+      const kept = bestMatches(matches).map(m => ({ id: `${m.source}:${m.id}`, name: m.name, score: m.score, reason: m.reason, origin: m.source }))
+      return { candidates: kept, computedAt: poolComputedAt }
+    }
+
+    let record = recompute ? null : await getAoOfferSourcing(offer.$id)
+    if (!record && !recompute) return { computedAt: null }
+    if (!record) {
+      const refused = await beforeAi?.()
+      if (refused) return { error: refused }
+      const technologies = (await listAoOfferDetails([offer.$id])).get(offer.$id)?.technologies ?? []
+      const result = await matchCandidatesForOffer({
+        title: offer.title,
+        skills: offer.skills,
+        description: offer.description,
+        details: [
+          technologies.length ? `Technologies : ${technologies.join(', ')}` : '',
+          offer.experience ? `Expérience requise : ${offer.experience}` : '',
+          offer.location ? `Lieu : ${offer.location}` : '',
+        ].filter(Boolean),
+      })
+      if (result.error) return { error: result.error, scanned: result.scanned }
+      record = {
+        at: new Date().toISOString(),
+        scanned: result.scanned,
+        candidates: bestMatches(result.matches).map(m => ({ candidateId: m.candidateId, score: m.score, reason: m.reason })),
+      }
+      await saveAoOfferSourcing(offer.$id, record)
+    }
+    const names = await candidateNames(record.candidates.map(c => c.candidateId))
+    const kept = record.candidates
+      .filter(c => names.has(c.candidateId))
+      .map(c => ({ id: `pool:${c.candidateId}`, name: names.get(c.candidateId) ?? '', score: c.score, reason: c.reason, origin: 'pool' as const }))
+    return { candidates: kept, computedAt: record.at, scanned: record.scanned }
+  } catch (err) {
+    return { error: `Sourcing impossible : ${errorOf(err)}` }
   }
 }
 

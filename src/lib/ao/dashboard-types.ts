@@ -59,7 +59,7 @@ export interface AoDashboardActions {
   previewPublication(id: string): Promise<{ preview?: PublicationPreview; error?: string }>
   publish(id: string, input: PublicationDraft): Promise<{ jobId?: string; error?: string }>
   setStatus(id: string, status: 'to_review' | 'ignored'): Promise<{ error?: string }>
-  /** Absent : pas de section « Sourcing » (recruteurs, décision du 2026-10-25 : pas d'appel d'IA à la demande). */
+  /** Section « Sourcing » du panneau (absente si la page ne fournit pas l'action) ; quota quotidien côté recruteurs. */
   sourcing?: (id: string, recompute?: boolean) => Promise<SourcingResult>
   listComments(offerId: string): Promise<{ comments?: AoCommentView[]; error?: string }>
   addComment(offerId: string, body: string): Promise<{ comment?: AoCommentView; error?: string }>
