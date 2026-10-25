@@ -406,7 +406,8 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
       {/* Commentaires de l'offre : discussion interne, hors du panneau de détail. */}
       <Dialog open={commentsRow !== null} onOpenChange={open => { if (!open) setCommentsFor(null) }}>
         {commentsRow && (
-          <DialogContent className="admin-light sm:max-w-[640px] max-h-[85vh] overflow-y-auto" style={{ background: 'var(--admin-panel)' }}>
+          // z-10000 : au-dessus de la barre fixe de l'espace recruteur, comme le panneau de détail (ao-offer-panel.tsx).
+          <DialogContent className="admin-light z-10000 sm:max-w-[640px] max-h-[85vh] overflow-y-auto" style={{ background: 'var(--admin-panel)' }}>
             <DialogHeader>
               <DialogTitle className="text-admin-fg" style={{ fontSize: '1.05rem' }}>Commentaires</DialogTitle>
               <DialogDescription className="truncate" style={{ color: 'var(--admin-fg-muted)' }} title={commentsRow.title}>{commentsRow.title}</DialogDescription>
@@ -419,7 +420,7 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
       {/* Suppression d'une offre : confirmation explicite, définitive. */}
       <Dialog open={deleteRow !== null} onOpenChange={open => { if (!open && !deleting) setDeleteFor(null) }}>
         {deleteRow && (
-          <DialogContent className="admin-light sm:max-w-[480px]" style={{ background: 'var(--admin-panel)' }} showCloseButton={!deleting}>
+          <DialogContent className="admin-light z-10000 sm:max-w-[480px]" style={{ background: 'var(--admin-panel)' }} showCloseButton={!deleting}>
             <DialogHeader>
               <DialogTitle className="text-admin-fg" style={{ fontSize: '1.05rem' }}>Supprimer cette offre ?</DialogTitle>
               <DialogDescription style={{ color: 'var(--admin-fg-muted)' }}>
