@@ -7,16 +7,18 @@ import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { createJob, getJobById, oneMonthFromNow } from '@/lib/appwrite/jobs'
 import type { PublicationDraft } from '@/lib/ao/dashboard-types'
 import {
-  addAoOfferCommentOf, deleteAoOfferCommentOf, deleteAoOfferOf, listAoOfferCommentsOf, previewAoPublicationOf, publishAoOfferOf,
-  retryAoEmailOf, setAoOfferStatusOf, syncAoNow, type AoJobPublisher,
+  addAoOfferCommentOf, aoOfferSourcingOf, deleteAoOfferCommentOf, deleteAoOfferOf, listAoOfferCommentsOf, previewAoPublicationOf,
+  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, syncAoNow, type AoJobPublisher,
 } from '@/lib/ao/offer-actions'
+import { AO_SOURCING_DAILY_LIMITS, SOURCING_QUOTA_MESSAGE, sourcingDenial } from '@/lib/ao/sourcing-access'
+import { releaseDailySlot, takeDailySlotId } from '@/lib/ao/state'
 import { canUseAoSourcing } from '@/lib/ao/tenancy'
 import type { UserProfile } from '@/types'
 
 // Actions du tableau des appels d'offres d'une organisation (/recruiter/parametres/boites-ao). Chacune vérifie
 // elle-même le recruteur (une Server Action est un point d'entrée public) et agit sur l'organisation de SA session,
-// jamais sur un identifiant reçu du navigateur. Tous les recruteurs de l'organisation voient, commentent, publient et
-// suppriment ses offres AO (ADR 0005). Pas de sourcing à la demande (décision du 2026-10-25 : appel d'IA à nos frais).
+// jamais sur un identifiant reçu du navigateur. Tous les recruteurs de l'organisation voient, commentent, publient,
+// suppriment ses offres AO et y cherchent des candidats (ADR 0005 ; recherche par l'IA dans un quota quotidien).
 
 const PATH = '/recruiter/parametres/boites-ao'
 const SESSION_EXPIRED = 'Session expirée : rechargez la page et reconnectez-vous.'
@@ -27,11 +29,42 @@ async function recruiter(): Promise<{ user: UserProfile; tenantId: string } | nu
   return user && user.role === 'recruiter' && user.tenantId ? { user, tenantId: user.tenantId } : null
 }
 
-/** L'IA qui lit les e-mails est à nos frais : seules les organisations abonnées font lire leurs boîtes (tenancy.ts). */
-async function entitled(tenantId: string): Promise<boolean> {
+async function subscriptionStatusOf(tenantId: string): Promise<string | null> {
   const { databases } = createAdminClient()
   const tenant = await databases.getDocument(DB_ID, COLLECTIONS.TENANTS, tenantId)
-  return canUseAoSourcing(tenantId, typeof tenant.subscriptionStatus === 'string' ? tenant.subscriptionStatus : null)
+  return typeof tenant.subscriptionStatus === 'string' ? tenant.subscriptionStatus : null
+}
+
+/** L'IA qui lit les e-mails est à nos frais : seules les organisations abonnées font lire leurs boîtes (tenancy.ts). */
+async function entitled(tenantId: string): Promise<boolean> {
+  return canUseAoSourcing(tenantId, await subscriptionStatusOf(tenantId))
+}
+
+/**
+ * Avant chaque recherche de candidats par l'IA : abonnement actif, adresse vérifiée, puis une place sur les quotas du
+ * jour (organisation, puis toutes). Une recherche qui échoue compte quand même (l'IA a pu être facturée), comme les
+ * messages de l'assistant.
+ */
+async function sourcingSlot(user: UserProfile, tenantId: string): Promise<string | null> {
+  const denial = sourcingDenial({ tenantId, subscriptionStatus: await subscriptionStatusOf(tenantId), emailVerified: user.emailVerification })
+  if (denial) return denial
+  const now = new Date()
+  const own = await takeDailySlotId('aoSourcingOrg', tenantId, now, AO_SOURCING_DAILY_LIMITS.perOrganisation)
+  if (!own) return SOURCING_QUOTA_MESSAGE.organisation
+  if (!(await takeDailySlotId('aoSourcingAll', 'platform', now, AO_SOURCING_DAILY_LIMITS.allOrganisations))) {
+    console.warn('AO: plafond quotidien des recherches de candidats atteint pour toutes les organisations')
+    // La place de l'organisation n'a pas servi : rendue, pour ne pas compter un refus de la plateforme contre elle.
+    await releaseDailySlot(own)
+    return SOURCING_QUOTA_MESSAGE.platform
+  }
+  return null
+}
+
+/** « Trouver des candidats » / « Recalculer » (recompute) et lecture du dernier résultat, qui ne coûte rien. */
+export async function recruiterAoOfferSourcing(id: string, recompute = false) {
+  const me = await recruiter()
+  if (!me) return { error: SESSION_EXPIRED }
+  return aoOfferSourcingOf(me.tenantId, id, { recompute, beforeAi: () => sourcingSlot(me.user, me.tenantId) })
 }
 
 export async function syncRecruiterAoInbox() {

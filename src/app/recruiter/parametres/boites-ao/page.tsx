@@ -9,7 +9,8 @@ import type { AoEmail } from '@/lib/ao/types'
 import { AoOffersDashboard, type MailboxIssue } from '@/components/ao/ao-offers-dashboard'
 import {
   addRecruiterAoOfferComment, deleteRecruiterAoOffer, deleteRecruiterAoOfferComment, listRecruiterAoOfferComments,
-  previewRecruiterAoPublication, publishRecruiterAoOffer, retryRecruiterAoEmail, setRecruiterAoOfferStatus, syncRecruiterAoInbox,
+  previewRecruiterAoPublication, publishRecruiterAoOffer, recruiterAoOfferSourcing, retryRecruiterAoEmail, setRecruiterAoOfferStatus,
+  syncRecruiterAoInbox,
 } from './actions'
 
 // Appels d'offres reçus dans les boîtes de l'organisation du recruteur (ADR 0005, phase C) : même tableau que
@@ -54,6 +55,7 @@ export default async function RecruiterAoOffersPage() {
       actions={{
         syncNow: syncRecruiterAoInbox, retryEmail: retryRecruiterAoEmail, deleteOffer: deleteRecruiterAoOffer,
         previewPublication: previewRecruiterAoPublication, publish: publishRecruiterAoOffer, setStatus: setRecruiterAoOfferStatus,
+        sourcing: recruiterAoOfferSourcing,
         listComments: listRecruiterAoOfferComments, addComment: addRecruiterAoOfferComment, deleteComment: deleteRecruiterAoOfferComment,
       }}
       paths={{
