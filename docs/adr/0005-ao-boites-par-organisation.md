@@ -88,8 +88,10 @@ par leur abonnement.
   ses boîtes (`src/lib/ao/access.ts`, testé). La règle « l'admin n'agit que sur la plateforme » en est un cas.
 - **Publication** par un recruteur : offre de son organisation (identifiant `ao<id de l'offre AO>`), anonymisée par
   les mêmes règles, suivie de la diffusion sur les réseaux et du sourcing automatiques de ses autres offres.
-- **Pas de sourcing à la demande** pour les recruteurs (« Trouver des candidats » appelle l'IA à nos frais, sans
-  quota par organisation) : à ajouter avec un quota quotidien si le besoin se confirme. « Synchroniser » et
+- **Sourcing à la demande** (« Trouver des candidats », demandé le même jour) : ouvert aux recruteurs avec un
+  abonnement actif et l'adresse e-mail vérifiée, dans un quota quotidien (20 recherches par organisation, 300 pour
+  toutes, `src/lib/ao/sourcing-access.ts`) : l'IA lit les CV de la base à nos frais et l'inscription est libre.
+  Une place est prise juste avant l'appel d'IA ; une recherche qui échoue compte (l'IA a pu être facturée). « Synchroniser » et
   « Réessayer » sont ouverts aux recruteurs (abonnement actif exigé) : ils lisent plus tôt le courrier que le passage
   planifié aurait lu de toute façon. « Réessayer » d'un recruteur ne remet pas les essais à zéro (`canRetryEarly`,
   `attempts.ts`) : un e-mail abandonné ne peut pas être refacturé indéfiniment ; la remise à zéro reste à l'admin.
