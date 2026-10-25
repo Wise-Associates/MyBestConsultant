@@ -48,7 +48,7 @@ E-MAILS DE PROPOSITIONS DE MISSIONS
 const RECRUITER = `L'UTILISATEUR EST RECRUTEUR.
 
 ESPACE RECRUTEUR (/recruiter/dashboard, menu « Mon espace »)
-- Tuiles : Publier une offre, Reporting, Mon vivier, Screening CV, Entretiens IA, CV Thèque, Suivi des annonces, Processus de recrutement, Marque employeur, Mon équipe, Boîtes d'appels d'offres. Statistiques : offres actives, candidatures, score moyen IA, taux de sélection.
+- Tuiles : Publier une offre, Reporting, Mon vivier, Screening CV, Entretiens IA, CV Thèque, Suivi des annonces, Processus de recrutement, Marque employeur, Mon équipe, Appels d'offres. Statistiques : offres actives, candidatures, score moyen IA, taux de sélection.
 - « Mes offres » : cliquer une offre ouvre son matching ; « N candidatures » ouvre ses candidats. Icônes Modifier, Archiver / Réactiver, Supprimer. « Publier sur les réseaux » apparaît si ce service est configuré.
 
 PUBLIER UNE OFFRE
@@ -85,7 +85,8 @@ MARQUE EMPLOYEUR
 - Partagé dans l'équipe : annonces, candidatures, pipelines, entretiens, reporting, marque employeur. Personnel : le vivier de CV.
 
 BOÎTES D'APPELS D'OFFRES
-- /recruiter/parametres/boites-ao : boîtes e-mail lues pour récupérer les appels d'offres reçus. Seul le propriétaire ajoute ou modifie ; adresse e-mail vérifiée exigée. Serveur IMAP, identifiant, mot de passe, dossier lu, domaines de votre organisation. « Enregistrer » teste d'abord la connexion. 10 boîtes au plus, 30 tests de connexion par jour. Les boîtes ne sont lues que si l'abonnement est actif.
+- /recruiter/parametres/boites-ao : appels d'offres reçus dans les boîtes de votre organisation, lus automatiquement (tableau, filtres, commentaires internes, statistiques, export Excel, e-mail d'origine). Tous les recruteurs de l'organisation y ont accès. Chaque offre arrive « À valider » : « Préparer la publication » propose une version anonymisée (client et expéditeurs masqués) à relire, puis « Publier » en fait une offre de votre organisation, diffusée et sourcée comme vos autres offres ; « Ignorer » la masque ; la corbeille la supprime (pas une offre publiée). « Synchroniser maintenant » lit les boîtes tout de suite, sinon elles sont lues automatiquement. Abonnement actif exigé pour la lecture des boîtes.
+- /recruiter/parametres/boites-ao/boites (bouton « Boîtes de réception ») : boîtes e-mail lues pour récupérer les appels d'offres reçus. Seul le propriétaire ajoute ou modifie ; adresse e-mail vérifiée exigée. Serveur IMAP, identifiant, mot de passe, dossier lu, domaines de votre organisation. « Enregistrer » teste d'abord la connexion. 10 boîtes au plus, 30 tests de connexion par jour. Les boîtes ne sont lues que si l'abonnement est actif.
 
 ABONNEMENT
 - Page /abonnement : formules affichées Essai (gratuit), Essentiel (99 € par mois) et Pro (199 € par mois) ; paiement par carte. Pour le détail des formules, la résiliation, un changement de formule ou une facture : demande au support, catégorie « Facturation & abonnement ».`

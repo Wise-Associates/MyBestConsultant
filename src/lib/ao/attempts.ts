@@ -28,6 +28,16 @@ export function manualRetryPatch(email: Pick<AoEmail, 'status'>): Pick<AoEmail, 
 }
 
 /**
+ * Relance demandée par un recruteur (« Réessayer » de /recruiter/parametres/boites-ao) : seulement un e-mail que le
+ * passage planifié reprendrait de toute façon (en erreur, essais restants), traité plus tôt, sans remise à zéro.
+ * La remise à zéro reste à l'admin : ouverte aux organisations (inscription libre), elle ferait refacturer l'IA sans
+ * fin sur un même e-mail (ADR 0002 : un e-mail n'est pas refacturé indéfiniment).
+ */
+export function canRetryEarly(email: Pick<AoEmail, 'status' | 'attempts'>): boolean {
+  return email.status === 'failed' && email.attempts < MAX_ATTEMPTS
+}
+
+/**
  * Un e-mail peut-il être reporté au passage suivant faute de temps ? Les e-mails suivants d'une boîte, oui ; le premier
  * seulement si la boîte n'a plus le temps nécessaire (`fullTimeMs`) : avec ce temps, il est traité quoi qu'il arrive,
  * ce qui garantit que la boîte avance ; sans lui, le traiter coûterait ses pièces jointes scannées ou un essai.

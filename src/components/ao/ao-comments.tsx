@@ -3,8 +3,8 @@
 import { useEffect, useState, useTransition } from 'react'
 import { Loader2, MessageSquare, Trash2 } from 'lucide-react'
 import { MAX_COMMENT_LENGTH } from '@/lib/ao/comment-input'
-import { addAoOfferComment, deleteAoOfferComment, listAoOfferComments, type AoCommentView } from './actions'
-import { control, fieldLabel, secondaryButton } from './labels'
+import type { AoCommentView, AoDashboardActions } from '@/lib/ao/dashboard-types'
+import { control, fieldLabel, secondaryButton } from '@/app/admin/candidats/labels'
 
 // Discussion interne d'une offre AO (suivi, relances, contexte), affichée dans la fenêtre « Commentaires » du tableau :
 // chargée à l'ouverture, du plus ancien au plus récent ; chacun peut supprimer les siens après confirmation.
@@ -13,22 +13,25 @@ import { control, fieldLabel, secondaryButton } from './labels'
 const commentDate = (iso: string) => new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
 
 
-export function AoComments({ offerId, onChanged }: { offerId: string; onChanged: () => void }) {
+type CommentActions = Pick<AoDashboardActions, 'listComments' | 'addComment' | 'deleteComment'>
+
+export function AoComments({ offerId, actions, onChanged }: { offerId: string; actions: CommentActions; onChanged: () => void }) {
   const [comments, setComments] = useState<AoCommentView[] | null>(null)
   const [draft, setDraft] = useState('')
   const [error, setError] = useState('')
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  const { listComments, addComment, deleteComment } = actions
   useEffect(() => {
     startTransition(async () => {
-      const res = await listAoOfferComments(offerId)
+      const res = await listComments(offerId)
       if (res.comments) setComments(res.comments)
       else setError(res.error ?? 'Commentaires illisibles.')
     })
-  }, [offerId])
+  }, [offerId, listComments])
   const add = () => startTransition(async () => {
     setError('')
-    const res = await addAoOfferComment(offerId, draft)
+    const res = await addComment(offerId, draft)
     if (!res.comment) return setError(res.error ?? 'Commentaire non enregistré.')
     const added = res.comment
     setComments(list => [...(list ?? []), added])
@@ -37,7 +40,7 @@ export function AoComments({ offerId, onChanged }: { offerId: string; onChanged:
   })
   const remove = (id: string) => startTransition(async () => {
     setError('')
-    const res = await deleteAoOfferComment(id)
+    const res = await deleteComment(id)
     if (res.error) return setError(res.error)
     setComments(list => list?.filter(c => c.id !== id) ?? null)
     setConfirmId(null)

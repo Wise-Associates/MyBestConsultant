@@ -372,6 +372,8 @@ export async function purgeAoRecords(before: Date, maxDeletes = 100): Promise<nu
  * pas d'attribut d'organisation (ao_offers est à 16/16) : elle appartient à la boîte de son e-mail.
  */
 export async function listAoOfferRows(sourceIds: string[], max = 2000): Promise<AoOfferRow[]> {
+  // Organisation sans boîte : rien à lire (sinon toutes les offres de toutes les organisations seraient chargées pour rien).
+  if (!sourceIds.length) return []
   const offers = await listAoOffers(max)
   const offerIds = offers.map(o => o.$id)
   // Import différé : comments.ts est réservé au serveur (server-only) et ce module est aussi chargé par les tests.

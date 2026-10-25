@@ -4,28 +4,37 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { HoverCard } from '@/components/ui/hover-card'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
-import { AlertCircle, BarChart3, CheckCircle2, Download, Eye, Inbox, MessageSquare, Trash2, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
+import { AlertCircle, ArrowLeft, BarChart3, CheckCircle2, Download, Eye, Inbox, MessageSquare, Trash2, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
 import { AO_CHANNEL_LABEL, EMPTY_AO_FILTERS, filterAoOffers, filtersToSearchParams, type AoFilters, type AoOfferRow } from '@/lib/ao/filters'
 import { MAX_ATTEMPTS } from '@/lib/ao/attempts'
+import type { AoDashboardActions, AoDashboardCopy, AoDashboardPaths } from '@/lib/ao/dashboard-types'
 import type { AoSyncReport } from '@/lib/ao/sync'
 import type { AoEmail } from '@/lib/ao/types'
-import { deleteAoOffer, retryAoEmail, syncAoInboxNow } from './actions'
 import { AoComments } from './ao-comments'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { afterBatch } from '@/lib/ao/sync-loop'
 import { AoOfferPanel } from './ao-offer-panel'
 import {
   BRAND, CONTRACT_LABEL, ENGAGEMENT_LABEL, REMOTE_LABEL, STATUS_UI, control, formatAmount, formatDay, optionStyle, secondaryButton,
-} from './labels'
+} from '@/app/admin/candidats/labels'
 import { SENIORITY_SHORT, seniorityOf } from '@/lib/ao/stats'
+
+// Tableau des appels d'offres reçus, commun à /admin/candidats (boîtes de la plateforme) et à
+// /recruiter/parametres/boites-ao (boîtes de l'organisation) : chaque page fournit ses actions serveur, ses liens et
+// ses textes (src/lib/ao/dashboard-types.ts).
 
 interface Props {
   rows: AoOfferRow[]
   recentEmails: AoEmail[]
   inboxConfigured: boolean
-  /** Boîtes de la plateforme dont la dernière lecture a échoué (ou qui ne sont pas lues). */
+  /** Boîtes de l'espace dont la dernière lecture a échoué (ou qui ne sont pas lues). */
   mailboxIssues: MailboxIssue[]
   loadError: string
+  /** Lecture des boîtes suspendue pour tout l'espace (abonnement inactif) : bandeau en tête. */
+  accessAlert?: string
+  actions: AoDashboardActions
+  paths: AoDashboardPaths
+  copy: AoDashboardCopy
 }
 
 type Notice = { tone: 'ok' | 'error'; text: string } | null
@@ -74,7 +83,7 @@ export interface MailboxIssue {
   at: string | null
 }
 
-export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, inboxConfigured, mailboxIssues, loadError }: Props) {
+export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, inboxConfigured, mailboxIssues, loadError, accessAlert, actions, paths, copy }: Props) {
   // Données renvoyées par les passages d'une synchronisation en cours (affichées au fil de l'eau). Elles ne valent que
   // pour les données de page sur lesquelles elles ont été prises : dès que la page est rafraîchie (fin de
   // synchronisation), ses nouvelles données les remplacent, sans effet ni retour en arrière.
@@ -110,7 +119,7 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
     if (!deleteRow) return
     setDeleting(true)
     setDeleteError('')
-    const res = await deleteAoOffer(deleteRow.$id)
+    const res = await actions.deleteOffer(deleteRow.$id)
     setDeleting(false)
     if (res.error) return setDeleteError(res.error)
     if (selectedId === deleteRow.$id) setSelectedId(null)
@@ -125,7 +134,7 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
     ignored: rows.filter(r => r.status === 'ignored').length,
     duplicates: rows.reduce((n, r) => n + r.sourceCount - 1, 0),
   }
-  const exportHref = `/api/admin/candidats/export?${filtersToSearchParams(filters).toString()}`
+  const exportHref = `${paths.exportApi}?${filtersToSearchParams(filters).toString()}`
   const set = <K extends keyof AoFilters>(key: K, value: AoFilters[K]) => setFilters(f => ({ ...f, [key]: value }))
   const amount = (value: string) => (value.trim() === '' || Number.isNaN(Number(value)) ? null : Math.max(0, Number(value)))
 
@@ -139,7 +148,7 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
     let waits = 0
     try {
       for (;;) {
-        const res = await syncAoInboxNow()
+        const res = await actions.syncNow()
         if (res.error || !res.report) {
           setNotice({ tone: 'error', text: res.error ?? 'Synchronisation impossible.' })
           return
@@ -169,7 +178,7 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
           setNotice({ tone: 'ok', text: 'Une synchronisation automatique est en cours : ses offres apparaîtront à sa fin. Réessayez dans quelques minutes si besoin.' })
           return
         }
-        setNotice(endNotice(step.reason, total, r))
+        setNotice(endNotice(step.reason, total, r, copy.scope))
         return
       }
     } catch (err) {
@@ -186,11 +195,11 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
     setNotice(null)
     setRetryingId(id)
     startRetry(async () => {
-      const res = await retryAoEmail(id)
+      const res = await actions.retryEmail(id)
       setRetryingId(null)
       if (res.error || !res.report) return setNotice({ tone: 'error', text: res.error ?? 'Relance impossible.' })
       if (res.report.skipped) return setNotice({ tone: 'ok', text: 'Une synchronisation est en cours : l\'e-mail est remis en file et sera traité juste après.' })
-      setNotice(noticeOf(res.report, 'E-mail retraité : '))
+      setNotice(noticeOf(res.report, copy.scope, 'E-mail retraité : '))
     })
   }
 
@@ -204,21 +213,26 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
       {/* En-tête */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'var(--admin-fg-muted)' }}>RECRUTEMENT</p>
-          <h1 className="text-[28px] font-bold tracking-tight text-admin-fg">Candidats</h1>
+          {copy.back && (
+            <Link href={copy.back.href} className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 hover:underline" style={{ color: 'var(--admin-fg-muted)' }}>
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> {copy.back.label}
+            </Link>
+          )}
+          <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'var(--admin-fg-muted)' }}>{copy.eyebrow}</p>
+          <h1 className="text-[28px] font-bold tracking-tight text-admin-fg">{copy.title}</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
-            Appels d&apos;offres reçus dans les boîtes de la plateforme, lus automatiquement.
+            Appels d&apos;offres reçus dans les boîtes {copy.scope}, lus automatiquement.
             {recentEmails[0] ? ` Dernier e-mail : ${formatDay(recentEmails[0].receivedAt)}.` : ''}
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <nav aria-label="Pages de la section" className={toolbarGroup}>
-            <Link href="/admin/candidats/statistiques" aria-label="Statistiques" title="Statistiques"
+            <Link href={paths.statistics} aria-label="Statistiques" title="Statistiques"
               className={`${toolbarSegment} text-admin-fg-muted hover:bg-admin-hover hover:text-admin-fg`}>
               <BarChart3 size={15} aria-hidden />
               <span className="hidden md:inline">Statistiques</span>
             </Link>
-            <Link href="/admin/candidats/boites" aria-label="Boîtes de réception" title="Boîtes de réception"
+            <Link href={paths.mailboxes} aria-label="Boîtes de réception" title="Boîtes de réception"
               className={`${toolbarSegment} border-l border-admin-line text-admin-fg-muted hover:bg-admin-hover hover:text-admin-fg`}>
               <Inbox size={15} aria-hidden />
               <span className="hidden md:inline">Boîtes de réception</span>
@@ -250,8 +264,9 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
         </div>
       </div>
 
+      {accessAlert && <Banner tone="error" text={accessAlert} />}
       {!inboxConfigured && (
-        <Banner tone="error" text="Aucune boîte de la plateforme n'est active : la lecture automatique est arrêtée. Ajoutez-en une dans « Boîtes de réception »." />
+        <Banner tone="error" text={`Aucune boîte ${copy.scope} n'est active : la lecture automatique est arrêtée. Ajoutez-en une dans « Boîtes de réception ».`} />
       )}
       {mailboxIssues.map(m => (
         <Banner key={m.label} tone="error" text={`Boîte ${m.label}${m.at ? ` (tentative du ${formatDay(m.at)})` : ''} : ${m.error}`} />
@@ -396,7 +411,7 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
                       )}
                     </button>
                     {r.status === 'published' || r.jobId ? (
-                      <span className={`${iconButton} opacity-40 cursor-not-allowed`} title="Offre publiée : retirez d'abord l'offre publique dans « Offres »" aria-label="Suppression impossible : offre publiée">
+                      <span className={`${iconButton} opacity-40 cursor-not-allowed`} title="Offre publiée : retirez d'abord l'offre publique" aria-label="Suppression impossible : offre publiée">
                         <Trash2 size={16} />
                       </span>
                     ) : (
@@ -437,7 +452,7 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
         </div>
       )}
 
-      {selected && <AoOfferPanel row={selected} onClose={() => setSelectedId(null)} />}
+      {selected && <AoOfferPanel row={selected} actions={actions} paths={paths} publishNote={copy.publishNote} onClose={() => setSelectedId(null)} />}
 
       {/* Commentaires de l'offre : discussion interne, hors du panneau de détail. */}
       <Dialog open={commentsRow !== null} onOpenChange={open => { if (!open) setCommentsFor(null) }}>
@@ -447,7 +462,7 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
               <DialogTitle className="text-admin-fg" style={{ fontSize: '1.05rem' }}>Commentaires</DialogTitle>
               <DialogDescription className="truncate" style={{ color: 'var(--admin-fg-muted)' }} title={commentsRow.title}>{commentsRow.title}</DialogDescription>
             </DialogHeader>
-            <AoComments offerId={commentsRow.$id} onChanged={() => router.refresh()} />
+            <AoComments offerId={commentsRow.$id} actions={actions} onChanged={() => router.refresh()} />
           </DialogContent>
         )}
       </Dialog>
@@ -502,19 +517,19 @@ function summaryOf(p: SyncProgress): string {
 }
 
 /** Message de fin d'une synchronisation continue, selon la raison de l'arrêt (afterBatch). */
-function endNotice(reason: Extract<ReturnType<typeof afterBatch>, { action: 'stop' }>['reason'], total: SyncProgress, last: AoSyncReport): NonNullable<Notice> {
+function endNotice(reason: Extract<ReturnType<typeof afterBatch>, { action: 'stop' }>['reason'], total: SyncProgress, last: AoSyncReport, scope: string): NonNullable<Notice> {
   const errors = total.errors.length ? ` — ${total.errors.slice(0, 2).join(' ; ')}` : ''
   switch (reason) {
     case 'done': return { tone: total.failed ? 'error' : 'ok', text: `Synchronisation terminée : ${summaryOf(total)}${errors}.` }
-    case 'not-configured': return { tone: 'error', text: 'Aucune boîte de la plateforme n\'est active : rien n\'a été lu.' }
+    case 'not-configured': return { tone: 'error', text: `Aucune boîte ${scope} n'est active : rien n'a été lu.` }
     case 'ai': return { tone: 'error', text: `Arrêtée, IA indisponible (crédits épuisés ou clé refusée) : ${summaryOf(total)} · ${last.remaining} en attente, voir « E-mails non traités ».` }
     case 'mailbox': return { tone: 'error', text: `Arrêtée, boîte illisible : ${last.errors.slice(0, 2).join(' ; ')}` }
     case 'stalled': return { tone: 'error', text: `Arrêtée : aucun e-mail n'a pu être traité au dernier passage (${last.remaining} restant(s))${errors}. Réessayez.` }
   }
 }
 
-function noticeOf(r: AoSyncReport, lead = ''): NonNullable<Notice> {
-  if (!r.configured) return { tone: 'error', text: 'Aucune boîte de la plateforme n\'est active : rien n\'a été lu.' }
+function noticeOf(r: AoSyncReport, scope: string, lead = ''): NonNullable<Notice> {
+  if (!r.configured) return { tone: 'error', text: `Aucune boîte ${scope} n'est active : rien n'a été lu.` }
   const parts = [
     `${r.processed} e-mail${r.processed > 1 ? 's' : ''} traité${r.processed > 1 ? 's' : ''}`,
     `${r.offersCreated} nouvelle${r.offersCreated > 1 ? 's' : ''} offre${r.offersCreated > 1 ? 's' : ''}`,
