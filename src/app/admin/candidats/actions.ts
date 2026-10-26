@@ -1,7 +1,6 @@
 'use server'
 
 import { requireAdmin } from '@/lib/appwrite/auth'
-import { adminJobExists, createAdminJob } from '@/lib/admin-job'
 import type { PublicationDraft, SourcingResult } from '@/lib/ao/dashboard-types'
 import {
   addAoOfferCommentOf, aoOfferSourcingOf, deleteAoOfferCommentOf, deleteAoOfferOf, listAoOfferCommentsOf, previewAoPublicationOf,
@@ -30,13 +29,7 @@ export async function previewAoPublication(id: string) {
 
 export async function publishAoOffer(id: string, input: PublicationDraft) {
   await requireAdmin()
-  return publishAoOfferOf(
-    PLATFORM_TENANT_ID,
-    id,
-    input,
-    { create: async (job, jobId) => { await createAdminJob(job, ADMIN_TENANT_ID, jobId) }, exists: adminJobExists },
-    [PATH, '/admin/jobs'],
-  )
+  return publishAoOfferOf(PLATFORM_TENANT_ID, id, input, ADMIN_TENANT_ID, [PATH, '/admin/jobs'])
 }
 
 export async function setAoOfferStatus(id: string, status: 'to_review' | 'ignored') {

@@ -1,12 +1,12 @@
 import 'server-only'
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
-import { getActiveJobs } from '@/lib/appwrite/jobs'
-import type { AdminJobInput } from '@/lib/admin-job'
+import { createJob, getActiveJobs, getJobById, oneMonthFromNow } from '@/lib/appwrite/jobs'
 import { descriptionForPublication } from '@/lib/description-sections'
-import type { UserProfile } from '@/types'
+import type { Job, UserProfile } from '@/types'
 import { aoAccess, isDocumentId } from './access'
 import { callLLM } from '@/lib/ai/llm-router'
 import { llmUnavailableReason } from './ai-failures'
@@ -198,20 +198,19 @@ const PublishSchema = DraftFieldsSchema.extend({
   maskTerms: z.array(z.string().trim().max(80)).max(30),
 })
 
-/** Création de l'offre publique : par l'admin (offre de la plateforme) ou par un recruteur (offre de son organisation). */
-export interface AoJobPublisher {
-  /** Crée l'offre d'identifiant `jobId` ; une seconde création du même identifiant doit échouer (409). */
-  create(job: AdminJobInput, jobId: string): Promise<void>
-  exists(jobId: string): Promise<boolean>
-}
-
+/**
+ * Publie la copie anonymisée d'une offre AO. `jobTenantId` : organisation de l'offre publique (« admin » pour les
+ * boîtes de la plateforme, comme l'import d'offres ; celle du recruteur sinon).
+ */
 export async function publishAoOfferOf(
   tenantId: string,
   id: string,
   input: PublicationDraft,
-  publisher: AoJobPublisher,
+  jobTenantId: string,
   paths: string[],
 ): ReturnType<AoDashboardActions['publish']> {
+  // Début de la requête : la diffusion sur les réseaux, en arrière-plan, doit finir avant maxDuration (page.tsx).
+  const requestStart = Date.now()
   const parsed = PublishSchema.safeParse(input)
   if (!parsed.success) {
     if (parsed.error.issues.some(issue => issue.path[0] === 'reviewed')) return { error: 'Relisez la version publiée, puis cochez « J\'ai relu » pour la valider.' }
@@ -236,17 +235,41 @@ export async function publishAoOfferOf(
     // au lieu de créer une seconde offre, une seconde diffusion et un second sourcing.
     const jobId = `ao${offer.$id}`
     await updateAoOffer(offer.$id, { status: 'published', jobId })
+    const job = { ...fields, ...pub }
+    let created: Job | null = null
     try {
-      await publisher.create({ ...fields, ...pub }, jobId)
+      created = await createJob({
+        tenantId: jobTenantId,
+        title: job.title,
+        description: job.description,
+        skills: job.skills.slice(0, 10),
+        location: job.location || 'Non spécifié',
+        contractType: job.contractType,
+        remote: job.remote,
+        salary: job.salary ?? undefined,
+        companyName: job.companyName || undefined,
+        expiresAt: oneMonthFromNow(),
+      }, jobId)
     } catch (err) {
-      if (!(await publisher.exists(jobId))) {
+      if (!(await getJobById(jobId))) {
         await updateAoOffer(offer.$id, { status: 'to_review', jobId: null }).catch(rollback => {
           console.error('AO: offre restée « publiée » sans offre publique', offer.$id, errorOf(rollback))
         })
         throw err
       }
-      // L'offre existe déjà (publication simultanée, ou erreur pendant la diffusion) : elle reste publiée.
-      console.error('AO: offre publique créée, suite de la publication en échec', jobId, errorOf(err))
+      // L'offre existe déjà (publication simultanée : la requête qui l'a créée lance la diffusion et le sourcing) :
+      // elle reste publiée.
+      console.error('AO: offre publique déjà créée', jobId, errorOf(err))
+    }
+    if (created) {
+      // Diffusion sur les réseaux (Make → Buffer ; à défaut, ancien auto-post LinkedIn) et sourcing automatique (CV
+      // analysés par l'IA, e-mail aux meilleurs candidats) après la réponse, en parallèle : attendus ici, ils feraient
+      // patienter « Publier » environ 3 minutes.
+      const publicJob = created
+      const { tryAutoPublishJob, deliveryDeadline } = await import('@/lib/social')
+      const { tryAutoSourceCandidates } = await import('@/lib/auto-source-candidates')
+      after(() => tryAutoPublishJob(publicJob, deliveryDeadline(requestStart)))
+      after(() => tryAutoSourceCandidates(publicJob))
     }
     for (const path of paths) revalidatePath(path)
     return { jobId }

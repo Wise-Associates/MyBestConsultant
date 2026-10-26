@@ -8,8 +8,9 @@ import {
   retryAoEmail, setAoOfferStatus,
 } from './actions'
 
-// « Réessayer » (Server Action de cette page) traite un e-mail tout de suite (150 s au plus). « Synchroniser
-// maintenant » passe par /api/admin/candidats/sync, enchaîné par AoSyncProvider (layout admin).
+// « Réessayer » (Server Action de cette page) traite un e-mail tout de suite (150 s au plus). « Publier » répond tout de
+// suite, la diffusion sur les réseaux et le sourcing continuent après la réponse (after()) dans ce même délai.
+// « Synchroniser maintenant » passe par /api/admin/candidats/sync, enchaîné par AoSyncProvider (layout admin).
 export const maxDuration = 300
 
 export default async function AdminAoOffersPage() {
@@ -55,7 +56,7 @@ export default async function AdminAoOffersPage() {
         eyebrow: 'RECRUTEMENT',
         title: 'Candidats',
         scope: 'de la plateforme',
-        publishNote: 'Comme pour l’import d’offres, la publication déclenche la diffusion LinkedIn et le sourcing automatiques s’ils sont activés.',
+        publishNote: 'L’offre est en ligne dès la publication. Suivent en arrière-plan la diffusion sur les réseaux, si la « Publication automatique » est activée dans Réseaux sociaux, et le sourcing automatique (e-mail aux meilleurs candidats).',
       }}
     />
   )
