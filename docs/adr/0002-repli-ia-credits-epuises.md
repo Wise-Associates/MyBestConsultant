@@ -53,7 +53,7 @@ ou `billing_error`. Avant cette décision :
 7. Le **courrier nouveau passe avant les e-mails à réessayer**, et l'expéditeur et l'objet sont enregistrés
    avant la lecture des pièces jointes : un e-mail en attente reste reconnaissable dans la liste des e-mails
    non traités.
-8. **Bouton « Réessayer »** (admin) sur chaque e-mail non traité : remet ses essais à zéro, y compris pour un
+8. **Bouton « Réessayer »** (admin ; recruteurs aussi depuis le 2026-10-26, dans un quota quotidien : ADR 0005) sur chaque e-mail non traité : remet ses essais à zéro, y compris pour un
    e-mail abandonné ou enregistré avant ces règles (crédits épuisés alors comptés comme des essais). Il est
    traité à la synchronisation suivante, ou tout de suite avec « Synchroniser maintenant ».
 

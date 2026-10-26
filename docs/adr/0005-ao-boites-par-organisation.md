@@ -93,8 +93,11 @@ par leur abonnement.
   toutes, `src/lib/ao/sourcing-access.ts`) : l'IA lit les CV de la base à nos frais et l'inscription est libre.
   Une place est prise juste avant l'appel d'IA ; une recherche qui échoue compte (l'IA a pu être facturée). « Synchroniser » et
   « Réessayer » sont ouverts aux recruteurs (abonnement actif exigé) : ils lisent plus tôt le courrier que le passage
-  planifié aurait lu de toute façon. « Réessayer » d'un recruteur ne remet pas les essais à zéro (`canRetryEarly`,
-  `attempts.ts`) : un e-mail abandonné ne peut pas être refacturé indéfiniment ; la remise à zéro reste à l'admin.
+  planifié aurait lu de toute façon. **Modifié le 2026-10-26** (demande du client : relancer un e-mail autant de
+  fois que voulu) : « Réessayer » d'un recruteur remet les essais à zéro comme celui de l'admin ; la limite par
+  e-mail (`canRetryEarly`, supprimée) est remplacée par l'adresse e-mail vérifiée et un quota quotidien
+  (30 relances par organisation, 300 pour toutes, `AO_RETRY_DAILY_LIMITS` dans `attempts.ts`, place prise avant la
+  remise à zéro ; une relance qui échoue compte) : un e-mail n'est toujours pas refacturé sans limite.
 - Limite connue, commune aux deux espaces : `listAoOfferRows` lit les 2 000 offres les plus récentes toutes
   organisations confondues avant de garder celles de l'organisation : au-delà, les plus anciennes d'une organisation
   disparaissent de son tableau, de ses statistiques et de son export, et une organisation qui reçoit beaucoup d'offres
