@@ -1,12 +1,10 @@
 'use server'
 
-import { after } from 'next/server'
 import { getCurrentUser } from '@/lib/appwrite/auth'
-import { createJob, getJobById, oneMonthFromNow } from '@/lib/appwrite/jobs'
 import type { PublicationDraft } from '@/lib/ao/dashboard-types'
 import {
   addAoOfferCommentOf, aoOfferSourcingOf, deleteAoOfferCommentOf, deleteAoOfferOf, listAoOfferCommentsOf, previewAoPublicationOf,
-  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, tenantSubscriptionStatus, type AoJobPublisher,
+  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, tenantSubscriptionStatus,
 } from '@/lib/ao/offer-actions'
 import { AO_RETRY_DAILY_LIMITS, RETRY_QUOTA_MESSAGE } from '@/lib/ao/attempts'
 import { AO_PUBLICATION_AI_DAILY_LIMITS, PUBLICATION_AI_QUOTA_MESSAGE } from '@/lib/ao/publication-copy'
@@ -114,37 +112,11 @@ export async function previewRecruiterAoPublication(id: string) {
   return previewAoPublicationOf(me.tenantId, id, { beforeAi: () => rewriteSlot(me.user, me.tenantId) })
 }
 
-/** Offre publique de l'organisation, traitée comme une offre créée par ses recruteurs (createJobAction). */
-function organizationPublisher(tenantId: string): AoJobPublisher {
-  return {
-    async create(job, jobId) {
-      const created = await createJob({
-        tenantId,
-        title: job.title,
-        description: job.description,
-        skills: job.skills.slice(0, 10),
-        location: job.location || 'Non spécifié',
-        contractType: job.contractType,
-        remote: job.remote,
-        salary: job.salary ?? undefined,
-        companyName: job.companyName || undefined,
-        expiresAt: oneMonthFromNow(),
-      }, jobId)
-      // Diffusion sur les réseaux de MyBestConsultant en arrière-plan, puis sourcing automatique : comme les autres
-      // offres de l'organisation.
-      const { tryAutoPublishJob } = await import('@/lib/social')
-      after(() => tryAutoPublishJob(created))
-      const { tryAutoSourceCandidates } = await import('@/lib/auto-source-candidates')
-      await tryAutoSourceCandidates(created)
-    },
-    exists: async jobId => (await getJobById(jobId)) !== null,
-  }
-}
-
+/** Offre publique de l'organisation, diffusée et sourcée comme une offre créée par ses recruteurs (publishAoOfferOf). */
 export async function publishRecruiterAoOffer(id: string, input: PublicationDraft) {
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
-  return publishAoOfferOf(me.tenantId, id, input, organizationPublisher(me.tenantId), [PATH, '/recruiter/annonces', '/recruiter/dashboard'])
+  return publishAoOfferOf(me.tenantId, id, input, me.tenantId, [PATH, '/recruiter/annonces', '/recruiter/dashboard'])
 }
 
 export async function setRecruiterAoOfferStatus(id: string, status: 'to_review' | 'ignored') {

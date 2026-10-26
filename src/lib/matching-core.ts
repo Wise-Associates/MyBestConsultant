@@ -12,6 +12,7 @@ import type { CvProfile } from '@/lib/cv-profile-extract'
 import {
   VIVIER_MATCHING_SYSTEM, offerBatches, parseVivierMatching, vivierMatchingPrompt, type OfferScore, type OfferToScore, type ProfileToScore,
 } from '@/lib/vivier-matching'
+import type { MatchResult } from '@/lib/sourcing-core'
 
 export interface JobMatchResult {
   source: 'pool' | 'vivier' | 'application'
@@ -41,13 +42,15 @@ export interface JobMatchResult {
 // Population 1 — recompute the whole platform candidate pool against this job and replace
 // the stored results. Runs automatically right after a job is created; the recruiter can
 // also trigger it again later (e.g. once new candidates have registered) from the Matching page.
-export async function runPoolMatching(jobId: string): Promise<{ matched: number; error?: string }> {
+// `computed`: a ranking already made for this job by matchCandidatesForJob (automatic sourcing at
+// creation), stored as is instead of paying a second AI call on the same CVs.
+export async function runPoolMatching(jobId: string, computed?: MatchResult): Promise<{ matched: number; error?: string }> {
   try {
     const { databases } = createAdminClient()
     const job = await databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId)
 
     const { matchCandidatesForJob } = await import('@/lib/sourcing-core')
-    const { matches, error } = await matchCandidatesForJob(jobId)
+    const { matches, error } = computed ?? await matchCandidatesForJob(jobId)
     if (error && matches.length === 0) return { matched: 0, error }
 
     const existing = await databases.listDocuments(DB_ID, COLLECTIONS.JOB_MATCHES, [

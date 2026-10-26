@@ -87,7 +87,7 @@ export function SocialClient({ initialConfig, initialPosts, jobs, env, devPanel 
       <section className="rounded-2xl p-5 space-y-5" style={card}>
         <h2 style={{ fontSize: "1rem" }} className="font-semibold text-white">Réglages</h2>
         <div className="flex items-center justify-between gap-4">
-          <div><p className="text-sm font-semibold text-white/90">Publication automatique</p><p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>Chaque nouvelle offre créée par un recruteur est publiée sans action de sa part. Désactivée tant que vous ne l’activez pas.</p></div>
+          <div><p className="text-sm font-semibold text-white/90">Publication automatique</p><p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>Chaque nouvelle offre, créée par un recruteur ou publiée depuis un appel d’offres, est diffusée sans autre action. Désactivée tant que vous ne l’activez pas.</p></div>
           <Toggle on={cfg.autoPublish} onChange={v => set('autoPublish', v)} label="Publication automatique" />
         </div>
         <div>
