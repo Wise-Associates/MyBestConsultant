@@ -38,7 +38,7 @@ function contentMatches(format: string, content: Buffer): boolean {
   return !start.equals(ZIP_MAGIC) && !content.subarray(0, 8).equals(CFB_MAGIC) && content[0] !== 0x3c && !content.includes(0)
 }
 
-type Column = 'salary' | 'deadline' | 'engagement' | 'technologies' | 'ignored' | 'remote' | 'location' | 'contract' | 'duration' | 'start' | 'experience' | 'skills' | 'company' | 'description' | 'title'
+type Column = 'salary' | 'deadline' | 'engagement' | 'technologies' | 'ignored' | 'remote' | 'location' | 'contract' | 'duration' | 'start' | 'experience' | 'skills' | 'company' | 'description' | 'title' | 'name'
 
 /**
  * Noms de colonnes reconnus, normalisés par `norm` (minuscules, sans accents ni parenthèses), essayés DANS CET
@@ -70,13 +70,20 @@ const COLUMNS: [Column, string[]][] = [
   ['title', ['intitule', 'titre', 'poste', 'job title', 'title', 'libelle', 'offre', 'fonction', 'role']],
 ]
 
+/**
+ * En-tête « Nom » seul (rien d'autre : « Nom du consultant » n'en est pas un) : l'intitulé de l'offre dans certains
+ * extraits d'AO, mais le nom d'une personne dans une liste de contacts ou de candidats. Il ne sert d'intitulé qu'à
+ * défaut d'une vraie colonne d'intitulé, et jamais à côté d'un prénom (findHeader).
+ */
+const NAME_HEADER = 'nom'
+
 function columnOf(header: unknown): Column | null {
   const padded = ` ${norm(header)} `
   if (!padded.trim()) return null
   for (const [column, names] of COLUMNS) {
     if (names.some(name => padded.includes(` ${name} `))) return column
   }
-  return null
+  return padded.trim() === NAME_HEADER ? 'name' : null
 }
 
 interface Header {
@@ -87,9 +94,11 @@ interface Header {
 /** Ligne d'en-tête : un intitulé et au moins une autre colonne reconnue (un mot isolé ne suffit pas). */
 function findHeader(rows: string[][]): Header | null {
   for (let i = 0; i < Math.min(rows.length, HEADER_SEARCH_ROWS); i++) {
-    const columns = rows[i]
-      .map((cell, col) => ({ column: columnOf(cell), col, label: String(cell ?? '').trim() }))
-      .filter((c): c is Header['columns'][number] => c.column !== null && c.column !== 'ignored')
+    const cells = rows[i].map((cell, col) => ({ column: columnOf(cell), col, label: String(cell ?? '').trim() }))
+    const nameIsTitle = !cells.some(c => c.column === 'title') && !rows[i].some(cell => ` ${norm(cell)} `.includes(' prenom '))
+    const columns = cells
+      .map(c => (c.column === 'name' && nameIsTitle ? { ...c, column: 'title' as const } : c))
+      .filter((c): c is Header['columns'][number] => c.column !== null && c.column !== 'ignored' && c.column !== 'name')
     if (columns.some(c => c.column === 'title') && columns.length >= 2) return { index: i, columns }
   }
   return null

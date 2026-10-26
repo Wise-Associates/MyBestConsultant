@@ -700,6 +700,27 @@ describe('tableaux d\'offres joints (lecture directe, sans IA)', () => {
     assert.equal(tableOffersOf([[['Intitulé'], ['Seul un titre : pas assez pour être sûr']]]), null)
   })
 
+  it('lit un extrait d\'AO dont l\'intitulé est la colonne « Nom »', () => {
+    // En-têtes réels d'un extrait hebdomadaire de 29 AO, rendu tronqué par l'IA quand il lui était confié.
+    const rows = [['Nom', 'Société', 'Statuts', 'Séniorité', 'Description de l\'AO'],
+      ['Client Exemple - RFC0001 - Coordinateur sourcing IT', 'Client Exemple', 'À traiter', 'Avancé (9/10/11)', 'Coordonner les achats IT.'],
+      ['Autre Client - Analyste risque de marché', 'Autre Client', 'À traiter', '', '']]
+    const table = tableOffersOf([rows])
+    assert.deepEqual(table?.offers.map(o => [o.title, o.companyName, o.experience, o.description]), [
+      ['Client Exemple - RFC0001 - Coordinateur sourcing IT', 'Client Exemple', 'Avancé (9/10/11)', 'Coordonner les achats IT.'],
+      ['Autre Client - Analyste risque de marché', 'Autre Client', '', ''],
+    ])
+    assert.ok(!JSON.stringify(table).includes('À traiter'), 'colonne de suivi interne non reprise')
+  })
+
+  it('ne prend « Nom » pour l\'intitulé ni à côté d\'un prénom, ni à côté d\'une vraie colonne d\'intitulé', () => {
+    assert.equal(tableOffersOf([[['Nom', 'Prénom', 'Société', 'Séniorité'], ['Dupont', 'Jean', 'Client Exemple', 'Senior']]]), null)
+    assert.equal(tableOffersOf([[['Nom Prénom', 'Société', 'Séniorité'], ['Dupont Jean', 'Client Exemple', 'Senior']]]), null)
+    const [o] = tableOffersOf([[['Nom', 'Intitulé', 'Client'], ['Dupont', 'Développeur Java', 'Client Exemple']]])!.offers
+    assert.equal(o.title, 'Développeur Java')
+    assert.ok(!JSON.stringify(o).includes('Dupont'))
+  })
+
   it('relit l\'export Excel de la page AO Offers à l\'identique', () => {
     const file: Attachment = { filename: 'ao-offers.xlsx', contentType: '', content: buildAoWorkbook([offer()]) }
     assert.deepEqual(readTableAttachment(file)?.offers, [offer()])
