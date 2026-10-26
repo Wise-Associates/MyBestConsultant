@@ -19,23 +19,26 @@ export function attemptsAfterFailure(attempts: number, { final, countsAsAttempt 
 }
 
 /**
- * Relance demandée par un admin (bouton « Réessayer » de /admin/candidats) : tout e-mail en erreur, même
- * abandonné ou enregistré avant une règle plus souple, repart de zéro (un essai et une reprise) à la prochaine
- * synchronisation. null s'il n'est pas en erreur (traité entre-temps, ou en cours dans un passage).
+ * Relance demandée depuis le tableau (bouton « Réessayer », admin ou recruteur) : tout e-mail en erreur, même
+ * abandonné ou enregistré avant une règle plus souple, repart de zéro (un essai et une reprise), autant de fois qu'on
+ * le relance. null s'il n'est pas en erreur (traité entre-temps, ou en cours dans un passage).
  */
 export function manualRetryPatch(email: Pick<AoEmail, 'status'>): Pick<AoEmail, 'attempts'> | null {
   return email.status === 'failed' ? { attempts: 0 } : null
 }
 
 /**
- * Relance demandée par un recruteur (« Réessayer » de /recruiter/parametres/boites-ao) : seulement un e-mail que le
- * passage planifié reprendrait de toute façon (en erreur, essais restants), traité plus tôt, sans remise à zéro.
- * La remise à zéro reste à l'admin : ouverte aux organisations (inscription libre), elle ferait refacturer l'IA sans
- * fin sur un même e-mail (ADR 0002 : un e-mail n'est pas refacturé indéfiniment).
+ * « Réessayer » des recruteurs, par jour (UTC) : par organisation, et pour toutes les organisations ensemble (l'admin
+ * n'est pas compté). Chaque relance peut refaire appeler l'IA aux frais de la plateforme et l'inscription est libre :
+ * sans plafond, un même e-mail pourrait être refacturé sans fin (ADR 0002). Décision du 2026-10-26 : plus de limite par
+ * e-mail, ce plafond quotidien à la place.
  */
-export function canRetryEarly(email: Pick<AoEmail, 'status' | 'attempts'>): boolean {
-  return email.status === 'failed' && email.attempts < MAX_ATTEMPTS
-}
+export const AO_RETRY_DAILY_LIMITS = { perOrganisation: 30, allOrganisations: 300 } as const
+
+export const RETRY_QUOTA_MESSAGE = {
+  organisation: `Limite de ${AO_RETRY_DAILY_LIMITS.perOrganisation} relances d'e-mails par jour atteinte pour votre organisation : réessayez demain.`,
+  platform: 'Trop de relances d\'e-mails aujourd\'hui sur la plateforme : réessayez demain.',
+} as const
 
 /**
  * Un e-mail peut-il être reporté au passage suivant faute de temps ? Les e-mails suivants d'une boîte, oui ; le premier
