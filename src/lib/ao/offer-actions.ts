@@ -9,7 +9,7 @@ import { descriptionForPublication } from '@/lib/description-sections'
 import type { UserProfile } from '@/types'
 import { aoAccess, isDocumentId } from './access'
 import { DEFAULT_CLIENT_LABEL, namesToHide, revealsName, toPublicOffer } from './anonymize'
-import { canRetryEarly, manualRetryPatch } from './attempts'
+import { manualRetryPatch } from './attempts'
 import { canDeleteComment, parseCommentBody } from './comment-input'
 import { createAoComment, deleteAoComment, deleteAoCommentsOfOffer, getAoComment, listAoComments, type AoComment } from './comments'
 import { getJobMatches, runPoolMatching } from '@/lib/matching-core'
@@ -75,27 +75,26 @@ export async function syncAoNow(tenantId: string, holder: string): Promise<AoSyn
 }
 
 /**
- * Bouton « Réessayer » d'un e-mail non traité, traité tout de suite (même traitement et même verrou qu'une
- * synchronisation). `reset` (admin) : remis en file quels que soient ses essais déjà comptés ; sinon (recruteur) :
- * seulement s'il lui reste un essai, sans remise à zéro (canRetryEarly). Si ce traitement immédiat échoue ou qu'une
- * synchronisation est en cours, il reste en file pour la suivante.
+ * Bouton « Réessayer » d'un e-mail non traité : remis en file quels que soient ses essais déjà comptés
+ * (manualRetryPatch), autant de fois qu'on le relance, puis traité tout de suite (même traitement et même verrou
+ * qu'une synchronisation). `beforeRetry` (recruteur : quota du jour) : appelé une fois l'e-mail vérifié, avant la
+ * remise à zéro ; son message refuse la relance. Si ce traitement immédiat échoue ou qu'une synchronisation est en
+ * cours, l'e-mail reste en file pour la suivante.
  */
 export async function retryAoEmailOf(
   tenantId: string,
   id: string,
-  { holder, path, reset }: { holder: string; path: string; reset: boolean },
+  { holder, path, beforeRetry }: { holder: string; path: string; beforeRetry?: () => Promise<string | null> },
 ): ReturnType<AoDashboardActions['retryEmail']> {
   let email
   try {
     email = (await aoAccessFor(tenantId).email(id))?.email
     if (!email) return { error: 'E-mail introuvable : rechargez la page.' }
     if (email.status !== 'failed') return { error: 'Cet e-mail n\'est plus en erreur : rechargez la page.' }
-    if (reset) {
-      const patch = manualRetryPatch(email)
-      if (patch) await updateAoEmail(email.$id, patch)
-    } else if (!canRetryEarly(email)) {
-      return { error: 'Cet e-mail a déjà été repris sans succès : traitez-le à la main depuis votre boîte de réception.' }
-    }
+    const refused = await beforeRetry?.()
+    if (refused) return { error: refused }
+    const patch = manualRetryPatch(email)
+    if (patch) await updateAoEmail(email.$id, patch)
   } catch (err) {
     return { error: `Relance impossible : ${errorOf(err)}` }
   }

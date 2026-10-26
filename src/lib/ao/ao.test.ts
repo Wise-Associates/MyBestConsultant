@@ -20,7 +20,7 @@ import { batchByLength, nextStepFor } from './repo'
 import { citedClients, companyFromDomain, formatSender, fromVeille, originalSender, parseSender, senderCompany, type Organization, type Sender } from './origin'
 
 const WISE: Organization = { name: 'Wise Associates', ownDomains: ['wise-associates.fr'] }
-import { MAX_ATTEMPTS, attemptsAfterFailure, canDeferEmail, canRetryEarly, manualRetryPatch } from './attempts'
+import { AO_RETRY_DAILY_LIMITS, RETRY_QUOTA_MESSAGE, attemptsAfterFailure, canDeferEmail, manualRetryPatch } from './attempts'
 import { AO_EXCEL_HEADERS, buildAoWorkbook } from './excel'
 import { buildEmailContent } from './extract'
 import { MAX_TABLE_ROWS, readTableAttachment, tableOffersOf } from './spreadsheet'
@@ -233,13 +233,18 @@ describe('robustesse de la lecture', () => {
     for (const status of ['processed', 'no_offer', 'processing'] as const) assert.equal(manualRetryPatch(email(status, 1, 60)), null, status)
   })
 
-  it('« Réessayer » d\'un recruteur n\'avance que ce que le passage planifié reprendrait, sans remise à zéro', () => {
-    const once = email('failed', 1, 60)
-    assert.equal(canRetryEarly(once), true)
-    assert.equal(nextStepFor(once, now), 'retry', 'même règle que le passage planifié')
-    // Après la reprise échouée, l'e-mail est abandonné : un recruteur ne peut plus le faire refacturer.
-    assert.equal(canRetryEarly(email('failed', MAX_ATTEMPTS, 60)), false)
-    for (const status of ['processed', 'no_offer', 'processing'] as const) assert.equal(canRetryEarly(email(status, 0, 60)), false, status)
+  it('« Réessayer » relance un e-mail autant de fois qu\'on le demande, dans un plafond quotidien côté recruteur', () => {
+    // Relancé, repris sans succès (réponse tronquée : abandonné tout de suite), puis relancé encore.
+    let failed = email('failed', 1, 60)
+    for (let i = 0; i < 3; i++) {
+      failed = { ...failed, ...manualRetryPatch(failed) }
+      assert.equal(nextStepFor(failed, now), 'retry', `relance ${i + 1}`)
+      failed = { ...failed, attempts: attemptsAfterFailure(1, { final: true, countsAsAttempt: true }) }
+      assert.equal(nextStepFor(failed, now), 'skip', 'le passage planifié ne le reprend plus : seul le bouton le relance')
+    }
+    assert.ok(AO_RETRY_DAILY_LIMITS.perOrganisation < AO_RETRY_DAILY_LIMITS.allOrganisations)
+    assert.match(RETRY_QUOTA_MESSAGE.organisation, new RegExp(`${AO_RETRY_DAILY_LIMITS.perOrganisation} relances`))
+    assert.match(RETRY_QUOTA_MESSAGE.platform, /demain/)
   })
 
   it('vérifie la taille réelle d\'une archive Office, sans croire les tailles qu\'elle annonce', () => {

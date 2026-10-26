@@ -8,6 +8,7 @@ import {
   addAoOfferCommentOf, aoOfferSourcingOf, deleteAoOfferCommentOf, deleteAoOfferOf, listAoOfferCommentsOf, previewAoPublicationOf,
   publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, tenantSubscriptionStatus, type AoJobPublisher,
 } from '@/lib/ao/offer-actions'
+import { AO_RETRY_DAILY_LIMITS, RETRY_QUOTA_MESSAGE } from '@/lib/ao/attempts'
 import { AO_SOURCING_DAILY_LIMITS, SOURCING_QUOTA_MESSAGE, sourcingDenial } from '@/lib/ao/sourcing-access'
 import { releaseDailySlot, takeDailySlotId } from '@/lib/ao/state'
 import { canUseAoSourcing } from '@/lib/ao/tenancy'
@@ -60,12 +61,30 @@ export async function recruiterAoOfferSourcing(id: string, recompute = false) {
   return aoOfferSourcingOf(me.tenantId, id, { recompute, beforeAi: () => sourcingSlot(me.user, me.tenantId) })
 }
 
+/**
+ * Avant chaque « Réessayer » (qui remet les essais de l'e-mail à zéro et peut refaire appeler l'IA) : adresse vérifiée,
+ * puis une place sur les quotas du jour (organisation, puis toutes). Une relance dont le traitement échoue compte quand
+ * même (l'IA a pu être facturée).
+ */
+async function retrySlot(user: UserProfile, tenantId: string): Promise<string | null> {
+  if (!user.emailVerification) return 'Vérifiez votre adresse e-mail (lien reçu à l\'inscription) pour relancer un e-mail.'
+  const now = new Date()
+  const own = await takeDailySlotId('aoRetryOrg', tenantId, now, AO_RETRY_DAILY_LIMITS.perOrganisation)
+  if (!own) return RETRY_QUOTA_MESSAGE.organisation
+  if (!(await takeDailySlotId('aoRetryAll', 'platform', now, AO_RETRY_DAILY_LIMITS.allOrganisations))) {
+    console.warn('AO: plafond quotidien des relances d\'e-mails atteint pour toutes les organisations')
+    // La place de l'organisation n'a pas servi : rendue, pour ne pas compter un refus de la plateforme contre elle.
+    await releaseDailySlot(own)
+    return RETRY_QUOTA_MESSAGE.platform
+  }
+  return null
+}
+
 export async function retryRecruiterAoEmail(id: string) {
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
   if (!(await entitled(me.tenantId))) return { error: NOT_ENTITLED }
-  // Sans remise à zéro des essais : un recruteur avance la reprise prévue, il ne peut pas faire refacturer l'IA.
-  return retryAoEmailOf(me.tenantId, id, { holder: 'recruiter', path: PATH, reset: false })
+  return retryAoEmailOf(me.tenantId, id, { holder: 'recruiter', path: PATH, beforeRetry: () => retrySlot(me.user, me.tenantId) })
 }
 
 export async function previewRecruiterAoPublication(id: string) {
