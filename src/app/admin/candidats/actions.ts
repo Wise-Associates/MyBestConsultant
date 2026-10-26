@@ -19,7 +19,7 @@ const ADMIN_TENANT_ID = 'admin'
 
 export async function retryAoEmail(id: string) {
   await requireAdmin()
-  return retryAoEmailOf(PLATFORM_TENANT_ID, id, { holder: 'admin', path: PATH, reset: true })
+  return retryAoEmailOf(PLATFORM_TENANT_ID, id, { holder: 'admin', path: PATH })
 }
 
 /** Version anonymisée proposée à l'admin avant publication. */
