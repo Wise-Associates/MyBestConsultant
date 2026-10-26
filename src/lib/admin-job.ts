@@ -3,7 +3,8 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { oneMonthFromNow } from '@/lib/appwrite/jobs'
 
-// Création d'une offre publique par l'admin (import d'appels d'offres, publication depuis AO Offers).
+// Création d'une offre publique par l'admin (import d'offres, /admin/jobs). La publication depuis la page
+// « Candidats » (appels d'offres) passe par publishAoOfferOf (src/lib/ao/offer-actions.ts).
 // À n'appeler qu'après avoir vérifié que l'appelant est admin.
 
 export interface AdminJobInput {
@@ -17,15 +18,12 @@ export interface AdminJobInput {
   description: string
 }
 
-/**
- * Crée l'offre (active un mois), puis la diffusion LinkedIn et le sourcing automatiques. Renvoie son $id.
- * `id` fixe l'identifiant : une seconde création avec le même id échoue (409) au lieu de créer un doublon.
- */
-export async function createAdminJob(job: AdminJobInput, tenantId: string, id?: string): Promise<string> {
+/** Crée l'offre (active un mois), puis la diffusion LinkedIn et le sourcing automatiques. Renvoie son $id. */
+export async function createAdminJob(job: AdminJobInput, tenantId: string): Promise<string> {
   const { databases } = createAdminClient()
   const { tryAutoPostJobToLinkedIn } = await import('@/lib/linkedin-publish')
   const { tryAutoSourceCandidates } = await import('@/lib/auto-source-candidates')
-  const doc = await databases.createDocument(DB_ID, COLLECTIONS.JOBS, id ? ID.custom(id) : ID.unique(), {
+  const doc = await databases.createDocument(DB_ID, COLLECTIONS.JOBS, ID.unique(), {
     tenantId,
     title: job.title,
     description: job.description,
@@ -44,14 +42,4 @@ export async function createAdminJob(job: AdminJobInput, tenantId: string, id?: 
   await tryAutoPostJobToLinkedIn({ ...doc, $id: doc.$id } as never)
   await tryAutoSourceCandidates({ ...doc, $id: doc.$id } as never)
   return doc.$id
-}
-
-export async function adminJobExists(id: string): Promise<boolean> {
-  const { databases } = createAdminClient()
-  try {
-    await databases.getDocument(DB_ID, COLLECTIONS.JOBS, id)
-    return true
-  } catch {
-    return false
-  }
 }
