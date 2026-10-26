@@ -14,8 +14,9 @@ import {
 
 // Appels d'offres reçus dans les boîtes de l'organisation du recruteur (ADR 0005, phase C) : même tableau que
 // /admin/candidats, limité à ses boîtes ; tous ses recruteurs le voient. Boîtes : ./boites.
-// « Réessayer » (Server Action de cette page) traite un e-mail tout de suite (150 s au plus). « Synchroniser
-// maintenant » passe par /api/recruiter/ao/sync, enchaîné par AoSyncProvider (layout recruteur).
+// « Réessayer » (Server Action de cette page) traite un e-mail tout de suite (150 s au plus). « Publier » répond tout de
+// suite, la diffusion sur les réseaux et le sourcing continuent après la réponse (after()) dans ce même délai.
+// « Synchroniser maintenant » passe par /api/recruiter/ao/sync, enchaîné par AoSyncProvider (layout recruteur).
 export const maxDuration = 300
 
 export default async function RecruiterAoOffersPage() {
