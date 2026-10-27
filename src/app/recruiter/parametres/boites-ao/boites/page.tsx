@@ -9,7 +9,7 @@ import { canUseAoSourcing } from '@/lib/ao/tenancy'
 import { MailboxesManager } from '@/components/ao/mailboxes-manager'
 import { deleteMailboxAction, saveMailboxAction, setMailboxEnabledAction, testMailboxAction } from './actions'
 
-// Boîtes de réception des appels d'offres de l'organisation : tous ses recruteurs les voient, son propriétaire les gère.
+// Boîtes de réception des appels d'offres de l'organisation : tous ses recruteurs les voient et les gèrent.
 export default async function MailboxesPage() {
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) redirect('/login')
@@ -19,7 +19,6 @@ export default async function MailboxesPage() {
     databases.getDocument(DB_ID, COLLECTIONS.TENANTS, user.tenantId),
     listMailboxes(user.tenantId),
   ])
-  const isOwner = tenant.recruiterId === user.userId
   const entitled = canUseAoSourcing(tenant.$id, typeof tenant.subscriptionStatus === 'string' ? tenant.subscriptionStatus : null)
 
   return (
@@ -49,12 +48,8 @@ export default async function MailboxesPage() {
             Votre abonnement n&apos;est pas actif : vos boîtes ne sont pas lues. Elles le seront dès sa réactivation (<Link href="/abonnement">voir les offres</Link>).
           </p>
         )}
-        {!isOwner && (
-          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Seul le propriétaire du compte peut ajouter ou modifier les boîtes.</p>
-        )}
         <MailboxesManager
           initial={mailboxes}
-          canEdit={isOwner}
           actions={{ test: testMailboxAction, save: saveMailboxAction, setEnabled: setMailboxEnabledAction, remove: deleteMailboxAction }}
         />
       </div>
