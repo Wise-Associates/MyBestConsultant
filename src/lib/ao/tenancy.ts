@@ -31,12 +31,13 @@ export function lockIdFor(tenantId: string): string {
  * ESN » des recruteurs (src/lib/cv-export/access.ts) : par organisation (x), pour toutes les organisations (y) ; dépôts
  * (u) et aperçus (p) du modèle CV, par organisation. Recherches de candidats des recruteurs sur une offre AO
  * (sourcing-access.ts) : par organisation (s), pour toutes les organisations (q). « Réessayer » d'un e-mail AO par
- * les recruteurs (attempts.ts) : par organisation (r), pour toutes les organisations (w).
+ * les recruteurs (attempts.ts) : par organisation (r), pour toutes les organisations (w). Rédactions par l'IA de la
+ * version publiée d'une offre AO par les recruteurs (publication-copy.ts) : par organisation (d), pour toutes (h).
  */
 const COUNTER_PREFIX = {
   vision: 'v', tables: 't', mailboxTests: 'c', mailboxTarget: 'm', mailboxTestsAll: 'g', assistantUser: 'a', assistantAll: 'b',
   cvExportOrg: 'x', cvExportAll: 'y', cvTemplateOrg: 'u', cvTemplatePreview: 'p', aoSourcingOrg: 's', aoSourcingAll: 'q',
-  aoRetryOrg: 'r', aoRetryAll: 'w',
+  aoRetryOrg: 'r', aoRetryAll: 'w', aoRewriteOrg: 'd', aoRewriteAll: 'h',
 } as const
 export type DailyCounter = keyof typeof COUNTER_PREFIX
 

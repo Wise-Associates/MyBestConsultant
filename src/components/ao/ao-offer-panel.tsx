@@ -1,33 +1,42 @@
 'use client'
 
-import { useEffect, useState, useTransition, type ReactNode } from 'react'
-import { AlertTriangle, Ban, Check, Copy, Download, ExternalLink, Loader2, Paperclip, RotateCcw, Send, Users, X } from 'lucide-react'
+import { useEffect, useMemo, useState, useTransition, type ReactNode } from 'react'
+import { AlertTriangle, Ban, Check, Copy, Download, ExternalLink, Loader2, Paperclip, RotateCcw, Send, ShieldAlert, Sparkles, Users, X } from 'lucide-react'
 import { AO_CHANNEL_LABEL, type AoOfferRow } from '@/lib/ao/filters'
-import type {
-  AoDashboardActions, AoDashboardPaths, PublicationDraft, PublicationPreview, SourcedCandidate, SourcingResult,
-} from '@/lib/ao/dashboard-types'
+import { findIdentifiers } from '@/lib/ao/name-match'
+import type { AoDashboardActions, AoDashboardPaths, PublicationDraft, SourcedCandidate, SourcingResult } from '@/lib/ao/dashboard-types'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
 import { AoDescription } from './ao-description'
+import { WorkBadge, type OfferPublication } from './offer-publications'
 import {
-  CONTRACT_LABEL, ENGAGEMENT_LABEL, REMOTE_LABEL, STATUS_UI, control, fieldLabel, formatAmount, formatDay, optionStyle, primaryButton, secondaryButton,
+  BRAND, CONTRACT_LABEL, ENGAGEMENT_LABEL, REMOTE_LABEL, STATUS_UI, control, fieldLabel, formatAmount, formatDay, optionStyle, primaryButton, secondaryButton,
 } from '@/app/admin/candidats/labels'
 
 interface Props {
   row: AoOfferRow
-  actions: Pick<AoDashboardActions, 'previewPublication' | 'publish' | 'setStatus' | 'sourcing'>
+  actions: Pick<AoDashboardActions, 'setStatus' | 'sourcing'>
   paths: Pick<AoDashboardPaths, 'originalApi' | 'jobs'>
   /** Sous le formulaire de publication : ce que la publication déclenche dans cet espace. */
   publishNote: string
+  /**
+   * Préparation et publication de cette offre, tenues par le tableau (offer-publications.tsx) : elles continuent si le
+   * panneau est fermé, et le panneau rouvert les retrouve.
+   */
+  publication: OfferPublication
+  onPrepare: () => void
+  onPublish: (draft: PublicationDraft, skillsText: string) => void
+  onEdit: (patch: Pick<Partial<OfferPublication>, 'draft' | 'skillsText'>) => void
+  onCancel: () => void
   onClose: () => void
 }
 
-export function AoOfferPanel({ row, actions, paths, publishNote, onClose }: Props) {
-  const [preview, setPreview] = useState<PublicationPreview | null>(null)
-  const [draft, setDraft] = useState<PublicationDraft | null>(null)
-  const [skillsText, setSkillsText] = useState('')
-  const [error, setError] = useState('')
-  const [jobId, setJobId] = useState<string | null>(row.jobId)
+export function AoOfferPanel({ row, actions, paths, publishNote, publication, onPrepare, onPublish, onEdit, onCancel, onClose }: Props) {
+  const { preview, draft, skillsText, running } = publication
+  const [statusError, setStatusError] = useState('')
   const [pending, start] = useTransition()
+  const busy = pending || running !== null
+  const error = statusError || publication.error
+  const jobId = publication.jobId ?? row.jobId
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -35,39 +44,28 @@ export function AoOfferPanel({ row, actions, paths, publishNote, onClose }: Prop
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  function prepare() {
-    setError('')
-    start(async () => {
-      const res = await actions.previewPublication(row.$id)
-      if (!res.preview) return setError(res.error ?? 'Aperçu impossible.')
-      setPreview(res.preview)
-      setDraft(res.preview.draft)
-      setSkillsText(res.preview.draft.skills.join(', '))
-    })
-  }
-
-  function publish() {
-    if (!draft) return
-    setError('')
-    start(async () => {
-      const skills = skillsText.split(',').map(s => s.trim()).filter(Boolean).slice(0, 10)
-      const res = await actions.publish(row.$id, { ...draft, skills })
-      if (!res.jobId) return setError(res.error ?? 'Publication impossible.')
-      setJobId(res.jobId)
-      setDraft(null)
-    })
-  }
-
   function changeStatus(status: 'to_review' | 'ignored') {
-    setError('')
+    setStatusError('')
     start(async () => {
       const res = await actions.setStatus(row.$id, status)
-      if (res.error) setError(res.error)
+      if (res.error) setStatusError(res.error)
     })
   }
 
-  const edit = <K extends keyof PublicationDraft>(key: K, value: PublicationDraft[K]) => setDraft(d => (d ? { ...d, [key]: value } : d))
-  const published = row.status === 'published' || jobId !== null
+  // Toute modification invalide la relecture : la version validée est toujours celle qui sera publiée.
+  const edit = <K extends keyof PublicationDraft>(key: K, value: PublicationDraft[K]) => { if (draft) onEdit({ draft: { ...draft, [key]: value, reviewed: false } }) }
+  const editSkills = (value: string) => onEdit({ skillsText: value, ...(draft && { draft: { ...draft, reviewed: false } }) })
+  // Noms à masquer et références encore présents, champ par champ, recalculés à chaque modification.
+  const risks = useMemo(() => {
+    if (!draft || !preview) return []
+    const fields: [string, string][] = [
+      ['titre', draft.title], ['entreprise affichée', draft.companyName], ['ville', draft.location], ['compétences', skillsText], ['description', draft.description],
+    ]
+    return fields.flatMap(([field, text]) => findIdentifiers(text, preview.watchNames).map(found => `« ${found} » (${field})`))
+  }, [draft, preview, skillsText])
+  // Le serveur marque l'offre publiée avant de créer l'offre publique : pendant la publication, le panneau montre
+  // l'opération en cours, pas encore le lien vers une offre qui n'existe peut-être pas.
+  const published = running !== 'publishing' && (row.status === 'published' || jobId !== null)
   const facts: [string, string][] = [
     ['Client', row.companyName || 'Non précisé'],
     ['Ville', row.location || '—'],
@@ -92,9 +90,11 @@ export function AoOfferPanel({ row, actions, paths, publishNote, onClose }: Prop
 
         <div className="flex items-start justify-between gap-4">
           <div>
-            <span className="text-xs font-medium px-2 py-1 rounded-md" style={{ color: STATUS_UI[published ? 'published' : row.status].color, background: 'var(--admin-panel-raised)' }}>
-              {STATUS_UI[published ? 'published' : row.status].label}
-            </span>
+            {running ? <WorkBadge work={running} /> : (
+              <span className="text-xs font-medium px-2 py-1 rounded-md" style={{ color: STATUS_UI[published ? 'published' : row.status].color, background: 'var(--admin-panel-raised)' }}>
+                {STATUS_UI[published ? 'published' : row.status].label}
+              </span>
+            )}
             <h2 id="ao-offer-title" className="text-xl font-bold text-admin-fg mt-3" style={{ textWrap: 'balance' }}>{row.title}</h2>
             <FingerprintBadge fingerprint={row.fingerprint} />
             <p className="text-xs mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
@@ -150,63 +150,117 @@ export function AoOfferPanel({ row, actions, paths, publishNote, onClose }: Prop
             <ExternalLink size={15} />Voir l&apos;offre publiée
           </a>
         ) : !draft && (
-          <div className="flex flex-wrap gap-3">
-            <button type="button" onClick={prepare} disabled={pending} style={{ ...primaryButton, opacity: pending ? 0.7 : 1 }}>
-              {pending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}Préparer la publication
-            </button>
-            {row.status === 'ignored'
-              ? <button type="button" onClick={() => changeStatus('to_review')} disabled={pending} style={secondaryButton}><RotateCcw size={15} />Remettre à valider</button>
-              : <button type="button" onClick={() => changeStatus('ignored')} disabled={pending} style={secondaryButton}><Ban size={15} />Ignorer</button>}
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-3">
+              <button type="button" onClick={onPrepare} disabled={busy} style={{ ...primaryButton, opacity: busy ? 0.7 : 1 }}>
+                {running === 'preparing' ? <Loader2 size={15} className="animate-spin motion-reduce:animate-none" /> : <Send size={15} />}
+                {running === 'preparing' ? 'Rédaction de la version anonymisée…' : 'Préparer la publication'}
+              </button>
+              {row.status === 'ignored'
+                ? <button type="button" onClick={() => changeStatus('to_review')} disabled={busy} style={secondaryButton}><RotateCcw size={15} />Remettre à valider</button>
+                : <button type="button" onClick={() => changeStatus('ignored')} disabled={busy} style={secondaryButton}><Ban size={15} />Ignorer</button>}
+            </div>
+            <p role="status" aria-live="polite" className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
+              {running === 'preparing'
+                ? 'L\'IA reformule l\'offre sans nom de client ni référence : une trentaine de secondes. Vous pouvez fermer ce panneau : la ligne indique « Modifications en cours » jusqu\'à la fin. Rien n\'est publié avant votre validation.'
+                : ''}
+            </p>
           </div>
         )}
 
-        {/* Version publique, modifiable avant publication */}
+        {/* Version anonymisée : relue, modifiée si besoin et validée par une personne avant toute publication (ADR 0013). */}
         {draft && preview && !published && (
-          <section className="rounded-2xl p-5 space-y-4" style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
+          <section aria-labelledby="ao-publication-title" className="rounded-2xl p-5 space-y-5" style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>
             <div>
-              <h3 className="font-semibold text-admin-fg">Version publiée sur le site</h3>
+              <h3 id="ao-publication-title" className="flex items-center gap-2 font-semibold text-admin-fg">
+                Version anonymisée à valider
+                {preview.rewrite === 'ai' && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--admin-panel-raised)', color: 'var(--admin-fg-muted)' }}>
+                    <Sparkles size={12} aria-hidden />Rédigée par l&apos;IA
+                  </span>
+                )}
+              </h3>
               <p className="text-xs mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
-                Le client est remplacé par un libellé générique et les coordonnées (noms, e-mails, téléphones, liens) sont retirées. Ces règles sont réappliquées à la publication.
+                {preview.rewrite === 'ai'
+                  ? 'Rédigée par l\'IA à partir de l\'offre : client, entités, projets, références et coordonnées retirés. Relisez-la, modifiez-la si besoin, puis validez-la.'
+                  : 'Préparée par les règles automatiques : client connu remplacé, références et coordonnées retirées. Relisez-la, modifiez-la si besoin, puis validez-la.'}
+                {' '}Ces règles sont réappliquées à la publication.
               </p>
             </div>
+            {preview.notice && (
+              <div className="flex gap-2 text-sm p-3 rounded-lg" style={{ color: '#b45309', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
+                <AlertTriangle size={16} className="shrink-0 mt-0.5" aria-hidden />
+                <p>L&apos;IA n&apos;a pas rédigé cette version ({preview.notice.replace(/\.$/, '')}) : le texte d&apos;origine est repris sans reformulation. Relisez-le avec attention.</p>
+              </div>
+            )}
             {preview.similarJobs.length > 0 && (
               <div className="flex gap-2 text-sm p-3 rounded-lg" style={{ color: '#b45309', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
-                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                <AlertTriangle size={16} className="shrink-0 mt-0.5" aria-hidden />
                 <p>Une offre similaire est déjà en ligne : {preview.similarJobs.map(j => `« ${j.title} » (${j.location})`).join(', ')}. Vérifiez qu&apos;il ne s&apos;agit pas d&apos;un doublon.</p>
               </div>
             )}
-            <div className="grid md:grid-cols-2 gap-4">
-              <Field label="Titre"><input value={draft.title} onChange={e => edit('title', e.target.value)} style={{ ...control, width: '100%' }} /></Field>
-              <Field label="Entreprise affichée"><input value={draft.companyName} onChange={e => edit('companyName', e.target.value)} placeholder="ex. Grand compte – Banque" style={{ ...control, width: '100%' }} /></Field>
-              <Field label="Ville"><input value={draft.location} onChange={e => edit('location', e.target.value)} style={{ ...control, width: '100%' }} /></Field>
-              <Field label="TJM / salaire (€)">
-                <input type="number" min={0} inputMode="numeric" value={draft.salary ?? ''} onChange={e => edit('salary', e.target.value ? Math.round(Number(e.target.value)) : null)} style={{ ...control, width: '100%' }} />
-              </Field>
-              <Field label="Contrat">
-                <select value={draft.contractType} onChange={e => edit('contractType', e.target.value as AoContract)} style={{ ...control, width: '100%' }}>
-                  {Object.entries(CONTRACT_LABEL).map(([k, v]) => <option key={k} value={k} style={optionStyle}>{v}</option>)}
-                </select>
-              </Field>
-              <Field label="Télétravail">
-                <select value={draft.remote} onChange={e => edit('remote', e.target.value as AoRemote)} style={{ ...control, width: '100%' }}>
-                  {Object.entries(REMOTE_LABEL).map(([k, v]) => <option key={k} value={k} style={optionStyle}>{v}</option>)}
-                </select>
-              </Field>
+            <div role="status" aria-live="polite">
+              {risks.length > 0 && (
+                <div className="flex gap-2 text-sm p-3 rounded-lg" style={{ color: '#b91c1c', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                  <ShieldAlert size={16} className="shrink-0 mt-0.5" aria-hidden />
+                  <p>Encore présents, à retirer du texte : {risks.join(', ')}. Ils identifient le client ou sa demande.</p>
+                </div>
+              )}
             </div>
-            <Field label="Compétences (séparées par des virgules, 10 maximum)">
-              <input value={skillsText} onChange={e => setSkillsText(e.target.value)} style={{ ...control, width: '100%' }} />
-            </Field>
-            <Field label="Description">
-              <textarea value={draft.description} onChange={e => edit('description', e.target.value)} rows={14}
-                style={{ ...control, width: '100%', height: 'auto', padding: 12, lineHeight: 1.55 }} />
-            </Field>
-            <div className="flex flex-wrap gap-3">
-              <button type="button" onClick={publish} disabled={pending} style={{ ...primaryButton, opacity: pending ? 0.7 : 1 }}>
-                {pending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}Publier l&apos;offre anonymisée
+
+            {/* Figé pendant la publication : la version envoyée au serveur est celle qui a été validée. */}
+            <fieldset disabled={running === 'publishing'} className="min-w-0 m-0 p-0 border-0 space-y-5">
+            <div className="grid gap-6 xl:grid-cols-2">
+              <div className="space-y-4">
+                <Field label="Titre"><input value={draft.title} onChange={e => edit('title', e.target.value)} style={{ ...control, width: '100%' }} /></Field>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Field label="Entreprise affichée"><input value={draft.companyName} onChange={e => edit('companyName', e.target.value)} placeholder="ex. Grand groupe bancaire" style={{ ...control, width: '100%' }} /></Field>
+                  <Field label="Ville"><input value={draft.location} onChange={e => edit('location', e.target.value)} style={{ ...control, width: '100%' }} /></Field>
+                  <Field label="TJM / salaire (€)">
+                    <input type="number" min={0} inputMode="numeric" value={draft.salary ?? ''} onChange={e => edit('salary', e.target.value ? Math.round(Number(e.target.value)) : null)} style={{ ...control, width: '100%' }} />
+                  </Field>
+                  <Field label="Contrat">
+                    <select value={draft.contractType} onChange={e => edit('contractType', e.target.value as AoContract)} style={{ ...control, width: '100%' }}>
+                      {Object.entries(CONTRACT_LABEL).map(([k, v]) => <option key={k} value={k} style={optionStyle}>{v}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Télétravail">
+                    <select value={draft.remote} onChange={e => edit('remote', e.target.value as AoRemote)} style={{ ...control, width: '100%' }}>
+                      {Object.entries(REMOTE_LABEL).map(([k, v]) => <option key={k} value={k} style={optionStyle}>{v}</option>)}
+                    </select>
+                  </Field>
+                </div>
+                <Field label="Compétences (séparées par des virgules, 10 maximum)">
+                  <input value={skillsText} onChange={e => editSkills(e.target.value)} style={{ ...control, width: '100%' }} />
+                </Field>
+                <Field label="Description (### titre de section, - puce)">
+                  <textarea value={draft.description} onChange={e => edit('description', e.target.value)} rows={16}
+                    style={{ ...control, width: '100%', height: 'auto', padding: 12, lineHeight: 1.55 }} />
+                </Field>
+              </div>
+              <PublicationPreviewCard draft={draft} skills={skillsText} />
+            </div>
+
+            <label className="flex items-start gap-3 p-3 rounded-lg cursor-pointer text-sm text-admin-fg" style={{ background: 'var(--admin-panel-raised)', border: '1px solid var(--admin-line)' }}>
+              <input type="checkbox" checked={draft.reviewed} onChange={e => onEdit({ draft: { ...draft, reviewed: e.target.checked } })}
+                className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: '#F97316' }} />
+              <span>J&apos;ai relu cette version : elle ne contient aucun nom de société, aucune référence ni aucune coordonnée, et je la valide pour publication.</span>
+            </label>
+            </fieldset>
+            <div className="flex flex-wrap items-center gap-3">
+              <button type="button" onClick={() => onPublish(draft, skillsText)} disabled={busy || !draft.reviewed}
+                style={{ ...primaryButton, opacity: busy || !draft.reviewed ? 0.5 : 1, cursor: busy || !draft.reviewed ? 'not-allowed' : 'pointer' }}>
+                {running === 'publishing' ? <Loader2 size={15} className="animate-spin motion-reduce:animate-none" /> : <Send size={15} />}
+                {running === 'publishing' ? 'Publication en cours…' : 'Publier l\'offre anonymisée'}
               </button>
-              <button type="button" onClick={() => setDraft(null)} disabled={pending} style={secondaryButton}>Annuler</button>
+              <button type="button" onClick={onCancel} disabled={busy} style={secondaryButton}>Annuler</button>
+              {!draft.reviewed && !running && <span className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>Cochez la case de relecture pour publier.</span>}
             </div>
-            <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>{publishNote}</p>
+            <p role="status" aria-live="polite" className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
+              {running === 'publishing'
+                ? 'Création de l\'offre, diffusion et recherche de candidats : une minute ou plus. Vous pouvez fermer ce panneau : la ligne indique « Modifications en cours » jusqu\'à la fin.'
+                : publishNote}
+            </p>
           </section>
         )}
       </aside>
@@ -220,6 +274,37 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <span style={{ ...fieldLabel, display: 'block' }}>{label}</span>
       {children}
     </label>
+  )
+}
+
+/** Aperçu de l'offre telle qu'elle sera publiée, mis à jour à chaque modification : c'est ce qui est relu et validé. */
+function PublicationPreviewCard({ draft, skills }: { draft: PublicationDraft; skills: string }) {
+  const tags = skills.split(',').map(s => s.trim()).filter(Boolean).slice(0, 10)
+  const facts = [CONTRACT_LABEL[draft.contractType], REMOTE_LABEL[draft.remote], draft.salary ? formatAmount(draft.salary, draft.contractType) : '']
+    .filter(Boolean)
+  return (
+    <div>
+      <p style={fieldLabel}>Aperçu de l&apos;offre publiée</p>
+      <article className="rounded-xl p-5 space-y-4" style={{ background: 'var(--admin-bg)', border: '1px solid var(--admin-line)' }}>
+        <header className="space-y-1">
+          <h4 className="text-lg font-bold text-admin-fg" style={{ textWrap: 'balance' }}>{draft.title || 'Titre de l’offre'}</h4>
+          <p className="text-sm" style={{ color: 'var(--admin-fg-muted)' }}>{[draft.companyName, draft.location].filter(Boolean).join(' · ')}</p>
+        </header>
+        {facts.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {facts.map(f => <span key={f} className="text-xs font-medium px-2.5 py-1 rounded-full text-admin-fg" style={{ background: `${BRAND}1A` }}>{f}</span>)}
+          </div>
+        )}
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {tags.map(t => <span key={t} className="text-xs px-2 py-1 rounded-md text-admin-fg" style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)' }}>{t}</span>)}
+          </div>
+        )}
+        <div className="pt-4" style={{ borderTop: '1px solid var(--admin-line)' }}>
+          <AoDescription text={draft.description} />
+        </div>
+      </article>
+    </div>
   )
 }
 
