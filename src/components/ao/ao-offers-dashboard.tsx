@@ -14,6 +14,7 @@ import type { AoEmail } from '@/lib/ao/types'
 import { AoComments } from './ao-comments'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { AoOfferPanel } from './ao-offer-panel'
+import { WorkBadge, useOfferPublications } from './offer-publications'
 import {
   BRAND, CONTRACT_LABEL, ENGAGEMENT_LABEL, REMOTE_LABEL, STATUS_UI, control, formatAmount, formatDay, optionStyle, secondaryButton,
 } from '@/app/admin/candidats/labels'
@@ -107,6 +108,18 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
   const [retrying, startRetry] = useTransition()
   const [retryingId, setRetryingId] = useState<string | null>(null)
   const noticeRef = useRef<HTMLDivElement>(null)
+  // Préparations et publications : elles continuent si l'on ferme le panneau de l'offre (offer-publications.tsx). À leur
+  // fin, un message prévient seulement si ce panneau n'est plus ouvert (sinon il affiche lui-même le résultat).
+  const openIdRef = useRef<string | null>(null)
+  useEffect(() => { openIdRef.current = selectedId }, [selectedId])
+  const publications = useOfferPublications(actions, ({ id, title, work, error }) => {
+    if (openIdRef.current === id) return
+    if (error) return setNotice({ tone: 'error', text: `« ${title} » : ${error}` })
+    setNotice({
+      tone: 'ok',
+      text: work === 'preparing' ? `Version anonymisée de « ${title} » prête : ouvrez l'offre pour la relire et la publier.` : `Offre « ${title} » publiée.`,
+    })
+  })
 
   // Les lignes viennent du serveur (rafraîchies après chaque action) : seul le filtrage est local.
   const filtered = useMemo(() => filterAoOffers(rows, filters), [rows, filters])
@@ -315,13 +328,19 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
                   <p>{rows.length === 0 ? 'Aucune offre reçue pour l\'instant. Les appels d\'offres envoyés à la boîte AO apparaîtront ici.' : 'Aucune offre ne correspond à ces filtres.'}</p>
                 </td>
               </tr>
-            ) : filtered.map(r => (
+            ) : filtered.map(r => {
+              const work = publications.of(r.$id).running
+              return (
               // Seuls le titre et l'œil ouvrent le détail : un clic ailleurs dans la ligne (sélection de texte…) ne fait rien.
               <tr key={r.$id} className="hover:bg-admin-panel" style={{ borderBottom: '1px solid var(--admin-line)' }}>
                 <td className={cell('received')} title={formatDay(r.receivedAt)} style={{ color: 'var(--admin-fg-muted)', fontVariantNumeric: 'tabular-nums' }}>{shortDay(r.receivedAt)}</td>
                 <td className={cell('offer')}>
                   <button type="button" onClick={() => setSelectedId(r.$id)} title={r.title} className="block w-full truncate text-left font-medium text-admin-fg hover:underline">{r.title}</button>
-                  <p className="text-xs truncate" title={`${r.companyName || 'Client non précisé'} · ${r.senderName || r.senderAddress}`} style={{ color: 'var(--admin-fg-muted)' }}>{r.companyName || 'Client non précisé'} · {r.senderName || r.senderAddress}</p>
+                  <p className="text-xs truncate" title={`${r.companyName || 'Client non précisé'} · ${r.senderName || r.senderAddress}`} style={{ color: 'var(--admin-fg-muted)' }}>
+                    {/* Colonne Statut masquée sur petit écran : l'opération en cours est rappelée ici. */}
+                    {work && <span className="sm:hidden font-medium" style={{ color: '#1d4ed8' }}>Modifications en cours · </span>}
+                    {r.companyName || 'Client non précisé'} · {r.senderName || r.senderAddress}
+                  </p>
                 </td>
                 <td className={cell('city')} title={r.location || undefined}>{r.location || '—'}</td>
                 <td className={cell('seniority')} title={r.experience || undefined}>{SENIORITY_SHORT[seniorityOf(r.experience)]}</td>
@@ -346,7 +365,9 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
                 </td>
                 <td className={cell('sources')} style={{ color: 'var(--admin-fg-muted)' }}>{AO_CHANNEL_LABEL[r.channel]}</td>
                 <td className={cell('status')}>
-                  <span className="text-xs font-medium px-2 py-1 rounded-md" style={{ color: STATUS_UI[r.status].color, background: 'var(--admin-panel-raised)' }}>{STATUS_UI[r.status].label}</span>
+                  {work ? <WorkBadge work={work} /> : (
+                    <span className="text-xs font-medium px-2 py-1 rounded-md" style={{ color: STATUS_UI[r.status].color, background: 'var(--admin-panel-raised)' }}>{STATUS_UI[r.status].label}</span>
+                  )}
                 </td>
                 <td className={cell('actions')}>
                   <div className="flex items-center gap-1">
@@ -371,7 +392,8 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
                   </div>
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>
@@ -401,7 +423,15 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
         </div>
       )}
 
-      {selected && <AoOfferPanel row={selected} actions={actions} paths={paths} publishNote={copy.publishNote} onClose={() => setSelectedId(null)} />}
+      {selected && (
+        <AoOfferPanel row={selected} actions={actions} paths={paths} publishNote={copy.publishNote}
+          publication={publications.of(selected.$id)}
+          onPrepare={() => publications.prepare(selected.$id, selected.title)}
+          onPublish={(draft, skillsText) => publications.publish(selected.$id, selected.title, draft, skillsText)}
+          onEdit={patch => publications.edit(selected.$id, patch)}
+          onCancel={() => publications.cancel(selected.$id)}
+          onClose={() => setSelectedId(null)} />
+      )}
 
       {/* Commentaires de l'offre : discussion interne, hors du panneau de détail. */}
       <Dialog open={commentsRow !== null} onOpenChange={open => { if (!open) setCommentsFor(null) }}>
