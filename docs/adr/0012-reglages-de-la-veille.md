@@ -36,6 +36,8 @@ l'admin de MyBestConsultant, stockés dans Appwrite.
   une valeur par défaut (recherche limitée aux organismes suivis) : les versions enregistrées avant restent lisibles et
   `schemaVersion` reste 1 (un scanner plus ancien ignore le champ). Sur DEV, ajoutés à la version 1 par un script
   ponctuel (version 2) ; la production les reçoit avec son premier chargement (`config/defaults.json` du scanner).
+  Le 2026-10-27, le scanner a resserré la règle d'envoi (ADR 0007 du scanner : code CPV principal informatique et
+  mot-clé dans l'intitulé) sans changer le format ; seuls les textes des onglets ont changé ici.
 
 ## Conséquences
 

@@ -178,7 +178,9 @@ Core principles for production-quality frontend decisions on this project.
   organismes suivis et règles de reconnaissance de leurs appels d'offres, sources (BOAMP, TED et sites intégrés activés
   ou non, codes Choisir le service public, flux RSS), filtre informatique, **mots-clés des appels d'offres** (familles
   d'expressions et de sigles, recherche chez **tous les acheteurs** du BOAMP et de TED, « infrastructure seule » ;
-  ADR 0006 du scanner, décision du 2026-10-27). Copie locale modifiée dans quatre onglets, puis « Enregistrer » crée la version suivante (`saveVeilleConfigAction`, admin vérifié, réglages revalidés,
+  ADR 0006 du scanner, décision du 2026-10-27). Règle d'envoi depuis le 2026-10-27 (ADR 0007 du scanner) : un appel
+  d'offres n'est envoyé que si son code CPV principal est informatique ET si son intitulé contient un mot-clé (pour
+  un organisme suivi, le vocabulaire du filtre informatique compte aussi) ; les textes des onglets la décrivent. Copie locale modifiée dans quatre onglets, puis « Enregistrer » crée la version suivante (`saveVeilleConfigAction`, admin vérifié, réglages revalidés,
   refus si une autre version a été enregistrée entre-temps). Composants dans `src/app/admin/veille/`.
 - **Format et règles** : `src/lib/veille/config.ts` (pur, testé), **même format que le scanner**
   (`src/settings/veille-settings.ts` de `veille-marches-emplois`, `schemaVersion`) : toute évolution dans les deux
