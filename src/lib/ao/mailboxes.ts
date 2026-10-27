@@ -8,7 +8,7 @@ import { passwordProblem, type MailboxInput } from './mailbox-input'
 import { createAoSource, ERASED_PASSWORD, getAoSource, isErased, listSources, updateAoSource, type AoSource } from './sources'
 import { takeDailySlot } from './state'
 
-// Gestion des boîtes de réception d'une organisation (écran du propriétaire) ou de la plateforme (admin). `tenantId`
+// Gestion des boîtes de réception d'une organisation (écran de ses recruteurs) ou de la plateforme (admin). `tenantId`
 // vient toujours de la session de l'appelant (actions serveur), jamais du formulaire : chaque fonction vérifie que la
 // boîte visée lui appartient avant toute lecture ou écriture.
 

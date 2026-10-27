@@ -3,28 +3,25 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { getCurrentUser } from '@/lib/appwrite/auth'
-import { createAdminClient } from '@/lib/appwrite/client'
-import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { parseMailboxInput } from '@/lib/ao/mailbox-input'
 import { deleteMailbox, saveMailbox, setMailboxEnabled, testMailbox, type MailboxTest, type MailboxView } from '@/lib/ao/mailboxes'
 
-// Boîtes de réception AO d'une organisation : seul son propriétaire (tenants.recruiterId) les gère, sur SON
-// organisation (celle de sa session, jamais un identifiant reçu du navigateur).
+// Boîtes de réception AO d'une organisation : tous ses recruteurs les gèrent (décision du 2026-10-27 ; avant : son
+// propriétaire seul), sur LEUR organisation (celle de la session, jamais un identifiant reçu du navigateur). Les
+// membres d'une organisation n'y entrent que sur invitation (team.ts). Le mot de passe d'une boîte n'est jamais
+// renvoyé, et changer son serveur ou son identifiant oblige à le ressaisir : un membre ne peut pas le récupérer.
 
 const PATH = '/recruiter/parametres/boites-ao/boites'
 const DocumentId = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,35}$/)
 
 class Refused extends Error {}
 
-/** Propriétaire de l'organisation ; `verified` : adresse e-mail vérifiée exigée (test et enregistrement d'une boîte). */
-async function requireOwner({ verified = false } = {}): Promise<string> {
+/** Organisation du recruteur ; `verified` : adresse e-mail vérifiée exigée (test et enregistrement d'une boîte). */
+async function requireRecruiter({ verified = false } = {}): Promise<string> {
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) throw new Refused('Non autorisé.')
   // Un compte jetable (inscription libre) ne doit pas pouvoir se servir du test de connexion contre des boîtes de tiers.
   if (verified && !user.emailVerification) throw new Refused('Vérifiez d’abord votre adresse e-mail (lien reçu à l’inscription) pour configurer une boîte.')
-  const { databases } = createAdminClient()
-  const tenant = await databases.getDocument(DB_ID, COLLECTIONS.TENANTS, user.tenantId)
-  if (tenant.recruiterId !== user.userId) throw new Refused('Seul le propriétaire du compte peut gérer les boîtes de réception.')
   return user.tenantId
 }
 
@@ -39,7 +36,7 @@ const idOrNull = (id: unknown) => (id === null ? null : DocumentId.safeParse(id)
 
 export async function testMailboxAction(raw: unknown, id: unknown): Promise<MailboxTest> {
   try {
-    const tenantId = await requireOwner({ verified: true })
+    const tenantId = await requireRecruiter({ verified: true })
     const input = parseMailboxInput(raw)
     const mailboxId = idOrNull(id)
     if (!input.success) return { ok: false, error: input.error }
@@ -52,7 +49,7 @@ export async function testMailboxAction(raw: unknown, id: unknown): Promise<Mail
 
 export async function saveMailboxAction(raw: unknown, id: unknown): Promise<{ mailbox?: MailboxView; error?: string }> {
   try {
-    const tenantId = await requireOwner({ verified: true })
+    const tenantId = await requireRecruiter({ verified: true })
     const input = parseMailboxInput(raw)
     const mailboxId = idOrNull(id)
     if (!input.success) return { error: input.error }
@@ -67,7 +64,7 @@ export async function saveMailboxAction(raw: unknown, id: unknown): Promise<{ ma
 
 export async function setMailboxEnabledAction(id: unknown, enabled: unknown): Promise<{ mailbox?: MailboxView; error?: string }> {
   try {
-    const tenantId = await requireOwner()
+    const tenantId = await requireRecruiter()
     const parsed = z.object({ id: DocumentId, enabled: z.boolean() }).safeParse({ id, enabled })
     if (!parsed.success) return { error: 'Boîte introuvable : rechargez la page.' }
     const res = await setMailboxEnabled(tenantId, parsed.data.id, parsed.data.enabled)
@@ -80,7 +77,7 @@ export async function setMailboxEnabledAction(id: unknown, enabled: unknown): Pr
 
 export async function deleteMailboxAction(id: unknown): Promise<{ error?: string }> {
   try {
-    const tenantId = await requireOwner()
+    const tenantId = await requireRecruiter()
     const parsed = DocumentId.safeParse(id)
     if (!parsed.success) return { error: 'Boîte introuvable : rechargez la page.' }
     const res = await deleteMailbox(tenantId, parsed.data)
