@@ -33,7 +33,6 @@ export default async function PlatformMailboxesPage() {
       ) : (
         <MailboxesManager
           initial={mailboxes}
-          canEdit
           actions={{ test: testPlatformMailboxAction, save: savePlatformMailboxAction, setEnabled: setPlatformMailboxEnabledAction, remove: deletePlatformMailboxAction }}
         />
       )}
