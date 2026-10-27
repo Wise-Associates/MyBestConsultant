@@ -176,13 +176,16 @@ Core principles for production-quality frontend decisions on this project.
 
 - **Page `/admin/veille`** (menu « Veille », ADR 0012) : réglages du scanner `veille-marches-emplois` (ADR 0008) —
   organismes suivis et règles de reconnaissance de leurs appels d'offres, sources (BOAMP, TED et sites intégrés activés
-  ou non, codes Choisir le service public, flux RSS), filtre informatique. Copie locale modifiée dans trois
-  onglets, puis « Enregistrer » crée la version suivante (`saveVeilleConfigAction`, admin vérifié, réglages revalidés,
+  ou non, codes Choisir le service public, flux RSS), filtre informatique, **mots-clés des appels d'offres** (familles
+  d'expressions et de sigles, recherche chez **tous les acheteurs** du BOAMP et de TED, « infrastructure seule » ;
+  ADR 0006 du scanner, décision du 2026-10-27). Copie locale modifiée dans quatre onglets, puis « Enregistrer » crée la version suivante (`saveVeilleConfigAction`, admin vérifié, réglages revalidés,
   refus si une autre version a été enregistrée entre-temps). Composants dans `src/app/admin/veille/`.
 - **Format et règles** : `src/lib/veille/config.ts` (pur, testé), **même format que le scanner**
   (`src/settings/veille-settings.ts` de `veille-marches-emplois`, `schemaVersion`) : toute évolution dans les deux
   projets. Identifiants d'organismes et de sources = clés du fichier d'état du scanner, fixés à la création (champ en
   lecture seule une fois enregistré). Sites intégrés (`BUILTIN_SOURCES`) : liste fixe, à garder alignée sur le scanner.
+  `tenderKeywords` a une valeur par défaut (recherche limitée aux organismes suivis) : les versions enregistrées avant
+  restent lisibles, `schemaVersion` inchangé. Descripteurs BOAMP sans guillemet (ils entrent dans une requête du scanner).
 - **Stockage** : collection `veille_config` (aucune permission client ; un document `v<numéro>` par version, 50 gardées ;
   `src/lib/veille/store.ts`, `server-only`). **Lecture par le scanner** : `GET /api/veille/config`, jeton
   `VEILLE_CONFIG_TOKEN` (32 caractères au moins, `hasBearerSecret`), qui ne renvoie que la version en vigueur.
