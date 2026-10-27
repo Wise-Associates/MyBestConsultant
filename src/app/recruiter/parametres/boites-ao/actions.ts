@@ -9,6 +9,7 @@ import {
   publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, tenantSubscriptionStatus, type AoJobPublisher,
 } from '@/lib/ao/offer-actions'
 import { AO_RETRY_DAILY_LIMITS, RETRY_QUOTA_MESSAGE } from '@/lib/ao/attempts'
+import { AO_PUBLICATION_AI_DAILY_LIMITS, PUBLICATION_AI_QUOTA_MESSAGE } from '@/lib/ao/publication-copy'
 import { AO_SOURCING_DAILY_LIMITS, SOURCING_QUOTA_MESSAGE, sourcingDenial } from '@/lib/ao/sourcing-access'
 import { releaseDailySlot, takeDailySlotId } from '@/lib/ao/state'
 import { canUseAoSourcing } from '@/lib/ao/tenancy'
@@ -87,10 +88,30 @@ export async function retryRecruiterAoEmail(id: string) {
   return retryAoEmailOf(me.tenantId, id, { holder: 'recruiter', path: PATH, beforeRetry: () => retrySlot(me.user, me.tenantId) })
 }
 
+/**
+ * Avant chaque rédaction par l'IA de la version publiée : abonnement actif, adresse vérifiée, puis une place sur les
+ * quotas du jour (organisation, puis toutes). Un refus n'empêche pas de publier : la version des règles automatiques
+ * est proposée à la place, avec ce message.
+ */
+async function rewriteSlot(user: UserProfile, tenantId: string): Promise<string | null> {
+  if (!(await entitled(tenantId))) return 'rédaction par l\'IA réservée aux organisations dont l\'abonnement est actif'
+  if (!user.emailVerification) return 'vérifiez votre adresse e-mail (lien reçu à l\'inscription) pour faire rédiger cette version par l\'IA'
+  const now = new Date()
+  const own = await takeDailySlotId('aoRewriteOrg', tenantId, now, AO_PUBLICATION_AI_DAILY_LIMITS.perOrganisation)
+  if (!own) return PUBLICATION_AI_QUOTA_MESSAGE.organisation
+  if (!(await takeDailySlotId('aoRewriteAll', 'platform', now, AO_PUBLICATION_AI_DAILY_LIMITS.allOrganisations))) {
+    console.warn('AO: plafond quotidien des rédactions de publications par l\'IA atteint pour toutes les organisations')
+    // La place de l'organisation n'a pas servi : rendue, pour ne pas compter un refus de la plateforme contre elle.
+    await releaseDailySlot(own)
+    return PUBLICATION_AI_QUOTA_MESSAGE.platform
+  }
+  return null
+}
+
 export async function previewRecruiterAoPublication(id: string) {
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
-  return previewAoPublicationOf(me.tenantId, id)
+  return previewAoPublicationOf(me.tenantId, id, { beforeAi: () => rewriteSlot(me.user, me.tenantId) })
 }
 
 /** Offre publique de l'organisation, traitée comme une offre créée par ses recruteurs (createJobAction). */
