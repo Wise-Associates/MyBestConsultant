@@ -16,12 +16,22 @@ export interface PublicationDraft {
   remote: AoRemote
   salary: number | null
   skills: string[]
+  /** Case « J'ai relu » cochée par la personne qui publie : la publication est refusée sans elle (ADR 0013). */
+  reviewed: boolean
+  /** Noms que l'IA dit avoir retirés (sigles, entités, projets) : masqués eux aussi à la publication. */
+  maskTerms: string[]
 }
 
 export interface PublicationPreview {
   draft: PublicationDraft
   /** Offres déjà en ligne au même intitulé et dans la même ville (risque de doublon). */
   similarJobs: { id: string; title: string; location: string }[]
+  /** ai : version rédigée par l'IA ; rules : par les règles automatiques seules (IA refusée ou en échec, voir `notice`). */
+  rewrite: 'ai' | 'rules'
+  /** Pourquoi l'IA n'a pas rédigé cette version ; vide sinon. */
+  notice: string
+  /** Noms à signaler s'ils réapparaissent pendant la relecture (mots normalisés, name-match.ts). */
+  watchNames: string[][]
 }
 
 /** Candidat retenu pour une offre AO (les 5 meilleurs notés 65 ou plus, sourcing-rules.ts). */

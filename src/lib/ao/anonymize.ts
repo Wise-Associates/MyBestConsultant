@@ -1,4 +1,5 @@
 import { LEGAL_SUFFIXES } from './fingerprint'
+import { REFERENCE_CODE, replaceNames, words } from './name-match'
 import { identifyingLabel, type Sender } from './origin'
 import type { AoOfferFields } from './types'
 
@@ -18,16 +19,10 @@ const PHONE = /(?:(?:\+|00)33\s?\(?0?\)?\s?|\b0)[1-9](?:[\s.-]?\d{2}){4}\b|(?:\+
 // Lignes de contact typiques des appels d'offres : « Contact : Marie Dupont », « Tél. : … », « Réf. interne … ».
 // Préfixe « ### » admis : les tableaux joints donnent une section titrée par colonne (spreadsheet.ts).
 const CONTACT_LINE = /^\s*(?:#{1,6}\s*)?[-*•]?\s*\**\s*(contact|interlocut\w*|responsable du recrutement|recruteur|t[ée]l(?:[ée]phone)?\.?|mobile|portable|e-?mail|courriel|mail|r[ée]f(?:[ée]rence)?\.?\s*interne)\b.*$/gim
-
-const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-
-interface Token { start: number; end: number; word: string }
-
-function tokens(text: string): Token[] {
-  return [...text.matchAll(/[\p{L}\p{N}]+/gu)].map(m => ({ start: m.index, end: m.index + m[0].length, word: fold(m[0]) }))
-}
-
-const words = (text: string) => tokens(text).map(t => t.word)
+// Restes d'une référence retirée : « (DH038970) » vide, « BNPP - RFC00094023 - Analyste » aux séparateurs doublés.
+const EMPTY_BRACKETS = /[ \t]*(?:\([ \t]*\)|\[[ \t]*\])/g
+const DOUBLED_SEPARATOR = /[ \t]+([-–—|])(?:[ \t]+[-–—|])+[ \t]+/g
+const TITLE_EDGES = /^[\s\-–—|:,]+|[\s\-–—|:,]+$/g
 
 /**
  * Noms à masquer, sous forme de suites de mots normalisés (casse, accents et ponctuation ignorés) : chaque client
@@ -58,21 +53,10 @@ export function namesToHide(clients: string[], senders: Partial<Sender>[] = [], 
   return [...unique.values()].sort((a, b) => b.length - a.length) // les noms les plus longs d'abord
 }
 
-function replaceNames(text: string, names: string[][], label: string): string {
-  const toks = tokens(text)
-  let out = ''
-  let pos = 0
-  for (let i = 0; i < toks.length; i++) {
-    const name = names.find(n => n.every((w, k) => toks[i + k]?.word === w))
-    if (!name) continue
-    out += text.slice(pos, toks[i].start) + label
-    pos = toks[i + name.length - 1].end
-    i += name.length - 1
-  }
-  return out + text.slice(pos)
-}
-
-/** Retire e-mails, liens, téléphones et lignes de contact ; remplace les noms à masquer par `label`. */
+/**
+ * Retire e-mails, liens, téléphones, lignes de contact et références d'appel d'offres (name-match.ts) ; remplace les
+ * noms à masquer par `label`.
+ */
 export function scrubContacts(text: string, names: string[][], label = DEFAULT_CLIENT_LABEL): string {
   const out = text
     .replace(CONTACT_LINE, '')
@@ -80,12 +64,26 @@ export function scrubContacts(text: string, names: string[][], label = DEFAULT_C
     .replace(EMAIL, '')
     .replace(URL, '')
     .replace(PHONE, '')
+    .replace(REFERENCE_CODE, '')
+    .replace(EMPTY_BRACKETS, '')
+    .replace(DOUBLED_SEPARATOR, ' $1 ')
+    .replace(/(\S)[ \t]{2,}(?=\S)/g, '$1 ')
   return replaceNames(out, names, label).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 /** Vrai si le texte contient un des noms à masquer (ex. libellé « entreprise affichée » saisi par l'admin). */
 export function revealsName(text: string, names: string[][]): boolean {
   return replaceNames(text, names, '\u0000') !== text
+}
+
+/**
+ * « Entreprise affichée » publiable : ni nom à masquer, ni coordonnée ou référence (texte que le nettoyage laisse
+ * intact), sinon le libellé générique. Proposée par l'IA à partir d'un e-mail non fiable, elle est aussi insérée à la
+ * place de chaque nom masqué dans le texte : elle doit être aussi propre que lui.
+ */
+export function publicLabel(label: string, names: string[][]): string {
+  const value = label.trim()
+  return value.length >= 2 && scrubContacts(value, []) === value && !revealsName(value, names) ? value : DEFAULT_CLIENT_LABEL
 }
 
 export interface PublicOffer {
@@ -99,21 +97,27 @@ export interface PublicOffer {
 /**
  * Version publique d'une offre : client remplacé par un libellé générique, coordonnées et noms retirés,
  * durée / démarrage / expérience ajoutés en fin de description (comme l'import par tableur).
+ * `extra` : noms que l'IA dit avoir retirés (publication-copy.ts), masqués APRÈS les noms connus : un terme qui en
+ * chevauche un (« Groupe BNP » dans « Groupe BNP Paribas ») ne peut pas empêcher son masquage.
  */
-export function toPublicOffer(offer: AoOfferFields, names: string[][], label = DEFAULT_CLIENT_LABEL): PublicOffer {
+export function toPublicOffer(offer: AoOfferFields, names: string[][], label = DEFAULT_CLIENT_LABEL, extra: string[][] = []): PublicOffer {
   const extras = [
     offer.duration && `Durée de la mission : ${offer.duration}`,
     offer.startDate && `Démarrage : ${offer.startDate}`,
     offer.experience && `Expérience requise : ${offer.experience}`,
   ].filter(Boolean) as string[]
-  const scrub = (text: string) => scrubContacts(text, names, label)
+  const scrub = (text: string) => {
+    const known = scrubContacts(text, names, label)
+    return extra.length ? scrubContacts(known, extra, label) : known
+  }
   const description = [offer.description, ...extras].filter(Boolean).join('\n\n')
   return {
-    title: scrub(offer.title),
+    // « RFC00094758 - Consultant SEO » : le séparateur qui suivait la référence retirée ne reste pas en tête.
+    title: scrub(offer.title).replace(TITLE_EDGES, ''),
     companyName: label,
     description: scrub(description) || scrub(offer.title),
     // Une compétence qui nomme le client (« Outil interne BNP ») est retirée plutôt que remplacée.
-    skills: offer.skills.filter(s => !revealsName(s, names)).map(scrub).filter(Boolean),
+    skills: offer.skills.filter(s => !revealsName(s, names) && !revealsName(s, extra)).map(scrub).filter(Boolean),
     location: scrub(offer.location),
   }
 }
