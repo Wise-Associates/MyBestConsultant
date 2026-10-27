@@ -8,7 +8,12 @@ import type { AdminJobInput } from '@/lib/admin-job'
 import { descriptionForPublication } from '@/lib/description-sections'
 import type { UserProfile } from '@/types'
 import { aoAccess, isDocumentId } from './access'
-import { DEFAULT_CLIENT_LABEL, namesToHide, revealsName, toPublicOffer } from './anonymize'
+import { callLLM } from '@/lib/ai/llm-router'
+import { llmUnavailableReason } from './ai-failures'
+import { namesToHide, publicLabel, scrubContacts, toPublicOffer } from './anonymize'
+import {
+  PUBLICATION_PROMPT, descriptionFromCopy, maskNames, maskTermsOf, parsePublicationCopy, publicationRequest, type PublicationCopy,
+} from './publication-copy'
 import { manualRetryPatch } from './attempts'
 import { canDeleteComment, parseCommentBody } from './comment-input'
 import { createAoComment, deleteAoComment, deleteAoCommentsOfOffer, getAoComment, listAoComments, type AoComment } from './comments'
@@ -46,15 +51,20 @@ export async function tenantSubscriptionStatus(tenantId: string): Promise<string
 /**
  * Noms à masquer : client de l'offre et clients cités par l'appel d'offres (avec leurs sigles), nom et domaine de
  * l'expéditeur de l'e-mail et de celui du message d'origine (sauf ceux de l'organisation qui lit la boîte).
+ * `clients` : les clients seuls, tels qu'écrits, pour la consigne donnée à l'IA.
  */
-async function hiddenNamesFor(offer: AoOffer): Promise<string[][]> {
+async function hiddenNamesFor(offer: AoOffer): Promise<{ clients: string[]; names: string[][] }> {
   const email = (await listAoEmailsByIds([offer.emailId])).get(offer.emailId)
   const source = email?.sourceId ? await getAoSource(email.sourceId) : null
-  return namesToHide(
-    [offer.companyName, ...(email?.citedClients ?? [])],
-    [{ name: email?.fromName, address: email?.fromAddress }, parseSender(email?.origin ?? '') ?? {}],
-    source?.ownDomains ?? [],
-  )
+  const clients = [offer.companyName, ...(email?.citedClients ?? [])].filter(Boolean)
+  return {
+    clients,
+    names: namesToHide(
+      clients,
+      [{ name: email?.fromName, address: email?.fromAddress }, parseSender(email?.origin ?? '') ?? {}],
+      source?.ownDomains ?? [],
+    ),
+  }
 }
 
 /**
@@ -108,34 +118,67 @@ export async function retryAoEmailOf(
   }
 }
 
-/** Version anonymisée proposée avant publication. */
-export async function previewAoPublicationOf(tenantId: string, id: string): ReturnType<AoDashboardActions['previewPublication']> {
+/**
+ * Version anonymisée proposée avant publication (ADR 0013) : rédigée par l'IA à partir de l'offre déjà nettoyée
+ * (publication-copy.ts), sinon par les règles automatiques seules. `beforeAi` est appelé juste avant l'IA, une fois
+ * l'offre vérifiée : son message de refus (quota du jour des recruteurs…) donne la version des règles, comme une IA en
+ * échec. Dans tous les cas, le résultat repasse par l'anonymisation, puis doit être relu et validé avant publication.
+ */
+export async function previewAoPublicationOf(
+  tenantId: string,
+  id: string,
+  { beforeAi }: { beforeAi?: () => Promise<string | null> } = {},
+): ReturnType<AoDashboardActions['previewPublication']> {
   try {
     const offer = await aoAccessFor(tenantId).offer(id)
     if (!offer) return { error: 'Offre introuvable.' }
-    const pub = toPublicOffer(offer, await hiddenNamesFor(offer))
+    const { clients, names } = await hiddenNamesFor(offer)
     const key = `${titleKey(offer.title)}|${cityKey(offer.location)}`
     const similarJobs = (await getActiveJobs())
       .filter(job => `${titleKey(job.title)}|${cityKey(job.location)}` === key)
       .slice(0, 5)
       .map(job => ({ id: job.$id, title: job.title, location: job.location }))
-    const preview: PublicationPreview = {
-      draft: {
-        ...pub,
-        // Mise en forme (sections, puces) après l'anonymisation, qui retire les lignes de contact d'après
-        // leur début de ligne. Ce texte est relu avant publication : il est publié tel quel, sur le site et les réseaux.
-        description: descriptionForPublication(pub.description),
-        contractType: offer.contractType, remote: offer.remote, salary: offer.salary,
-      },
-      similarJobs,
+    const terms = { contractType: offer.contractType, remote: offer.remote, salary: offer.salary, reviewed: false }
+
+    const copy = (await beforeAi?.()) ?? (await rewriteForPublication(offer, clients, names))
+    if (typeof copy === 'string') {
+      const pub = toPublicOffer(offer, names)
+      // Mise en forme (sections, puces) après l'anonymisation, qui retire les lignes de contact d'après leur début de ligne.
+      const draft = { ...pub, description: descriptionForPublication(pub.description), ...terms, maskTerms: [] }
+      return { preview: { draft, similarJobs, rewrite: 'rules', notice: copy, watchNames: names } }
     }
+    const maskTerms = maskTermsOf(copy)
+    const extra = maskNames(maskTerms)
+    // Le secteur proposé par l'IA devient l'entreprise affichée, sauf s'il nomme le client ou contient des coordonnées.
+    const label = publicLabel(copy.sector, [...names, ...extra])
+    const pub = toPublicOffer({
+      ...offer, title: copy.title, description: descriptionFromCopy(copy), location: copy.location || offer.location, skills: copy.skills,
+      duration: '', startDate: '', experience: '', // déjà dans la section « Modalités »
+    }, names, label, extra)
+    const preview: PublicationPreview = { draft: { ...pub, ...terms, maskTerms }, similarJobs, rewrite: 'ai', notice: '', watchNames: [...names, ...extra] }
     return { preview }
   } catch (err) {
     return { error: errorOf(err) }
   }
 }
 
-const PublishSchema = z.object({
+/** Version rédigée par l'IA, ou la raison pour laquelle elle n'a pas pu l'être (affichée à la relecture). */
+async function rewriteForPublication(offer: AoOffer, clients: string[], names: string[][]): Promise<PublicationCopy | string> {
+  // L'IA reçoit l'offre déjà nettoyée : coordonnées et références retirées, clients connus remplacés.
+  const clean = (text: string) => scrubContacts(text, names, 'le client')
+  const request = publicationRequest({ ...offer, title: clean(offer.title), location: clean(offer.location), description: clean(offer.description) }, clients)
+  try {
+    const { content } = await callLLM([{ role: 'user', content: request }], PUBLICATION_PROMPT, { maxTokens: 3000, timeoutMs: 60_000 })
+    return parsePublicationCopy(content) ?? 'réponse de l\'IA illisible'
+  } catch (err) {
+    console.error('AO: rédaction de la version publiée par l\'IA impossible', offer.$id, errorOf(err))
+    // Le détail (réponse brute du fournisseur, parfois avec un morceau de clé) reste dans les journaux.
+    return llmUnavailableReason(err) ?? 'service d\'IA indisponible pour le moment'
+  }
+}
+
+/** Champs de l'offre publique ; la publication y ajoute la validation de la relecture (PublishSchema). */
+const DraftFieldsSchema = z.object({
   title: z.string().trim().min(2).max(200),
   companyName: z.string().trim().min(2).max(200),
   description: z.string().trim().min(20).max(20_000),
@@ -144,6 +187,15 @@ const PublishSchema = z.object({
   remote: z.enum(['onsite', 'hybrid', 'remote']),
   salary: z.number().int().positive().max(999_999).nullable(),
   skills: z.array(z.string().trim().min(1).max(60)).max(10),
+})
+
+/**
+ * `reviewed` : la personne qui publie a relu et validé la version anonymisée (case « J'ai relu », ADR 0013).
+ * `maskTerms` : noms que l'IA dit avoir retirés ; envoyés par le navigateur, ils ne peuvent que masquer davantage.
+ */
+const PublishSchema = DraftFieldsSchema.extend({
+  reviewed: z.literal(true),
+  maskTerms: z.array(z.string().trim().max(80)).max(30),
 })
 
 /** Création de l'offre publique : par l'admin (offre de la plateforme) ou par un recruteur (offre de son organisation). */
@@ -161,24 +213,31 @@ export async function publishAoOfferOf(
   paths: string[],
 ): ReturnType<AoDashboardActions['publish']> {
   const parsed = PublishSchema.safeParse(input)
-  if (!parsed.success) return { error: 'Champs invalides : vérifiez le titre, la description (20 caractères minimum) et le montant.' }
+  if (!parsed.success) {
+    if (parsed.error.issues.some(issue => issue.path[0] === 'reviewed')) return { error: 'Relisez la version publiée, puis cochez « J\'ai relu » pour la valider.' }
+    return { error: 'Champs invalides : vérifiez le titre, la description (20 caractères minimum) et le montant.' }
+  }
+  // Sans `reviewed` ni `maskTerms`, qui ne font pas partie de l'offre publique.
+  const fields = DraftFieldsSchema.parse(parsed.data)
   try {
     const offer = await aoAccessFor(tenantId).offer(id)
     if (!offer) return { error: 'Offre introuvable.' }
     if (offer.status === 'published' || offer.jobId) return { error: 'Cette offre est déjà publiée.' }
 
-    const names = await hiddenNamesFor(offer)
-    // Le client reste masqué sur le site, même si son nom (ou celui de l'expéditeur) a été saisi comme libellé.
-    const label = revealsName(parsed.data.companyName, names) ? DEFAULT_CLIENT_LABEL : parsed.data.companyName
+    const { names } = await hiddenNamesFor(offer)
+    const extra = maskNames(parsed.data.maskTerms)
+    // Le client reste masqué sur le site, même si son nom (ou celui de l'expéditeur) ou des coordonnées ont été saisis
+    // comme libellé.
+    const label = publicLabel(fields.companyName, [...names, ...extra])
     // Filet de sécurité : tout le texte édité repasse par l'anonymisation avant d'être publié.
-    const pub = toPublicOffer({ ...offer, ...parsed.data, duration: '', startDate: '', experience: '' }, names, label)
+    const pub = toPublicOffer({ ...offer, ...fields, duration: '', startDate: '', experience: '' }, names, label, extra)
 
     // Identifiant fixe : une double publication (deux onglets, nouvel essai après une erreur) échoue en 409
     // au lieu de créer une seconde offre, une seconde diffusion et un second sourcing.
     const jobId = `ao${offer.$id}`
     await updateAoOffer(offer.$id, { status: 'published', jobId })
     try {
-      await publisher.create({ ...parsed.data, ...pub }, jobId)
+      await publisher.create({ ...fields, ...pub }, jobId)
     } catch (err) {
       if (!(await publisher.exists(jobId))) {
         await updateAoOffer(offer.$id, { status: 'to_review', jobId: null }).catch(rollback => {
