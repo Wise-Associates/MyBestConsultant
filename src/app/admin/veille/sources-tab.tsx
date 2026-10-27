@@ -59,7 +59,7 @@ export function SourcesTab({ config, onChange, savedIds }: Props) {
             const label = source.kind === 'boamp' ? 'BOAMP (appels d\'offres)' : source.kind === 'ted' ? 'TED, Journal officiel de l\'UE (appels d\'offres)' : builtin?.label ?? source.id
             const description = builtin
               ? `Offres d'emploi de ${organisationName.get(builtin.organisationId) ?? builtin.organisationId}.`
-              : 'Avis des organismes suivis, reconnus par leurs règles (onglet Organismes).'
+              : 'Avis des organismes suivis, reconnus par leurs règles (onglet Organismes), et de tous les acheteurs si la recherche est activée (onglet Mots-clés des appels d\'offres).'
             return (
               <li key={source.id} className="py-3" style={{ borderColor: 'var(--admin-line)' }}>
                 <Switch id={`src-${index}-enabled`} label={label} description={description} checked={source.enabled} onChange={enabled => update(index, { enabled })} />

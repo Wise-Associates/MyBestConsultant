@@ -3,8 +3,9 @@
 import type { VeilleConfig, VeilleItScope } from '@/lib/veille/config'
 import { LinesField, Switch, TokensField } from './fields'
 
-// Périmètre informatique du scanner (src/it-scope.ts, ADR 0004 du scanner) : appels d'offres jugés sur leur
-// classification (CPV, descripteurs BOAMP), offres d'emploi sur leur intitulé et leur catégorie.
+// Périmètre informatique du scanner (src/it-scope.ts, ADR 0004 du scanner) : appels d'offres jugés sur leurs mots-clés
+// (onglet « Mots-clés des appels d'offres ») puis leur classification (CPV, descripteurs BOAMP), offres d'emploi sur leur
+// intitulé et leur catégorie.
 
 export function ItScopeTab({ config, onChange }: { config: VeilleConfig; onChange: (config: VeilleConfig) => void }) {
   const scope = config.itScope
@@ -18,8 +19,9 @@ export function ItScopeTab({ config, onChange }: { config: VeilleConfig; onChang
         <section className="space-y-3">
           <h2 className="text-base font-bold text-admin-fg">Appels d&apos;offres</h2>
           <p className="text-sm" style={muted}>
-            Retenus si l&apos;un de leurs codes CPV commence par un préfixe, ou si le BOAMP leur donne un descripteur ; la classification de
-            l&apos;acheteur l&apos;emporte sur l&apos;intitulé. Un avis sans aucune classification est jugé sur son intitulé, comme une offre d&apos;emploi.
+            Retenus si l&apos;un de leurs codes CPV commence par un préfixe, ou si le BOAMP leur donne un descripteur ; sans mot-clé des appels
+            d&apos;offres (onglet suivant), la classification de l&apos;acheteur l&apos;emporte sur l&apos;intitulé. Un avis sans aucune classification
+            est jugé sur son intitulé, comme une offre d&apos;emploi.
           </p>
           <div className="grid gap-4 md:grid-cols-2">
             <TokensField id="it-cpv" label="Préfixes CPV" value={scope.cpvPrefixes} onChange={cpvPrefixes => update({ cpvPrefixes })} placeholder="72, 48"

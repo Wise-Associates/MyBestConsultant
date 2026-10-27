@@ -30,6 +30,11 @@ const config = (): VeilleConfig => ({
     acronyms: ['SI', 'DSI'],
     exclusionPhrases: ['travaux'],
   },
+  tenderKeywords: {
+    allBuyers: true,
+    families: [{ id: 'donnees', label: 'Gouvernance des données', phrases: ['gouvernance des données', 'data steward*'], acronyms: ['MDM'] }],
+    infrastructurePhrases: ['fourniture de serveurs'],
+  },
 })
 
 const errorsOf = (input: unknown) => {
@@ -99,5 +104,33 @@ describe('réglages de la veille', () => {
   it('refuse une autre version du format', () => {
     assert.ok(errorsOf({ ...config(), schemaVersion: 2 }).length > 0)
     assert.ok(errorsOf('pas un objet').length > 0)
+  })
+})
+
+describe('mots-clés des appels d\'offres', () => {
+  it('lit des réglages enregistrés avant les mots-clés : recherche limitée aux organismes suivis', () => {
+    const before: Record<string, unknown> = { ...config() }
+    delete before.tenderKeywords
+    const parsed = parseVeilleConfig(before)
+    assert.ok(parsed.success)
+    assert.deepEqual(parsed.success && parsed.config.tenderKeywords, { allBuyers: false, families: [], infrastructurePhrases: [] })
+  })
+
+  it('refuse une famille sans mot-clé ou en double, en nommant la famille', () => {
+    const empty = config()
+    empty.tenderKeywords.families = [{ id: 'vide', label: 'Famille vide', phrases: ['  '], acronyms: [] }]
+    assert.deepEqual(errorsOf(empty), ['Mots-clés des appels d\'offres, famille « Famille vide » : Au moins une expression ou un sigle.'])
+    const duplicate = config()
+    duplicate.tenderKeywords.families.push({ ...duplicate.tenderKeywords.families[0], label: 'Copie' })
+    assert.match(errorsOf(duplicate).join(' '), /famille de mots-clés « donnees » utilisé plusieurs fois/)
+  })
+
+  it('refuse un sigle en minuscules et un descripteur BOAMP qui casserait la requête du scanner', () => {
+    const lower = config()
+    lower.tenderKeywords.families[0].acronyms = ['mdm']
+    assert.match(errorsOf(lower).join(' '), /famille « Gouvernance des données », sigles, « mdm » : Sigle en majuscules/)
+    const quoted = config()
+    quoted.itScope.boampDescriptors = ['Logiciel" OR nature="X']
+    assert.match(errorsOf(quoted).join(' '), /descripteurs BOAMP.*sans guillemet/)
   })
 })

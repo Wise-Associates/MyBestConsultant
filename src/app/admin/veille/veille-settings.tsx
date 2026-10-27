@@ -9,11 +9,12 @@ import { saveVeilleConfigAction } from './actions'
 import { ItScopeTab } from './it-scope-tab'
 import { OrganisationsTab } from './organisations-tab'
 import { SourcesTab } from './sources-tab'
+import { TenderKeywordsTab } from './tender-keywords-tab'
 
-// Réglages de la veille marchés et emplois : une copie locale est modifiée dans les trois onglets, puis enregistrée en
+// Réglages de la veille marchés et emplois : une copie locale est modifiée dans les onglets, puis enregistrée en
 // une fois comme nouvelle version (une version cohérente, jamais à moitié modifiée).
 
-type Tab = 'organisations' | 'sources' | 'filtres'
+type Tab = 'organisations' | 'sources' | 'filtres' | 'mots-cles'
 
 interface Props {
   initial: VeilleConfigVersion | null
@@ -28,7 +29,8 @@ export function VeilleSettings({ initial, loadError, tokenConfigured }: Props) {
         <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'var(--admin-fg-muted)' }}>VEILLE</p>
         <h1 className="text-[28px] font-bold tracking-tight text-admin-fg">Marchés &amp; emplois</h1>
         <p className="text-sm mt-1 max-w-3xl" style={{ color: 'var(--admin-fg-muted)' }}>
-          Organismes suivis, sources lues et filtre informatique du scanner, qui envoie chaque nouvelle offre à la boîte AO.
+          Organismes suivis, sources lues, filtre informatique et mots-clés des appels d&apos;offres du scanner, qui envoie chaque
+          nouvelle offre à la boîte AO.
           Pris en compte au passage suivant (5 h, 9 h, 13 h et 17 h UTC).
         </p>
         <p className="inline-flex items-center gap-1.5 text-xs mt-3 px-2 py-1 rounded-md"
@@ -85,6 +87,7 @@ function Editor({ initial }: { initial: VeilleConfigVersion }) {
     { id: 'organisations', label: 'Organismes', count: config.organisations.length },
     { id: 'sources', label: 'Sources', count: config.sources.length },
     { id: 'filtres', label: 'Filtre informatique' },
+    { id: 'mots-cles', label: 'Mots-clés des appels d\'offres', count: config.tenderKeywords.families.length },
   ]
 
   return (
@@ -140,6 +143,7 @@ function Editor({ initial }: { initial: VeilleConfigVersion }) {
         {tab === 'organisations' && <OrganisationsTab config={config} onChange={change} savedIds={savedOrganisationIds} />}
         {tab === 'sources' && <SourcesTab config={config} onChange={change} savedIds={savedSourceIds} />}
         {tab === 'filtres' && <ItScopeTab config={config} onChange={change} />}
+        {tab === 'mots-cles' && <TenderKeywordsTab config={config} onChange={change} />}
       </div>
     </div>
   )
