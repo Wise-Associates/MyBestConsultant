@@ -17,7 +17,11 @@
     "ao:poll:stop": "node scripts/ao-poll.mjs stop",
     "ao:poll:status": "node scripts/ao-poll.mjs status",
     "assistant:setup": "node --network-family-autoselection-attempt-timeout=2000 scripts/setup-assistant-collections.mjs",
-    "cv-export:setup": "node --network-family-autoselection-attempt-timeout=2000 scripts/setup-cv-export-storage.mjs"
+    "cv-export:setup": "node --network-family-autoselection-attempt-timeout=2000 scripts/setup-cv-export-storage.mjs",
+    "appwrite": "node --network-family-autoselection-attempt-timeout=2000 node_modules/appwrite-cli/index.js",
+    "schema:pull": "tsx scripts/appwrite-schema.mts pull",
+    "schema:check": "tsx scripts/appwrite-schema.mts check",
+    "schema:push": "tsx scripts/appwrite-schema.mts push"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",
