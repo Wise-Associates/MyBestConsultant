@@ -1,7 +1,8 @@
 import { z } from 'zod'
 
 // Réglages de la veille marchés et emplois (projet veille-marches-emplois, ADR 0012) : organismes suivis et règles qui
-// reconnaissent leurs appels d'offres, sources lues, périmètre informatique. Modifiés dans /admin/veille, enregistrés
+// reconnaissent leurs appels d'offres, sources lues, périmètre informatique, mots-clés des appels d'offres (recherche
+// chez tous les acheteurs, ADR 0006 du scanner). Modifiés dans /admin/veille, enregistrés
 // en versions dans la collection veille_config, lus par le scanner (GET /api/veille/config). Le scanner valide le même
 // format (src/settings/veille-settings.ts, même `schemaVersion`) : toute évolution se fait dans les deux projets, et
 // `schemaVersion` change si un ancien scanner ne peut pas lire le nouveau format. Règles pures, testées dans
@@ -96,16 +97,38 @@ const Source = z.discriminatedUnion('kind', [
   }),
 ])
 
+const Acronym = z.string().regex(/^[A-Z0-9]{2,10}$/, 'Sigle en majuscules et chiffres (2 à 10 caractères).')
+
 const ItScope = z.object({
   /** false : toutes les offres des organismes suivis sont envoyées, informatiques ou non. */
   enabled: z.boolean(),
   cpvPrefixes: list(z.string().regex(/^\d{1,8}$/, 'Code CPV : 1 à 8 chiffres (préfixe).'), 50),
-  boampDescriptors: list(z.string().max(120, '120 caractères au plus.'), 50),
+  // Les descripteurs entrent dans la requête BOAMP de tous les acheteurs : ni guillemet ni barre oblique inverse.
+  boampDescriptors: list(z.string().max(120, '120 caractères au plus.').regex(/^[^"\\]+$/, 'Descripteur sans guillemet ni barre oblique inverse.'), 50),
   phrases: list(Phrase, 1000),
-  acronyms: list(z.string().regex(/^[A-Z0-9]{2,10}$/, 'Sigle en majuscules et chiffres (2 à 10 caractères).'), 200),
+  acronyms: list(Acronym, 200),
   /** Vocabulaire qui l'emporte sur les expressions et sigles (bâtiment : « travaux »). */
   exclusionPhrases: list(Phrase, 200),
 })
+
+/** Famille de mots-clés (« SaaS, logiciels », « Gouvernance des données »…) : le scanner fait une recherche par famille. */
+const KeywordFamily = z
+  .object({ id: Key, label: Label, phrases: list(Phrase, 200), acronyms: list(Acronym, 50) })
+  .refine(f => f.phrases.length + f.acronyms.length > 0, 'Au moins une expression ou un sigle.')
+
+/**
+ * Mots-clés des appels d'offres (décision du 2026-10-27). Absents des réglages enregistrés avant : recherche limitée aux
+ * organismes suivis, sans mot-clé (même valeur par défaut que le scanner).
+ */
+const TenderKeywords = z
+  .object({
+    /** Chercher aussi les avis des acheteurs non suivis (BOAMP et TED), envoyés sous « Autres acheteurs ». */
+    allBuyers: z.boolean(),
+    families: z.array(KeywordFamily).max(30, '30 familles au plus.'),
+    /** Écartent un avis classé informatique dont l'intitulé en parle sans aucun mot-clé (serveurs, réseau…). */
+    infrastructurePhrases: list(Phrase, 200),
+  })
+  .default({ allBuyers: false, families: [], infrastructurePhrases: [] })
 
 const VeilleConfigSchema = z
   .object({
@@ -113,12 +136,14 @@ const VeilleConfigSchema = z
     organisations: z.array(Organisation).min(1, 'Au moins un organisme.').max(100, '100 organismes au plus.'),
     sources: z.array(Source).max(200, '200 sources au plus.'),
     itScope: ItScope,
+    tenderKeywords: TenderKeywords,
   })
   .superRefine((config, ctx) => {
     const fail = (message: string) => ctx.addIssue({ code: 'custom', message })
     const duplicates = (ids: string[]) => [...new Set(ids.filter((id, i) => ids.indexOf(id) !== i))]
     for (const id of duplicates(config.organisations.map(o => o.id))) fail(`Identifiant d'organisme « ${id} » utilisé plusieurs fois.`)
     for (const id of duplicates(config.sources.map(s => s.id))) fail(`Identifiant de source « ${id} » utilisé plusieurs fois.`)
+    for (const id of duplicates(config.tenderKeywords.families.map(f => f.id))) fail(`Identifiant de famille de mots-clés « ${id} » utilisé plusieurs fois.`)
     const organisations = new Set(config.organisations.map(o => o.id))
     for (const source of config.sources) {
       if ((source.kind === 'csp' || source.kind === 'rss') && !organisations.has(source.organisationId)) {
@@ -140,12 +165,15 @@ export type VeilleConfig = z.infer<typeof VeilleConfigSchema>
 export type VeilleOrganisation = VeilleConfig['organisations'][number]
 export type VeilleSource = VeilleConfig['sources'][number]
 export type VeilleItScope = VeilleConfig['itScope']
+export type VeilleTenderKeywords = VeilleConfig['tenderKeywords']
+export type VeilleKeywordFamily = VeilleTenderKeywords['families'][number]
 
 const FIELD_LABEL: Record<string, string> = {
   id: 'identifiant', name: 'nom', label: 'libellé', tenderRules: 'règles', sirens: 'SIREN', names: 'noms d\'acheteur',
   excludedNames: 'noms exclus', requiredText: 'texte exigé', note: 'raison', organisationId: 'organisme', codes: 'codes', url: 'adresse du flux',
   cpvPrefixes: 'codes CPV', boampDescriptors: 'descripteurs BOAMP', phrases: 'expressions', acronyms: 'sigles',
-  exclusionPhrases: 'exclusions', schemaVersion: 'version du format',
+  exclusionPhrases: 'exclusions', schemaVersion: 'version du format', allBuyers: 'tous les acheteurs',
+  infrastructurePhrases: 'infrastructure seule',
 }
 
 const at = (node: unknown, key: PropertyKey): unknown =>
@@ -159,10 +187,11 @@ function placeOf(path: PropertyKey[], input: unknown): string {
   for (let i = 0; i < path.length; i++) {
     const key = path[i]
     const next = path[i + 1]
-    if ((key === 'organisations' || key === 'sources' || key === 'tenderRules') && typeof next === 'number') {
+    if ((key === 'organisations' || key === 'sources' || key === 'tenderRules' || key === 'families') && typeof next === 'number') {
       const item = at(at(node, key), next)
       if (key === 'organisations') parts.push(`Organisme « ${text(at(item, 'name')) ?? text(at(item, 'id')) ?? next + 1} »`)
       else if (key === 'sources') parts.push(`Source « ${text(at(item, 'label')) ?? text(at(item, 'id')) ?? next + 1} »`)
+      else if (key === 'families') parts.push(`famille « ${text(at(item, 'label')) ?? next + 1} »`)
       else parts.push(`règle ${next + 1}`)
       node = item
       i++
@@ -170,6 +199,7 @@ function placeOf(path: PropertyKey[], input: unknown): string {
     }
     node = at(node, key)
     if (key === 'itScope') parts.push('Filtre informatique')
+    else if (key === 'tenderKeywords') parts.push('Mots-clés des appels d\'offres')
     else if (typeof key === 'number') {
       const value = text(node)
       if (value) parts.push(`« ${value.slice(0, 60)} »`)
