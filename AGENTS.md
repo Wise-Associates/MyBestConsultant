@@ -171,6 +171,27 @@ Core principles for production-quality frontend decisions on this project.
 
 ---
 
+# Veille marchés et emplois (réglages)
+
+- **Page `/admin/veille`** (menu « Veille », ADR 0012) : réglages du scanner `veille-marches-emplois` (ADR 0008) —
+  organismes suivis et règles de reconnaissance de leurs appels d'offres, sources (BOAMP, TED et sites intégrés activés
+  ou non, codes Choisir le service public, flux RSS), filtre informatique. Copie locale modifiée dans trois
+  onglets, puis « Enregistrer » crée la version suivante (`saveVeilleConfigAction`, admin vérifié, réglages revalidés,
+  refus si une autre version a été enregistrée entre-temps). Composants dans `src/app/admin/veille/`.
+- **Format et règles** : `src/lib/veille/config.ts` (pur, testé), **même format que le scanner**
+  (`src/settings/veille-settings.ts` de `veille-marches-emplois`, `schemaVersion`) : toute évolution dans les deux
+  projets. Identifiants d'organismes et de sources = clés du fichier d'état du scanner, fixés à la création (champ en
+  lecture seule une fois enregistré). Sites intégrés (`BUILTIN_SOURCES`) : liste fixe, à garder alignée sur le scanner.
+- **Stockage** : collection `veille_config` (aucune permission client ; un document `v<numéro>` par version, 50 gardées ;
+  `src/lib/veille/store.ts`, `server-only`). **Lecture par le scanner** : `GET /api/veille/config`, jeton
+  `VEILLE_CONFIG_TOKEN` (32 caractères au moins, `hasBearerSecret`), qui ne renvoie que la version en vigueur.
+- **Mise en place** : `npm run schema:push -- dev` (dans un terminal), `APPWRITE_COLLECTION_VEILLE_CONFIG`,
+  `npm run veille:seed -- .env.dev --file ../veille-marches-emplois/config/defaults.json` (simulation) puis `--apply` ;
+  production par un humain (`--prod --apply`), voir l'ADR 0012.
+- Tests : `src/lib/veille/config.test.ts`.
+
+---
+
 # Assistant IA (module portable)
 
 - **Module `src/assistant/`** (ADR 0007, guide d'intégration `src/assistant/README.md`) : n'importe rien de l'application (règle ESLint) ; le cœur (`core/`) ne dépend d'aucun framework, la fenêtre (`react/`) pas de Next.js. Le site fournit ses adaptateurs `AssistantHost` : pour MyBestConsultant `src/lib/assistant/host.ts` (`server-only`), actions `src/lib/assistant-actions.ts`, fenêtre `src/components/assistant/mbc-assistant.tsx` dans les layouts candidat et recruteur, variables de style `.mbc-assistant` dans `globals.css`.
