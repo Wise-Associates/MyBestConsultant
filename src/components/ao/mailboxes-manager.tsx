@@ -4,8 +4,8 @@ import { useState, useTransition } from 'react'
 import { AlertCircle, CheckCircle2, Inbox, Loader2, Pencil, Plus, Power, Trash2 } from 'lucide-react'
 import type { MailboxView, MailboxTest } from '@/lib/ao/mailboxes'
 
-// Boîtes de réception d'appels d'offres : liste, ajout, modification, test de connexion. Même composant pour le
-// propriétaire d'une organisation (espace recruteur) et pour la plateforme (admin) : les actions serveur reçues en
+// Boîtes de réception d'appels d'offres : liste, ajout, modification, test de connexion. Même composant pour les
+// recruteurs d'une organisation (espace recruteur) et pour la plateforme (admin) : les actions serveur reçues en
 // propriétés portent chacune leur contrôle d'accès. Couleurs : tokens de l'admin clair s'ils existent (page admin),
 // sinon ceux du site (espace recruteur).
 
@@ -58,7 +58,7 @@ function since(iso: string): string {
   return `le ${new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`
 }
 
-export function MailboxesManager({ initial, canEdit, actions }: { initial: MailboxView[]; canEdit: boolean; actions: MailboxActions }) {
+export function MailboxesManager({ initial, actions }: { initial: MailboxView[]; actions: MailboxActions }) {
   const [mailboxes, setMailboxes] = useState(initial)
   // null : formulaire fermé ; 'new' : ajout ; sinon identifiant de la boîte modifiée.
   const [editing, setEditing] = useState<string | null>(null)
@@ -117,7 +117,7 @@ export function MailboxesManager({ initial, canEdit, actions }: { initial: Mailb
     <section className="rounded-3xl overflow-hidden" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
       <div className="px-5 sm:px-6 py-4 flex items-center justify-between gap-3 flex-wrap" style={{ borderBottom: `1px solid ${C.border}` }}>
         <h2 className="font-bold" style={{ color: C.text, fontSize: '1rem' }}>Boîtes de réception ({mailboxes.length})</h2>
-        {canEdit && editing === null && (
+        {editing === null && (
           <button type="button" onClick={() => open(null)} className={buttonCls} style={{ background: C.primary, color: 'white' }}>
             <Plus className="h-4 w-4" /> Ajouter une boîte
           </button>
@@ -130,7 +130,7 @@ export function MailboxesManager({ initial, canEdit, actions }: { initial: Mailb
         <div className="px-6 py-10 text-center">
           <Inbox className="h-8 w-8 mx-auto mb-3" style={{ color: C.muted }} />
           <p className="text-sm" style={{ color: C.muted }}>
-            Aucune boîte. {canEdit ? 'Ajoutez celle où vous recevez les appels d’offres, quelle que soit son adresse : ses e-mails seront lus automatiquement.' : 'Le propriétaire du compte peut en ajouter une.'}
+            Aucune boîte. Ajoutez celle où vous recevez les appels d’offres, quelle que soit son adresse : ses e-mails seront lus automatiquement.
           </p>
         </div>
       )}
@@ -154,30 +154,28 @@ export function MailboxesManager({ initial, canEdit, actions }: { initial: Mailb
                 <p className="text-xs mt-1.5" style={{ color: C.muted }}>{m.lastSyncAt ? `Dernière lecture ${since(m.lastSyncAt)}` : 'Pas encore lue : la première lecture a lieu au prochain passage automatique.'}</p>
               )}
             </div>
-            {canEdit && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <button type="button" onClick={() => open(m.id)} disabled={pending} className={buttonCls} style={{ border: `1px solid ${C.border}`, color: C.text }}>
-                  <Pencil className="h-3.5 w-3.5" /> Modifier
+            <div className="flex items-center gap-2 flex-wrap">
+              <button type="button" onClick={() => open(m.id)} disabled={pending} className={buttonCls} style={{ border: `1px solid ${C.border}`, color: C.text }}>
+                <Pencil className="h-3.5 w-3.5" /> Modifier
+              </button>
+              <button type="button" onClick={() => toggle(m)} disabled={pending} className={buttonCls} style={{ border: `1px solid ${C.border}`, color: C.text }}>
+                <Power className="h-3.5 w-3.5" /> {m.enabled ? 'Désactiver' : 'Activer'}
+              </button>
+              {confirmDelete === m.id ? (
+                <button type="button" onClick={() => remove(m)} disabled={pending} className={buttonCls} style={{ background: C.error, color: 'white' }}>
+                  <Trash2 className="h-3.5 w-3.5" /> Confirmer la suppression
                 </button>
-                <button type="button" onClick={() => toggle(m)} disabled={pending} className={buttonCls} style={{ border: `1px solid ${C.border}`, color: C.text }}>
-                  <Power className="h-3.5 w-3.5" /> {m.enabled ? 'Désactiver' : 'Activer'}
+              ) : (
+                <button type="button" onClick={() => setConfirmDelete(m.id)} disabled={pending} className={buttonCls} style={{ border: `1px solid ${C.border}`, color: C.error }}>
+                  <Trash2 className="h-3.5 w-3.5" /> Supprimer
                 </button>
-                {confirmDelete === m.id ? (
-                  <button type="button" onClick={() => remove(m)} disabled={pending} className={buttonCls} style={{ background: C.error, color: 'white' }}>
-                    <Trash2 className="h-3.5 w-3.5" /> Confirmer la suppression
-                  </button>
-                ) : (
-                  <button type="button" onClick={() => setConfirmDelete(m.id)} disabled={pending} className={buttonCls} style={{ border: `1px solid ${C.border}`, color: C.error }}>
-                    <Trash2 className="h-3.5 w-3.5" /> Supprimer
-                  </button>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </li>
         ))}
       </ul>
 
-      {canEdit && editing !== null && (
+      {editing !== null && (
         <form className="px-5 sm:px-6 py-5 space-y-4" onSubmit={e => { e.preventDefault(); save() }} aria-label={id ? 'Modifier la boîte' : 'Ajouter une boîte'}>
           <h3 className="font-semibold text-sm" style={{ color: C.text }}>{id ? 'Modifier la boîte' : 'Nouvelle boîte'}</h3>
           <div className="grid sm:grid-cols-2 gap-4">
