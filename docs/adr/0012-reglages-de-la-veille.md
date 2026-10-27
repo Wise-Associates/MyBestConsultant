@@ -31,6 +31,11 @@ l'admin de MyBestConsultant, stockés dans Appwrite.
   vigueur. Pas de clé Appwrite côté scanner : une clé ne se limite pas à une collection.
 - **Premier chargement** : `npm run veille:seed -- <env> --file ../veille-marches-emplois/config/defaults.json`
   (simulation, puis `--apply` ; `--prod` pour la production, par un humain) : la version 1, si aucune n'existe.
+- **Mots-clés des appels d'offres** (ajout du 2026-10-27, ADR 0006 du scanner) : quatrième onglet, champ
+  `tenderKeywords` (tous les acheteurs oui / non, familles d'expressions et de sigles, « infrastructure seule »), avec
+  une valeur par défaut (recherche limitée aux organismes suivis) : les versions enregistrées avant restent lisibles et
+  `schemaVersion` reste 1 (un scanner plus ancien ignore le champ). Sur DEV, ajoutés à la version 1 par un script
+  ponctuel (version 2) ; la production les reçoit avec son premier chargement (`config/defaults.json` du scanner).
 
 ## Conséquences
 
@@ -52,4 +57,6 @@ l'admin de MyBestConsultant, stockés dans Appwrite.
   peut être supprimée une fois le scanner repassé sur `config/defaults.json` (exporter d'abord les versions si besoin ;
   `schema:push` ne supprime jamais : console, puis `schema:pull` sur DEV). Revenir sur le code après un changement de
   `schemaVersion` : la page et la route refuseraient les versions au nouveau format ; les exporter puis les supprimer
-  dans la console. Aucune restauration d'une ancienne version depuis la page : la ressaisir.
+  dans la console. Aucune restauration d'une ancienne version depuis la page : la ressaisir. Revenir sur le code
+  d'avant les mots-clés : la page lirait les versions en ignorant `tenderKeywords`, et un enregistrement les
+  supprimerait (le scanner reviendrait aux seuls organismes suivis).
