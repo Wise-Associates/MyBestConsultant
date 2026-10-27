@@ -19,9 +19,10 @@ export function ItScopeTab({ config, onChange }: { config: VeilleConfig; onChang
         <section className="space-y-3">
           <h2 className="text-base font-bold text-admin-fg">Appels d&apos;offres</h2>
           <p className="text-sm" style={muted}>
-            Retenus si l&apos;un de leurs codes CPV commence par un préfixe, ou si le BOAMP leur donne un descripteur ; sans mot-clé des appels
-            d&apos;offres (onglet suivant), la classification de l&apos;acheteur l&apos;emporte sur l&apos;intitulé. Un avis sans aucune classification
-            est jugé sur son intitulé, comme une offre d&apos;emploi.
+            Retenus si deux indices concordent : le code CPV principal de l&apos;avis commence par l&apos;un de ces préfixes (sans code CPV, le
+            BOAMP lui donne l&apos;un de ces descripteurs), et son intitulé contient un mot-clé des appels d&apos;offres (onglet suivant) ou, pour un
+            organisme suivi, une expression ou un sigle ci-dessous. Les codes CPV secondaires ne comptent pas. Un avis sans aucune classification
+            n&apos;est retenu que pour un organisme suivi, sur son intitulé.
           </p>
           <div className="grid gap-4 md:grid-cols-2">
             <TokensField id="it-cpv" label="Préfixes CPV" value={scope.cpvPrefixes} onChange={cpvPrefixes => update({ cpvPrefixes })} placeholder="72, 48"
@@ -31,7 +32,7 @@ export function ItScopeTab({ config, onChange }: { config: VeilleConfig; onChang
           </div>
         </section>
         <section className="space-y-3">
-          <h2 className="text-base font-bold text-admin-fg">Offres d&apos;emploi (et avis sans classification)</h2>
+          <h2 className="text-base font-bold text-admin-fg">Offres d&apos;emploi (et intitulés des avis des organismes suivis)</h2>
           <p className="text-sm" style={muted}>
             Retenues si leur intitulé ou leur catégorie contient une expression ou un sigle, sauf si une exclusion s&apos;y trouve.
             Comparaison sans accents ni majuscules ; « * » en fin de mot accepte la suite du mot (« développeur* » : développeuse, développeurs…).

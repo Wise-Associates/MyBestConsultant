@@ -5,9 +5,9 @@ import { secondaryButton } from '@/app/admin/candidats/labels'
 import type { VeilleConfig, VeilleKeywordFamily, VeilleTenderKeywords } from '@/lib/veille/config'
 import { ConfirmDelete, LinesField, Switch, TextField, TokensField, freeKey } from './fields'
 
-// Mots-clés des appels d'offres (ADR 0006 du scanner) : ils l'emportent sur la classification d'un avis et servent à
-// chercher chez tous les acheteurs. Le scanner fait une recherche par famille dans l'intitulé des avis du BOAMP et de
-// TED, puis vérifie les expressions exactes dans l'intitulé et la description.
+// Mots-clés des appels d'offres (ADR 0006 et 0007 du scanner) : un appel d'offres n'est envoyé que si son intitulé en
+// contient un et que son code CPV principal est informatique. Le scanner fait une recherche par famille dans l'intitulé
+// des avis du BOAMP et de TED, puis vérifie les expressions exactes dans l'intitulé.
 
 const muted = { color: 'var(--admin-fg-muted)' }
 
@@ -22,13 +22,14 @@ export function TenderKeywordsTab({ config, onChange }: { config: VeilleConfig; 
     <div className="space-y-8">
       <section className="space-y-3">
         <p className="text-sm" style={muted}>
-          Un appel d&apos;offres dont l&apos;intitulé ou la description contient l&apos;un de ces mots-clés est envoyé, même classé hors
-          informatique (un projet de digitalisation est souvent classé « conseil »). Une exclusion du filtre informatique (« travaux »)
-          dans l&apos;intitulé l&apos;emporte.
+          Un appel d&apos;offres n&apos;est envoyé que si deux indices concordent : son intitulé contient l&apos;un de ces mots-clés (pour un
+          organisme suivi, le vocabulaire du filtre informatique compte aussi), et son code CPV principal est informatique (onglet « Filtre
+          informatique »). La description et les codes CPV secondaires ne comptent pas : ils faisaient envoyer des imprimantes ou du matériel
+          de cuisine. Une exclusion du filtre informatique (« travaux ») dans l&apos;intitulé écarte l&apos;avis.
         </p>
         <Switch id="kw-all-buyers" label="Chercher aussi chez tous les acheteurs (BOAMP et TED)" checked={keywords.allBuyers}
           onChange={allBuyers => update({ allBuyers })}
-          description="Avis de tout acheteur public dont l'intitulé contient un mot-clé, ou classés informatique : envoyés sous « Autres acheteurs », avec l'acheteur comme client. Quelques dizaines d'avis par jour, chacun lu par l'IA de la boîte AO. Désactivé : seuls les organismes suivis." />
+          description="Avis de tout acheteur public dont l'intitulé contient un mot-clé et dont le code CPV principal est informatique : envoyés sous « Autres acheteurs », avec l'acheteur comme client. Chacun est lu par l'IA de la boîte AO. Désactivé : seuls les organismes suivis." />
       </section>
 
       <section className="space-y-3">
@@ -53,7 +54,7 @@ export function TenderKeywordsTab({ config, onChange }: { config: VeilleConfig; 
               <TextField id={`kw-${index}-label`} label="Libellé" value={family.label} onChange={label => setFamily(index, { label })} />
               <LinesField id={`kw-${index}-phrases`} label="Expressions" value={family.phrases} rows={8} onChange={phrases => setFamily(index, { phrases })} />
               <TokensField id={`kw-${index}-acronyms`} label="Sigles" value={family.acronyms} onChange={acronyms => setFamily(index, { acronyms })} placeholder="TMA, API"
-                hint="Reconnus seulement écrits en majuscules. Ceux de deux lettres (IA, BI) ne sont cherchés qu'au BOAMP : TED les ignore." />
+                hint="Reconnus seulement écrits en majuscules (« TMA », pas « tma »)." />
               <div className="flex justify-end">
                 <ConfirmDelete label="Supprimer la famille" warning="Ses mots-clés ne seront plus cherchés."
                   onConfirm={() => update({ families: keywords.families.filter((_, i) => i !== index) })} />
