@@ -3789,17 +3789,6 @@
             ],
             "indexes": [
                 {
-                    "key": "candidateversion",
-                    "type": "unique",
-                    "status": "available",
-                    "attributes": [
-                        "candidateId",
-                        "mode",
-                        "lang"
-                    ],
-                    "orders": []
-                },
-                {
                     "key": "tenantversion",
                     "type": "unique",
                     "status": "available",
