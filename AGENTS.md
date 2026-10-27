@@ -131,6 +131,16 @@ Core principles for production-quality frontend decisions on this project.
 
 ---
 
+# Structure Appwrite (appwrite.config.json)
+
+- **`appwrite.config.json` = structure du projet DEV** (collections, attributs, index de la base `bestconsultant-dev`), versionnée, appliquée par la CLI Appwrite épinglée (`appwrite-cli` **8.3.0**, la dernière pour le serveur 1.7.x : ne pas la monter) ; décision : `docs/adr/0011-structure-appwrite-appwrite-config.md`. Ne jamais le réécrire avec un outil qui lit les nombres en double précision (bornes ±9223372036854775807 arrondies) : `npm run schema:pull` ou une édition à la main.
+- Session : `npm run appwrite -- login --endpoint https://appwrite.mybestconsultant.fr/v1`, puis `npm run appwrite -- logout` (session de la console : tous les projets, production comprise).
+- `npm run schema:pull` (remplace le fichier par la structure de DEV) ; `npm run schema:check -- dev|prod` (lecture seule, code 1 s'il diffère) ; `npm run schema:push -- dev|prod` : **ajouts seulement** (collection — permissions affichées —, attribut facultatif, index non unique) et **ne supprime jamais** (ce que seul le projet a est gardé, ligne « · », la CLI reçoit le fichier complété) ; refuse (lignes « ✗ », rien n'est poussé) recréation (type, taille…), attribut obligatoire ou index unique ajoutés à une collection existante, modification sur place (obligatoire, valeur par défaut, bornes, énumération) et réglages de collection (permissions, `documentSecurity`) — la CLI 8.3.0 affiche ces deux derniers mais ne les applique pas —, index du projet non disponible (« failed »), bornes arrondies ; confirmation en tapant l'identifiant du projet, comparaison refaite juste après, jamais `--force`, structure relue après (même si la CLI échoue) ; sur DEV, fichier repris depuis le projet après un push réussi (réglages par défaut d'un attribut écrit à la main). Règles pures : `src/lib/appwrite/schema-diff.ts` (testé) ; script : `scripts/appwrite-schema.mts` (copie du fichier dans un dossier temporaire : la base de production est `bestconsult`, pas `bestconsultant-dev`).
+- **Ajouter** une collection, un attribut ou un index : DEV d'abord (console puis `schema:pull`, ou fichier puis `schema:push -- dev`), commit du fichier avec le code ; production : `schema:check -- prod`, puis `schema:push -- prod` **par un humain**, après sauvegarde de la base, avant la mise en production du code qui l'utilise.
+- **Reste un script** (avec simulation, `--apply`, `--prod`) ou la console : données (remplissage, rattachement), suppressions et changements de type (nouvel attribut, migration, suppression de l'ancien après le déploiement), modifications d'un attribut existant (le rendre obligatoire une fois rempli…), index unique sur une collection qui a des données (doublons vérifiés ; remplacement en deux temps), buckets, réglages de collection. Après un script de structure ou une modification dans la console de DEV, `schema:pull` puis `schema:check -- prod`.
+
+---
+
 <!-- BEGIN:ao-offers -->
 # AO Offers (appels d'offres reçus par e-mail)
 
