@@ -3856,6 +3856,72 @@
                 }
             ],
             "indexes": []
+        },
+        {
+            "$id": "veille_config",
+            "$permissions": [],
+            "databaseId": "bestconsultant-dev",
+            "name": "Veille config",
+            "enabled": true,
+            "documentSecurity": false,
+            "attributes": [
+                {
+                    "key": "version",
+                    "type": "integer",
+                    "required": true,
+                    "array": false,
+                    "min": 1,
+                    "max": 9223372036854775807,
+                    "default": null
+                },
+                {
+                    "key": "schemaVersion",
+                    "type": "integer",
+                    "required": true,
+                    "array": false,
+                    "min": 1,
+                    "max": 1000,
+                    "default": null
+                },
+                {
+                    "key": "config",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 100000,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "savedById",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "savedByName",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 128,
+                    "default": null,
+                    "encrypt": false
+                }
+            ],
+            "indexes": [
+                {
+                    "key": "version_unique",
+                    "type": "unique",
+                    "status": "available",
+                    "attributes": [
+                        "version"
+                    ],
+                    "orders": []
+                }
+            ]
         }
     ]
 }
