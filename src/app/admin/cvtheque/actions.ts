@@ -6,7 +6,7 @@ import { Query } from 'node-appwrite'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { revalidatePath } from 'next/cache'
 import type { CvProfile } from '@/lib/cv-profile-extract'
-import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
+import { PLATFORM_NAME, PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 import { cvExportErrorName, isCvExportStorageConfigured, loadCvExportVersions, type CvExportVersions } from '@/lib/cv-export/store'
 import { CANDIDATE_ID } from '@/lib/cv-export/stored'
 import { readTemplateUpload, removeTemplate, saveUploadedTemplate } from '@/lib/cv-export/template-upload'
@@ -116,13 +116,13 @@ async function adminId(): Promise<string | null> {
 
 const ADMIN_SESSION_EXPIRED = 'Session expirée ou droits insuffisants : reconnectez-vous en admin.'
 
-/** Dépose le modèle Word de la plateforme (.docx + template_map.json), à la place de celui du dépôt ou du précédent. */
+/** Dépose le modèle Word de la plateforme (.docx seul, cartographié par l'IA : ADR 0014), à la place de celui du dépôt ou du précédent. */
 export async function saveCvTemplate(formData: FormData): Promise<{ error?: string }> {
   const uploadedBy = await adminId()
   if (!uploadedBy) return { error: ADMIN_SESSION_EXPIRED }
   const files = readTemplateUpload(formData)
   if ('error' in files) return files
-  const res = await saveUploadedTemplate({ tenantId: PLATFORM_TENANT_ID, files, uploadedBy, now: new Date() })
+  const res = await saveUploadedTemplate({ tenantId: PLATFORM_TENANT_ID, esn: PLATFORM_NAME, files, uploadedBy, now: new Date() })
   if (!res.error) revalidatePath('/admin/cvtheque')
   return res
 }

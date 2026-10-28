@@ -19,6 +19,9 @@ async function platformTemplate(): Promise<{ template: EsnTemplateInfo | null; e
   }
 }
 
+// Dépôt du modèle CV (Server Action de cette page) : cartographie par l'IA, deux réponses de 120 s au plus (ADR 0014).
+export const maxDuration = 300
+
 export default async function CvthequePage() {
   const [{ candidates, error }, platform] = await Promise.all([getCvthequeCandidates(), platformTemplate()])
   return (

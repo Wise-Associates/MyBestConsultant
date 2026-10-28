@@ -27,14 +27,16 @@ export function generationDenial(requester: GenerationRequester): string | null 
 
 /**
  * Dépôts et aperçus de modèle par jour (UTC) et par organisation : chacun rend le modèle deux fois (français et anglais),
- * jusqu'à environ 2 s pour un modèle aux bornes de render.ts. Tout recruteur de l'organisation peut déposer, à l'adresse
- * e-mail vérifiée (inscription libre).
+ * jusqu'à environ 2 s pour un modèle aux bornes de render.ts. Un dépôt fait aussi écrire la cartographie par l'IA (une ou
+ * deux réponses, ADR 0014), à nos frais : plafond pour toutes les organisations ensemble. Tout recruteur de
+ * l'organisation peut déposer, à l'adresse e-mail vérifiée (inscription libre).
  */
-export const CV_TEMPLATE_DAILY_LIMITS = { uploads: 20, previews: 30 } as const
+export const CV_TEMPLATE_DAILY_LIMITS = { uploads: 20, uploadsAllOrganisations: 200, previews: 30 } as const
 
 export const TEMPLATE_MESSAGE = {
   emailNotVerified: 'Vérifiez votre adresse e-mail (lien reçu à l\'inscription) pour déposer le modèle de votre organisation.',
   uploadQuota: `Limite de ${CV_TEMPLATE_DAILY_LIMITS.uploads} dépôts de modèle par jour atteinte pour votre organisation : réessayez demain.`,
+  uploadPlatformQuota: 'Trop de dépôts de modèle aujourd\'hui sur la plateforme : réessayez demain.',
   previewQuota: `Limite de ${CV_TEMPLATE_DAILY_LIMITS.previews} aperçus du modèle par jour atteinte pour votre organisation : réessayez demain.`,
 } as const
 
