@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { saveAnalyticsConfig, fetchDashboardData, fetchRealtimeData } from './actions'
 import type { DashboardData, RealtimeData } from '@/lib/google-analytics'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 type FetchResult<T> = { error: string } | { data: T }
 
@@ -172,13 +173,9 @@ function SetupScreen({ onConnected, existingPropertyId, embedded = false }: { on
   if (embedded) return <div className="px-6 py-6">{content}</div>
 
   return (
-    <div className="min-h-full bg-[#0A0C10] text-white px-8 py-10">
+    <div className="min-h-full text-white px-8 py-10">
+      <AdminPageHeader title="Analytics" description="Connectez Google Analytics pour voir le trafic du site en temps réel, directement ici." />
       <div className="max-w-2xl mx-auto">
-        <div className="flex items-center gap-2 mb-1">
-          <Activity className="h-5 w-5 text-blue-400" />
-          <div className="text-2xl font-semibold tracking-tight">Analytics</div>
-        </div>
-        <p className="text-sm text-white/40 mb-8">Connectez Google Analytics pour voir le trafic du site en temps réel, directement ici.</p>
         {content}
       </div>
     </div>
@@ -240,7 +237,8 @@ export function AnalyticsDashboard({ isConfigured, initialPropertyId, initialRes
 
   if (!result) {
     return (
-      <div className="min-h-full bg-[#0A0C10] text-white flex items-center justify-center py-24">
+      <div className="min-h-full text-white flex items-center justify-center py-24">
+        <AdminPageHeader title="Analytics" />
         <Loader2 className="h-6 w-6 animate-spin text-white/30" />
       </div>
     )
@@ -248,7 +246,8 @@ export function AnalyticsDashboard({ isConfigured, initialPropertyId, initialRes
 
   if ('error' in result) {
     return (
-      <div className="min-h-full bg-[#0A0C10] text-white px-8 py-10">
+      <div className="min-h-full text-white px-8 py-10">
+        <AdminPageHeader title="Analytics" />
         <div className="max-w-lg mx-auto text-center py-16">
           <AlertCircle className="h-8 w-8 text-red-400 mx-auto mb-4" />
           <div className="text-lg font-semibold mb-2">Connexion à Google Analytics impossible</div>
@@ -266,32 +265,21 @@ export function AnalyticsDashboard({ isConfigured, initialPropertyId, initialRes
   const rt = realtime ?? d.realtime
 
   return (
-    <div className="min-h-full bg-[#0A0C10] text-white">
-      {/* Header */}
-      <div className="border-b border-white/[0.07] px-8 py-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Connecté à Google Analytics
-              </span>
-            </div>
-            <div className="text-2xl font-semibold text-white tracking-tight">Analytics</div>
-            <p className="text-sm text-white/40 mt-0.5">Mis à jour à {lastUpdated.toLocaleTimeString('fr-FR')}</p>
-          </div>
-          <div className="flex items-center gap-2">
+    <div className="min-h-full text-white">
+      <AdminPageHeader title="Analytics"
+        description={`Connecté à Google Analytics · mis à jour à ${lastUpdated.toLocaleTimeString('fr-FR')}`}
+        actions={
+          <>
             <button onClick={refreshAll} disabled={refreshing}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] text-sm font-medium text-white/70 hover:text-white transition-all disabled:opacity-50">
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /> Actualiser
             </button>
-            <button onClick={() => setShowSettings(true)}
+            <button onClick={() => setShowSettings(true)} aria-label="Réglages Google Analytics"
               className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] text-white/70 hover:text-white transition-all">
               <Settings className="h-4 w-4" />
             </button>
-          </div>
-        </div>
-      </div>
+          </>
+        } />
 
       <div className="px-8 py-8 space-y-8">
 

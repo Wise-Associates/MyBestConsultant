@@ -1,6 +1,5 @@
-import Link from 'next/link'
-import { ArrowLeft } from 'lucide-react'
 import { requireAdmin } from '@/lib/appwrite/auth'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 import { listMailboxes, type MailboxView } from '@/lib/ao/mailboxes'
 import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 import { MailboxesManager } from '@/components/ao/mailboxes-manager'
@@ -19,15 +18,8 @@ export default async function PlatformMailboxesPage() {
   }
   return (
     <div className="admin-light min-h-full p-8 space-y-6">
-      <div>
-        <Link href="/admin/candidats" className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--admin-fg-muted)' }}>
-          <ArrowLeft className="h-3.5 w-3.5" /> Candidats
-        </Link>
-        <h1 className="text-2xl font-bold mt-2" style={{ color: 'var(--admin-fg)', fontSize: '1.5rem' }}>Boîtes de réception de la plateforme</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
-          N&apos;importe quelle adresse : chaque boîte active est lue à chaque passage. Les organisations gèrent les leurs depuis leur espace recruteur.
-        </p>
-      </div>
+      <AdminPageHeader title="Boîtes de réception de la plateforme" back={{ href: '/admin/candidats', label: 'Candidats' }}
+        description="N'importe quelle adresse : chaque boîte active est lue à chaque passage. Les organisations gèrent les leurs depuis leur espace recruteur." />
       {loadError ? (
         <p role="alert" className="text-sm" style={{ color: '#b91c1c' }}>{loadError}</p>
       ) : (

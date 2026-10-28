@@ -19,5 +19,5 @@ export default async function AoStatsPage() {
     console.error('AO: statistiques indisponibles', err instanceof Error ? err.message : err)
     loadError = 'Impossible de charger les offres AO : vérifiez les collections AO (npm run ao:setup) et leurs variables APPWRITE_COLLECTION_AO_*.'
   }
-  return <AoStatsView rows={rows} loadError={loadError} back={{ href: '/admin/candidats', label: 'Candidats' }} scope="de la plateforme" now={new Date()} />
+  return <AoStatsView titleInAdminBar rows={rows} loadError={loadError} back={{ href: '/admin/candidats', label: 'Candidats' }} scope="de la plateforme" now={new Date()} />
 }

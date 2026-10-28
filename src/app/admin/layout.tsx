@@ -7,6 +7,7 @@ import { AdminNav } from './admin-nav'
 import { countTicketsNeedingSupport } from '@/lib/support'
 import { VerifyEmailBanner } from '@/components/shared/verify-email-banner'
 import { AoSyncProvider } from '@/components/ao/ao-sync-provider'
+import { AdminPageHeaderSlot } from '@/components/admin/admin-page-header'
 import { LogOut, Bell } from 'lucide-react'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -24,7 +25,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <>
     <VerifyEmailBanner verified={user.emailVerification} />
-    <div className="h-screen flex" style={{ background: '#0F1117' }}>
+    <div className="mbc-navy-bg h-screen flex">
 
       {/* ── SIDEBAR ─────────────────────────────────────────────── */}
       <aside className="w-[240px] shrink-0 hidden lg:flex flex-col fixed top-0 left-0 h-screen z-30" style={{
@@ -74,23 +75,21 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       {/* ── CONTENT ─────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0 lg:ml-[240px]">
 
-        {/* Topbar */}
-        <header className="h-[64px] flex items-center justify-between px-6 shrink-0" style={{
-          background: '#13151E',
-          borderBottom: '1px solid rgba(255,255,255,0.07)',
+        {/* Topbar : porte aussi le titre et les actions de la page (AdminPageHeader) */}
+        <header className="h-[64px] flex items-center gap-4 px-6 shrink-0" style={{
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
         }}>
           {/* Mobile brand : retour à l'accueil du site */}
           <Link href="/" title="Accueil du site" aria-label="My Best Consultant : accueil du site"
-            className="lg:hidden flex items-center gap-2.5 no-underline transition-opacity hover:opacity-80">
+            className="lg:hidden flex items-center gap-2.5 no-underline transition-opacity hover:opacity-80 shrink-0">
             <div className="w-7 h-7 rounded-md flex items-center justify-center text-white text-xs font-black"
               style={{ background: 'linear-gradient(135deg, #B8860B 0%, #DAA520 100%)' }}>M</div>
-            <span className="text-white font-bold text-sm">Admin</span>
+            <span className="hidden sm:inline text-white font-bold text-sm">Admin</span>
           </Link>
-          {/* Desktop: empty left side - breadcrumb could go here */}
-          <div className="hidden lg:block" />
+          <AdminPageHeaderSlot />
 
           {/* Right actions */}
-          <div className="flex items-center gap-2">
+          <div className="hidden sm:flex items-center gap-2 shrink-0">
             <button className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:bg-white/8"
               style={{ color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.07)' }}>
               <Bell className="h-4 w-4" />

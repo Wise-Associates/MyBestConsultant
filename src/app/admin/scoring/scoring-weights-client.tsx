@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Star, Loader2, CheckCircle2 } from 'lucide-react'
+import { Loader2, CheckCircle2 } from 'lucide-react'
 import { saveScoringWeights } from './actions'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 import type { ScoringWeightsConfig } from './types'
 
 export function ScoringWeightsClient({ initialWeights }: { initialWeights: ScoringWeightsConfig }) {
@@ -22,14 +23,8 @@ export function ScoringWeightsClient({ initialWeights }: { initialWeights: Scori
 
   return (
     <div className="max-w-2xl p-6 space-y-6">
-      <div>
-        <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: '#0B1D51' }}>
-          <Star className="h-5 w-5" style={{ color: '#B8860B' }} /> Pondération du score de matching
-        </h1>
-        <p className="text-sm mt-1" style={{ color: '#8a90a8' }}>
-          Ajustez le poids des recommandations candidat dans le score de matching IA (screening des candidatures).
-        </p>
-      </div>
+      <AdminPageHeader title="Pondération du score de matching"
+        description="Ajustez le poids des recommandations candidat dans le score de matching IA (screening des candidatures)." />
 
       <div className="p-5 rounded-2xl space-y-4" style={{ background: 'white', border: '1px solid #e5e9f5' }}>
         <div className="flex items-center justify-between">

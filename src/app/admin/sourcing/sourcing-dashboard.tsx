@@ -9,6 +9,7 @@ import {
   type SourcingJob,
 } from './actions'
 import type { CandidateMatch } from '@/lib/sourcing-core'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 function scoreColor(score: number): string {
   if (score >= 75) return '#34d399'
@@ -142,13 +143,8 @@ export function SourcingDashboard({ jobs }: { jobs: SourcingJob[] }) {
   return (
     <div className="min-h-full p-8 space-y-6" style={{ color: 'rgba(255,255,255,0.87)' }}>
 
-      <div>
-        <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>RECRUTEMENT</p>
-        <h1 className="text-[28px] font-bold tracking-tight text-white">Sourcing IA</h1>
-        <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-          Identifie les meilleurs candidats déjà inscrits pour une offre, et prépare un premier message.
-        </p>
-      </div>
+      <AdminPageHeader title="Sourcing IA"
+        description="Identifie les meilleurs candidats déjà inscrits pour une offre, et prépare un premier message." />
 
       {/* Job picker */}
       <div className="rounded-2xl p-5 flex items-center gap-3 flex-wrap" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>

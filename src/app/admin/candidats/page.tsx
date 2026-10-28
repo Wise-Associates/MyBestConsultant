@@ -33,6 +33,7 @@ export default async function AdminAoOffersPage() {
   }
   return (
     <AoOffersDashboard
+      titleInAdminBar
       rows={rows}
       recentEmails={emails}
       inboxConfigured={inboxConfigured}

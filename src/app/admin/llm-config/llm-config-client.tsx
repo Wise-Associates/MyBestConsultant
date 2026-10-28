@@ -10,6 +10,7 @@ import { saveLLMConfig, testProvider } from './actions'
 import type { ProviderConfig } from './types'
 import { Row, TextInput, NumInput, ApiKeyInput } from './config-ui'
 import { ModuleRouting, OpenSourceModels } from './models-section'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 // ── Official pricing reference (read-only) ──────────────────────────
 const CLAUDE_PRICING = [
@@ -209,23 +210,17 @@ export function LLMConfigClient({ initialConfig }: { initialConfig: ProviderConf
   return (
     <div className="min-h-full p-8 max-w-3xl mx-auto space-y-8" style={S}>
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>INTELLIGENCE</p>
-          <h1 className="text-[28px] font-bold tracking-tight text-white">Configuration IA</h1>
-          <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-            Clés API, modèles et pricing — utilisés pour tous les modules du site.
-          </p>
-        </div>
-        <button onClick={save} disabled={isPending}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all"
-          style={{ background: '#B8860B', color: 'white' }}>
-          {isPending ? <><Loader2 className="h-4 w-4 animate-spin" />Enregistrement…</>
-            : status === 'ok' ? <><Check className="h-4 w-4" />Enregistré !</>
-            : <>Enregistrer</>}
-        </button>
-      </div>
+      <AdminPageHeader title="Configuration IA"
+        description="Clés API, modèles et pricing — utilisés pour tous les modules du site."
+        actions={
+          <button onClick={save} disabled={isPending}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all"
+            style={{ background: '#B8860B', color: 'white' }}>
+            {isPending ? <><Loader2 className="h-4 w-4 animate-spin" />Enregistrement…</>
+              : status === 'ok' ? <><Check className="h-4 w-4" />Enregistré !</>
+              : <>Enregistrer</>}
+          </button>
+        } />
 
       {status === 'error' && (
         <div className="flex items-center gap-3 p-4 rounded-xl text-sm text-red-400"

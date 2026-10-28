@@ -2,6 +2,7 @@ import { getPages, getNavLinks } from './actions'
 import { PagesClient } from './pages-client'
 import { NavMenuManager } from './nav-menu-manager'
 import { KNOWN_PAGES } from '@/lib/known-pages'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 export default async function AdminPagesPage() {
   const [pages, navLinks] = await Promise.all([getPages(), getNavLinks()])
@@ -14,7 +15,8 @@ export default async function AdminPagesPage() {
   ]
 
   return (
-    <div className="min-h-full bg-[#0A0C10] text-white">
+    <div className="min-h-full text-white">
+      <AdminPageHeader title="Pages du site" description="Menu de navigation et pages créées dans l'éditeur" />
       <div className="px-8 py-8 max-w-5xl space-y-6">
         <NavMenuManager initialNavLinks={navLinks} availablePages={availablePages} />
         <PagesClient initialPages={pages} />
