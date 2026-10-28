@@ -33,11 +33,12 @@ export function lockIdFor(tenantId: string): string {
  * (sourcing-access.ts) : par organisation (s), pour toutes les organisations (q). « Réessayer » d'un e-mail AO par
  * les recruteurs (attempts.ts) : par organisation (r), pour toutes les organisations (w). Rédactions par l'IA de la
  * version publiée d'une offre AO par les recruteurs (publication-copy.ts) : par organisation (d), pour toutes (h).
+ * CV du vivier général comparés aux offres (vivier-matching.ts) : par organisation (n), pour toutes (o).
  */
 const COUNTER_PREFIX = {
   vision: 'v', tables: 't', mailboxTests: 'c', mailboxTarget: 'm', mailboxTestsAll: 'g', assistantUser: 'a', assistantAll: 'b',
   cvExportOrg: 'x', cvExportAll: 'y', cvTemplateOrg: 'u', cvTemplatePreview: 'p', aoSourcingOrg: 's', aoSourcingAll: 'q',
-  aoRetryOrg: 'r', aoRetryAll: 'w', aoRewriteOrg: 'd', aoRewriteAll: 'h',
+  aoRetryOrg: 'r', aoRetryAll: 'w', aoRewriteOrg: 'd', aoRewriteAll: 'h', vivierMatchOrg: 'n', vivierMatchAll: 'o',
 } as const
 export type DailyCounter = keyof typeof COUNTER_PREFIX
 

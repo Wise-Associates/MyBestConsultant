@@ -30,7 +30,8 @@ export default async function ReportingPage() {
     listAll(COLLECTIONS.INTERVIEWS, [Query.equal('tenantId', tenantId)]),
     listAll(COLLECTIONS.APPLICATION_EMAILS, [Query.equal('tenantId', tenantId)]),
     listAll(COLLECTIONS.JOB_MATCHES, [Query.equal('tenantId', tenantId)]),
-    listAll(COLLECTIONS.VIVIER_CVS, [Query.equal('tenantId', tenantId)]),
+    // CV des viviers d'offres seulement : ceux du vivier général (sans offre) ne comptent pas et rempliraient la limite.
+    listAll(COLLECTIONS.VIVIER_CVS, [Query.equal('tenantId', tenantId), Query.isNotNull('jobId')]),
   ])
 
   // Stage history (to measure time spent per stage) — funnel_events are keyed by application.

@@ -6,7 +6,8 @@ export type AIModule = 'screening' | 'interview' | 'matching' | 'assistant' | 'c
 export const AI_MODULES: { id: AIModule; label: string; description: string }[] = [
   { id: 'screening', label: 'Screening CV', description: 'Score et analyse des candidatures' },
   { id: 'interview', label: 'Entretiens IA', description: 'Questions, relances et analyse des entretiens' },
-  { id: 'matching', label: 'Matching IA', description: 'Correspondance offres / profils et sourcing' },
+  // Vivier général (src/lib/vivier-matching.ts) : Claude quand aucun modèle n'est choisi ici (callLLM moduleDefault).
+  { id: 'matching', label: 'Matching IA', description: 'Correspondance offres / profils et sourcing — vivier général des recruteurs : Claude si « Modèle par défaut »' },
   // Sans repli (callLLM strict, src/lib/assistant/host.ts) : les conversations ne partent que chez le modèle choisi ici.
   { id: 'assistant', label: 'Assistant IA', description: 'Questions d’aide des candidats et recruteurs — sans repli : en cas de panne, l’assistant affiche une erreur' },
   // Sans repli (callLLM strict, src/lib/cv-export/export.ts) : le CV complet du candidat ne part que chez le modèle choisi ici.
@@ -95,12 +96,14 @@ export function isKnownModel(cfg: RoutingView, id: string | undefined): id is st
 }
 
 /**
- * Modèle à appeler en premier : forcé > affecté au module > modèle par défaut > Claude.
+ * Modèle à appeler en premier : forcé > affecté au module > modèle de l'appelant quand le module n'en a pas
+ * (`moduleDefault`) > modèle par défaut > Claude.
  * Un modèle affecté puis supprimé/désactivé ne bloque jamais le module : retour au modèle par défaut.
  */
-export function pickPrimary(cfg: RoutingView, opts: { provider?: string; module?: AIModule }): string {
+export function pickPrimary(cfg: RoutingView, opts: { provider?: string; module?: AIModule; moduleDefault?: string }): string {
   const routed = opts.provider ?? (opts.module ? cfg.moduleRouting[opts.module] : undefined)
   if (isKnownModel(cfg, routed)) return routed
+  if (!opts.provider && isKnownModel(cfg, opts.moduleDefault)) return opts.moduleDefault
   return isKnownModel(cfg, cfg.provider) ? cfg.provider : 'claude'
 }
 
