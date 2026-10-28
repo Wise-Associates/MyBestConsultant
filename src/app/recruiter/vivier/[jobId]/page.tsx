@@ -2,9 +2,9 @@ import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { getJobById } from '@/lib/appwrite/jobs'
-import { getVivierForJob } from './actions'
+import { getVivierForJob } from '../actions'
 import { ArrowLeft, FolderOpen, Brain } from 'lucide-react'
-import { VivierClient } from './vivier-client'
+import { VivierClient } from '../vivier-client'
 import { BUCKETS } from '@/lib/appwrite/config'
 
 export default async function VivierPage({ params }: { params: Promise<{ jobId: string }> }) {

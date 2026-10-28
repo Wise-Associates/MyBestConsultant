@@ -1936,6 +1936,15 @@
                     "size": 500,
                     "default": null,
                     "encrypt": false
+                },
+                {
+                    "key": "offerMatchesJson",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 20000,
+                    "default": null,
+                    "encrypt": false
                 }
             ],
             "indexes": [
@@ -1945,6 +1954,15 @@
                     "status": "available",
                     "attributes": [
                         "jobId"
+                    ],
+                    "orders": []
+                },
+                {
+                    "key": "cvFileId_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "cvFileId"
                     ],
                     "orders": []
                 }

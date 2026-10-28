@@ -156,6 +156,8 @@ export async function takeDailySlotId(counter: DailyCounter, key: string, now: D
   // Places déjà prises : on commence la recherche après elles (sinon chaque demande essaierait toutes les places).
   // Une place rendue (releaseDailySlot) laisse un trou avant elles : il ne sera repris que si toutes les suivantes le sont.
   const used = (await databases.listDocuments(DB_ID, COLLECTIONS.AO_STATE, [Query.equal('holder', base), Query.limit(1)])).total
+  // Toutes les places prises : refus sans les essayer une à une (2 000 écritures refusées pour un plafond de 2 000).
+  if (used >= limit) return null
   for (let slot = used; slot < limit; slot++) {
     try {
       await databases.createDocument(DB_ID, COLLECTIONS.AO_STATE, `${base}_${slot}`, { kind: 'slot', holder: base })
