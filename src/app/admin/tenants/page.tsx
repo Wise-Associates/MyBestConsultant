@@ -3,6 +3,7 @@ import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
 import { Building2, Users, Briefcase, Calendar, ExternalLink } from 'lucide-react'
 import { CreateTenantDialog } from './create-tenant-dialog'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 export default async function AdminTenantsPage() {
   const { databases } = createAdminClient()
@@ -35,17 +36,9 @@ export default async function AdminTenantsPage() {
   return (
     <div className="min-h-full p-8 space-y-8" style={{ color: 'rgba(255,255,255,0.87)' }}>
 
-      {/* Header */}
-      <div className="flex items-end justify-between">
-        <div>
-          <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>GESTION</p>
-          <h1 className="text-[28px] font-bold tracking-tight text-white">Entreprises</h1>
-          <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-            {tenants.length} espace{tenants.length > 1 ? 's' : ''} client enregistré{tenants.length > 1 ? 's' : ''}
-          </p>
-        </div>
-        <CreateTenantDialog />
-      </div>
+      <AdminPageHeader title="Entreprises"
+        description={`${tenants.length} espace${tenants.length > 1 ? 's' : ''} client enregistré${tenants.length > 1 ? 's' : ''}`}
+        actions={<CreateTenantDialog />} />
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">

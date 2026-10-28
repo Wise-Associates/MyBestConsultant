@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { Search, Mic, Bot, User } from 'lucide-react'
 import type { RecordingRow } from './actions'
 import { AudioPlayer } from '@/components/shared/audio-player'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 export function RecordingsClient({ rows }: { rows: RecordingRow[] }) {
   const [query, setQuery] = useState('')
@@ -18,13 +19,8 @@ export function RecordingsClient({ rows }: { rows: RecordingRow[] }) {
 
   return (
     <div style={{ padding: '2rem', maxWidth: 1100 }}>
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#2C2C2E' }}>Enregistrements des entretiens</h1>
-        <p style={{ fontSize: 13, color: 'rgba(44,44,46,0.55)', marginTop: '0.35rem' }}>
-          {rows.length} enregistrement{rows.length > 1 ? 's' : ''} — un audio continu par entretien vocal, tous
-          entretiens confondus. Stockage sécurisé, accès réservé aux administrateurs.
-        </p>
-      </div>
+      <AdminPageHeader title="Enregistrements des entretiens"
+        description={`${rows.length} enregistrement${rows.length > 1 ? 's' : ''} — un audio continu par entretien vocal, tous entretiens confondus. Stockage sécurisé, accès réservé aux administrateurs.`} />
 
       <div style={{ position: 'relative', marginBottom: '1.25rem', maxWidth: 360 }}>
         <Search style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', width: 15, height: 15, color: 'rgba(44,44,46,0.35)' }} />

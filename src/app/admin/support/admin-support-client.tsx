@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, Inbox, LifeBuoy, Search, UserX } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Inbox, Search, UserX } from 'lucide-react'
 import {
   CATEGORY_META, PRIORITY_META, STATUS_META, isOpenStatus,
   type Ticket, type TicketCategory, type TicketPriority,
 } from '@/lib/support-shared'
 import { StatusPill } from '@/components/support/ticket-view'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 const PAGE_SIZE = 20
 const DAY = 86_400_000
@@ -72,11 +73,8 @@ export function AdminSupportClient({ tickets, adminName, now }: { tickets: Ticke
 
   return (
     <div className="min-h-full p-6 sm:p-8 max-w-6xl mx-auto space-y-6" style={{ color: 'rgba(255,255,255,0.87)' }}>
-      <div>
-        <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>SUPPORT</p>
-        <h1 className="tracking-tight text-white flex items-center gap-3" style={{ fontSize: '1.75rem', fontWeight: 700 }}><LifeBuoy className="h-6 w-6" style={{ color: '#e8a33d' }} />Help Desk</h1>
-        <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>Tickets des recruteurs et des candidats — {tickets.length} au total{stats.unread > 0 ? `, ${stats.unread} avec du nouveau` : ''}.</p>
-      </div>
+      <AdminPageHeader title="Help Desk"
+        description={`Tickets des recruteurs et des candidats — ${tickets.length} au total${stats.unread > 0 ? `, ${stats.unread} avec du nouveau` : ''}.`} />
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {cards.map(c => (

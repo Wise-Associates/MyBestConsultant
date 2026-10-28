@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { updateGroupStatus, type GroupQueueItem } from './actions'
 import { previewPostText } from '@/app/admin/linkedin-posts/actions'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 const VIS_CFG: Record<GroupQueueItem['visibility'], { label: string; icon: typeof Globe; color: string }> = {
   public: { label: 'Public', icon: Globe, color: '#34d399' },
@@ -141,14 +142,8 @@ export function GroupsQueueClient({ initialItems }: { initialItems: GroupQueueIt
   return (
     <div className="min-h-full p-8 space-y-6" style={{ color: 'rgba(255,255,255,0.87)' }}>
 
-      {/* Header */}
-      <div>
-        <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>INTELLIGENCE</p>
-        <h1 className="text-[28px] font-bold tracking-tight text-white">Groupes LinkedIn</h1>
-        <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-          File d&apos;attente des groupes suggérés — publication manuelle, en un clic depuis ici
-        </p>
-      </div>
+      <AdminPageHeader title="Groupes LinkedIn"
+        description="File d'attente des groupes suggérés — publication manuelle, en un clic depuis ici" />
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">

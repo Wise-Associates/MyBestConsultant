@@ -5,11 +5,12 @@ import {
   Send, CheckCircle2, Clock, AlertCircle, Zap, User,
   RefreshCw, ExternalLink, TrendingUp, Calendar, Briefcase,
   ChevronDown, ChevronUp, Search, Settings, Eye, X,
-  MapPin, Tag, BarChart2, Users2,
+  MapPin, Tag, Users2,
 } from 'lucide-react'
 import { postJobAction, saveLinkedInChannelConfig, previewPostText } from './actions'
 import type { LinkedInPostJob, LinkedInChannelConfig } from './actions'
 import { GroupsModal } from './groups-modal'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 const CONTRACT: Record<string, string> = { cdi: 'CDI', cdd: 'CDD', freelance: 'Freelance', mission: 'Mission' }
 const REMOTE: Record<string, string> = { onsite: 'Présentiel', hybrid: 'Hybride', remote: 'Remote' }
@@ -422,6 +423,8 @@ export function LinkedInPostsClient({ jobs: initialJobs, cfg }: {
   cfg: LinkedInChannelConfig
 }) {
   const [jobs, setJobs] = useState(initialJobs)
+  // Heure lue une fois, à l'ouverture de la page : le rendu reste pur (« cette semaine » ne bouge pas d'un rendu à l'autre).
+  const [now] = useState(() => Date.now())
   const [search, setSearch] = useState('')
   const [contract, setContract] = useState('')
   const [remote, setRemote] = useState('')
@@ -445,7 +448,7 @@ export function LinkedInPostsClient({ jobs: initialJobs, cfg }: {
   const posted = filtered.filter(j => !!j.linkedinPostedAt)
 
   const postedThisWeek = jobs.filter(j => j.linkedinPostedAt &&
-    (Date.now() - new Date(j.linkedinPostedAt).getTime()) < 7 * 24 * 3600 * 1000)
+    (now - new Date(j.linkedinPostedAt).getTime()) < 7 * 24 * 3600 * 1000)
 
   const canPost = cfg.channel === 'make' ? !!cfg.makeWebhookUrl : cfg.linkedinConnected
 
@@ -453,24 +456,15 @@ export function LinkedInPostsClient({ jobs: initialJobs, cfg }: {
     <div className="min-h-screen" style={{ background: '#f4f5f9' }}>
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-5">
 
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#0B1D51' }}>
-              <BarChart2 className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold" style={{ color: '#0B1D51' }}>LinkedIn Posts</h1>
-              <p className="text-sm" style={{ color: '#8a90a8' }}>Diffusez vos offres sur LinkedIn</p>
-            </div>
-          </div>
-          <a href="/admin/linkedin"
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-medium"
-            style={{ color: '#5a6080', borderColor: '#d0d4e8', background: '#fff' }}>
-            <ExternalLink className="w-3 h-3" />
-            Scraping LinkedIn
-          </a>
-        </div>
+        <AdminPageHeader title="LinkedIn Posts" description="Diffusez vos offres sur LinkedIn"
+          actions={
+            <a href="/admin/linkedin"
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-medium"
+              style={{ color: '#5a6080', borderColor: '#d0d4e8', background: '#fff' }}>
+              <ExternalLink className="w-3 h-3" />
+              Scraping LinkedIn
+            </a>
+          } />
 
         {/* Canal actif banner */}
         <div className="rounded-2xl p-4 flex items-center justify-between"
