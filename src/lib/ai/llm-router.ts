@@ -234,6 +234,8 @@ export interface CallLLMOptions {
   provider?: string
   /** Module appelant : utilise le modèle qui lui est affecté dans /admin/llm-config, sinon le modèle par défaut. */
   module?: AIModule
+  /** Modèle à utiliser quand Config IA n'en affecte aucun au module, au lieu du modèle par défaut (repli inchangé). */
+  moduleDefault?: string
   /** Pas de repli automatique — pour tester réellement un modèle sans qu'un autre réponde à sa place. */
   strict?: boolean
   /** Longueur maximale de la réponse (jetons), 4096 par défaut. */

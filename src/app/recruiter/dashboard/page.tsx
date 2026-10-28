@@ -23,7 +23,8 @@ async function countMatchesByJob(tenantId: string): Promise<Record<string, numbe
     const { databases } = createAdminClient()
     const [poolRes, vivierRes] = await Promise.all([
       databases.listDocuments(DB_ID, COLLECTIONS.JOB_MATCHES, [Query.equal('tenantId', tenantId), Query.limit(500)]),
-      databases.listDocuments(DB_ID, COLLECTIONS.VIVIER_CVS, [Query.equal('tenantId', tenantId), Query.limit(500)]),
+      // Vivier général (CV sans offre) exclu : il ne compte pas ici et remplirait la limite.
+      databases.listDocuments(DB_ID, COLLECTIONS.VIVIER_CVS, [Query.equal('tenantId', tenantId), Query.isNotNull('jobId'), Query.limit(500)]),
     ])
     for (const d of poolRes.documents) counts[d.jobId as string] = (counts[d.jobId as string] ?? 0) + 1
     for (const d of vivierRes.documents) {

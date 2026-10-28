@@ -113,6 +113,20 @@ export async function getActiveJobs(params?: {
   return jobs
 }
 
+/** Offres ouvertes (actives, non expirées) de l'organisation seule, la plus récente d'abord : celles du vivier général. */
+export async function getOpenJobsOfTenant(tenantId: string): Promise<Job[]> {
+  const { databases } = createAdminClient()
+  const result = await databases.listDocuments(DB_ID, COLLECTIONS.JOBS, [
+    Query.equal('tenantId', tenantId),
+    Query.equal('isActive', true),
+    Query.orderDesc('$createdAt'),
+    Query.limit(100),
+  ])
+  return result.documents
+    .map(d => docToJob(d as unknown as Record<string, unknown>))
+    .filter(j => !isExpired(j))
+}
+
 export async function getJobById(id: string): Promise<Job | null> {
   try {
     const { databases } = createAdminClient()

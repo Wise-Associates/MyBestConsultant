@@ -6,10 +6,14 @@ import {
   AlertCircle, Brain, CheckCircle2, ExternalLink, FileText, Loader2, Mail, Maximize2, Phone, RefreshCw, Search, Sparkles, Trash2, Upload, Users,
 } from 'lucide-react'
 import { getBrowserStorage } from '@/lib/appwrite/browser-client'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { secondaryButton } from '@/app/admin/candidats/labels'
 import { CandidateAvatar } from '@/components/shared/candidate-avatar'
 import { CandidateProfileModal } from '@/app/recruiter/cvtheque/candidate-profile-modal'
 import type { CvThequeCandidate } from '@/app/recruiter/cvtheque/actions'
+import { VIVIER_MATCH_MIN_SCORE, matchingOffers, newOffersFor } from '@/lib/vivier-matching'
 import { attachVivierCv, deleteVivierCv, reanalyseVivierCv, type VivierCv } from './actions'
+import { UnmatchedCvs } from './unmatched-cvs'
 
 type UploadStatus = 'uploading' | 'analysing' | 'error'
 interface UploadItem { key: string; name: string; pct: number; status: UploadStatus; error?: string }
@@ -29,14 +33,28 @@ function toCandidate(cv: VivierCv): CvThequeCandidate {
 
 const scoreColor = (n: number) => (n >= 75 ? '#10b981' : n >= 50 ? '#f59e0b' : '#ef4444')
 
-export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, currentUserId }: {
-  jobId: string
+type OpenOffer = { $id: string; title: string }
+const NO_OFFERS: OpenOffer[] = []
+
+/** Score et raison affichés : ceux de l'offre du vivier ; au vivier général, ceux de l'offre filtrée, sinon de la meilleure. */
+function displayedMatch(cv: VivierCv, offerFilter: string, openIds: Set<string>): { score: number | null; reason: string } {
+  if (cv.jobId !== null) return { score: cv.matchScore, reason: cv.matchReason }
+  const s = offerFilter ? cv.offerScores.find(x => x.jobId === offerFilter) : matchingOffers(cv.offerScores, openIds)[0]
+  return { score: s?.score ?? null, reason: s?.reason ?? '' }
+}
+
+/** Vivier d'une offre (`jobId`), ou vivier général (`jobId` null) : CV comparés aux `openOffers` de l'organisation. */
+export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, currentUserId, openOffers = NO_OFFERS }: {
+  jobId: string | null
   bucketId: string
   initialCvs: VivierCv[]
   loadError?: string
   isAdmin: boolean
   currentUserId: string
+  /** Vivier général : offres ouvertes de l'organisation, la plus récente d'abord. */
+  openOffers?: OpenOffer[]
 }) {
+  const general = jobId === null
   const [cvs, setCvs] = useState(initialCvs)
   const [uploads, setUploads] = useState<UploadItem[]>([])
   const [doneCount, setDoneCount] = useState(0)
@@ -46,6 +64,11 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
   const [busyId, setBusyId] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [notice, setNotice] = useState('')
+  // Vivier général : CV importé mais pas comparé aux offres (adresse non vérifiée, quota du jour, IA indisponible).
+  const [matchNotice, setMatchNotice] = useState('')
+  const [offerFilter, setOfferFilter] = useState('')
+  // Vivier général : l'import est dans une fenêtre, pour laisser la liste des offres visible sous le vivier.
+  const [importOpen, setImportOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const patchUpload = (key: string, p: Partial<UploadItem>) => setUploads(u => u.map(x => (x.key === key ? { ...x, ...p } : x)))
@@ -57,6 +80,7 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
       patchUpload(key, { status: 'analysing', pct: 100 })
       const res = await attachVivierCv(jobId, uploaded.$id, file.name)
       if (res.error || !res.cv) { patchUpload(key, { status: 'error', error: res.error ?? 'Import impossible' }); return }
+      if (res.notice) setMatchNotice(res.notice)
       setUploads(u => u.filter(x => x.key !== key))
       setCvs(prev => [res.cv!, ...prev.filter(c => c.$id !== res.cv!.$id)])
       setDoneCount(n => n + 1)
@@ -69,7 +93,7 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
   async function handleFiles(files: FileList | File[] | null) {
     const list = files ? Array.from(files) : []
     if (list.length === 0) return
-    setNotice(''); setDoneCount(0)
+    setNotice(''); setMatchNotice(''); setDoneCount(0)
     const items = list.map((f, i) => ({ file: f, key: `${Date.now()}-${i}-${f.name}` }))
     setUploads(u => [...u, ...items.map(({ file, key }) => ({ key, name: file.name, pct: 0, status: 'uploading' as const }))])
     let next = 0
@@ -90,34 +114,58 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
     setBusyId(cv.$id); setNotice('')
     const res = await reanalyseVivierCv(jobId, cv.$id)
     setBusyId(null)
-    if (res.error || !res.cv) setNotice(res.error ?? 'Analyse impossible'); else setCvs(prev => prev.map(c => (c.$id === cv.$id ? res.cv! : c)))
+    if (res.error || !res.cv) { setNotice(res.error ?? 'Analyse impossible'); return }
+    const updated = res.cv
+    setCvs(prev => prev.map(c => (c.$id === cv.$id ? updated : c)))
+    if (res.notice) setMatchNotice(res.notice)
   }
+
+  const replaceCv = (updated: VivierCv) => setCvs(prev => prev.map(c => (c.$id === updated.$id ? updated : c)))
+
+  const openIds = useMemo(() => new Set(openOffers.map(o => o.$id)), [openOffers])
+  const offerTitles = useMemo(() => new Map(openOffers.map(o => [o.$id, o.title])), [openOffers])
+  // Nombre de CV du vivier général correspondant à chaque offre (filtre par offre).
+  const matchCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const cv of cvs) for (const m of matchingOffers(cv.offerScores, openIds)) counts.set(m.jobId, (counts.get(m.jobId) ?? 0) + 1)
+    return counts
+  }, [cvs, openIds])
+  const unmatched = useMemo(
+    () => (general ? cvs.filter(cv => cv.profileReady && matchingOffers(cv.offerScores, openIds).length === 0) : []),
+    [general, cvs, openIds],
+  )
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
-    const list = q ? cvs.filter(c => `${c.candidateName} ${c.title} ${c.candidateEmail} ${c.skills.join(' ')} ${c.experienceSummary}`.toLowerCase().includes(q)) : cvs
-    return sort === 'score' ? [...list].sort((a, b) => (b.matchScore ?? -1) - (a.matchScore ?? -1)) : list
-  }, [cvs, query, sort])
+    let list = q ? cvs.filter(c => `${c.candidateName} ${c.title} ${c.candidateEmail} ${c.skills.join(' ')} ${c.experienceSummary}`.toLowerCase().includes(q)) : cvs
+    if (offerFilter) list = list.filter(c => c.offerScores.some(s => s.jobId === offerFilter && s.score >= VIVIER_MATCH_MIN_SCORE))
+    const score = (c: VivierCv) => displayedMatch(c, offerFilter, openIds).score ?? -1
+    return sort === 'score' || offerFilter ? [...list].sort((a, b) => score(b) - score(a)) : list
+  }, [cvs, query, sort, offerFilter, openIds])
 
   const busyUploads = uploads.filter(u => u.status !== 'error').length
 
-  return (
-    <div className="space-y-6">
-      {/* Zone d'import */}
+  // Zone d'import et progression : en haut du vivier d'une offre, dans la fenêtre d'import au vivier général.
+  const importPanel = (
+    <>
       <div
         onDragOver={e => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)}
         onDrop={e => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files) }}
         onClick={() => inputRef.current?.click()}
+        role="button" tabIndex={0} aria-label="Choisir des CV à importer"
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputRef.current?.click() } }}
         className="rounded-3xl p-8 text-center cursor-pointer transition-all hover:-translate-y-0.5"
         style={{ background: dragging ? 'rgba(232,163,61,0.08)' : 'var(--color-surface)', border: `2px dashed ${dragging ? '#E8A33D' : 'var(--color-border)'}` }}>
         <input ref={inputRef} type="file" multiple accept=".pdf,.doc,.docx" className="hidden" onChange={e => { handleFiles(e.target.files); e.target.value = '' }} />
         <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{ background: 'rgba(232,163,61,0.14)' }}><Upload className="h-6 w-6" style={{ color: '#E8A33D' }} /></div>
         <p className="font-bold" style={{ color: 'var(--color-text)' }}>Glissez vos CV ici, ou cliquez pour parcourir</p>
         <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-muted)' }}>PDF, DOC, DOCX — plusieurs fichiers à la fois, 10 Mo max chacun</p>
-        <p className="text-xs mt-1 flex items-center justify-center gap-1.5" style={{ color: '#b8862f' }}><Sparkles className="h-3.5 w-3.5" />Le profil du candidat est créé automatiquement à partir de chaque CV</p>
+        <p className="text-xs mt-1 flex items-center justify-center gap-1.5" style={{ color: '#b8862f' }}>
+          <Sparkles className="h-3.5 w-3.5" />
+          {general ? 'Le profil est créé à partir de chaque CV, puis comparé par l’IA à vos offres ouvertes' : 'Le profil du candidat est créé automatiquement à partir de chaque CV'}
+        </p>
       </div>
 
-      {/* Progression des imports en cours */}
       {(uploads.length > 0 || doneCount > 0) && (
         <div className="space-y-2">
           {busyUploads === 0 && doneCount > 0 && uploads.length === 0 && (
@@ -144,6 +192,20 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
           ))}
         </div>
       )}
+    </>
+  )
+
+  const matchNoticeBox = matchNotice ? (
+    <div role="status" className="flex items-start gap-3 p-4 rounded-2xl" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)' }}>
+      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" style={{ color: '#b45309' }} /><p className="text-sm" style={{ color: '#92400e' }}>{matchNotice}</p>
+    </div>
+  ) : null
+
+  return (
+    <div className="space-y-6">
+      {!general && importPanel}
+
+      {matchNoticeBox}
 
       {(loadError || notice) && (
         <div className="flex items-center gap-3 p-4 rounded-2xl" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)' }}>
@@ -152,10 +214,26 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
       )}
 
       {/* Barre d'outils */}
-      {cvs.length > 0 && (
+      {(cvs.length > 0 || general) && (
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--color-text)' }}><Users className="h-4 w-4" style={{ color: '#E8A33D' }} />{cvs.length} profil{cvs.length > 1 ? 's' : ''} dans le vivier</p>
           <div className="flex items-center gap-2 flex-wrap">
+            {general && (
+              <button type="button" onClick={() => setImportOpen(true)}
+                className="inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-opacity hover:opacity-90"
+                style={{ background: 'var(--color-primary)', color: 'var(--color-primary-fg)' }}>
+                {busyUploads > 0 ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4" aria-hidden />}
+                {busyUploads > 0 ? `Import en cours (${busyUploads})` : 'Importer des CV'}
+              </button>
+            )}
+            {general && cvs.length > 0 && <UnmatchedCvs cvs={unmatched} openOffers={openOffers} onUpdated={replaceCv} />}
+            {general && cvs.length > 0 && openOffers.length > 0 && (
+              <select value={offerFilter} onChange={e => setOfferFilter(e.target.value)} aria-label="Filtrer par offre" className="rounded-xl px-3 py-2 text-sm outline-none max-w-[240px]" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
+                <option value="">Toutes les offres</option>
+                {openOffers.map(o => <option key={o.$id} value={o.$id}>{o.title} ({matchCounts.get(o.$id) ?? 0})</option>)}
+              </select>
+            )}
+            {cvs.length > 0 && (<>
             <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
               <Search className="h-4 w-4" style={{ color: 'var(--color-text-muted)' }} />
               <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Nom, compétence, poste…" className="bg-transparent outline-none text-sm w-44" style={{ color: 'var(--color-text)' }} />
@@ -163,6 +241,7 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
             <select value={sort} onChange={e => setSort(e.target.value as 'recent' | 'score')} className="rounded-xl px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
               <option value="recent">Plus récents</option><option value="score">Meilleur matching</option>
             </select>
+            </>)}
           </div>
         </div>
       )}
@@ -171,12 +250,17 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
       {cvs.length === 0 && uploads.length === 0 ? (
         <div className="text-center py-16">
           <FileText className="h-10 w-10 mx-auto mb-3 opacity-30" style={{ color: 'var(--color-text)' }} />
-          <p style={{ color: 'var(--color-text-muted)' }}>Aucun CV importé pour l&apos;instant. Déposez un CV : son profil apparaît ici.</p>
+          <p style={{ color: 'var(--color-text-muted)' }}>
+            {general ? 'Aucun CV dans le vivier général. « Importer des CV » : chacun est comparé à vos offres ouvertes.' : 'Aucun CV importé pour l’instant. Déposez un CV : son profil apparaît ici.'}
+          </p>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {shown.map(cv => {
             const working = busyId === cv.$id
+            const match = displayedMatch(cv, offerFilter, openIds)
+            const matches = general ? matchingOffers(cv.offerScores, openIds) : []
+            const notCompared = general ? newOffersFor(cv.offerScores, openOffers).length : 0
             return (
               <div key={cv.$id} onClick={() => cv.profileReady && setOpenCv(cv)}
                 className="rounded-3xl p-5 flex flex-col gap-3 transition-all duration-300 hover:-translate-y-1"
@@ -186,8 +270,8 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-bold text-base truncate" style={{ color: 'var(--color-text)' }}>{cv.candidateName || '—'}</p>
-                      {cv.matchScore != null && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${scoreColor(cv.matchScore)}18`, color: scoreColor(cv.matchScore) }}><Brain className="h-3 w-3" />{cv.matchScore}/100</span>
+                      {match.score != null && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${scoreColor(match.score)}18`, color: scoreColor(match.score) }}><Brain className="h-3 w-3" />{match.score}/100</span>
                       )}
                     </div>
                     {cv.title && <p className="text-sm font-semibold truncate" style={{ color: 'var(--color-primary)' }}>{cv.title}</p>}
@@ -212,7 +296,24 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
                         {cv.skills.length > 8 && <span className="px-2 py-1 text-[11px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>+{cv.skills.length - 8}</span>}
                       </div>
                     )}
-                    {cv.matchReason && <p className="text-xs italic line-clamp-2" style={{ color: 'var(--color-text-muted)' }}>« {cv.matchReason} »</p>}
+                    {general && (matches.length > 0 ? (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>Correspond à</span>
+                        {matches.slice(0, 3).map(m => (
+                          <span key={m.jobId} className="inline-flex items-center gap-1 max-w-full px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{ background: `${scoreColor(m.score)}18`, color: scoreColor(m.score) }}>
+                            <span className="truncate max-w-[180px]">{offerTitles.get(m.jobId)}</span>· {m.score}
+                          </span>
+                        ))}
+                        {matches.length > 3 && <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>+{matches.length - 3}</span>}
+                      </div>
+                    ) : (
+                      <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                        {notCompared > 0
+                          ? `Pas encore comparé à ${notCompared} offre${notCompared > 1 ? 's' : ''} : synchronisez depuis « Sans offre correspondante ».`
+                          : 'Aucune offre ouverte ne correspond à ce profil pour l’instant.'}
+                      </p>
+                    ))}
+                    {match.reason && <p className="text-xs italic line-clamp-2" style={{ color: 'var(--color-text-muted)' }}>« {match.reason} »</p>}
                   </>
                 ) : (
                   <div className="rounded-xl p-3 text-xs flex items-start gap-2" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', color: '#92400e' }}>
@@ -243,11 +344,34 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
               </div>
             )
           })}
-          {shown.length === 0 && <p className="text-sm py-8 text-center md:col-span-2" style={{ color: 'var(--color-text-muted)' }}>Aucun profil ne correspond à « {query} ».</p>}
+          {shown.length === 0 && (
+            <p className="text-sm py-8 text-center md:col-span-2" style={{ color: 'var(--color-text-muted)' }}>
+              {query.trim() ? `Aucun profil ne correspond à « ${query} ».` : 'Aucun CV du vivier ne correspond à cette offre.'}
+            </p>
+          )}
         </div>
       )}
 
-      {openCv && <CandidateProfileModal candidate={toCandidate(openCv)} vivier matchScore={openCv.matchScore} onClose={() => setOpenCv(null)} />}
+      {general && (
+        <Dialog open={importOpen} onOpenChange={setImportOpen}>
+          <DialogContent className="admin-light sm:max-w-130 max-h-[90vh] overflow-y-auto" style={{ background: 'var(--admin-panel)' }}>
+            <DialogHeader>
+              <DialogTitle className="text-admin-fg" style={{ fontSize: '1.05rem' }}>Importer des CV</DialogTitle>
+              <DialogDescription style={{ color: 'var(--admin-fg-muted)' }}>
+                Sans choisir d&apos;offre : chaque CV devient un profil, puis l&apos;IA le compare à vos offres ouvertes. Vous pouvez fermer
+                cette fenêtre, l&apos;import continue.
+              </DialogDescription>
+            </DialogHeader>
+            {importPanel}
+            {matchNoticeBox}
+            <DialogFooter>
+              <button type="button" onClick={() => setImportOpen(false)} style={{ ...secondaryButton, justifyContent: 'center' }}>Fermer</button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {openCv && <CandidateProfileModal candidate={toCandidate(openCv)} vivier matchScore={displayedMatch(openCv, offerFilter, openIds).score} onClose={() => setOpenCv(null)} />}
     </div>
   )
 }

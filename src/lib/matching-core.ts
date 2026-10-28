@@ -9,6 +9,9 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query, ID } from 'node-appwrite'
 import type { CvProfile } from '@/lib/cv-profile-extract'
+import {
+  VIVIER_MATCHING_SYSTEM, offerBatches, parseVivierMatching, vivierMatchingPrompt, type OfferScore, type OfferToScore, type ProfileToScore,
+} from '@/lib/vivier-matching'
 
 export interface JobMatchResult {
   source: 'pool' | 'vivier' | 'application'
@@ -90,6 +93,28 @@ Réponds UNIQUEMENT avec un JSON valide, sans markdown : {"score":0-100,"reason"
   } catch {
     // best-effort — a vivier CV stays usable (unscored) even if matching fails
   }
+}
+
+/**
+ * Vivier général : note un CV de 0 à 100 pour chacune des `offers`, par lots envoyés en parallèle, avec le modèle du
+ * Matching IA de Config IA, ou Claude s'il n'y en a pas (repli habituel s'il échoue). Un lot en échec laisse ses offres
+ * non comparées (elles le seront à la synchronisation suivante) et donne `failed`, détaillé dans les journaux seulement.
+ */
+export async function scoreCvAgainstOffers(profile: ProfileToScore, offers: OfferToScore[]): Promise<{ scores: OfferScore[]; failed: boolean }> {
+  const batches = await Promise.all(offerBatches(offers).map(async batch => {
+    try {
+      const { content } = await callLLM([{ role: 'user', content: vivierMatchingPrompt(profile, batch) }], VIVIER_MATCHING_SYSTEM, {
+        module: 'matching', moduleDefault: 'claude', maxTokens: 3000, timeoutMs: 60_000,
+      })
+      const scores = parseVivierMatching(content, batch.map(o => o.$id))
+      if (!scores) console.error('Vivier : réponse de l\'IA illisible pour la comparaison CV / offres')
+      return scores
+    } catch (e) {
+      console.error('Vivier : comparaison CV / offres en échec :', e instanceof Error ? e.message : e)
+      return null
+    }
+  }))
+  return { scores: batches.flatMap(b => b ?? []), failed: batches.some(b => b === null) }
 }
 
 // Combined, ranked results for the Matching page — 3 populations: job_matches (pool,
