@@ -22,21 +22,21 @@ type Ctx = Record<string, unknown>
 
 // ---------- accès au XML ----------
 
-function isW(node: Node | null | undefined, local: string): node is Element {
+export function isW(node: Node | null | undefined, local: string): node is Element {
   return !!node && node.nodeType === 1 && (node as Element).namespaceURI === W_NS && (node as Element).localName === local
 }
 
-function elements(parent: Node): Element[] {
+export function elements(parent: Node): Element[] {
   const out: Element[] = []
   for (let n = parent.firstChild; n; n = n.nextSibling) if (n.nodeType === 1) out.push(n as Element)
   return out
 }
 
-const childW = (el: Element, local: string) => elements(el).find(c => isW(c, local)) ?? null
-const childrenW = (el: Element, local: string) => elements(el).filter(c => isW(c, local))
+export const childW = (el: Element, local: string) => elements(el).find(c => isW(c, local)) ?? null
+export const childrenW = (el: Element, local: string) => elements(el).filter(c => isW(c, local))
 
 /** Descendants w:<local> dans l'ordre du document (l'élément lui-même exclu), comme `iter` de lxml. */
-function descendantsW(el: Element, local: string): Element[] {
+export function descendantsW(el: Element, local: string): Element[] {
   const out: Element[] = []
   const walk = (node: Element) => {
     for (const c of elements(node)) {
@@ -50,8 +50,8 @@ function descendantsW(el: Element, local: string): Element[] {
 
 const selfAndDescendantsW = (el: Element, local: string) => [...(isW(el, local) ? [el] : []), ...descendantsW(el, local)]
 
-const textOf = (el: Element) => (el.textContent ?? '')
-const runText = (r: Element) => childrenW(r, 't').map(textOf).join('')
+export const textOf = (el: Element) => (el.textContent ?? '')
+export const runText = (r: Element) => childrenW(r, 't').map(textOf).join('')
 
 function newW(doc: Document, local: string): Element {
   return doc.createElementNS(W_NS, `w:${local}`)
@@ -88,7 +88,7 @@ const detach = (node: Node) => node.parentNode?.removeChild(node)
 /** Modèle refusé pour sa taille ou sa structure, avant tout rendu : message pour qui le dépose. */
 export class TemplateStructureError extends Error {}
 
-function parseXml(bytes: Uint8Array): Document {
+export function parseXml(bytes: Uint8Array): Document {
   return new DOMParser({ onError: onErrorStopParsing }).parseFromString(strFromU8(bytes), 'text/xml')
 }
 
@@ -98,10 +98,15 @@ function parseXml(bytes: Uint8Array): Document {
 // page, notes, propriétés), larges : le modèle Wise compte 1 300 éléments et au plus 25 enfants sous un même élément.
 const MAX_TEMPLATE_ELEMENTS = 20_000
 const MAX_CHILDREN_PER_ELEMENT = 500
+// Texte du modèle borné aussi : peu d'éléments peuvent porter beaucoup de texte, et le texte est relu au dépôt pour sa
+// cartographie par l'IA (des dizaines de milliers de « [exemples] » dans un en-tête bloquaient le serveur, revue de
+// sécurité du 2026-10-28). Un modèle vierge en compte quelques milliers de caractères, un dossier complet 30 000.
+const MAX_TEMPLATE_TEXT_CHARS = 100_000
 
 /** Refuse un modèle dont les parties lues par le rendu dépassent ces bornes, avant tout traitement. */
 function assertBoundedStructure(files: Unzipped) {
   let count = 0
+  let textLength = 0
   for (const [name, bytes] of Object.entries(files)) {
     if (!STORY_PART.test(name) && name !== 'docProps/core.xml') continue
     const root = parseXml(bytes).documentElement
@@ -109,6 +114,9 @@ function assertBoundedStructure(files: Unzipped) {
     for (let el = pending.pop(); el; el = pending.pop()) {
       if (++count > MAX_TEMPLATE_ELEMENTS || el.childNodes.length > MAX_CHILDREN_PER_ELEMENT) {
         throw new TemplateStructureError(`Modèle Word trop complexe : ${MAX_TEMPLATE_ELEMENTS.toLocaleString('fr-FR')} éléments au plus et ${MAX_CHILDREN_PER_ELEMENT} sous un même élément (paragraphes vides en grand nombre ?).`)
+      }
+      if (isW(el, 't') && (textLength += textOf(el).length) > MAX_TEMPLATE_TEXT_CHARS) {
+        throw new TemplateStructureError(`Modèle Word trop long : ${MAX_TEMPLATE_TEXT_CHARS.toLocaleString('fr-FR')} caractères de texte au plus (un modèle vierge en compte quelques milliers).`)
       }
       pending.push(...elements(el))
     }
@@ -124,11 +132,26 @@ function serializeXml(doc: Document) {
 
 // ---------- remplissage de texte ----------
 
-function isTabRun(r: Element): boolean {
+export function isTabRun(r: Element): boolean {
   return !!childW(r, 'tab') && !runText(r)
 }
 
-function runKey(r: Element): string {
+/**
+ * Tabulation avant ou après le texte d'un run qui porte aussi du texte (« ⇥[Mois AAAA] ») : elle sépare deux segments
+ * comme un run de tabulation seule, et elle est gardée au remplissage. Écart avec render_cv.py, qui la perdait (dates
+ * collées au texte, modèle « version courte » de Wise Associates, 2026-10-28) : à reporter dans la skill.
+ */
+export function runTabs(r: Element): { before: boolean; after: boolean } {
+  const content = elements(r).filter(c => !isW(c, 'rPr'))
+  const first = content.findIndex(c => isW(c, 't'))
+  const last = content.findLastIndex(c => isW(c, 't'))
+  return {
+    before: first > 0 && content.slice(0, first).some(c => isW(c, 'tab')),
+    after: last >= 0 && content.slice(last + 1).some(c => isW(c, 'tab')),
+  }
+}
+
+export function runKey(r: Element): string {
   const rPr = childW(r, 'rPr')
   return rPr ? serializer.serializeToString(rPr) : ''
 }
@@ -160,7 +183,8 @@ function fillParagraph(p: Element, values: string[], tabStop: TabStop | undefine
       continue
     }
     const last = groups.at(-1)
-    if (last?.kind === 'txt' && runKey(last.runs[0]) === runKey(r)) last.runs.push(r)
+    const joins = last?.kind === 'txt' && runKey(last.runs[0]) === runKey(r) && !runTabs(r).before && !runTabs(last.runs[last.runs.length - 1]).after
+    if (joins && last?.kind === 'txt') last.runs.push(r)
     else groups.push({ kind: 'txt', runs: [r] })
   }
   let txtGroups = groups.filter(g => g.kind === 'txt')
@@ -184,11 +208,15 @@ function fillParagraph(p: Element, values: string[], tabStop: TabStop | undefine
       return
     }
     const [first, ...rest] = g.runs
+    // Tabulation dans un run du segment (runTabs) : gardée au début ou à la fin du texte, sauf si le gabarit en met une.
+    const leadingTab = runTabs(first).before
+    const trailingTab = runTabs(g.runs[g.runs.length - 1]).after
     rest.forEach(r => p.removeChild(r))
     childrenW(first, 't').forEach(t => first.removeChild(t))
     childrenW(first, 'tab').forEach(t => first.removeChild(t))
     const parts = values[k].split('\t')
-    first.appendChild(textElement(doc, parts[0]))
+    const firstTextEl = textElement(doc, parts[0])
+    first.appendChild(firstTextEl)
     let prev = first
     for (const part of parts.slice(1)) {
       const tabRun = first.cloneNode(true) as Element
@@ -200,6 +228,9 @@ function fillParagraph(p: Element, values: string[], tabStop: TabStop | undefine
       insertAfter(tabRun, txtRun)
       prev = txtRun
     }
+    // Après les copies du run ci-dessus, qui ne doivent pas la reprendre.
+    if (leadingTab && !values[k].startsWith('\t')) first.insertBefore(newW(doc, 'tab'), firstTextEl)
+    if (trailingTab && !values[k].endsWith('\t')) prev.appendChild(newW(doc, 'tab'))
     lastUsed = gi
   })
   // supprime les tabulations orphelines après le dernier segment utilisé
@@ -311,10 +342,22 @@ function keepBlockTogether(els: Element[], spacers: WeakSet<Element>) {
 
 // ---------- construction ----------
 
+// Éléments créés au plus par un rendu : une cartographie (écrite par l'IA, qu'un texte du modèle peut tenter
+// d'orienter) qui répète sections et jetons multiplie les copies jusqu'à épuiser la mémoire. Un long CV en crée
+// quelques centaines, 60 expériences de 25 puces environ 1 800.
+const MAX_RENDERED_ELEMENTS = 5_000
+
 class Builder {
   readonly spacers = new WeakSet<Element>()
   readonly labels: Record<string, string>
   private readonly fields: Record<string, string[] | string[][]>
+  private created = 0
+
+  private countOne() {
+    if (++this.created > MAX_RENDERED_ELEMENTS) {
+      throw new TemplateStructureError(`Cartographie du modèle trop répétitive : ${MAX_RENDERED_ELEMENTS.toLocaleString('fr-FR')} éléments au plus par document.`)
+    }
+  }
 
   constructor(private readonly doc: Document, private readonly protos: Map<string, Element>, private readonly map: TemplateMap, lang: CvLang) {
     this.fields = { ...map.fields }
@@ -322,6 +365,7 @@ class Builder {
   }
 
   make(name: string, ctx: Ctx): Element {
+    this.countOne()
     const proto = this.protos.get(name)
     if (!proto) {
       // repli : environnement rendu avec le prototype du contexte
@@ -334,6 +378,7 @@ class Builder {
   }
 
   spacer(protoName: string): Element {
+    this.countOne()
     const proto = this.protos.get(protoName)
     const e = proto ? (proto.cloneNode(true) as Element) : newW(this.doc, 'p')
     this.spacers.add(e)
@@ -652,13 +697,18 @@ function unzipTemplate(template: Uint8Array): Unzipped {
   })
 }
 
-/** Construit le .docx du CV : template de l'ESN + cartographie + données (déjà anonymisées) d'une langue. */
-export function renderCv(template: Uint8Array, map: TemplateMap, data: CvData, lang: CvLang): Uint8Array {
+/** Template décompressé, bornes de taille et de structure vérifiées, et son document principal (rendu, inspect.ts). */
+export function readTemplate(template: Uint8Array): { files: Unzipped; doc: Document } {
   const files = unzipTemplate(template)
   assertBoundedStructure(files)
   const documentXml = files['word/document.xml']
   if (!documentXml) throw new Error('Template Word invalide : word/document.xml absent')
-  const doc = parseXml(documentXml)
+  return { files, doc: parseXml(documentXml) }
+}
+
+/** Construit le .docx du CV : template de l'ESN + cartographie + données (déjà anonymisées) d'une langue. */
+export function renderCv(template: Uint8Array, map: TemplateMap, data: CvData, lang: CvLang): Uint8Array {
+  const { files, doc } = readTemplate(template)
   const ctx0 = buildBody(doc, map, data, lang)
   cleanStory(doc, map.esn)
   files['word/document.xml'] = serializeXml(doc)
