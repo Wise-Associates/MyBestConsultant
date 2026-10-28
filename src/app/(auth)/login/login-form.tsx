@@ -36,8 +36,7 @@ export function LoginForm({ googleUrl, linkedinUrl, oauthError, oauthReason }: P
   }
 
   return (
-    <div className="relative min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-16 overflow-hidden"
-      style={{ background: 'radial-gradient(ellipse 120% 90% at 50% -10%, #142a6e 0%, #0B1D51 45%, #060e2c 100%)' }}>
+    <div className="mbc-navy-bg relative min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-16 overflow-hidden">
 
       {/* Ambient glow orbs */}
       <div className="mbc-orb absolute rounded-full pointer-events-none"

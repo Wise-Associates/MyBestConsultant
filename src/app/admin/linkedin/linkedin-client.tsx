@@ -16,6 +16,7 @@ import {
   type LinkedInScrapeConfig, type LinkedInJob, type ScrapeRun, type LinkedInPublishConfig,
 } from './actions'
 import { JobDescriptionDark } from '@/components/shared/job-description'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 // ── LinkedIn Connection Panel ────────────────────────────────────
 function LinkedInConnectionPanel({ publishConfig, onUpdate }: {
@@ -32,10 +33,14 @@ function LinkedInConnectionPanel({ publishConfig, onUpdate }: {
   const [selectedAuthorUrn, setSelectedAuthorUrn] = useState(publishConfig?.authorUrn ?? '')
   const [orgsLoading, setOrgsLoading] = useState(false)
 
-  useEffect(() => {
+  // Réglages enregistrés remplacés (connexion, déconnexion, enregistrement) : le formulaire repart de leurs valeurs.
+  // Ajusté pendant le rendu plutôt que dans un effet, qui afficherait d'abord les anciennes valeurs.
+  const [formConfig, setFormConfig] = useState(publishConfig)
+  if (formConfig !== publishConfig) {
+    setFormConfig(publishConfig)
     setAutoPost(publishConfig?.autoPostOnPublish ?? true)
     setSelectedAuthorUrn(publishConfig?.authorUrn ?? '')
-  }, [publishConfig])
+  }
 
   function connect() {
     startConnect(async () => {
@@ -610,31 +615,21 @@ export function LinkedInClient({
       {/* LinkedIn connection panel */}
       <LinkedInConnectionPanel publishConfig={publishConfig} onUpdate={setPublishConfig} />
 
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div style={{ width: 52, height: 52, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(10,102,194,0.15)', border: '1px solid rgba(10,102,194,0.25)' }}>
-            <Linkedin style={{ width: 26, height: 26, color: '#0a66c2' }} />
-          </div>
-          <div>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 700 }}>Scraping LinkedIn</h1>
-            <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>Collecte automatique d&apos;offres via Apify</p>
-          </div>
-        </div>
-
-        <button onClick={launchScrape} disabled={isPending || run?.status === 'running'}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '10px 20px', borderRadius: 12, fontSize: 13, fontWeight: 700,
-            background: isPending || run?.status === 'running' ? 'rgba(10,102,194,0.2)' : '#0a66c2',
-            color: 'white', border: 'none', cursor: isPending || run?.status === 'running' ? 'default' : 'pointer',
-            opacity: isPending || run?.status === 'running' ? 0.6 : 1,
-            boxShadow: '0 4px 16px rgba(10,102,194,0.3)',
-          }}>
-          {isPending ? <Loader2 style={{ width: 16, height: 16, animation: 'spin 1s linear infinite' }} /> : <Play style={{ width: 16, height: 16 }} />}
-          {isPending ? 'Démarrage…' : run?.status === 'running' ? 'En cours…' : 'Lancer le scraping'}
-        </button>
-      </div>
+      <AdminPageHeader title="Scraping LinkedIn" description="Collecte automatique d'offres via Apify"
+        actions={
+          <button onClick={launchScrape} disabled={isPending || run?.status === 'running'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '10px 20px', borderRadius: 12, fontSize: 13, fontWeight: 700,
+              background: isPending || run?.status === 'running' ? 'rgba(10,102,194,0.2)' : '#0a66c2',
+              color: 'white', border: 'none', cursor: isPending || run?.status === 'running' ? 'default' : 'pointer',
+              opacity: isPending || run?.status === 'running' ? 0.6 : 1,
+              boxShadow: '0 4px 16px rgba(10,102,194,0.3)',
+            }}>
+            {isPending ? <Loader2 style={{ width: 16, height: 16, animation: 'spin 1s linear infinite' }} /> : <Play style={{ width: 16, height: 16 }} />}
+            {isPending ? 'Démarrage…' : run?.status === 'running' ? 'En cours…' : 'Lancer le scraping'}
+          </button>
+        } />
 
       {/* Run status */}
       {run && (

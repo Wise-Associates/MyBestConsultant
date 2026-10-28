@@ -6,6 +6,7 @@ import { formatDay, primaryButton, secondaryButton } from '@/app/admin/candidats
 import type { VeilleConfig } from '@/lib/veille/config'
 import type { VeilleConfigVersion } from '@/lib/veille/store'
 import { saveVeilleConfigAction } from './actions'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 import { ItScopeTab } from './it-scope-tab'
 import { OrganisationsTab } from './organisations-tab'
 import { SourcesTab } from './sources-tab'
@@ -25,22 +26,15 @@ interface Props {
 export function VeilleSettings({ initial, loadError, tokenConfigured }: Props) {
   return (
     <div className="admin-light min-h-full p-4 sm:p-8 space-y-6">
-      <header>
-        <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'var(--admin-fg-muted)' }}>VEILLE</p>
-        <h1 className="text-[28px] font-bold tracking-tight text-admin-fg">Marchés &amp; emplois</h1>
-        <p className="text-sm mt-1 max-w-3xl" style={{ color: 'var(--admin-fg-muted)' }}>
-          Organismes suivis, sources lues, filtre informatique et mots-clés des appels d&apos;offres du scanner, qui envoie chaque
-          nouvelle offre à la boîte AO.
-          Pris en compte au passage suivant (5 h, 9 h, 13 h et 17 h UTC).
-        </p>
-        <p className="inline-flex items-center gap-1.5 text-xs mt-3 px-2 py-1 rounded-md"
-          style={{ background: 'var(--admin-panel-raised)', color: tokenConfigured ? '#047857' : '#b91c1c' }}>
-          <KeyRound size={13} aria-hidden />
-          {tokenConfigured
-            ? 'Jeton du scanner configuré (VEILLE_CONFIG_TOKEN).'
-            : 'Jeton du scanner absent ou trop court (VEILLE_CONFIG_TOKEN, 32 caractères au moins) : le scanner ne peut pas lire ces réglages.'}
-        </p>
-      </header>
+      <AdminPageHeader title="Marchés & emplois"
+        description="Organismes suivis, sources lues, filtre informatique et mots-clés des appels d'offres du scanner, qui envoie chaque nouvelle offre à la boîte AO. Pris en compte au passage suivant (5 h, 9 h, 13 h et 17 h UTC)." />
+      <p className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md"
+        style={{ background: 'var(--admin-panel-raised)', color: tokenConfigured ? '#047857' : '#b91c1c' }}>
+        <KeyRound size={13} aria-hidden />
+        {tokenConfigured
+          ? 'Jeton du scanner configuré (VEILLE_CONFIG_TOKEN).'
+          : 'Jeton du scanner absent ou trop court (VEILLE_CONFIG_TOKEN, 32 caractères au moins) : le scanner ne peut pas lire ces réglages.'}
+      </p>
       {initial ? <Editor initial={initial} /> : <Banner tone="error" text={loadError} />}
     </div>
   )

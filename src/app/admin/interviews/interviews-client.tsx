@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import type { AdminInterviewRow, AdminInterviewStats } from './actions'
 import { InterviewDetailModal } from './interview-detail-modal'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 // ── Status config ─────────────────────────────────────────────────
 const STATUS = {
@@ -118,22 +119,10 @@ export function InterviewsClient({
   })
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8f9fc' }}>
+    <div style={{ minHeight: '100%' }}>
 
-      {/* Header */}
-      <div style={{ background: 'white', borderBottom: '1px solid rgba(11,29,81,0.08)', padding: '1.75rem 2.5rem' }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: '#B8860B', marginBottom: '0.35rem' }}>
-            Recrutement IA
-          </p>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: 300, color: '#0B1D51', lineHeight: 1.2 }}>
-            Entretiens <strong style={{ fontWeight: 700 }}>candidats</strong>
-          </h1>
-          <p style={{ fontSize: 13, color: 'rgba(11,29,81,0.45)', marginTop: '0.35rem' }}>
-            {stats.total} entretien{stats.total > 1 ? 's' : ''} · {stats.last7days} cette semaine
-          </p>
-        </div>
-      </div>
+      <AdminPageHeader title="Entretiens candidats"
+        description={`${stats.total} entretien${stats.total > 1 ? 's' : ''} · ${stats.last7days} cette semaine`} />
 
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 2.5rem' }}>
 

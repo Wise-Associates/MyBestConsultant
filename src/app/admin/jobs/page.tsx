@@ -4,6 +4,7 @@ import { Query } from 'node-appwrite'
 import { Briefcase, ToggleLeft, TrendingUp } from 'lucide-react'
 import { ImportJobs } from './import-jobs'
 import { JobsList } from './jobs-list'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 export default async function AdminJobsPage() {
   const { databases } = createAdminClient()
@@ -25,17 +26,9 @@ export default async function AdminJobsPage() {
   return (
     <div className="min-h-full p-8 space-y-8" style={{ color: 'rgba(255,255,255,0.87)' }}>
 
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>RECRUTEMENT</p>
-          <h1 className="text-[28px] font-bold tracking-tight text-white">Offres d&apos;emploi</h1>
-          <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-            {jobs.length} offre{jobs.length > 1 ? 's' : ''} publiée{jobs.length > 1 ? 's' : ''}
-          </p>
-        </div>
-        <ImportJobs tenantId="admin" />
-      </div>
+      <AdminPageHeader title="Offres d'emploi"
+        description={`${jobs.length} offre${jobs.length > 1 ? 's' : ''} publiée${jobs.length > 1 ? 's' : ''}`}
+        actions={<ImportJobs tenantId="admin" />} />
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
