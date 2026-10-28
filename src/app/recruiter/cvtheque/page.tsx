@@ -22,6 +22,9 @@ async function cvExportAccess(user: NonNullable<Awaited<ReturnType<typeof getCur
   }
 }
 
+// Dépôt du modèle CV (Server Action de cette page) : cartographie par l'IA, deux réponses de 120 s au plus (ADR 0014).
+export const maxDuration = 300
+
 export default async function RecruiterCvthequePage() {
   const user = await getCurrentUser()
   if (!user) redirect('/login')

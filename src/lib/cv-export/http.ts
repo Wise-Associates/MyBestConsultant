@@ -212,11 +212,15 @@ export async function templateSampleResponse(tenantId: string): Promise<NextResp
   }
 }
 
-/** Exemple pour préparer un modèle : le modèle Wise Associates sans son bloc contact, et son template_map.json (.zip). */
+const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+/** Exemple pour préparer un modèle : le modèle Wise Associates sans son bloc contact (.docx seul, ADR 0014). */
 export async function templateExampleResponse(): Promise<NextResponse> {
   try {
-    const { docx, mapJson } = await readExampleTemplateFiles()
-    return zipResponse({ 'template.docx': docx, 'template_map.json': mapJson }, 'Modele_CV_exemple.zip')
+    const { docx } = await readExampleTemplateFiles()
+    return new NextResponse(Buffer.from(docx), {
+      headers: { 'Content-Type': DOCX_TYPE, 'Content-Disposition': disposition('Modele_CV_exemple.docx'), ...DOWNLOAD_HEADERS },
+    })
   } catch (err) {
     // Fichiers absents de la fonction : chemin manquant dans outputFileTracingIncludes (next.config.ts).
     console.error('[cv-export] exemple de modèle illisible', err)

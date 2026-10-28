@@ -11,7 +11,8 @@ export const AI_MODULES: { id: AIModule; label: string; description: string }[] 
   // Sans repli (callLLM strict, src/lib/assistant/host.ts) : les conversations ne partent que chez le modèle choisi ici.
   { id: 'assistant', label: 'Assistant IA', description: 'Questions d’aide des candidats et recruteurs — sans repli : en cas de panne, l’assistant affiche une erreur' },
   // Sans repli (callLLM strict, src/lib/cv-export/export.ts) : le CV complet du candidat ne part que chez le modèle choisi ici.
-  { id: 'cvExport', label: 'Export CV (format ESN)', description: 'Dossier de compétences anonymisé FR / EN depuis la CV Thèque — sans repli : en cas de panne, l’export affiche une erreur' },
+  // Modèle CV déposé (template-upload.ts) : cartographié par Claude quand aucun modèle n'est choisi ici (moduleDefault).
+  { id: 'cvExport', label: 'Export CV (format ESN)', description: 'Dossier de compétences anonymisé FR / EN depuis la CV Thèque — sans repli : en cas de panne, l’export affiche une erreur. Analyse des modèles CV déposés : Claude si « Modèle par défaut »' },
 ]
 
 export const BUILTIN_MODEL_IDS = ['claude', 'gpt4o', 'teckia'] as const

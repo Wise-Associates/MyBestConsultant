@@ -10,7 +10,7 @@ import { cvExportErrorName, isCvExportStorageConfigured, loadCvExportVersions, t
 import { getEsnTemplateInfo } from '@/lib/cv-export/templates'
 import { CANDIDATE_ID } from '@/lib/cv-export/stored'
 import { templateUploadDenial } from '@/lib/cv-export/access'
-import { takeTemplateSlot } from '@/lib/cv-export/recruiter'
+import { organisationName, takeTemplateSlot } from '@/lib/cv-export/recruiter'
 import { readTemplateUpload, removeTemplate, saveUploadedTemplate } from '@/lib/cv-export/template-upload'
 
 async function requireRecruiter() {
@@ -45,8 +45,8 @@ async function recruiterOfSession() {
 }
 
 /**
- * Dépose le modèle Word de l'organisation (.docx + template_map.json), à la place du précédent. Tout recruteur de
- * l'organisation (décision du 2026-10-24), à l'adresse e-mail vérifiée, dans le quota du jour (ADR 0010).
+ * Dépose le modèle Word de l'organisation (.docx seul, cartographié par l'IA : ADR 0014), à la place du précédent. Tout
+ * recruteur de l'organisation (décision du 2026-10-24), à l'adresse e-mail vérifiée, dans les quotas du jour (ADR 0010).
  */
 export async function saveRecruiterCvTemplate(formData: FormData): Promise<{ error?: string }> {
   const current = await recruiterOfSession()
@@ -57,14 +57,17 @@ export async function saveRecruiterCvTemplate(formData: FormData): Promise<{ err
   if ('error' in files) return files
   const now = new Date()
   let refused: string | null
+  let esn: string
   try {
+    // Nom lu avant de prendre la place du quota : une lecture qui échoue ne la consomme pas.
+    esn = await organisationName(current.tenantId)
     refused = await takeTemplateSlot('upload', current.tenantId, now)
   } catch (err) {
-    console.error('[cv-export] quota de dépôt de modèle illisible', current.tenantId, cvExportErrorName(err))
+    console.error('[cv-export] quota de dépôt de modèle ou organisation illisible', current.tenantId, cvExportErrorName(err))
     return { error: 'Dépôt impossible pour le moment : réessayez dans quelques instants.' }
   }
   if (refused) return { error: refused }
-  const res = await saveUploadedTemplate({ tenantId: current.tenantId, files, uploadedBy: current.user.userId, now })
+  const res = await saveUploadedTemplate({ tenantId: current.tenantId, esn, files, uploadedBy: current.user.userId, now })
   if (!res.error) revalidatePath('/recruiter/cvtheque')
   return res
 }
