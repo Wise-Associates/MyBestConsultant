@@ -56,7 +56,7 @@ describe('organisations', () => {
     const prefixes = ([
       'vision', 'tables', 'mailboxTests', 'mailboxTarget', 'mailboxTestsAll', 'assistantUser', 'assistantAll', 'cvExportOrg', 'cvExportAll',
       'cvTemplateOrg', 'cvTemplatePreview', 'aoSourcingOrg', 'aoSourcingAll', 'aoRetryOrg', 'aoRetryAll', 'aoRewriteOrg', 'aoRewriteAll',
-      'vivierMatchOrg', 'vivierMatchAll',
+      'vivierMatchOrg', 'vivierMatchAll', 'cvTemplateAll',
     ] as const).map(c => counterIdFor(c, 't1', day)[0])
     assert.equal(new Set(prefixes).size, prefixes.length, 'un préfixe par compteur')
     assert.notEqual(lockIdFor('t1'), lockIdFor('t2'))

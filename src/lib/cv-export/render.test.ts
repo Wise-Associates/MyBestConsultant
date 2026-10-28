@@ -150,6 +150,27 @@ describe('renderCv — template Wise Associates', () => {
   })
 })
 
+describe('renderCv — tabulation dans le même run que le texte', () => {
+  // Modèle Wise dont la tabulation avant le client est dans le run du client (comme les dates du modèle « version
+  // courte » de Wise Associates) au lieu d'un run à part.
+  const files = unzipSync(TEMPLATE)
+  const xml = strFromU8(files['word/document.xml'])
+  const merged = xml.replace(
+    /<w:r><w:rPr>(?:(?!<\/w:rPr>)[\s\S])*<\/w:rPr><w:tab\/><\/w:r><w:r>(<w:rPr>(?:(?!<\/w:rPr>)[\s\S])*<\/w:rPr>)(<w:t xml:space="preserve">\[Client\]<\/w:t>)<\/w:r>/,
+    '<w:r>$1<w:tab/>$2</w:r>')
+  const template = zipSync({ ...files, 'word/document.xml': strToU8(merged) })
+
+  it('la garde devant le texte (dates ou client alignés à droite)', () => {
+    assert.notEqual(merged, xml, 'run du client modifié')
+    find(paragraphs(renderCv(template, MAP, DATA, 'fr')), 'Janv 2021 – Aujourd\'hui\tBanque Exemple')
+  })
+
+  it('ne la double pas quand le gabarit en écrit une', () => {
+    const map = { ...MAP, fields: { ...MAP.fields, exp_header: ['{dates}', '\t{client}'] } }
+    find(paragraphs(renderCv(template, map, DATA, 'fr')), 'Janv 2021 – Aujourd\'hui\tBanque Exemple')
+  })
+})
+
 describe('fmt', () => {
   it('remplace les champs et n\'affiche [[ … ]] que si tous ses champs sont remplis', () => {
     assert.equal(fmt('{a}[[ · {b}]]', { a: 'X', b: 'Y' }), 'X · Y')

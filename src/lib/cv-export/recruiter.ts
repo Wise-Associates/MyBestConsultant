@@ -37,13 +37,30 @@ export async function recruiterExportState(user: UserProfile): Promise<Recruiter
   }
 }
 
-/** Prend un dépôt ou un aperçu de modèle sur le quota du jour de l'organisation : message de refus, ou null si permis. */
+/**
+ * Prend un dépôt ou un aperçu de modèle sur le quota du jour de l'organisation (et, pour un dépôt, cartographié par
+ * l'IA, sur celui de toutes les organisations) : message de refus, ou null si permis. Un dépôt refusé ensuite compte.
+ */
 export async function takeTemplateSlot(use: 'upload' | 'preview', tenantId: string, now: Date): Promise<string | null> {
-  const taken = use === 'upload'
-    ? await takeDailySlotId('cvTemplateOrg', tenantId, now, CV_TEMPLATE_DAILY_LIMITS.uploads)
-    : await takeDailySlotId('cvTemplatePreview', tenantId, now, CV_TEMPLATE_DAILY_LIMITS.previews)
-  if (taken) return null
-  return use === 'upload' ? TEMPLATE_MESSAGE.uploadQuota : TEMPLATE_MESSAGE.previewQuota
+  if (use === 'preview') {
+    return (await takeDailySlotId('cvTemplatePreview', tenantId, now, CV_TEMPLATE_DAILY_LIMITS.previews)) ? null : TEMPLATE_MESSAGE.previewQuota
+  }
+  const own = await takeDailySlotId('cvTemplateOrg', tenantId, now, CV_TEMPLATE_DAILY_LIMITS.uploads)
+  if (!own) return TEMPLATE_MESSAGE.uploadQuota
+  if (!(await takeDailySlotId('cvTemplateAll', 'platform', now, CV_TEMPLATE_DAILY_LIMITS.uploadsAllOrganisations))) {
+    console.warn('[cv-export] plafond quotidien des dépôts de modèle atteint pour toutes les organisations')
+    // La place de l'organisation n'a pas servi : rendue, pour ne pas compter un refus de la plateforme contre elle.
+    await releaseDailySlot(own)
+    return TEMPLATE_MESSAGE.uploadPlatformQuota
+  }
+  return null
+}
+
+/** Nom de l'organisation, écrit comme auteur dans les exports (`esn` de la cartographie). */
+export async function organisationName(tenantId: string): Promise<string> {
+  const tenant = await createAdminClient().databases.getDocument(DB_ID, COLLECTIONS.TENANTS, tenantId)
+  const name = typeof tenant.name === 'string' ? tenant.name.trim() : ''
+  return name.length >= 2 ? name.slice(0, 100) : 'Votre ESN'
 }
 
 /** Refus (message, statut HTTP : 429 par défaut), ou `release` pour rendre les places prises. */

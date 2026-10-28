@@ -8,8 +8,9 @@ import { LocalTime } from '@/components/shared/local-time'
 import { fieldLabel, primaryButton, secondaryButton } from '@/app/admin/candidats/labels'
 
 // Bouton « Modèle CV » des deux CV Thèques (ADR 0010) : modèle Word « Format ESN » de la plateforme (CV Thèque admin) ou
-// de l'organisation du recruteur, déposé avec sa cartographie, vérifié par un rendu fictif à l'enregistrement, aperçu et
-// exemple téléchargeables. Les actions (passées par la page) fixent l'organisation d'après la session.
+// de l'organisation du recruteur, déposé seul (l'IA écrit sa cartographie, ADR 0014), vérifié par un rendu fictif à
+// l'enregistrement, aperçu et exemple téléchargeables. Les actions (passées par la page) fixent l'organisation d'après
+// la session.
 
 export interface CvTemplateView {
   esn: string
@@ -22,13 +23,13 @@ type Kind = 'platform' | 'organisation'
 
 const TEXT: Record<Kind, { intro: string; removeNote: string; removed: string; urls: { preview: string; example: string } }> = {
   platform: {
-    intro: 'Les exports « Format ESN » de la CV Thèque admin utilisent ce modèle Word ; sans modèle déposé, celui de Wise Associates. Joignez le modèle et sa cartographie (template_map.json), préparée pour ce fichier précis avec la skill cv-esn-anonymise.',
+    intro: 'Les exports « Format ESN » de la CV Thèque admin utilisent ce modèle Word ; sans modèle déposé, celui de Wise Associates. Déposez le modèle Word seul : l\'IA repère où va chaque rubrique du CV.',
     removeNote: 'Les exports reviendront au modèle Wise Associates. Les versions déjà générées restent enregistrées.',
     removed: 'Modèle retiré : les exports reprennent le modèle Wise Associates.',
     urls: { preview: '/api/admin/cv-templates/sample', example: '/api/admin/cv-templates/example' },
   },
   organisation: {
-    intro: 'Les exports « Format ESN » de votre organisation utilisent ce modèle Word ; tous ses recruteurs peuvent le déposer, le remplacer ou le retirer. Joignez le modèle et sa cartographie (template_map.json) : elle indique où va chaque rubrique dans ce fichier précis et se prépare avec la skill Claude cv-esn-anonymise. Si vous ne pouvez pas la produire, contactez-nous.',
+    intro: 'Les exports « Format ESN » de votre organisation utilisent ce modèle Word ; tous ses recruteurs peuvent le déposer, le remplacer ou le retirer. Déposez le modèle Word seul : l\'IA repère où va chaque rubrique du CV (résumé, expériences, formation, langues, compétences).',
     removeNote: '« Format ESN » disparaîtra de la CV Thèque de votre organisation. Les versions déjà générées restent enregistrées et redeviennent accessibles si un modèle est redéposé.',
     removed: 'Modèle retiré : « Format ESN » n\'apparaît plus sur les candidats.',
     urls: { preview: '/api/recruiter/cv-templates/sample', example: '/api/recruiter/cv-templates/example' },
@@ -92,7 +93,7 @@ export function CvTemplateManager({ kind, template, storage, uploadDenied, save,
   }
 
   // onSubmit plutôt que <form action> : React vide le formulaire après une action, même refusée, et il faudrait
-  // rechoisir les deux fichiers après chaque erreur. Vidé ici seulement après un dépôt réussi.
+  // rechoisir le fichier après chaque erreur. Vidé ici seulement après un dépôt réussi.
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = event.currentTarget
@@ -166,12 +167,12 @@ export function CvTemplateManager({ kind, template, storage, uploadDenied, save,
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-admin-line p-3">
             <p className="min-w-50 flex-1 text-xs text-admin-fg-muted">
-              Point de départ : un modèle d&apos;exemple et son template_map.json, à adapter, ou à déposer tel quel pour un essai.
+              Point de départ : un modèle d&apos;exemple, à adapter à vos couleurs, ou à déposer tel quel pour un essai.
             </p>
-            <button type="button" onClick={() => download(text.urls.example, 'modele-cv-exemple.zip')} disabled={busy}
+            <button type="button" onClick={() => download(text.urls.example, 'Modele_CV_exemple.docx')} disabled={busy}
               style={{ ...secondaryButton, fontSize: 13 }}>
               {downloading === text.urls.example ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Download size={14} aria-hidden />}
-              Télécharger l&apos;exemple (.zip)
+              Télécharger l&apos;exemple (.docx)
             </button>
           </div>
 
@@ -233,19 +234,18 @@ export function CvTemplateManager({ kind, template, storage, uploadDenied, save,
                 <span style={fieldLabel}>{uploaded ? 'Nouveau modèle Word (.docx)' : 'Modèle Word (.docx)'}</span>
                 <input type="file" name="template" required accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className={fileInput} disabled={pending} />
               </label>
-              <label className="grid gap-1.5">
-                <span style={fieldLabel}>Cartographie (template_map.json)</span>
-                <input type="file" name="map" required accept=".json,application/json" className={fileInput} disabled={pending} />
-              </label>
               <p className="text-xs text-admin-fg-muted">
-                Le modèle est vérifié en y rendant un candidat fictif, en français et en anglais : il n&apos;est enregistré que si les deux rendus réussissent.
+                Un modèle vierge, avec un exemple de chaque rubrique entre crochets ([Titre], [Client]…), donne le meilleur résultat.
+                L&apos;IA l&apos;analyse (une à deux minutes), puis il est vérifié en y plaçant un candidat fictif, en français et en
+                anglais : il n&apos;est enregistré que si chaque rubrique y trouve sa place. Téléchargez ensuite l&apos;aperçu pour relire la
+                mise en page.
               </p>
               {errorLine}
               <DialogFooter>
                 <button type="button" onClick={close} disabled={pending} style={{ ...secondaryButton, justifyContent: 'center' }}>Fermer</button>
                 <button type="submit" disabled={pending} style={{ ...primaryButton, justifyContent: 'center', opacity: pending ? 0.7 : 1 }}>
                   {pending && <Loader2 size={15} className="animate-spin" aria-hidden />}
-                  {pending ? 'Vérification…' : uploaded ? 'Vérifier et remplacer' : 'Vérifier et enregistrer'}
+                  {pending ? 'Analyse du modèle…' : uploaded ? 'Analyser et remplacer' : 'Analyser et enregistrer'}
                 </button>
               </DialogFooter>
             </form>

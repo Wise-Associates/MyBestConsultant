@@ -29,7 +29,7 @@ export function lockIdFor(tenantId: string): string {
  * organisation (c), par boîte visée toutes organisations confondues (m), pour toute la plateforme (g). Messages à
  * l'assistant IA (src/lib/assistant/host.ts) : par utilisateur (a), pour toute la plateforme (b). Générations « Format
  * ESN » des recruteurs (src/lib/cv-export/access.ts) : par organisation (x), pour toutes les organisations (y) ; dépôts
- * (u) et aperçus (p) du modèle CV, par organisation. Recherches de candidats des recruteurs sur une offre AO
+ * du modèle CV, cartographiés par l'IA, par organisation (u) et pour toutes (f) ; aperçus (p), par organisation. Recherches de candidats des recruteurs sur une offre AO
  * (sourcing-access.ts) : par organisation (s), pour toutes les organisations (q). « Réessayer » d'un e-mail AO par
  * les recruteurs (attempts.ts) : par organisation (r), pour toutes les organisations (w). Rédactions par l'IA de la
  * version publiée d'une offre AO par les recruteurs (publication-copy.ts) : par organisation (d), pour toutes (h).
@@ -39,6 +39,7 @@ const COUNTER_PREFIX = {
   vision: 'v', tables: 't', mailboxTests: 'c', mailboxTarget: 'm', mailboxTestsAll: 'g', assistantUser: 'a', assistantAll: 'b',
   cvExportOrg: 'x', cvExportAll: 'y', cvTemplateOrg: 'u', cvTemplatePreview: 'p', aoSourcingOrg: 's', aoSourcingAll: 'q',
   aoRetryOrg: 'r', aoRetryAll: 'w', aoRewriteOrg: 'd', aoRewriteAll: 'h', vivierMatchOrg: 'n', vivierMatchAll: 'o',
+  cvTemplateAll: 'f',
 } as const
 export type DailyCounter = keyof typeof COUNTER_PREFIX
 
