@@ -9,6 +9,7 @@ import { Loader2, Check, AlertCircle, Image as ImageIcon, X } from 'lucide-react
 import { updateSiteContent } from '../design/actions'
 import type { SiteConfig } from '@/lib/site-config'
 import { ImageUpload } from '@/components/page-builder/image-upload'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 interface Props { config: SiteConfig }
 
@@ -79,28 +80,23 @@ export function ContentEditor({ config }: Props) {
   }
 
   return (
-    <div className="min-h-full bg-[#0A0C10] text-white">
+    <div className="min-h-full text-white">
 
-      {/* Header */}
-      <div className="border-b border-white/[0.07] px-8 py-6 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-white">Contenu du site</h1>
-          <p className="text-sm text-white/40 mt-1">
-            Textes, images et informations affichés sur la page d&apos;accueil publique.
-          </p>
-        </div>
-        <Button onClick={save} disabled={isPending}
-          className={`shrink-0 gap-2 font-semibold ${
-            saveStatus === 'ok' ? 'bg-emerald-500 hover:bg-emerald-400 text-white' :
-            saveStatus === 'error' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-            'bg-white text-black hover:bg-white/90'
-          }`}>
-          {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> :
-           saveStatus === 'ok' ? <Check className="h-4 w-4" /> :
-           saveStatus === 'error' ? <AlertCircle className="h-4 w-4" /> : null}
-          {isPending ? 'Sauvegarde...' : saveStatus === 'ok' ? 'Sauvegardé !' : saveStatus === 'error' ? 'Erreur' : 'Enregistrer'}
-        </Button>
-      </div>
+      <AdminPageHeader title="Contenu du site"
+        description="Textes, images et informations affichés sur la page d'accueil publique."
+        actions={
+          <Button onClick={save} disabled={isPending}
+            className={`shrink-0 gap-2 font-semibold ${
+              saveStatus === 'ok' ? 'bg-emerald-500 hover:bg-emerald-400 text-white' :
+              saveStatus === 'error' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+              'bg-white text-black hover:bg-white/90'
+            }`}>
+            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> :
+             saveStatus === 'ok' ? <Check className="h-4 w-4" /> :
+             saveStatus === 'error' ? <AlertCircle className="h-4 w-4" /> : null}
+            {isPending ? 'Sauvegarde...' : saveStatus === 'ok' ? 'Sauvegardé !' : saveStatus === 'error' ? 'Erreur' : 'Enregistrer'}
+          </Button>
+        } />
 
       {saveStatus === 'error' && (
         <div className="mx-8 mt-4 flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">

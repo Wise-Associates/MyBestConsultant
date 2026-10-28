@@ -80,7 +80,7 @@ export function PagesClient({ initialPages }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-white/90">Pages du site</h1>
+          <h2 className="text-sm font-semibold text-white/80">Pages</h2>
           <p className="text-sm text-white/40 mt-0.5">{pages.length} page{pages.length !== 1 ? 's' : ''}</p>
         </div>
         <Button onClick={() => { setShowNew(!showNew); setSlugEdited(false) }}

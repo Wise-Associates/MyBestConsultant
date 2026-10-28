@@ -2,11 +2,12 @@
 
 import { useState, useTransition } from 'react'
 import {
-  AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Check, ExternalLink, Loader2, Megaphone, RefreshCw, Send, Share2, Clock, ImageIcon,
+  AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Check, ExternalLink, Loader2, Megaphone, RefreshCw, Send, Clock, ImageIcon,
 } from 'lucide-react'
 import { NETWORKS, NETWORK_LABEL, type Network, type SocialConfig } from '@/lib/social-content'
 import type { SocialPost, SocialStatus } from '@/lib/social'
 import { publishJobAction, refreshPostsAction, retryPostAction, saveSocialConfigAction, sendTestAction } from './actions'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 const NET_COLOR: Record<Network, string> = { linkedin: '#0a66c2', instagram: '#e1306c', facebook: '#1877f2', x: '#e5e7eb' }
 const STATUS: Record<SocialStatus, { label: string; color: string }> = {
@@ -68,11 +69,8 @@ export function SocialClient({ initialConfig, initialPosts, jobs, env, devPanel 
 
   return (
     <div className="min-h-full p-6 sm:p-8 max-w-5xl mx-auto space-y-6" style={{ color: 'rgba(255,255,255,0.87)' }}>
-      <div>
-        <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>SITE</p>
-        <h1 className="text-white flex items-center gap-3" style={{ fontSize: '1.75rem', fontWeight: 700 }}><Share2 className="h-6 w-6" style={{ color: '#e8a33d' }} />Publication multi-réseaux</h1>
-        <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>Chaque offre publiée par un recruteur est diffusée sur LinkedIn, Instagram, Facebook et X avec une image générée par IA, le lien de l’offre et le Calendly de My Best Consultant.</p>
-      </div>
+      <AdminPageHeader title="Publication multi-réseaux"
+        description="Chaque offre publiée par un recruteur est diffusée sur LinkedIn, Instagram, Facebook et X avec une image générée par IA, le lien de l’offre et le Calendly de My Best Consultant." />
 
       <StatusBanner configured={env.configured} />
       {devPanel}

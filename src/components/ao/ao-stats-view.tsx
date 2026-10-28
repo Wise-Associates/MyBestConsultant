@@ -3,6 +3,7 @@ import { ArrowLeft } from 'lucide-react'
 import type { AoOfferRow } from '@/lib/ao/filters'
 import { SENIORITY_LABEL, SENIORITY_ORDER, cityName, offersByMonth, seniorityOf, tjmSummary, topCounts } from '@/lib/ao/stats'
 import { BarList, ChartCard, MonthlyBars, StatTile } from './stats-charts'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 // Statistiques des offres AO d'un espace (même périmètre que son tableau) : offres par mois, séniorité, assistance
 // technique ou forfait, compétences, technologies, TJM, clients, villes. Pages : /admin/candidats/statistiques
@@ -15,9 +16,11 @@ interface Props {
   /** Boîtes lues, à la suite de « boîtes » : « de la plateforme », « de votre organisation ». */
   scope: string
   now: Date
+  /** Espace admin : retour, titre et sous-titre dans la barre du haut du layout (AdminPageHeader). */
+  titleInAdminBar?: boolean
 }
 
-export function AoStatsView({ rows, loadError, back, scope, now }: Props) {
+export function AoStatsView({ rows, loadError, back, scope, now, titleInAdminBar }: Props) {
   const months = offersByMonth(rows, now)
   const lastYear = months.reduce((sum, m) => sum + m.published + m.to_review + m.ignored, 0)
   const published = rows.filter(r => r.status === 'published').length
@@ -28,18 +31,22 @@ export function AoStatsView({ rows, loadError, back, scope, now }: Props) {
     { label: 'Non précisé', count: rows.filter(r => !r.engagement).length },
   ]
   const seniority = SENIORITY_ORDER.map(key => ({ label: SENIORITY_LABEL[key], count: rows.filter(r => seniorityOf(r.experience) === key).length }))
+  const title = "Statistiques des appels d'offres"
+  const description = `${rows.length} offre${rows.length > 1 ? 's' : ''} reçue${rows.length > 1 ? 's' : ''} dans les boîtes ${scope} (conservées 365 jours). Doublons fusionnés : une offre reçue plusieurs fois compte une fois.`
 
   return (
     <div className="admin-light min-h-full p-4 sm:p-8 space-y-6">
-      <div>
-        <Link href={back.href} className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--admin-fg-muted)' }}>
-          <ArrowLeft className="h-3.5 w-3.5" /> {back.label}
-        </Link>
-        <h1 className="font-bold mt-2" style={{ color: 'var(--admin-fg)', fontSize: '1.5rem' }}>Statistiques des appels d&apos;offres</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
-          {rows.length} offre{rows.length > 1 ? 's' : ''} reçue{rows.length > 1 ? 's' : ''} dans les boîtes {scope} (conservées 365 jours). Doublons fusionnés : une offre reçue plusieurs fois compte une fois.
-        </p>
-      </div>
+      {titleInAdminBar ? (
+        <AdminPageHeader title={title} description={description} back={back} />
+      ) : (
+        <div>
+          <Link href={back.href} className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--admin-fg-muted)' }}>
+            <ArrowLeft className="h-3.5 w-3.5" /> {back.label}
+          </Link>
+          <h1 className="font-bold mt-2" style={{ color: 'var(--admin-fg)', fontSize: '1.5rem' }}>{title}</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--admin-fg-muted)' }}>{description}</p>
+        </div>
+      )}
 
       {loadError ? (
         <p role="alert" className="text-sm" style={{ color: '#b91c1c' }}>{loadError}</p>

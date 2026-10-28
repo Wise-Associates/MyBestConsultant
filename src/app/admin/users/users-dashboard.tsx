@@ -6,6 +6,7 @@ import {
   Plus, X, Loader2, AlertCircle, Power, PowerOff, Trash2, RefreshCcw, UserX,
 } from 'lucide-react'
 import type { UserRole } from '@/types'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 import {
   createUserManually, toggleUserStatus, deleteUserAccount, listAllUsers, type AdminUserRow,
 } from './actions'
@@ -230,22 +231,16 @@ export function UsersDashboard({
   return (
     <div className="min-h-full p-8 space-y-6" style={{ color: 'rgba(255,255,255,0.87)' }}>
 
-      {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-4">
-        <div>
-          <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>GESTION</p>
-          <h1 className="text-[28px] font-bold tracking-tight text-white">Utilisateurs</h1>
-          <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-            {stats.total} compte{stats.total > 1 ? 's' : ''} enregistré{stats.total > 1 ? 's' : ''}
-          </p>
-        </div>
-        <button onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 font-semibold text-sm"
-          style={{ padding: '11px 18px', borderRadius: 12, background: 'linear-gradient(135deg, rgba(11,29,81,0.9), rgba(22,36,102,0.9))', border: '1px solid rgba(184,134,11,0.35)', color: '#fff', cursor: 'pointer' }}>
-          <Plus size={15} />
-          Créer un compte
-        </button>
-      </div>
+      <AdminPageHeader title="Utilisateurs"
+        description={`${stats.total} compte${stats.total > 1 ? 's' : ''} enregistré${stats.total > 1 ? 's' : ''}`}
+        actions={
+          <button onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 font-semibold text-sm"
+            style={{ padding: '11px 18px', borderRadius: 12, background: 'linear-gradient(135deg, rgba(11,29,81,0.9), rgba(22,36,102,0.9))', border: '1px solid rgba(184,134,11,0.35)', color: '#fff', cursor: 'pointer' }}>
+            <Plus size={15} />
+            Créer un compte
+          </button>
+        } />
 
       {loadError && (
         <div className="flex items-center gap-3 p-4 rounded-xl" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>

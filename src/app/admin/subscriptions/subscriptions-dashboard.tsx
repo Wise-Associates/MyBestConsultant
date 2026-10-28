@@ -9,6 +9,7 @@ import {
   updateSubscription, setSubscriptionStatus, grantFreeMonth,
   type Subscriber, type PlanId, type SubStatus, type BillingPeriod,
 } from './actions'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 const PLAN_LABELS: Record<PlanId, string> = { free: 'Free', gold: 'Gold', max: 'Max' }
 const PLAN_AMOUNTS: Record<PlanId, { monthly: number; annual: number }> = {
@@ -201,13 +202,8 @@ export function SubscriptionsDashboard({ initialSubscribers, loadError }: { init
   return (
     <div className="min-h-full p-8 space-y-6" style={{ color: 'rgba(255,255,255,0.87)' }}>
 
-      <div>
-        <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>FACTURATION</p>
-        <h1 className="text-[28px] font-bold tracking-tight text-white">Abonnements</h1>
-        <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-          Gestion manuelle des abonnements recruteurs — {stats.total} abonné{stats.total > 1 ? 's' : ''}
-        </p>
-      </div>
+      <AdminPageHeader title="Abonnements"
+        description={`Gestion manuelle des abonnements recruteurs — ${stats.total} abonné${stats.total > 1 ? 's' : ''}`} />
 
       {loadError && (
         <div className="flex items-center gap-3 p-4 rounded-xl" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>

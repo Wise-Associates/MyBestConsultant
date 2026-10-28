@@ -107,6 +107,11 @@
   --font-body: 'Inter', system-ui, sans-serif;
 }
 
+/* Fond bleu marine de la page de connexion, repris par tout le back-office (layout admin, décision du 2026-10-28). */
+.mbc-navy-bg {
+  background: radial-gradient(ellipse 120% 90% at 50% -10%, #142a6e 0%, #0B1D51 45%, #060e2c 100%);
+}
+
 /* Back-office (/admin) en clair : seule la page AO Offers porte cette classe, le reste de l'admin reste sombre
    (couleurs écrites dans chaque page). Les tokens --admin-* n'existent qu'à l'intérieur : hors de .admin-light,
    bg-admin-panel ou text-admin-fg ne donnent rien. Indépendant du thème du site public (--color-*, que l'admin

@@ -9,6 +9,7 @@ import {
 import { saveHeaderConfig, saveFooterConfig, uploadLogo } from './actions'
 import type { HeaderConfig, FooterConfig, CtaButton, FooterColumn, PageVisibility } from '@/types/layout'
 import { DEFAULT_HEADER, DEFAULT_FOOTER } from '@/types/layout'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 function uid() { return Math.random().toString(36).slice(2, 9) }
 
@@ -756,21 +757,16 @@ export function HeaderFooterEditor({ initialHeader, initialFooter, siteName, log
   const tabs = isHeader ? HEADER_TABS : FOOTER_TABS
 
   return (
-    <div className="min-h-full bg-[#0A0C10] text-white">
+    <div className="min-h-full text-white">
 
-      {/* Header */}
-      <div className="border-b border-white/[0.07] px-8 py-5 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Header & Footer</h1>
-          <p className="text-sm text-white/35 mt-0.5">
-            Personnalisez l&apos;en-tête et le pied de page — les changements s&apos;appliquent sur tout le site
-          </p>
-        </div>
-        <a href="/" target="_blank"
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-xs text-white/40 hover:text-white transition-colors">
-          <ExternalLink className="h-3.5 w-3.5" /> Voir le site
-        </a>
-      </div>
+      <AdminPageHeader title="Header & Footer"
+        description="Personnalisez l'en-tête et le pied de page — les changements s'appliquent sur tout le site"
+        actions={
+          <a href="/" target="_blank"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-xs text-white/40 hover:text-white transition-colors">
+            <ExternalLink className="h-3.5 w-3.5" /> Voir le site
+          </a>
+        } />
 
       {status === 'error' && (
         <div className="mx-8 mt-4 flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">

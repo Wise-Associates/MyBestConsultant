@@ -12,6 +12,7 @@ import { BRAND } from '@/app/admin/candidats/labels'
 import { SECTORS } from '@/lib/candidate-taxonomy'
 import { Pagination } from '@/components/shared/pagination'
 import { CandidateAvatar } from '@/components/shared/candidate-avatar'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 const PAGE_SIZE = 50
 
@@ -71,33 +72,13 @@ export function CvthequeClient({ initialCandidates, loadError, exportEsn, templa
   }
 
   return (
-    <div style={{
-      minHeight: '100%',
-      backgroundColor: 'var(--color-background)',
-      backgroundImage: `linear-gradient(rgba(11,29,81,0.55), rgba(11,29,81,0.55)), url('/recruiter-bg.jpg')`,
-      backgroundSize: 'cover',
-      backgroundPosition: 'top center',
-      backgroundRepeat: 'no-repeat',
-      backgroundAttachment: 'fixed',
-    }}>
-      {/* Header — scrolls away with the page */}
-      <div style={{ background: 'var(--hero-bg)' }}>
-        <div className="max-w-6xl mx-auto px-6 pt-8 pb-2 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <FolderSearch className="h-5 w-5" style={{ color: 'var(--color-accent, #B8860B)' }} />
-              <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>CV Thèque</h1>
-            </div>
-            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-              Recherchez les candidats de la base par compétence, ville ou nom
-            </p>
-          </div>
-          {template && <CvTemplateManager kind="platform" template={template} storage={templateStorage} save={saveCvTemplate} remove={deleteCvTemplate} />}
-        </div>
-      </div>
+    <div className="min-h-full">
+      <AdminPageHeader title="CV Thèque" description="Recherchez les candidats de la base par compétence, ville ou nom"
+        actions={template && <CvTemplateManager kind="platform" template={template} storage={templateStorage} save={saveCvTemplate} remove={deleteCvTemplate} />} />
 
-      {/* Search/filter row — only this compact bar stays pinned, and only once it fits on one line */}
-      <div className="sm:sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
+      {/* Search/filter row — only this compact bar stays pinned, and only once it fits on one line.
+          Opaque navy (the admin background colour) so the list scrolls under it. */}
+      <div className="sm:sticky top-0 z-20" style={{ background: '#0B1D51', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
         <div className="max-w-6xl mx-auto px-6 py-4">
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1 flex items-center gap-2 px-4 rounded-2xl"

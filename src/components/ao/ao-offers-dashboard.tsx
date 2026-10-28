@@ -14,6 +14,7 @@ import type { AoEmail } from '@/lib/ao/types'
 import { AoComments } from './ao-comments'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { AoOfferPanel } from './ao-offer-panel'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 import { WorkBadge, useOfferPublications } from './offer-publications'
 import {
   BRAND, CONTRACT_LABEL, ENGAGEMENT_LABEL, REMOTE_LABEL, STATUS_UI, control, formatAmount, formatDay, optionStyle, secondaryButton,
@@ -36,6 +37,8 @@ interface Props {
   actions: AoDashboardActions
   paths: AoDashboardPaths
   copy: AoDashboardCopy
+  /** Espace admin : titre et sous-titre dans la barre du haut du layout (AdminPageHeader), outils restant dans la page. */
+  titleInAdminBar?: boolean
 }
 
 type Notice = { tone: 'ok' | 'error'; text: string } | null
@@ -84,7 +87,7 @@ export interface MailboxIssue {
   at: string | null
 }
 
-export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, inboxConfigured, mailboxIssues, loadError, accessAlert, actions, paths, copy }: Props) {
+export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, inboxConfigured, mailboxIssues, loadError, accessAlert, actions, paths, copy, titleInAdminBar }: Props) {
   // Synchronisation en arrière-plan (AoSyncProvider, layout de l'espace) : elle continue quand on quitte la page et se
   // retrouve en revenant. Les données renvoyées par ses passages ne remplacent celles de la page que si elles sont
   // arrivées après elles : la page rechargée (retour sur la page, fin de synchronisation) l'emporte sur un passage plus
@@ -167,23 +170,27 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
     if (notice || sync.notice) noticeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, [notice, sync.notice])
 
+  const description = `Appels d'offres reçus dans les boîtes ${copy.scope}, lus automatiquement.`
+    + (recentEmails[0] ? ` Dernier e-mail : ${formatDay(recentEmails[0].receivedAt)}.` : '')
+
   return (
     <div className="admin-light min-h-full p-8 space-y-6">
       {/* En-tête */}
-      <div className="flex items-start justify-between flex-wrap gap-4">
-        <div>
-          {copy.back && (
-            <Link href={copy.back.href} className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 hover:underline" style={{ color: 'var(--admin-fg-muted)' }}>
-              <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> {copy.back.label}
-            </Link>
-          )}
-          <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'var(--admin-fg-muted)' }}>{copy.eyebrow}</p>
-          <h1 className="text-[28px] font-bold tracking-tight text-admin-fg">{copy.title}</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
-            Appels d&apos;offres reçus dans les boîtes {copy.scope}, lus automatiquement.
-            {recentEmails[0] ? ` Dernier e-mail : ${formatDay(recentEmails[0].receivedAt)}.` : ''}
-          </p>
-        </div>
+      <div className={`flex items-start ${titleInAdminBar ? 'justify-end' : 'justify-between'} flex-wrap gap-4`}>
+        {titleInAdminBar ? (
+          <AdminPageHeader title={copy.title} description={description} />
+        ) : (
+          <div>
+            {copy.back && (
+              <Link href={copy.back.href} className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 hover:underline" style={{ color: 'var(--admin-fg-muted)' }}>
+                <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> {copy.back.label}
+              </Link>
+            )}
+            <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'var(--admin-fg-muted)' }}>{copy.eyebrow}</p>
+            <h1 className="text-[28px] font-bold tracking-tight text-admin-fg">{copy.title}</h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--admin-fg-muted)' }}>{description}</p>
+          </div>
+        )}
         <div className="flex items-center gap-3 flex-wrap">
           <nav aria-label="Pages de la section" className={toolbarGroup}>
             <Link href={paths.statistics} aria-label="Statistiques" title="Statistiques"

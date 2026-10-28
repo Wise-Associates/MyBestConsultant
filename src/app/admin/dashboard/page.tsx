@@ -1,5 +1,6 @@
 import { Building2, Users, Briefcase, BrainCircuit, TrendingUp, ArrowUpRight, Palette, Settings, ChevronRight, Activity, Zap, Home } from 'lucide-react'
 import Link from 'next/link'
+import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 const STATS = [
   {
@@ -65,29 +66,10 @@ export default function AdminDashboard() {
   const dateStr = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
   return (
-    <div style={{
-      minHeight: '100%',
-      backgroundColor: 'var(--color-background)',
-      backgroundImage: `linear-gradient(rgba(11,29,81,0.55), rgba(11,29,81,0.55)), url('/recruiter-bg.jpg')`,
-      backgroundSize: 'cover',
-      backgroundPosition: 'top center',
-      backgroundRepeat: 'no-repeat',
-      backgroundAttachment: 'fixed',
-    }}>
-      {/* Header */}
-      <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
-        <div className="max-w-6xl mx-auto px-6 py-8 flex flex-wrap items-center justify-between gap-6">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: 'rgba(16,185,129,0.18)', color: '#34d399' }}>
-                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#34d399' }} />
-                Système opérationnel
-              </span>
-            </div>
-            <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>Vue d&apos;ensemble</h1>
-            <p className="text-sm mt-0.5 capitalize" style={{ color: 'rgba(255,255,255,0.5)' }}>{dateStr}</p>
-          </div>
-          <div className="flex items-center gap-2">
+    <div className="min-h-full">
+      <AdminPageHeader title="Vue d'ensemble" description={dateStr.charAt(0).toUpperCase() + dateStr.slice(1)}
+        actions={
+          <>
             <Link href="/admin/design"
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold no-underline transition-all"
               style={{ background: 'rgba(124,58,237,0.18)', border: '1px solid rgba(124,58,237,0.4)', color: '#c4b5fd' }}>
@@ -100,9 +82,8 @@ export default function AdminDashboard() {
               <ArrowUpRight className="h-4 w-4" />
               Voir le site
             </Link>
-          </div>
-        </div>
-      </div>
+          </>
+        } />
 
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
 
