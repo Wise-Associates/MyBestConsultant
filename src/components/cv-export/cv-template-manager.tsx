@@ -23,15 +23,15 @@ type Kind = 'platform' | 'organisation'
 
 const TEXT: Record<Kind, { intro: string; removeNote: string; removed: string; urls: { preview: string; example: string } }> = {
   platform: {
-    intro: 'Les exports « Format ESN » de la CV Thèque admin utilisent ce modèle Word ; sans modèle déposé, celui de Wise Associates. Déposez le modèle Word seul : l\'IA repère où va chaque rubrique du CV.',
+    intro: 'Les exports « CV format cabinet » de la CV Thèque admin utilisent ce modèle Word ; sans modèle déposé, celui de Wise Associates. Déposez le modèle Word seul : l\'IA repère où va chaque rubrique du CV.',
     removeNote: 'Les exports reviendront au modèle Wise Associates. Les versions déjà générées restent enregistrées.',
     removed: 'Modèle retiré : les exports reprennent le modèle Wise Associates.',
     urls: { preview: '/api/admin/cv-templates/sample', example: '/api/admin/cv-templates/example' },
   },
   organisation: {
-    intro: 'Les exports « Format ESN » de votre organisation utilisent ce modèle Word ; tous ses recruteurs peuvent le déposer, le remplacer ou le retirer. Déposez le modèle Word seul : l\'IA repère où va chaque rubrique du CV (résumé, expériences, formation, langues, compétences).',
-    removeNote: '« Format ESN » disparaîtra de la CV Thèque de votre organisation. Les versions déjà générées restent enregistrées et redeviennent accessibles si un modèle est redéposé.',
-    removed: 'Modèle retiré : « Format ESN » n\'apparaît plus sur les candidats.',
+    intro: 'Les exports « CV format cabinet » de votre organisation utilisent ce modèle Word ; tous ses recruteurs peuvent le déposer, le remplacer ou le retirer. Déposez le modèle Word seul : l\'IA repère où va chaque rubrique du CV (résumé, expériences, formation, langues, compétences).',
+    removeNote: '« CV format cabinet » disparaîtra de la CV Thèque et du vivier de votre organisation. Les versions déjà générées restent enregistrées et redeviennent accessibles si un modèle est redéposé.',
+    removed: 'Modèle retiré : « CV format cabinet » n\'apparaît plus sur les candidats.',
     urls: { preview: '/api/recruiter/cv-templates/sample', example: '/api/recruiter/cv-templates/example' },
   },
 }
@@ -161,7 +161,7 @@ export function CvTemplateManager({ kind, template, storage, uploadDenied, save,
       <Dialog open={open} onOpenChange={next => { if (!next) close() }}>
         <DialogContent className="admin-light sm:max-w-130 max-h-[90vh] overflow-y-auto" style={{ background: 'var(--admin-panel)' }} showCloseButton={!pending}>
           <DialogHeader>
-            <DialogTitle className="text-admin-fg" style={{ fontSize: '1.05rem' }}>Modèle CV « Format ESN »</DialogTitle>
+            <DialogTitle className="text-admin-fg" style={{ fontSize: '1.05rem' }}>Modèle du « CV format cabinet »</DialogTitle>
             <DialogDescription style={{ color: 'var(--admin-fg-muted)' }}>{text.intro}</DialogDescription>
           </DialogHeader>
 
@@ -209,7 +209,7 @@ export function CvTemplateManager({ kind, template, storage, uploadDenied, save,
               )}
             </div>
           ) : (
-            <p className="text-sm text-admin-fg-muted">Aucun modèle : « Format ESN » apparaîtra sur les candidats une fois le modèle déposé.</p>
+            <p className="text-sm text-admin-fg-muted">Aucun modèle : « CV format cabinet » apparaîtra sur les candidats une fois le modèle déposé.</p>
           )}
 
           <div aria-live="polite">

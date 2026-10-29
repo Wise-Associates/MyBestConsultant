@@ -14,7 +14,7 @@ async function platformTemplate(): Promise<{ template: EsnTemplateInfo | null; e
       template: null,
       error: isCvExportStorageMissing(err)
         ? 'Modèle CV : collection ou bucket cv_templates introuvable. Lancez npm run cv-export:setup -- <env> --apply sur ce projet, ou retirez les variables APPWRITE_*_CV_TEMPLATES.'
-        : 'Modèle CV de la plateforme illisible pour le moment (Appwrite) : rechargez la page. « Format ESN » échouera tant qu\'il reste illisible.',
+        : 'Modèle CV de la plateforme illisible pour le moment (Appwrite) : rechargez la page. « CV format cabinet » échouera tant qu\'il reste illisible.',
     }
   }
 }

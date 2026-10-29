@@ -129,6 +129,15 @@ export function contentOf(extraction: CvExtraction): CvContent {
   return { titre, experience, resume, experiences, formations, certifications, langues, competences }
 }
 
+/**
+ * Nom complet d'un CV du vivier (lu par l'IA à l'import, sans prénom ni nom séparés) : le dernier mot pour nom, le reste
+ * pour prénom. Le contrôle des fuites cherche chacun seul : « Dupont » reste détecté dans « Jean Pierre Dupont ».
+ */
+export function splitFullName(fullName: string): { firstName: string; lastName: string } {
+  const words = fullName.trim().split(/\s+/).filter(Boolean)
+  return words.length < 2 ? { firstName: words[0] ?? '', lastName: '' } : { firstName: words.slice(0, -1).join(' '), lastName: words[words.length - 1] }
+}
+
 /** Initiales « J.M. » (« Jean-Marc Dupont » → « J.M.D. ») ; sans nom connu, champ à compléter. */
 export function initialsOf(firstName: string, lastName: string, lang: CvLang): string {
   const letters = `${firstName} ${lastName}`.split(/[\s\-'’.]+/).filter(Boolean).map(part => part[0].toUpperCase())

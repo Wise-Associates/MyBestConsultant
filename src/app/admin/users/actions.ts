@@ -132,8 +132,8 @@ export async function deleteUserAccount(authId: string, listedProfileId: string 
         console.error('[cv-export] suppression des exports en échec', profileId, cvExportErrorName(e))
         return {
           error: isCvExportStorageMissing(e)
-            ? 'Compte non supprimé : stockage des CV au format ESN introuvable. Vérifiez APPWRITE_COLLECTION_CV_EXPORTS et APPWRITE_STORAGE_CV_EXPORTS (npm run cv-export:setup).'
-            : 'Compte non supprimé : la suppression de ses CV au format ESN a échoué. Réessayez.',
+            ? 'Compte non supprimé : stockage des CV format cabinet introuvable. Vérifiez APPWRITE_COLLECTION_CV_EXPORTS et APPWRITE_STORAGE_CV_EXPORTS (npm run cv-export:setup).'
+            : 'Compte non supprimé : la suppression de ses CV format cabinet a échoué. Réessayez.',
         }
       }
     }

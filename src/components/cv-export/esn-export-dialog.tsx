@@ -269,7 +269,7 @@ export function EsnExportDialog({ candidate, onClose, endpoint, loadVersions, es
       {candidate && (
         <DialogContent className="admin-light sm:max-w-[520px] max-h-[90vh] overflow-y-auto" style={{ background: 'var(--admin-panel)' }} showCloseButton={!busy}>
           <DialogHeader>
-            <DialogTitle className="text-admin-fg" style={{ fontSize: '1.05rem' }}>Exporter au format ESN</DialogTitle>
+            <DialogTitle className="text-admin-fg" style={{ fontSize: '1.05rem' }}>Exporter en CV format cabinet</DialogTitle>
             <DialogDescription style={{ color: 'var(--admin-fg-muted)' }}>
               Dossier de compétences anonymisé de {candidate.name || 'ce candidat'}, dans le modèle {esn} (Word, modifiable).
             </DialogDescription>

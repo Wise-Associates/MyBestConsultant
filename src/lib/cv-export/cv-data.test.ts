@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   InvalidAnswerError, TruncatedAnswerError, contentOf, countToComplete, cvFileKind, exportBaseName, exportNotes, fitToTemplate,
-  initialsOf, parseExtraction, parseTranslation, structureGap, zipNameOf,
+  initialsOf, parseExtraction, parseTranslation, splitFullName, structureGap, zipNameOf,
 } from './cv-data'
 import wiseMap from './templates/wise-associates/template_map.json'
 import type { CvData, TemplateMap } from './types'
@@ -140,5 +140,18 @@ describe('règles de l\'export', () => {
     assert.equal(cvFileKind(new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0])), 'docx')
     assert.equal(cvFileKind(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])), 'doc')
     assert.equal(cvFileKind(new TextEncoder().encode('<html>')), null)
+  })
+})
+
+describe('splitFullName', () => {
+  it('dernier mot pour nom, le reste pour prénom : chacun est cherché seul par le contrôle des fuites', () => {
+    assert.deepEqual(splitFullName('Marie Exemple'), { firstName: 'Marie', lastName: 'Exemple' })
+    assert.deepEqual(splitFullName('  Jean Pierre   Exemple '), { firstName: 'Jean Pierre', lastName: 'Exemple' })
+  })
+
+  it('un seul mot, ou aucun : prénom seul, initiales à compléter sans nom', () => {
+    assert.deepEqual(splitFullName('Exemple'), { firstName: 'Exemple', lastName: '' })
+    assert.deepEqual(splitFullName('   '), { firstName: '', lastName: '' })
+    assert.equal(initialsOf(splitFullName('').firstName, splitFullName('').lastName, 'fr'), initialsOf('', '', 'fr'))
   })
 })

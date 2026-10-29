@@ -7,15 +7,19 @@ import { llmUnavailableReason } from '@/lib/ao/ai-failures'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import type { UserProfile } from '@/types'
 import { exportBaseName } from './cv-data'
-import { CvExportError, bundleCvExport, exportCandidateCv, type CvExportFile } from './export'
-import type { GenerationSlot } from './recruiter'
+import {
+  CvExportError, bundleCvExport, exportCandidateCv, exportVivierCv, loadOwnVivierCv, vivierCvExists, type CvExportFile, type CvExportOptions,
+  type CvExportResult, type VivierOwner,
+} from './export'
+import { recruiterExportState, takeRecruiterGenerationSlot, type GenerationSlot } from './recruiter'
 import { cvExportErrorName, isCvExportStorageConfigured, listCvExports, readCvExportFiles, saveCvExports } from './store'
-import { CANDIDATE_ID, storedFor } from './stored'
+import { CANDIDATE_ID, storedFor, vivierExportKey } from './stored'
 import { SAMPLE_CV, TemplateError, checkTemplate } from './template-check'
 import { loadEsnTemplate, readExampleTemplateFiles, type EsnTemplate } from './templates'
 
 // Cœur commun des routes « Format ESN » de la plateforme (/api/admin/…) et des organisations (/api/recruiter/…) :
-// export d'un candidat (cv-export) et téléchargements du modèle (cv-templates : aperçu fictif, exemple). Chaque route
+// export d'un candidat (cv-export) ou d'un CV du vivier d'un recruteur (vivier/cv-export, ADR 0016) et téléchargements
+// du modèle (cv-templates : aperçu fictif, exemple). Chaque route
 // vérifie elle-même son appelant et fixe l'organisation d'après la session, jamais d'après la requête ; ce cœur valide la
 // demande, génère (POST) ou relit (GET) la version de cette organisation et la livre. Le compte rendu (champs à compléter,
 // contenus non repris) est renvoyé dans l'en-tête X-Cv-Export-Notes ; POST indique dans X-Cv-Export-Saved si la version a
@@ -109,19 +113,20 @@ function zipResponse(files: Record<string, Uint8Array>, fileName: string): NextR
 // Pour un recruteur : pas de détail de configuration de l'IA (crédits, clé, modèle), qu'il ne peut ni voir ni régler.
 const UNAVAILABLE_FOR_RECRUITER = 'Génération indisponible pour le moment : réessayez plus tard ; si cela dure, contactez-nous.'
 
-function errorResponse(err: unknown, candidateId: string, publicErrors = false): NextResponse {
+/** `logId` : identifiant du candidat ou clé du CV, dans les journaux seulement. */
+function errorResponse(err: unknown, logId: string, publicErrors = false): NextResponse {
   if (err instanceof CvExportError) {
     if (err.status >= 500) {
       // Notre message (sans donnée du CV) et la classe de la cause avec son statut, jamais le message de la cause : une
       // erreur d'API peut recopier la requête, donc le CV.
       const cause = err.cause
       const detail = cause instanceof Error ? `${cause.constructor.name}${'status' in cause ? ` ${String(cause.status)}` : ''}` : ''
-      console.error('[cv-export] échec', candidateId, err.status, err.message, detail)
+      console.error('[cv-export] échec', logId, err.status, err.message, detail)
       if (publicErrors) return deny(err.status, UNAVAILABLE_FOR_RECRUITER)
     }
     return deny(err.status, err.message)
   }
-  console.error('[cv-export] échec inattendu', candidateId, err instanceof Error ? `${err.name}: ${err.message.slice(0, 300)}` : String(err))
+  console.error('[cv-export] échec inattendu', logId, err instanceof Error ? `${err.name}: ${err.message.slice(0, 300)}` : String(err))
   return deny(500, 'Export impossible : erreur inattendue. Réessayez ; si cela se répète, signalez-le.')
 }
 
@@ -140,13 +145,81 @@ export interface GenerationScope {
   publicErrors?: boolean
 }
 
+/** CV à exporter : clé de ses versions enregistrées, génération et, pour un CV du vivier, sa présence. */
+interface ExportSubject {
+  /** Identifiant du candidat, ou clé d'un CV du vivier (vivierExportKey). */
+  key: string
+  run: (options: CvExportOptions, template: EsnTemplate, beforeAi?: () => Promise<void>) => Promise<CvExportResult>
+  exists?: () => Promise<boolean>
+}
+
+const TEMPLATE_UNUSABLE = 'Le modèle CV de votre organisation est inutilisable pour le moment : téléchargez son aperçu (bouton « Modèle CV »), déposez-le à nouveau ou contactez-nous.'
+const NO_TEMPLATE = 'Aucun modèle de CV format cabinet pour votre organisation : déposez-le depuis la CV Thèque ou le vivier (bouton « Modèle CV »).'
+const UNAVAILABLE = '« CV format cabinet » momentanément indisponible : réessayez dans quelques instants.'
+
+/**
+ * Génération par un recruteur, dans le modèle de son organisation (ADR 0010) : modèle déposé, abonnement actif, adresse
+ * e-mail vérifiée, puis quota du jour pris juste avant l'IA. Partagé par la route de la CV Thèque et celle du vivier.
+ */
+export async function recruiterGenerationScope(current: { user: UserProfile; tenantId: string }): Promise<{ denied: NextResponse } | { scope: GenerationScope }> {
+  const { tenantId } = current
+  let template: EsnTemplate | null
+  try {
+    const state = await recruiterExportState(current.user)
+    if (state?.generationDenied) return { denied: deny(403, state.generationDenied) }
+    if (!state?.template) return { denied: deny(404, NO_TEMPLATE) }
+    template = await loadEsnTemplate(tenantId)
+  } catch (err) {
+    // Cartographie enregistrée illisible (TemplateError) : à redéposer ; sinon panne passagère du stockage.
+    console.error('[cv-export] modèle de l\'organisation illisible', tenantId, err instanceof TemplateError ? err.message : cvExportErrorName(err))
+    return { denied: err instanceof TemplateError ? deny(422, TEMPLATE_UNUSABLE) : deny(503, UNAVAILABLE) }
+  }
+  if (!template) return { denied: deny(404, NO_TEMPLATE) }
+  const checked = template
+  return {
+    scope: {
+      tenantId,
+      template: checked,
+      // Juste avant l'IA, une fois la demande et le CV validés : places du jour, puis rendu fictif du modèle (jusqu'à
+      // environ 2 s), qui ne coûte ainsi pas plus que le quota. Un modèle devenu inutilisable rend les places, sans frais.
+      reserve: async () => {
+        const slot = await takeRecruiterGenerationSlot(tenantId, new Date())
+        if ('refused' in slot) return slot
+        try {
+          checkTemplate(checked.bytes, checked.map)
+          return slot
+        } catch (err) {
+          console.error('[cv-export] modèle de l\'organisation inutilisable', tenantId, err instanceof TemplateError ? err.message : cvExportErrorName(err))
+          await slot.release().catch(releaseErr => console.error('[cv-export] places de quota non rendues', tenantId, cvExportErrorName(releaseErr)))
+          return { refused: TEMPLATE_UNUSABLE, status: 422 }
+        }
+      },
+      publicErrors: true,
+    },
+  }
+}
+
 /** POST : génère la version (deux appels d'IA au plus), l'enregistre pour l'organisation et la livre. */
 export async function generateExport(req: NextRequest, candidateId: string, scope: GenerationScope, startedAt: number): Promise<NextResponse> {
+  if (!isCandidateId(candidateId)) return deny(404, 'Candidat introuvable.')
+  return generate(req, { key: candidateId, run: (options, template, beforeAi) => exportCandidateCv(candidateId, options, template, beforeAi) }, scope, startedAt)
+}
+
+/** POST pour un CV du vivier de `owner` : seul celui qui l'a importé l'exporte (vérifié avant tout appel d'IA ou quota). */
+export async function generateVivierExport(req: NextRequest, cvId: string, owner: VivierOwner, scope: GenerationScope, startedAt: number): Promise<NextResponse> {
+  const key = vivierExportKey(cvId)
+  if (!key) return deny(404, 'CV introuvable.')
+  return generate(req, {
+    key, run: (options, template, beforeAi) => exportVivierCv(cvId, owner, options, template, beforeAi), exists: () => vivierCvExists(cvId),
+  }, scope, startedAt)
+}
+
+async function generate(req: NextRequest, subject: ExportSubject, scope: GenerationScope, startedAt: number): Promise<NextResponse> {
+  const { key } = subject
   // En plus du cookie de session SameSite=Lax : une génération coûte deux appels d'IA, elle ne part que d'une page du
   // site lui-même (un navigateur envoie toujours Sec-Fetch-Site ; son absence = client hors navigateur, avec la session).
   const site = req.headers.get('sec-fetch-site')
   if (site && site !== 'same-origin') return deny(403, 'Accès refusé')
-  if (!isCandidateId(candidateId)) return deny(404, 'Candidat introuvable.')
   const body = ExportRequest.safeParse(await req.json().catch(() => null))
   if (!body.success) return deny(400, 'Demande invalide : langues et anonymisation attendues.')
 
@@ -159,19 +232,19 @@ export async function generateExport(req: NextRequest, candidateId: string, scop
   })
   let result
   try {
-    result = await exportCandidateCv(candidateId, body.data, scope.template, beforeAi)
+    result = await subject.run(body.data, scope.template, beforeAi)
   } catch (err) {
     if (release && failedWithoutCost(err)) {
-      await release().catch(releaseErr => console.error('[cv-export] places de quota non rendues', candidateId, cvExportErrorName(releaseErr)))
+      await release().catch(releaseErr => console.error('[cv-export] places de quota non rendues', key, cvExportErrorName(releaseErr)))
     }
-    return errorResponse(err, candidateId, scope.publicErrors)
+    return errorResponse(err, key, scope.publicErrors)
   }
 
   // Les appels d'IA sont faits : un échec d'enregistrement n'empêche pas de livrer le fichier, la fenêtre le signale.
   const saved: SaveStatus = isCvExportStorageConfigured()
     ? await saveWithinBudget({
-      tenantId: scope.tenantId, candidateId, mode: body.data.mode, sourceCvFileId: result.sourceCvFileId, notes: result.notes,
-      files: result.files, now: new Date(),
+      tenantId: scope.tenantId, candidateId: key, mode: body.data.mode, sourceCvFileId: result.sourceCvFileId, notes: result.notes,
+      files: result.files, now: new Date(), exists: subject.exists,
     }, startedAt)
     : 'off'
   return fileResponse(bundleCvExport(result.files), result.notes, saved)
@@ -180,17 +253,34 @@ export async function generateExport(req: NextRequest, candidateId: string, scop
 /** GET : version enregistrée de l'organisation pour ce choix, sans appel d'IA. */
 export async function downloadSavedExport(req: NextRequest, candidateId: string, tenantId: string): Promise<NextResponse> {
   if (!isCandidateId(candidateId)) return deny(404, 'Candidat introuvable.')
+  return deliverSaved(req, candidateId, tenantId)
+}
+
+/** GET pour un CV du vivier de `owner` : versions lues seulement par celui qui l'a importé, comme le CV lui-même. */
+export async function downloadSavedVivierExport(req: NextRequest, cvId: string, owner: VivierOwner): Promise<NextResponse> {
+  const key = vivierExportKey(cvId)
+  if (!key) return deny(404, 'CV introuvable.')
+  try {
+    await loadOwnVivierCv(cvId, owner)
+  } catch (err) {
+    return errorResponse(err, key)
+  }
+  return deliverSaved(req, key, owner.tenantId)
+}
+
+/** `key` : identifiant du candidat ou clé d'un CV du vivier, déjà vérifiés par l'appelant. */
+async function deliverSaved(req: NextRequest, key: string, tenantId: string): Promise<NextResponse> {
   const query = ExportRequest.safeParse({ langs: req.nextUrl.searchParams.getAll('lang'), mode: req.nextUrl.searchParams.get('mode') })
   if (!query.success) return deny(400, 'Demande invalide : langues et anonymisation attendues.')
   if (!isCvExportStorageConfigured()) return deny(404, 'Enregistrement des versions non configuré.')
 
   try {
-    const versions = storedFor(await listCvExports(tenantId, candidateId), query.data.mode, query.data.langs)
+    const versions = storedFor(await listCvExports(tenantId, key), query.data.mode, query.data.langs)
     if (!versions) return deny(404, 'Aucune version enregistrée pour ce choix : générez-la.')
     // Compte rendu de la première langue, comme à la génération (deux langues peuvent venir de générations différentes).
     return fileResponse(bundleCvExport(await readCvExportFiles(versions)), versions[0].notes)
   } catch (err) {
-    return errorResponse(err, candidateId)
+    return errorResponse(err, key)
   }
 }
 
