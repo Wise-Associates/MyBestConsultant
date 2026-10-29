@@ -4,7 +4,7 @@ import { requireAdmin } from '@/lib/appwrite/auth'
 import type { PublicationDraft, SourcingResult } from '@/lib/ao/dashboard-types'
 import {
   addAoOfferCommentOf, aoOfferSourcingOf, deleteAoOfferCommentOf, deleteAoOfferOf, listAoOfferCommentsOf, previewAoPublicationOf,
-  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf,
+  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, stopAoPublicationTasksOf,
 } from '@/lib/ao/offer-actions'
 import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 
@@ -35,6 +35,12 @@ export async function publishAoOffer(id: string, input: PublicationDraft) {
 export async function setAoOfferStatus(id: string, status: 'to_review' | 'ignored') {
   await requireAdmin()
   return setAoOfferStatusOf(PLATFORM_TENANT_ID, id, status, PATH)
+}
+
+/** « Tout arrêter » du panneau d'une offre publiée de la plateforme. */
+export async function stopAoPublicationTasks(id: string) {
+  const user = await requireAdmin()
+  return stopAoPublicationTasksOf(PLATFORM_TENANT_ID, id, user.userId, PATH)
 }
 
 /** Sourcing d'une offre de la plateforme : l'admin n'a pas de quota (aoOfferSourcingOf). */

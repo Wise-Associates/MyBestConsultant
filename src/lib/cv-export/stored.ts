@@ -11,6 +11,24 @@ export const NOTES_MAX_LENGTH = 4000
 /** Identifiant de document Appwrite : vérifié avant toute requête avec un identifiant reçu du navigateur. */
 export const CANDIDATE_ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,35}$/
 
+/**
+ * Clé des versions d'un CV du vivier d'un recruteur, à la place de l'identifiant d'un candidat (attribut de 36
+ * caractères). Le « : » la rend inaccessible aux routes des candidats (CANDIDATE_ID), qui ne vérifient pas qui a
+ * importé le CV : seule la route du vivier, qui le vérifie, lit et écrit ces versions. null : identifiant invalide.
+ */
+export function vivierExportKey(cvId: string): string | null {
+  const key = `vivier:${cvId}`
+  return CANDIDATE_ID.test(cvId) && key.length <= 36 ? key : null
+}
+
+/**
+ * Seul le recruteur qui a importé un CV du vivier l'exporte ou relit ses versions, comme seul il le voit dans son vivier
+ * (ownVivierDoc, src/app/recruiter/vivier/actions.ts) : même organisation et même recruteur.
+ */
+export function ownsVivierCv(doc: { tenantId?: unknown; recruiterId?: unknown }, owner: { tenantId: string; userId: string }): boolean {
+  return !!owner.tenantId && !!owner.userId && doc.tenantId === owner.tenantId && doc.recruiterId === owner.userId
+}
+
 export type LangChoice = 'both' | 'fr' | 'en'
 
 export const LANGS_OF: Record<LangChoice, CvLang[]> = { both: ['fr', 'en'], fr: ['fr'], en: ['en'] }

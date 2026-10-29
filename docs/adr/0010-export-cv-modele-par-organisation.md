@@ -3,7 +3,7 @@
 - Statut : accepté
 - Date : 2026-10-23
 - Complète : 0009 (export au format ESN, admin)
-- Complétée par : 0014 (le .docx seul au dépôt, cartographie écrite par l'IA)
+- Complétée par : 0014 (le .docx seul au dépôt, cartographie écrite par l'IA), 0016 (CV du vivier des recruteurs)
 
 ## Contexte
 

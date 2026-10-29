@@ -44,6 +44,12 @@ async function recruiterOfSession() {
   return user && user.role === 'recruiter' && user.tenantId ? { user, tenantId: user.tenantId } : null
 }
 
+/** Pages du bouton « Modèle CV » et de « Format ESN » : la CV Thèque et le vivier (index et viviers des offres). */
+function revalidateTemplatePages() {
+  revalidatePath('/recruiter/cvtheque')
+  revalidatePath('/recruiter/vivier', 'layout')
+}
+
 /**
  * Dépose le modèle Word de l'organisation (.docx seul, cartographié par l'IA : ADR 0014), à la place du précédent. Tout
  * recruteur de l'organisation (décision du 2026-10-24), à l'adresse e-mail vérifiée, dans les quotas du jour (ADR 0010).
@@ -68,7 +74,7 @@ export async function saveRecruiterCvTemplate(formData: FormData): Promise<{ err
   }
   if (refused) return { error: refused }
   const res = await saveUploadedTemplate({ tenantId: current.tenantId, esn, files, uploadedBy: current.user.userId, now })
-  if (!res.error) revalidatePath('/recruiter/cvtheque')
+  if (!res.error) revalidateTemplatePages()
   return res
 }
 
@@ -77,7 +83,7 @@ export async function deleteRecruiterCvTemplate(): Promise<{ error?: string }> {
   const current = await recruiterOfSession()
   if (!current) return { error: RECRUITER_SESSION_EXPIRED }
   const res = await removeTemplate(current.tenantId)
-  if (!res.error) revalidatePath('/recruiter/cvtheque')
+  if (!res.error) revalidateTemplatePages()
   return res
 }
 

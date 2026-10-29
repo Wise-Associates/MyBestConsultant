@@ -23,8 +23,8 @@ export interface AoTrackingFacts {
      */
     linkedinPostedAt: string | null
   } | null
-  /** Dernière diffusion de l'offre publique sur les réseaux ; null : aucune. */
-  social: { status: SocialStatus; stale: boolean; results: NetworkResult[] } | null
+  /** Dernière diffusion de l'offre publique sur les réseaux ; null : aucune. `stopped` : arrêtée depuis le panneau. */
+  social: { status: SocialStatus; stale: boolean; results: NetworkResult[]; stopped: boolean } | null
   /** Le sourcing a enregistré des scores pour cette offre (job_matches) : sans eux, il n'a pas abouti. */
   scored: boolean
   /** Candidats de la base notés SOURCING_MIN_SCORE ou plus par ce sourcing. */
@@ -97,6 +97,8 @@ function jobStep(jobId: string, job: AoTrackingFacts['job'], now: number): Track
 }
 
 function socialStep(social: AoTrackingFacts['social'], directPostedAt: string | null, recent: boolean, socialAuto: boolean): TrackingStep {
+  // Arrêtée avant l'envoi (« Tout arrêter » du panneau, publication-stop.ts) : un choix, pas un échec.
+  if (social?.stopped) return step('social', 'todo', 'Arrêtée avant l’envoi')
   // 1. Résultat propre à LinkedIn, rappelé par Make : lui seul dit que la publication est sur LinkedIn.
   const linkedin = social?.results.find(r => r.network === 'linkedin')
   // Lien venu de Make, affiché comme lien cliquable : https seulement (déjà vérifié à la réception, handleCallback).

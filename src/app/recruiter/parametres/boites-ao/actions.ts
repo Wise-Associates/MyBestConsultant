@@ -4,7 +4,7 @@ import { getCurrentUser } from '@/lib/appwrite/auth'
 import type { PublicationDraft } from '@/lib/ao/dashboard-types'
 import {
   addAoOfferCommentOf, aoOfferSourcingOf, deleteAoOfferCommentOf, deleteAoOfferOf, listAoOfferCommentsOf, previewAoPublicationOf,
-  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, tenantSubscriptionStatus,
+  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, stopAoPublicationTasksOf, tenantSubscriptionStatus,
 } from '@/lib/ao/offer-actions'
 import { AO_RETRY_DAILY_LIMITS, RETRY_QUOTA_MESSAGE } from '@/lib/ao/attempts'
 import { AO_PUBLICATION_AI_DAILY_LIMITS, PUBLICATION_AI_QUOTA_MESSAGE } from '@/lib/ao/publication-copy'
@@ -123,6 +123,13 @@ export async function setRecruiterAoOfferStatus(id: string, status: 'to_review' 
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
   return setAoOfferStatusOf(me.tenantId, id, status, PATH)
+}
+
+/** « Tout arrêter » du panneau d'une offre publiée de l'organisation (sans condition d'abonnement : arrêter ne coûte rien). */
+export async function stopRecruiterAoPublicationTasks(id: string) {
+  const me = await recruiter()
+  if (!me) return { error: SESSION_EXPIRED }
+  return stopAoPublicationTasksOf(me.tenantId, id, me.user.userId, PATH)
 }
 
 export async function listRecruiterAoOfferComments(offerId: string) {

@@ -17,6 +17,11 @@ export async function tryAutoSourceCandidates(job: Job & { $id: string }): Promi
     const top = bestMatches(ranking.matches)
 
     for (const match of top) {
+      // « Tout arrêter » du panneau de l'offre AO (publication-stop.ts) : plus aucun e-mail, le classement reste enregistré.
+      if (await emailsStopped(job.$id)) {
+        console.info('[sourcing] e-mails automatiques arrêtés depuis le panneau de l\'offre', job.$id)
+        break
+      }
       const { subject, message, error } = await generateOutreachMessageCore(match.candidateId, job.$id)
       if (error || !message) continue
       await sendOutreachEmailCore(match.candidateId, subject, message)
@@ -36,5 +41,16 @@ export async function tryAutoSourceCandidates(job: Job & { $id: string }): Promi
   } catch (e) {
     // best-effort — a matching failure must never break job creation
     console.error('[sourcing] matching de la base candidats échoué', job.$id, e instanceof Error ? e.message : e)
+  }
+}
+
+/** Arrêt demandé pour l'offre `jobId` ; illisible : journalisé, les e-mails partent comme sans arrêt (comportement d'avant). */
+async function emailsStopped(jobId: string): Promise<boolean> {
+  try {
+    const { isPublicationStopped } = await import('@/lib/ao/state')
+    return await isPublicationStopped(jobId, new Date())
+  } catch (e) {
+    console.error('[sourcing] arrêt des e-mails illisible', jobId, e instanceof Error ? e.message : e)
+    return false
   }
 }
