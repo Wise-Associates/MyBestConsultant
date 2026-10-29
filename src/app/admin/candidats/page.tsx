@@ -7,7 +7,7 @@ import { loadAoTracking } from '@/lib/ao/tracking-store'
 import { AoOffersDashboard, type MailboxIssue } from '@/components/ao/ao-offers-dashboard'
 import {
   addAoOfferComment, aoOfferSourcing, deleteAoOffer, deleteAoOfferComment, listAoOfferComments, previewAoPublication, publishAoOffer,
-  retryAoEmail, setAoOfferStatus,
+  retryAoEmail, setAoOfferStatus, stopAoPublicationTasks,
 } from './actions'
 
 // « Réessayer » (Server Action de cette page) traite un e-mail tout de suite (150 s au plus). « Publier » répond tout de
@@ -55,7 +55,7 @@ export default async function AdminAoOffersPage() {
       trackingError={trackingError}
       actions={{
         retryEmail: retryAoEmail, deleteOffer: deleteAoOffer, previewPublication: previewAoPublication,
-        publish: publishAoOffer, setStatus: setAoOfferStatus, sourcing: aoOfferSourcing,
+        publish: publishAoOffer, setStatus: setAoOfferStatus, sourcing: aoOfferSourcing, stopTasks: stopAoPublicationTasks,
         listComments: listAoOfferComments, addComment: addAoOfferComment, deleteComment: deleteAoOfferComment,
       }}
       paths={{

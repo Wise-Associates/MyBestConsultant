@@ -4,11 +4,12 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import type { UserProfile } from '@/types'
 import { CV_EXPORT_DAILY_LIMITS, CV_TEMPLATE_DAILY_LIMITS, QUOTA_MESSAGE, TEMPLATE_MESSAGE, generationDenial, templateUploadDenial } from './access'
-import { getEsnTemplateInfo, type EsnTemplateInfo } from './templates'
+import { cvExportErrorName } from './store'
+import { getEsnTemplateInfo, isCvTemplateStorageConfigured, type EsnTemplateInfo } from './templates'
 
-// « Format ESN » dans la CV Thèque des recruteurs (ADR 0010) : l'organisation vient toujours de la session. Partagé par
-// la page, ses actions et les routes /api/recruiter/cv-export et /api/recruiter/cv-templates, qui vérifient chacune le
-// recruteur avant de l'appeler.
+// « Format ESN » dans la CV Thèque et le vivier des recruteurs (ADR 0010, 0016) : l'organisation vient toujours de la
+// session. Partagé par les pages, leurs actions et les routes /api/recruiter/cv-export, /api/recruiter/vivier/cv-export
+// et /api/recruiter/cv-templates, qui vérifient chacune le recruteur avant de l'appeler.
 
 export interface RecruiterExportState {
   tenantId: string
@@ -34,6 +35,30 @@ export async function recruiterExportState(user: UserProfile): Promise<Recruiter
     template,
     generationDenied: generationDenial({ tenantId, subscriptionStatus, emailVerified: user.emailVerification }),
     uploadDenied: templateUploadDenial({ emailVerified: user.emailVerification }),
+  }
+}
+
+/** « Format ESN » d'une page de l'espace recruteur : modèle de l'organisation (null : à déposer) et raisons d'un refus. */
+export interface CvExportAccess {
+  template: EsnTemplateInfo | null
+  generationDenied: string | null
+  uploadDenied: string | null
+}
+
+/**
+ * « Format ESN » pour une page (CV Thèque, vivier) : `access` null si la fonction est coupée (variables CV_TEMPLATES
+ * absentes, ADR 0010) ou si le compte n'est pas un recruteur d'une organisation. Une lecture impossible laisse la page
+ * utilisable, avec un message.
+ */
+export async function recruiterCvExportAccess(user: UserProfile): Promise<{ access: CvExportAccess | null; error?: string }> {
+  if (!isCvTemplateStorageConfigured()) return { access: null }
+  try {
+    const state = await recruiterExportState(user)
+    return { access: state && { template: state.template, generationDenied: state.generationDenied, uploadDenied: state.uploadDenied } }
+  } catch (err) {
+    // Le recruteur sait que « Format ESN » manque pour une raison passagère.
+    console.error('[cv-export] état de l\'export illisible', user.tenantId, cvExportErrorName(err))
+    return { access: null, error: '« CV format cabinet » est momentanément indisponible : rechargez la page dans quelques instants.' }
   }
 }
 

@@ -2,13 +2,15 @@ import { createHash, randomUUID } from 'node:crypto'
 import { Query } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
+import { PUBLICATION_STOP_TTL_MS, stopIsActive } from '@/lib/publication-stop'
 import type { Checkpoint } from './checkpoint'
 import { counterIdFor, type DailyCounter } from './tenancy'
 
 // État de la synchronisation AO (collection AO_STATE, sans permission client) :
 // - un verrou par organisation : une seule synchronisation à la fois de ses boîtes (Vercel Cron, boutons, ao:poll) ;
 // - un point de reprise par boîte lue (voir checkpoint.ts) ;
-// - les compteurs quotidiens de chaque organisation (lectures d'images / PDF scannés par l'IA, offres de tableaux).
+// - les compteurs quotidiens de chaque organisation (lectures d'images / PDF scannés par l'IA, offres de tableaux) ;
+// - les arrêts demandés des tâches automatiques d'une publication (publication-stop.ts).
 // Ce sont des documents à identifiant fixe : la création échoue (409) si le document existe déjà,
 // ce que la base garantit même entre plusieurs instances Vercel.
 
@@ -95,6 +97,29 @@ export async function startFullRead(sourceId: string): Promise<void> {
 export async function endFullRead(sourceId: string): Promise<void> {
   const { databases } = createAdminClient()
   await databases.deleteDocument(DB_ID, COLLECTIONS.AO_STATE, fullReadId(sourceId)).catch(err => { if (codeOf(err) !== 404) throw err })
+}
+
+const publicationStopId = (jobId: string) => `stop_${createHash('sha1').update(jobId).digest('hex').slice(0, 16)}`
+
+/**
+ * Arrêt des tâches automatiques de la publication de l'offre publique `jobId` (diffusion pas encore remise à Make,
+ * e-mails aux candidats pas encore envoyés), en vigueur PUBLICATION_STOP_TTL_MS. `holder` : compte qui l'a demandé.
+ */
+export async function requestPublicationStop(jobId: string, holder: string, now: Date): Promise<void> {
+  const { databases } = createAdminClient()
+  const id = publicationStopId(jobId)
+  const data = { kind: 'stop', holder: holder.slice(0, 200), expiresAt: new Date(now.getTime() + PUBLICATION_STOP_TTL_MS).toISOString() }
+  try {
+    await databases.createDocument(DB_ID, COLLECTIONS.AO_STATE, id, data)
+  } catch (err) {
+    if (codeOf(err) !== 409) throw err
+    await databases.updateDocument(DB_ID, COLLECTIONS.AO_STATE, id, data)
+  }
+}
+
+/** Arrêt demandé et en vigueur pour la publication de `jobId`. */
+export async function isPublicationStopped(jobId: string, now: Date): Promise<boolean> {
+  return stopIsActive((await getOrNull(publicationStopId(jobId)))?.expiresAt, now.getTime())
 }
 
 /** Identifiant Appwrite stable d'une boîte lue (serveur + compte + dossier), 33 caractères. */
@@ -192,7 +217,7 @@ export async function releaseDailySlot(slotId: string): Promise<void> {
 export async function purgeDailyState(before: Date): Promise<number> {
   const { databases } = createAdminClient()
   const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_STATE, [
-    Query.equal('kind', ['counter', 'slot']), Query.lessThan('$createdAt', before.toISOString()), Query.limit(100),
+    Query.equal('kind', ['counter', 'slot', 'stop']), Query.lessThan('$createdAt', before.toISOString()), Query.limit(100),
   ])
   for (const doc of res.documents) {
     await databases.deleteDocument(DB_ID, COLLECTIONS.AO_STATE, doc.$id).catch(err => { if (codeOf(err) !== 404) throw err })

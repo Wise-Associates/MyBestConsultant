@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react'
-import { AlertTriangle, Ban, Check, Copy, Download, ExternalLink, Loader2, Paperclip, RotateCcw, Send, ShieldAlert, Sparkles, Users, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode, type RefObject } from 'react'
+import { AlertTriangle, Ban, Check, CircleStop, Copy, Download, ExternalLink, Loader2, Paperclip, RotateCcw, Send, ShieldAlert, Sparkles, Users, X } from 'lucide-react'
 import { AO_CHANNEL_LABEL, type AoOfferRow } from '@/lib/ao/filters'
 import { findIdentifiers } from '@/lib/ao/name-match'
 import type { AoDashboardActions, AoDashboardPaths, PublicationDraft, SourcedCandidate, SourcingResult } from '@/lib/ao/dashboard-types'
@@ -16,7 +16,7 @@ import {
 
 interface Props {
   row: AoOfferRow
-  actions: Pick<AoDashboardActions, 'setStatus' | 'sourcing'>
+  actions: Pick<AoDashboardActions, 'setStatus' | 'sourcing' | 'stopTasks'>
   paths: Pick<AoDashboardPaths, 'originalApi' | 'jobs'>
   /** Sous le formulaire de publication : ce que la publication déclenche dans cet espace. */
   publishNote: string
@@ -29,15 +29,23 @@ interface Props {
    */
   publication: OfferPublication
   onPrepare: () => void
+  /** Abandonne la préparation en cours (sa version, rédigée quand même par le serveur, est ignorée). */
+  onStopPreparing: () => void
   onPublish: (draft: PublicationDraft, skillsText: string) => void
   onEdit: (patch: Pick<Partial<OfferPublication>, 'draft' | 'skillsText'>) => void
   onCancel: () => void
   onClose: () => void
 }
 
-export function AoOfferPanel({ row, actions, paths, publishNote, tracking, social, publication, onPrepare, onPublish, onEdit, onCancel, onClose }: Props) {
+export function AoOfferPanel({ row, actions, paths, publishNote, tracking, social, publication, onPrepare, onStopPreparing, onPublish, onEdit, onCancel, onClose }: Props) {
   const { preview, draft, skillsText, running } = publication
   const [statusError, setStatusError] = useState('')
+  // « Tout arrêter » : recherche de candidats en cours (section Sourcing), arrêt des tâches d'arrière-plan, compte rendu.
+  const [sourcingComputing, setSourcingComputing] = useState(false)
+  const stopSourcing = useRef<(() => void) | null>(null)
+  const [stopping, setStopping] = useState(false)
+  const [backgroundStopped, setBackgroundStopped] = useState(false)
+  const [stopNotice, setStopNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
   const [pending, start] = useTransition()
   const busy = pending || running !== null
   const error = statusError || publication.error
@@ -71,6 +79,36 @@ export function AoOfferPanel({ row, actions, paths, publishNote, tracking, socia
   // Le serveur marque l'offre publiée avant de créer l'offre publique : pendant la publication, le panneau montre
   // l'opération en cours, pas encore le lien vers une offre qui n'existe peut-être pas.
   const published = running !== 'publishing' && (row.status === 'published' || jobId !== null)
+  // Après la publication : diffusion LinkedIn et sourcing automatique encore en cours d'après le suivi.
+  const backgroundRunning = !!actions.stopTasks && published && !backgroundStopped
+    && tracking.some(s => (s.key === 'social' || s.key === 'sourcing') && s.tone === 'working')
+  const stoppable = [
+    running === 'preparing' && 'la rédaction de la version anonymisée',
+    sourcingComputing && 'la recherche de candidats',
+    backgroundRunning && 'la diffusion LinkedIn et les e-mails aux candidats pas encore envoyés',
+  ].filter((s): s is string => !!s)
+
+  // Ce qui tourne dans le navigateur s'abandonne (une Server Action ne s'interrompt pas : le serveur finit la demande
+  // en cours, son résultat est ignoré) ; les tâches d'arrière-plan de la publication s'arrêtent vraiment, avant d'atteindre
+  // LinkedIn ou les candidats (publication-stop.ts).
+  async function stopAll() {
+    const done: string[] = []
+    if (running === 'preparing') { onStopPreparing(); done.push('Rédaction arrêtée : sa version ne sera pas gardée.') }
+    if (stopSourcing.current) { stopSourcing.current(); done.push('Recherche de candidats arrêtée : le calcul déjà demandé se termine sur le serveur, son résultat s’affichera à la prochaine ouverture.') }
+    if (backgroundRunning && actions.stopTasks) {
+      if (!window.confirm('Arrêter la diffusion LinkedIn pas encore envoyée et les e-mails automatiques aux candidats de cette offre ? Les e-mails arrêtés ne partiront pas plus tard ; la diffusion pourra être relancée.')) {
+        if (done.length) setStopNotice({ tone: 'ok', text: done.join(' ') })
+        return
+      }
+      setStopping(true)
+      const res = await actions.stopTasks(row.$id).catch(() => ({ error: 'Arrêt impossible : connexion interrompue, réessayez.', message: undefined }))
+      setStopping(false)
+      if (res.error) return setStopNotice({ tone: 'error', text: [...done, res.error].join(' ') })
+      setBackgroundStopped(true)
+      if (res.message) done.push(res.message)
+    }
+    setStopNotice({ tone: 'ok', text: done.join(' ') })
+  }
   const facts: [string, string][] = [
     ['Client', row.companyName || 'Non précisé'],
     ['Ville', row.location || '—'],
@@ -93,14 +131,39 @@ export function AoOfferPanel({ row, actions, paths, publishNote, tracking, socia
         // ¾ de la zone de contenu (hors menu latéral de 240 px) sur grand écran, 760 px au moins, pleine largeur sur mobile.
         style={{ width: 'min(100vw, max(760px, calc((100vw - 240px) * 0.75)))', background: 'var(--admin-panel)', borderLeft: '1px solid var(--admin-line)', color: 'var(--admin-fg)' }}>
 
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            {running ? <WorkBadge work={running} /> : (
-              <span className="text-xs font-medium px-2 py-1 rounded-md" style={{ color: STATUS_UI[published ? 'published' : row.status].color, background: 'var(--admin-panel-raised)' }}>
-                {STATUS_UI[published ? 'published' : row.status].label}
-              </span>
+        {/* Barre du haut, visible pendant tout le défilement : état, « Tout arrêter » quand quelque chose peut l'être, « Fermer ». */}
+        <div className="sticky -top-7 z-10 -mx-7 -mt-7 px-7 py-3 flex items-center justify-between gap-3 flex-wrap"
+          style={{ background: 'var(--admin-panel)', borderBottom: '1px solid var(--admin-line)' }}>
+          {running ? <WorkBadge work={running} /> : (
+            <span className="text-xs font-medium px-2 py-1 rounded-md" style={{ color: STATUS_UI[published ? 'published' : row.status].color, background: 'var(--admin-panel-raised)' }}>
+              {STATUS_UI[published ? 'published' : row.status].label}
+            </span>
+          )}
+          <div className="flex items-center gap-2 ml-auto">
+            {stoppable.length > 0 && (
+              <button type="button" onClick={stopAll} disabled={stopping} title={`Arrêter ${stoppable.join(', ')}`}
+                style={{ ...secondaryButton, padding: '8px 12px', color: '#b91c1c', borderColor: '#b91c1c55', opacity: stopping ? 0.7 : 1 }}>
+                {stopping ? <Loader2 size={15} className="animate-spin motion-reduce:animate-none" aria-hidden /> : <CircleStop size={15} aria-hidden />}
+                Tout arrêter
+              </button>
             )}
-            <h2 id="ao-offer-title" className="text-xl font-bold text-admin-fg mt-3" style={{ textWrap: 'balance' }}>{row.title}</h2>
+            <button type="button" onClick={onClose} style={{ ...secondaryButton, padding: '8px 12px' }}><X size={15} aria-hidden />Fermer</button>
+          </div>
+          {/* Dans la barre : le compte rendu reste visible même si l'on a fait défiler le panneau. */}
+          {stopNotice && (
+            <div role="status" className="basis-full flex items-start gap-2 text-sm p-3 rounded-lg"
+              style={stopNotice.tone === 'ok'
+                ? { color: '#047857', background: 'rgba(4,120,87,0.06)', border: '1px solid rgba(4,120,87,0.2)' }
+                : { color: '#b91c1c', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              <p className="flex-1">{stopNotice.text}</p>
+              <button type="button" onClick={() => setStopNotice(null)} aria-label="Masquer ce message" className="shrink-0"><X size={14} aria-hidden /></button>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div>
+            <h2 id="ao-offer-title" className="text-xl font-bold text-admin-fg" style={{ textWrap: 'balance' }}>{row.title}</h2>
             <FingerprintBadge fingerprint={row.fingerprint} />
             <p className="text-xs mt-1" style={{ color: 'var(--admin-fg-muted)' }}>
               Reçue le {formatDay(row.receivedAt)} de {row.senderName ? `${row.senderName} <${row.senderAddress}>` : row.senderAddress || 'expéditeur inconnu'}
@@ -110,7 +173,6 @@ export function AoOfferPanel({ row, actions, paths, publishNote, tracking, socia
               {row.sourceCount > 1 ? ` · reçue dans ${row.sourceCount} e-mails` : ''}
             </p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Fermer" style={{ ...secondaryButton, padding: 8 }}><X size={16} /></button>
         </div>
 
         <TrackingStepper steps={tracking} social={social}
@@ -145,7 +207,10 @@ export function AoOfferPanel({ row, actions, paths, publishNote, tracking, socia
             </div>
           </section>
         )}
-        {actions.sourcing && <Sourcing offerId={row.$id} sourcing={actions.sourcing} version={tracking.find(s => s.key === 'sourcing')?.text ?? ''} />}
+        {actions.sourcing && (
+          <Sourcing offerId={row.$id} sourcing={actions.sourcing} version={tracking.find(s => s.key === 'sourcing')?.text ?? ''}
+            onComputingChange={setSourcingComputing} stopRef={stopSourcing} />
+        )}
         <Originals emailId={row.emailId} attachments={row.attachments} originalApi={paths.originalApi} />
         <section>
           <p style={{ ...fieldLabel, marginBottom: 12 }}>Description</p>
@@ -164,13 +229,18 @@ export function AoOfferPanel({ row, actions, paths, publishNote, tracking, socia
                 {running === 'preparing' ? <Loader2 size={15} className="animate-spin motion-reduce:animate-none" /> : <Send size={15} />}
                 {running === 'preparing' ? 'Rédaction de la version anonymisée…' : 'Préparer la publication'}
               </button>
+              {running === 'preparing' && (
+                <button type="button" onClick={onStopPreparing} style={{ ...secondaryButton, color: '#b91c1c', borderColor: '#b91c1c55' }}>
+                  <CircleStop size={15} aria-hidden />Arrêter
+                </button>
+              )}
               {row.status === 'ignored'
                 ? <button type="button" onClick={() => changeStatus('to_review')} disabled={busy} style={secondaryButton}><RotateCcw size={15} />Remettre à valider</button>
                 : <button type="button" onClick={() => changeStatus('ignored')} disabled={busy} style={secondaryButton}><Ban size={15} />Ignorer</button>}
             </div>
             <p role="status" aria-live="polite" className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
               {running === 'preparing'
-                ? 'L\'IA reformule l\'offre sans nom de client ni référence : une trentaine de secondes. Vous pouvez fermer ce panneau : la ligne indique « Modifications en cours » jusqu\'à la fin. Rien n\'est publié avant votre validation.'
+                ? 'L\'IA reformule l\'offre sans nom de client ni référence : une trentaine de secondes. Vous pouvez fermer ce panneau : la ligne indique « Modifications en cours » jusqu\'à la fin. Rien n\'est publié avant votre validation ; « Arrêter » abandonne cette version.'
                 : ''}
             </p>
           </div>
@@ -371,15 +441,22 @@ const ORIGIN_LABEL: Record<SourcedCandidate['origin'], string> = { pool: 'Base c
  * lu à l'ouverture (matching de la publication, ou dernier calcul à la demande) : aucun appel d'IA tant qu'on ne clique
  * pas sur « Trouver des candidats » / « Recalculer » (un appel d'IA, environ une minute).
  */
-function Sourcing({ offerId, sourcing, version }: {
+function Sourcing({ offerId, sourcing, version, onComputingChange, stopRef }: {
   offerId: string
   sourcing: NonNullable<AoDashboardActions['sourcing']>
   /** État du sourcing dans le suivi de l'offre : le résultat est relu quand il change (fin du sourcing automatique). */
   version: string
+  /** Recherche en cours ou non (« Tout arrêter » du panneau). */
+  onComputingChange: (computing: boolean) => void
+  /** Arrêt de la recherche en cours, pour « Tout arrêter » ; null quand rien ne tourne. */
+  stopRef: RefObject<(() => void) | null>
 }) {
   const [result, setResult] = useState<SourcingResult | null>(null)
   const [computing, setComputing] = useState(false)
+  const [stopped, setStopped] = useState(false)
   const [pending, startTransition] = useTransition()
+  // Recherche abandonnée : une Server Action ne s'interrompt pas, sa réponse est ignorée grâce à ce numéro de lancement.
+  const runs = useRef(0)
   // L'action change d'identité à chaque relecture de la page (suivi en cours : toutes les 15 s) : lue par une ref, pour
   // ne relire le résultat qu'à l'ouverture de l'offre et quand son suivi change, pas à chaque relecture.
   const sourcingRef = useRef(sourcing)
@@ -387,23 +464,49 @@ function Sourcing({ offerId, sourcing, version }: {
   useEffect(() => {
     startTransition(async () => setResult(await sourcingRef.current(offerId)))
   }, [offerId, version])
-  const run = () => startTransition(async () => {
+  // Hors transition : abandonnée, la recherche ne doit pas garder le bouton en attente jusqu'à la réponse du serveur.
+  async function run() {
+    const token = ++runs.current
+    setStopped(false)
     setComputing(true)
-    setResult(await sourcing(offerId, true))
+    onComputingChange(true)
+    const res = await sourcing(offerId, true).catch((): SourcingResult => ({ error: 'Recherche interrompue (connexion perdue) : réessayez.' }))
+    if (runs.current !== token) return
+    setResult(res)
     setComputing(false)
-  })
+    onComputingChange(false)
+  }
+  function stop() {
+    runs.current++
+    setComputing(false)
+    setStopped(true)
+    onComputingChange(false)
+  }
+  useEffect(() => { stopRef.current = computing ? stop : null })
   const candidates = result?.candidates
   const computed = !!result?.computedAt
   return (
     <section id="ao-offer-sourcing" className="scroll-mt-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p style={{ ...fieldLabel, marginBottom: 0 }}>Sourcing : meilleurs candidats</p>
-        <button type="button" onClick={run} disabled={pending} style={{ ...secondaryButton, fontSize: 13 }}>
-          {pending ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />}
-          {computing ? 'Analyse des CV…' : pending ? 'Lecture…' : computed ? 'Recalculer' : 'Trouver des candidats'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={run} disabled={pending || computing} style={{ ...secondaryButton, fontSize: 13 }}>
+            {pending || computing ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />}
+            {computing ? 'Analyse des CV…' : pending ? 'Lecture…' : computed ? 'Recalculer' : 'Trouver des candidats'}
+          </button>
+          {computing && (
+            <button type="button" onClick={stop} style={{ ...secondaryButton, fontSize: 13, color: '#b91c1c', borderColor: '#b91c1c55' }}>
+              <CircleStop size={14} aria-hidden />Arrêter
+            </button>
+          )}
+        </div>
       </div>
       <div aria-live="polite">
+        {stopped && (
+          <p className="text-xs mt-2" style={{ color: 'var(--admin-fg-muted)' }}>
+            Recherche arrêtée : le calcul déjà demandé se termine sur le serveur ; son résultat s’affichera à la prochaine ouverture.
+          </p>
+        )}
         {result?.error && <p role="alert" className="text-sm mt-2" style={{ color: '#b91c1c' }}>{result.error}</p>}
         {result && !result.error && (
           <p className="text-xs mt-2" style={{ color: 'var(--admin-fg-muted)' }}>

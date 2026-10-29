@@ -9,6 +9,12 @@ import { releaseDailySlot, takeDailySlotId } from '@/lib/ao/state'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import type { CvProfile, CvExperience, CvEducation, CvLanguage } from '@/lib/cv-profile-extract'
+import { CvExportError, loadOwnVivierCv } from '@/lib/cv-export/export'
+import {
+  cvExportErrorName, deleteCvExportsForCandidate, isCvExportStorageConfigured, loadCvExportVersions, type CvExportVersions,
+} from '@/lib/cv-export/store'
+import { vivierExportKey } from '@/lib/cv-export/stored'
+import { getEsnTemplateInfo } from '@/lib/cv-export/templates'
 import type { UserProfile } from '@/types'
 import {
   VIVIER_MATCHING_DAILY_LIMITS, VIVIER_MATCHING_REFUSAL, matchingOffers, mergeOfferScores, offersToCompare, parseOfferScores,
@@ -319,13 +325,61 @@ export async function deleteVivierCv(jobId: string | null, docId: string): Promi
     const { databases, storage } = createAdminClient()
     const doc = await ownVivierDoc(user, tenantId, jobId, docId)
 
+    // Ses versions « Format ESN » partent avant lui (données personnelles, ADR 0016) : si elles restent, le CV aussi.
+    const exportKey = vivierExportKey(docId)
+    if (exportKey && isCvExportStorageConfigured()) {
+      try {
+        await deleteCvExportsForCandidate(exportKey)
+      } catch (err) {
+        console.error('[vivier] versions « Format ESN » non supprimées, CV gardé', docId, cvExportErrorName(err))
+        throw new Refusal('Suppression impossible pour le moment (versions « CV format cabinet » de ce CV) : réessayez dans quelques instants.')
+      }
+    }
+
     // Fichier rattaché à un autre CV (possible avant la vérification d'assertFreshUpload) : gardé pour celui-ci.
     const sharing = await databases.listDocuments(DB_ID, COLLECTIONS.VIVIER_CVS, [Query.equal('cvFileId', doc.cvFileId as string), Query.limit(2)])
     if (sharing.total <= 1) await storage.deleteFile(BUCKETS.VIVIER_CVS, doc.cvFileId as string).catch(() => {})
     await databases.deleteDocument(DB_ID, COLLECTIONS.VIVIER_CVS, docId)
+    // Second passage, comme pour un compte supprimé : une génération qui enregistrait pendant la suppression a pu
+    // écrire après le premier (saveCvExports ne revérifie le CV qu'après son écriture). Le CV est déjà supprimé : un
+    // échec ici est journalisé, la version restante est à supprimer à la main.
+    if (exportKey && isCvExportStorageConfigured()) {
+      await deleteCvExportsForCandidate(exportKey).catch(err =>
+        console.error('[vivier] second passage « Format ESN » en échec, versions à supprimer à la main', exportKey, cvExportErrorName(err)))
+    }
     revalidateVivier(jobId)
     return {}
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur lors de la suppression' }
   }
+}
+
+/**
+ * Versions « Format ESN » d'un CV de son vivier, pour la fenêtre d'export (ADR 0016) : seul le recruteur qui l'a
+ * importé les voit, comme le CV lui-même (organisation et compte de la session).
+ */
+export async function getVivierCvExportVersions(cvId: string): Promise<CvExportVersions> {
+  const storage = isCvExportStorageConfigured()
+  const user = await getCurrentUser()
+  // Message rendu plutôt que levé : une erreur levée par une action serveur est masquée en production.
+  if (!user || user.role !== 'recruiter' || !user.tenantId) return { versions: [], storage, error: 'Session expirée : rechargez la page et reconnectez-vous.' }
+  const key = vivierExportKey(cvId)
+  if (!key) return { versions: [], storage, error: 'CV introuvable.' }
+  let cvFileId: string
+  try {
+    cvFileId = (await loadOwnVivierCv(cvId, { tenantId: user.tenantId, userId: user.$id })).cvFileId
+  } catch (err) {
+    if (err instanceof CvExportError) return { versions: [], storage, error: err.message }
+    console.error('[vivier] CV illisible pour les versions « Format ESN »', cvId, cvExportErrorName(err))
+    return { versions: [], storage, error: 'Versions illisibles pour le moment : rechargez la page dans quelques instants.' }
+  }
+  let templateUploadedAt = ''
+  try {
+    templateUploadedAt = (await getEsnTemplateInfo(user.tenantId))?.uploadedAt ?? ''
+  } catch (err) {
+    // Sans la date du modèle, une version antérieure à son remplacement n'est simplement pas signalée.
+    console.error('[cv-export] date du modèle illisible', user.tenantId, cvExportErrorName(err))
+  }
+  // Fichier du CV du vivier : une version tirée d'un autre fichier est signalée comme ancienne.
+  return loadCvExportVersions(user.tenantId, key, templateUploadedAt, cvFileId)
 }

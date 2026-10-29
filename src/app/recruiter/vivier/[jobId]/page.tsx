@@ -6,6 +6,7 @@ import { getVivierForJob } from '../actions'
 import { ArrowLeft, FolderOpen, Brain } from 'lucide-react'
 import { VivierClient } from '../vivier-client'
 import { BUCKETS } from '@/lib/appwrite/config'
+import { recruiterCvExportAccess } from '@/lib/cv-export/recruiter'
 
 export default async function VivierPage({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params
@@ -15,7 +16,7 @@ export default async function VivierPage({ params }: { params: Promise<{ jobId: 
   const job = await getJobById(jobId)
   if (!job || job.tenantId !== user.tenantId) notFound()
 
-  const { cvs, error } = await getVivierForJob(jobId)
+  const [{ cvs, error }, cvExport] = await Promise.all([getVivierForJob(jobId), recruiterCvExportAccess(user)])
 
   return (
     <div className="relative" style={{
@@ -49,7 +50,8 @@ export default async function VivierPage({ params }: { params: Promise<{ jobId: 
       </div>
 
       <div className="max-w-6xl mx-auto px-6 py-10">
-        <VivierClient jobId={jobId} bucketId={BUCKETS.VIVIER_CVS} initialCvs={cvs} loadError={error} isAdmin={user.role === 'admin'} currentUserId={user.$id} />
+        <VivierClient jobId={jobId} bucketId={BUCKETS.VIVIER_CVS} initialCvs={cvs} loadError={error} isAdmin={user.role === 'admin'} currentUserId={user.$id}
+          cvExport={cvExport.access} cvExportError={cvExport.error} />
       </div>
 
       <style>{`

@@ -7,11 +7,12 @@ import { CvExportError, type CvExportDocx } from './export'
 import { parseStoredExport, serializeNotes, versionView, type CvExportVersion, type StoredCvExport } from './stored'
 import type { AnonymizationMode, CvLang } from './types'
 
-// Versions enregistrées des exports au format ESN (ADR 0009, 0010) : collection `cv_exports` (un document par
-// organisation, candidat, anonymisation et langue, index unique) et bucket privé `cv_exports` (les .docx), créés par
-// `npm run cv-export:setup`. Aucune permission client : seule la clé API serveur y accède, depuis les routes
-// /api/admin/cv-export et /api/recruiter/cv-export et les actions des deux CV Thèques. Chaque lecture et écriture
-// porte sur l'organisation de l'appelant ; seule la suppression avec le compte du candidat les couvre toutes.
+// Versions enregistrées des exports au format ESN (ADR 0009, 0010, 0016) : collection `cv_exports` (un document par
+// organisation, candidat — ou CV du vivier, clé vivierExportKey —, anonymisation et langue, index unique) et bucket privé
+// `cv_exports` (les .docx), créés par `npm run cv-export:setup`. Aucune permission client : seule la clé API serveur y
+// accède, depuis les routes /api/admin/cv-export, /api/recruiter/cv-export et /api/recruiter/vivier/cv-export et les
+// actions des deux CV Thèques et du vivier. Chaque lecture et écriture porte sur l'organisation de l'appelant ; seule la
+// suppression avec le compte du candidat (ou avec le CV du vivier) les couvre toutes.
 // Facultatif : sans les deux variables, rien n'est enregistré.
 
 export const isCvExportStorageConfigured = () => !!COLLECTIONS.CV_EXPORTS && !!BUCKETS.CV_EXPORTS
@@ -75,15 +76,22 @@ export interface CvExportVersions {
  * Versions d'un candidat pour la fenêtre d'export d'une organisation (l'appelant a vérifié qui elle est) : anonymisation,
  * langue, date et CV remplacé depuis, sans fichier ni identifiant.
  */
-export async function loadCvExportVersions(tenantId: string, candidateId: string, templateUploadedAt = ''): Promise<CvExportVersions> {
+export async function loadCvExportVersions(
+  tenantId: string,
+  candidateId: string,
+  templateUploadedAt = '',
+  /** CV actuel déjà lu par l'appelant (CV du vivier, clé vivierExportKey) ; sinon celui du compte du candidat. */
+  currentCvFileId?: string,
+): Promise<CvExportVersions> {
   if (!isCvExportStorageConfigured()) return { versions: [], storage: false }
   try {
     const { databases } = createAdminClient()
-    const [candidate, stored] = await Promise.all([
-      databases.getDocument(DB_ID, COLLECTIONS.USERS, candidateId),
+    const [cvFileId, stored] = await Promise.all([
+      currentCvFileId !== undefined
+        ? currentCvFileId
+        : databases.getDocument(DB_ID, COLLECTIONS.USERS, candidateId).then(c => (typeof c.cvFileId === 'string' ? c.cvFileId : '')),
       listCvExports(tenantId, candidateId),
     ])
-    const cvFileId = typeof candidate.cvFileId === 'string' ? candidate.cvFileId : ''
     return { versions: stored.map(s => versionView(s, cvFileId, templateUploadedAt)), storage: true }
   } catch (err) {
     console.error('[cv-export] lecture des versions enregistrées en échec', candidateId, cvExportErrorName(err))
@@ -107,19 +115,22 @@ async function deleteFileIfPresent(fileId: string): Promise<void> {
 
 /**
  * Enregistre les fichiers d'une génération, chacun à la place de la version précédente de même anonymisation et
- * langue. `candidate-gone` : candidat supprimé pendant la génération (1 à 3 min), rien n'est gardé.
+ * langue. `candidate-gone` : candidat (ou CV du vivier) supprimé pendant la génération (1 à 3 min), rien n'est gardé.
  */
 export async function saveCvExports(input: {
   tenantId: string
+  /** Identifiant du candidat, ou clé d'un CV du vivier (vivierExportKey). */
   candidateId: string
   mode: AnonymizationMode
   sourceCvFileId: string
   notes: string[]
   files: CvExportDocx[]
   now: Date
+  /** Le CV exporté existe encore ; par défaut, le compte du candidat `candidateId`. */
+  exists?: () => Promise<boolean>
 }): Promise<'saved' | 'candidate-gone'> {
   const { databases, storage } = createAdminClient()
-  const candidateExists = async () => {
+  const candidateExists = input.exists ?? (async () => {
     try {
       await databases.getDocument(DB_ID, COLLECTIONS.USERS, input.candidateId)
       return true
@@ -127,7 +138,7 @@ export async function saveCvExports(input: {
       if (isAppwrite(err, 'document_not_found')) return false
       throw err
     }
-  }
+  })
   if (!(await candidateExists())) return 'candidate-gone'
 
   const notes = serializeNotes(input.notes)
@@ -200,8 +211,9 @@ export async function readCvExportFiles(versions: StoredCvExport[]): Promise<CvE
 }
 
 /**
- * Suppression avec le compte du candidat (RGPD) : fichiers d'abord, y compris ceux qu'aucun document ne référence
- * plus, puis documents. Un échec est levé : l'appelant ne supprime pas le compte, l'admin recommence.
+ * Suppression avec le compte du candidat, ou avec le CV du vivier (clé vivierExportKey) (RGPD) : fichiers d'abord, y
+ * compris ceux qu'aucun document ne référence plus, puis documents. Un échec est levé : l'appelant ne supprime pas le
+ * compte (ni le CV), et recommence.
  */
 export async function deleteCvExportsForCandidate(candidateId: string): Promise<void> {
   const { databases, storage } = createAdminClient()

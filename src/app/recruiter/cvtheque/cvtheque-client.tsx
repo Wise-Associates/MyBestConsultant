@@ -9,7 +9,8 @@ import {
 } from 'lucide-react'
 import { deleteRecruiterCvTemplate, getRecruiterCvExportVersions, saveRecruiterCvTemplate, type CvThequeCandidate } from './actions'
 import { EsnExportDialog } from '@/components/cv-export/esn-export-dialog'
-import { CvTemplateManager, type CvTemplateView } from '@/components/cv-export/cv-template-manager'
+import { CvTemplateManager } from '@/components/cv-export/cv-template-manager'
+import type { CvExportAccess } from '@/lib/cv-export/recruiter'
 import { SECTORS } from '@/lib/candidate-taxonomy'
 import { Pagination } from '@/components/shared/pagination'
 import { CandidateAvatar } from '@/components/shared/candidate-avatar'
@@ -41,13 +42,6 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
       {children}
     </label>
   )
-}
-
-/** « Format ESN » de l'organisation : son modèle (null : à déposer), et raisons d'un refus de générer ou de déposer. */
-export interface CvExportAccess {
-  template: CvTemplateView | null
-  generationDenied: string | null
-  uploadDenied: string | null
 }
 
 export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExportError }: {
@@ -373,7 +367,7 @@ function CandidateCard({ candidate: c, onOpenProfile, onExport }: { candidate: C
                 background: 'color-mix(in srgb, var(--color-primary) 10%, transparent)', color: 'var(--color-primary)',
                 border: '1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)',
               }}>
-              <FileDown className="h-3.5 w-3.5" /> Format ESN
+              <FileDown className="h-3.5 w-3.5" /> CV format cabinet
             </button>
           )}
           {c.email && (

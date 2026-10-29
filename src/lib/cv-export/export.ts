@@ -9,15 +9,17 @@ import { BUCKETS, COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { extractTextFromFile } from '@/lib/import-file-extract'
 import {
   InvalidAnswerError, TruncatedAnswerError, contentOf, countToComplete, cvFileKind, exportBaseName, exportNotes, fitToTemplate,
-  initialsOf, parseExtraction, parseTranslation, zipNameOf, type CvContent,
+  initialsOf, parseExtraction, parseTranslation, splitFullName, zipNameOf, type CvContent,
 } from './cv-data'
 import { findLeaks, identityTerms, leakMessage } from './leak-check'
 import { extractionPrompt, translationPrompt } from './prompt'
 import { renderCv } from './render'
+import { ownsVivierCv } from './stored'
 import type { EsnTemplate } from './templates'
 import type { AnonymizationMode, CvLang } from './types'
 
-// Export d'un candidat d'une CV Thèque au format de l'ESN (ADR 0009, 0010) : CV lu dans le stockage, extrait et
+// Export d'un candidat d'une CV Thèque, ou d'un CV du vivier d'un recruteur (ADR 0016), au format de l'ESN (ADR 0009,
+// 0010) : CV lu dans le stockage, extrait et
 // anonymisé par l'IA (ligne « Export CV » de Config IA, sans repli), traduit si besoin, rendu dans le modèle de
 // l'organisation qui exporte (templates.ts), contrôlé (aucune donnée d'identité restante) puis livré. La route
 // enregistre ensuite les fichiers (store.ts) pour qu'ils soient retéléchargés sans nouvel appel d'IA.
@@ -72,12 +74,15 @@ export interface CvExportFile {
   bytes: Uint8Array
 }
 
+/** Personne dont le CV est exporté : candidat de la plateforme, ou CV du vivier d'un recruteur. */
 interface Candidate {
   firstName: string
   lastName: string
   email: string
   phone: string
   cvFileId: string
+  /** Bucket du fichier : celui des candidats, ou celui du vivier. */
+  bucket: string
 }
 
 async function loadCandidate(candidateId: string): Promise<Candidate> {
@@ -94,14 +99,51 @@ async function loadCandidate(candidateId: string): Promise<Candidate> {
   const cvFileId = typeof doc.cvFileId === 'string' ? doc.cvFileId : ''
   if (!cvFileId) throw new CvExportError('Ce candidat n\'a pas de CV.', 404)
   const str = (v: unknown) => (typeof v === 'string' ? v : '')
-  return { firstName: str(doc.firstName), lastName: str(doc.lastName), email: str(doc.email), phone: str(doc.phone), cvFileId }
+  return { firstName: str(doc.firstName), lastName: str(doc.lastName), email: str(doc.email), phone: str(doc.phone), cvFileId, bucket: BUCKETS.CVS }
 }
 
-async function readCvText(candidateId: string, cvFileId: string): Promise<{ text: string; truncated: boolean }> {
+/** Recruteur qui exporte un CV de son vivier : organisation et compte lus dans la session. */
+export interface VivierOwner {
+  tenantId: string
+  userId: string
+}
+
+/**
+ * CV du vivier d'un recruteur : seul celui qui l'a importé l'exporte, comme seul il le voit dans son vivier
+ * (ownVivierDoc, src/app/recruiter/vivier/actions.ts). Le CV d'un autre est « introuvable », comme s'il n'existait pas.
+ */
+export async function loadOwnVivierCv(cvId: string, owner: VivierOwner): Promise<Candidate> {
+  const { databases } = createAdminClient()
+  let doc: Record<string, unknown>
+  try {
+    doc = await databases.getDocument(DB_ID, COLLECTIONS.VIVIER_CVS, cvId)
+  } catch (err) {
+    if (err instanceof AppwriteException && err.code === 404) throw new CvExportError('CV introuvable.', 404)
+    throw err
+  }
+  if (!ownsVivierCv(doc, owner)) throw new CvExportError('CV introuvable.', 404)
+  const cvFileId = typeof doc.cvFileId === 'string' ? doc.cvFileId : ''
+  if (!cvFileId) throw new CvExportError('Ce profil n\'a pas de fichier CV.', 404)
+  const str = (v: unknown) => (typeof v === 'string' ? v : '')
+  return { ...splitFullName(str(doc.candidateName)), email: str(doc.candidateEmail), phone: str(doc.candidatePhone), cvFileId, bucket: BUCKETS.VIVIER_CVS }
+}
+
+/** CV du vivier encore présent : supprimé pendant une génération, sa version n'est pas gardée (saveCvExports). */
+export async function vivierCvExists(cvId: string): Promise<boolean> {
+  try {
+    await createAdminClient().databases.getDocument(DB_ID, COLLECTIONS.VIVIER_CVS, cvId)
+    return true
+  } catch (err) {
+    if (err instanceof AppwriteException && err.type === 'document_not_found') return false
+    throw err
+  }
+}
+
+async function readCvText(logId: string, bucket: string, cvFileId: string): Promise<{ text: string; truncated: boolean }> {
   const { storage } = createAdminClient()
   let bytes: ArrayBuffer
   try {
-    bytes = await storage.getFileDownload(BUCKETS.CVS, cvFileId)
+    bytes = await storage.getFileDownload(bucket, cvFileId)
   } catch (err) {
     if (err instanceof AppwriteException && err.code === 404) throw new CvExportError('Le fichier du CV est introuvable dans le stockage.', 404)
     throw err
@@ -115,7 +157,7 @@ async function readCvText(candidateId: string, cvFileId: string): Promise<{ text
     // l'IA. Un caractère de plus que la limite pour savoir si le CV a été coupé.
     text = await extractTextFromFile(buffer, `cv.${kind}`, { maxChars: MAX_CV_CHARS + 1, strict: true })
   } catch (err) {
-    console.warn('[cv-export] CV illisible', candidateId, kind, err instanceof Error ? err.constructor.name : typeof err)
+    console.warn('[cv-export] CV illisible', logId, kind, err instanceof Error ? err.constructor.name : typeof err)
     throw new CvExportError('Le CV n\'a pas pu être lu (fichier protégé par mot de passe, abîmé, ou d\'un autre format que PDF / Word) : demandez une autre version au candidat.', 422, { cause: err })
   }
   if (text.replace(/\s/g, '').length < MIN_CV_CHARS) {
@@ -125,10 +167,10 @@ async function readCvText(candidateId: string, cvFileId: string): Promise<{ text
 }
 
 const PROBLEM_MESSAGE: Record<AiProblem, string> = {
-  credits: 'Crédits épuisés chez le fournisseur d\'IA : rechargez-les, ou choisissez un autre modèle pour « Export CV (format ESN) » dans Config IA.',
+  credits: 'Crédits épuisés chez le fournisseur d\'IA : rechargez-les, ou choisissez un autre modèle pour « Export CV (format cabinet) » dans Config IA.',
   access: 'Clé d\'API refusée par le fournisseur d\'IA : vérifiez-la dans Config IA.',
-  model: 'Modèle d\'IA introuvable ou non autorisé : choisissez-en un autre pour « Export CV (format ESN) » dans Config IA.',
-  config: 'IA non configurée pour « Export CV (format ESN) » : voir Config IA.',
+  model: 'Modèle d\'IA introuvable ou non autorisé : choisissez-en un autre pour « Export CV (format cabinet) » dans Config IA.',
+  config: 'IA non configurée pour « Export CV (format cabinet) » : voir Config IA.',
   outage: 'Service d\'IA saturé ou indisponible : réessayez dans quelques minutes.',
 }
 
@@ -136,7 +178,7 @@ const PROBLEM_MESSAGE: Record<AiProblem, string> = {
 function aiFailure(err: unknown): CvExportError | null {
   const options = { cause: err }
   if (err instanceof LLMNotConfiguredError) {
-    return new CvExportError(`IA non configurée pour « Export CV (format ESN) » : ${err.message}`, 503, options)
+    return new CvExportError(`IA non configurée pour « Export CV (format cabinet) » : ${err.message}`, 503, options)
   }
   if (err instanceof LLMUnreachableError || err instanceof Anthropic.APIConnectionError) {
     const timedOut = err instanceof LLMUnreachableError ? err.timedOut : err instanceof Anthropic.APIConnectionTimeoutError
@@ -149,11 +191,11 @@ function aiFailure(err: unknown): CvExportError | null {
     // modèle) ne se règle pas en réessayant.
     const problem = err instanceof LLMHttpError ? openAiProblem(err.status, err.body) : claudeProblem(err)
     return new CvExportError(problem ? PROBLEM_MESSAGE[problem]
-      : `Requête refusée par le modèle d'IA (erreur ${err.status ?? 'inconnue'}) : la réponse demandée est peut-être trop longue pour ce modèle. Choisissez-en un autre pour « Export CV (format ESN) » dans Config IA.`, 502, options)
+      : `Requête refusée par le modèle d'IA (erreur ${err.status ?? 'inconnue'}) : la réponse demandée est peut-être trop longue pour ce modèle. Choisissez-en un autre pour « Export CV (format cabinet) » dans Config IA.`, 502, options)
   }
   if (err instanceof Anthropic.AnthropicError) {
     // Levée par le SDK avant tout envoi, par exemple pour un ancien modèle qui exige la diffusion progressive au-delà de 8 192 jetons.
-    return new CvExportError('Le modèle Claude choisi ne peut pas produire une réponse aussi longue : choisissez un modèle récent (Claude Sonnet) pour « Export CV (format ESN) » dans Config IA.', 502, options)
+    return new CvExportError('Le modèle Claude choisi ne peut pas produire une réponse aussi longue : choisissez un modèle récent (Claude Sonnet) pour « Export CV (format cabinet) » dans Config IA.', 502, options)
   }
   if (err instanceof TruncatedAnswerError) {
     return new CvExportError('CV trop long pour une seule réponse de l\'IA : condensez-le ou exportez-le en une seule langue.', 422, options)
@@ -180,9 +222,24 @@ async function askModel<T>(system: string, content: string, timeoutMs: number, p
  * `beforeAi` s'exécute juste avant le premier appel d'IA (quota du jour) : un CV introuvable ou illisible ne le consomme pas.
  */
 export async function exportCandidateCv(candidateId: string, options: CvExportOptions, template: EsnTemplate, beforeAi?: () => Promise<void>): Promise<CvExportResult> {
+  return exportCv(candidateId, await loadCandidate(candidateId), options, template, beforeAi)
+}
+
+/** Même dossier pour un CV du vivier de `owner` (vérifié : seul celui qui l'a importé l'exporte). */
+export async function exportVivierCv(cvId: string, owner: VivierOwner, options: CvExportOptions, template: EsnTemplate, beforeAi?: () => Promise<void>): Promise<CvExportResult> {
+  const cv = await loadOwnVivierCv(cvId, owner)
+  // Sans nom connu, seule l'IA qui rédige le dossier dirait quel nom retirer : le contrôle des fuites, qui cherche le
+  // nom indépendamment d'elle, n'aurait rien à chercher. Refusé avant le quota et l'IA.
+  if (!cv.firstName && !cv.lastName) {
+    throw new CvExportError('Nom du candidat inconnu pour ce CV (profil non créé ou nom non lu) : l\'anonymisation ne peut pas être vérifiée. Relancez l\'analyse du CV, ou ajoutez-le à la CV Thèque.', 422)
+  }
+  return exportCv(cvId, cv, options, template, beforeAi)
+}
+
+/** `logId` : identifiant du candidat ou du CV du vivier, dans les journaux seulement. */
+async function exportCv(logId: string, candidate: Candidate, options: CvExportOptions, template: EsnTemplate, beforeAi?: () => Promise<void>): Promise<CvExportResult> {
   const deadline = Date.now() + AI_DEADLINE_MS
-  const candidate = await loadCandidate(candidateId)
-  const cv = await readCvText(candidateId, candidate.cvFileId)
+  const cv = await readCvText(logId, candidate.bucket, candidate.cvFileId)
 
   await beforeAi?.()
   const cutNotice = cv.truncated ? 'Le CV est trop long : sa fin manque ci-dessous. N\'invente rien pour la compléter.\n' : ''
@@ -217,7 +274,7 @@ export async function exportCandidateCv(candidateId: string, options: CvExportOp
     const leaks = findLeaks(bytes, template.bytes, identity, template.map.esn)
     if (leaks.length > 0) {
       // Journal : types seulement, jamais les valeurs (données personnelles).
-      console.warn('[cv-export] export bloqué : fuite détectée', candidateId, lang, leaks.map(l => l.kind).join(','))
+      console.warn('[cv-export] export bloqué : fuite détectée', logId, lang, leaks.map(l => l.kind).join(','))
       throw new CvExportError(leakMessage(leaks), 422)
     }
     return { lang, bytes, data: fitted.data, certificationsMerged: fitted.certificationsMerged }

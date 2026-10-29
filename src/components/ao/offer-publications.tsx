@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { AoDashboardActions, PublicationDraft, PublicationPreview } from '@/lib/ao/dashboard-types'
 
@@ -41,20 +41,33 @@ export function useOfferPublications(
   const [byOffer, setByOffer] = useState<Record<string, OfferPublication>>({})
   const update = (id: string, patch: Partial<OfferPublication>) =>
     setByOffer(all => ({ ...all, [id]: { ...(all[id] ?? IDLE_PUBLICATION), ...patch } }))
+  // Préparation abandonnée (« Arrêter ») : une Server Action ne s'interrompt pas, sa réponse arrive quand même et
+  // est ignorée grâce à ce numéro de lancement.
+  const preparations = useRef<Record<string, number>>({})
 
   async function prepare(id: string, title: string) {
+    const run = (preparations.current[id] ?? 0) + 1
+    preparations.current[id] = run
     update(id, { running: 'preparing', error: '' })
     let error = ''
+    let preview: PublicationPreview | undefined
     try {
       const res = await actions.previewPublication(id)
-      if (res.preview) update(id, { preview: res.preview, draft: res.preview.draft, skillsText: res.preview.draft.skills.join(', ') })
+      if (res.preview) preview = res.preview
       else error = res.error ?? 'Aperçu impossible.'
     } catch (err) {
       console.error('AO: préparation de la publication interrompue', err instanceof Error ? err.message : String(err))
       error = 'Préparation interrompue (connexion perdue) : réessayez.'
     }
-    update(id, { running: null, error })
+    if (preparations.current[id] !== run) return
+    update(id, { running: null, error, ...(preview && { preview, draft: preview.draft, skillsText: preview.draft.skills.join(', ') }) })
     onSettled({ id, title, work: 'preparing', error })
+  }
+
+  /** Abandonne la préparation en cours : la rédaction déjà demandée se termine sur le serveur, sa version est ignorée. */
+  function stopPreparing(id: string) {
+    preparations.current[id] = (preparations.current[id] ?? 0) + 1
+    update(id, { running: null, error: '' })
   }
 
   async function publish(id: string, title: string, draft: PublicationDraft, skillsText: string) {
@@ -77,6 +90,7 @@ export function useOfferPublications(
   return {
     of: (id: string): OfferPublication => byOffer[id] ?? IDLE_PUBLICATION,
     prepare,
+    stopPreparing,
     publish,
     /** Modification du brouillon pendant la relecture. */
     edit: (id: string, patch: Pick<Partial<OfferPublication>, 'draft' | 'skillsText'>) => update(id, patch),

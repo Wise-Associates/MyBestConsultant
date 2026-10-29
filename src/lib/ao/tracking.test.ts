@@ -30,7 +30,7 @@ describe('suivi d’une offre AO : validation et offre en ligne', () => {
   })
 
   it('offre publiée, en ligne, publiée sur LinkedIn, 3 candidats retenus : tout est fait, avec les liens', () => {
-    const social: Social = { status: 'published', stale: false, results: [linkedin('published', 'https://www.linkedin.com/feed/update/exemple')] }
+    const social: Social = { status: 'published', stale: false, stopped: false, results: [linkedin('published', 'https://www.linkedin.com/feed/update/exemple')] }
     const steps = trackingSteps(PUBLISHED, facts({ social, qualified: 3 }), AUTO)
     assert.deepEqual(summary(steps), ['done:Publiée', 'done:En ligne', 'done:Publiée', 'done:3 candidats de la base retenus'])
     assert.equal(steps[1].url, '/jobs/aooffre1')
@@ -62,7 +62,7 @@ describe('suivi d’une offre AO : validation et offre en ligne', () => {
 
 describe('suivi d’une offre AO : LinkedIn', () => {
   it('résultat propre à LinkedIn : publiée, programmée, échec, non visée', () => {
-    const of = (status: Parameters<typeof linkedin>[0]) => socialOf({ status: 'partial', stale: false, results: [linkedin(status), facebook] })
+    const of = (status: Parameters<typeof linkedin>[0]) => socialOf({ status: 'partial', stale: false, stopped: false, results: [linkedin(status), facebook] })
     assert.deepEqual([of('published').tone, of('published').text], ['done', 'Publiée'])
     assert.deepEqual([of('scheduled').tone, of('scheduled').text], ['done', 'Programmée'])
     assert.deepEqual([of('failed').tone, of('failed').text], ['error', 'Échec'])
@@ -70,27 +70,27 @@ describe('suivi d’une offre AO : LinkedIn', () => {
   })
 
   it('lien de publication autre que https : publiée, sans lien', () => {
-    const step = socialOf({ status: 'published', stale: false, results: [linkedin('published', 'javascript:alert(1)')] })
+    const step = socialOf({ status: 'published', stale: false, stopped: false, results: [linkedin('published', 'javascript:alert(1)')] })
     assert.deepEqual([step.tone, step.text, step.url], ['done', 'Publiée', undefined])
   })
 
   it('diffusion en cours : création du visuel, puis envoyée en attente de confirmation', () => {
-    assert.deepEqual([socialOf({ status: 'queued', stale: false, results: [] }).tone, socialOf({ status: 'queued', stale: false, results: [] }).text], ['working', 'Création du visuel'])
-    const sent = socialOf({ status: 'sent', stale: false, results: [] })
+    assert.deepEqual([socialOf({ status: 'queued', stale: false, stopped: false, results: [] }).tone, socialOf({ status: 'queued', stale: false, stopped: false, results: [] }).text], ['working', 'Création du visuel'])
+    const sent = socialOf({ status: 'sent', stale: false, stopped: false, results: [] })
     assert.deepEqual([sent.tone, sent.text], ['working', 'Envoyée, en attente de confirmation'])
   })
 
   it('autres réseaux publiés mais pas de résultat LinkedIn : jamais « publiée »', () => {
-    const waiting = socialOf({ status: 'images_ready', stale: false, results: [facebook] })
+    const waiting = socialOf({ status: 'images_ready', stale: false, stopped: false, results: [facebook] })
     assert.deepEqual([waiting.tone, waiting.text], ['working', 'Envoyée, en attente de confirmation'])
-    const done = socialOf({ status: 'published', stale: false, results: [facebook] })
+    const done = socialOf({ status: 'published', stale: false, stopped: false, results: [facebook] })
     assert.deepEqual([done.tone, done.text], ['warning', 'Aucun résultat LinkedIn'])
   })
 
   it('diffusion sans confirmation ou en échec', () => {
-    const stale = socialOf({ status: 'sent', stale: true, results: [] })
+    const stale = socialOf({ status: 'sent', stale: true, stopped: false, results: [] })
     assert.deepEqual([stale.tone, stale.text], ['warning', 'Sans confirmation'])
-    const failed = socialOf({ status: 'failed', stale: false, results: [] })
+    const failed = socialOf({ status: 'failed', stale: false, stopped: false, results: [] })
     assert.deepEqual([failed.tone, failed.text], ['error', 'Échec'])
   })
 
@@ -98,8 +98,8 @@ describe('suivi d’une offre AO : LinkedIn', () => {
     const job = { ...ONLINE, linkedinPostedAt: ago(DAY) }
     const direct = socialOf(null, { job })
     assert.deepEqual([direct.tone, direct.text], ['warning', 'Envoyée directement, sans confirmation'])
-    assert.equal(socialOf({ status: 'sent', stale: false, results: [] }, { job }).tone, 'working')
-    assert.equal(socialOf({ status: 'sent', stale: true, results: [] }, { job }).text, 'Sans confirmation')
+    assert.equal(socialOf({ status: 'sent', stale: false, stopped: false, results: [] }, { job }).tone, 'working')
+    assert.equal(socialOf({ status: 'sent', stale: true, stopped: false, results: [] }, { job }).text, 'Sans confirmation')
   })
 
   it('aucune diffusion : en préparation juste après la publication, puis « non diffusée » à vérifier', () => {
@@ -107,6 +107,11 @@ describe('suivi d’une offre AO : LinkedIn', () => {
     assert.deepEqual([early.tone, early.text], ['working', 'Diffusion en préparation'])
     const late = socialOf(null)
     assert.deepEqual([late.tone, late.text], ['warning', 'Non diffusée'])
+  })
+
+  it('diffusion arrêtée depuis le panneau : « arrêtée », jamais « échec »', () => {
+    const step = socialOf({ status: 'failed', stale: false, stopped: true, results: [] })
+    assert.deepEqual([step.tone, step.text], ['todo', 'Arrêtée avant l’envoi'])
   })
 
   it('diffusion automatique inactive : non suivie, même juste après la publication', () => {

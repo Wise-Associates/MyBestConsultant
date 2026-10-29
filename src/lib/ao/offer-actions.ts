@@ -29,6 +29,7 @@ import {
   updateAoEmail, updateAoOffer,
 } from './repo'
 import { getAoSource } from './sources'
+import { requestPublicationStop } from './state'
 import { syncAoEmail, syncAoInbox } from './sync'
 import type { AoOffer } from './types'
 
@@ -289,6 +290,30 @@ export async function setAoOfferStatusOf(tenantId: string, id: string, status: '
     return {}
   } catch (err) {
     return { error: errorOf(err) }
+  }
+}
+
+/**
+ * « Tout arrêter » du panneau d'une offre publiée (décision du 2026-10-29, publication-stop.ts) : arrête ses tâches
+ * automatiques pas encore faites — la diffusion LinkedIn tant qu'elle n'est pas remise à Make, les e-mails aux candidats
+ * pas encore envoyés. Ce qui est déjà parti ne peut pas être rappelé. `holder` : compte qui le demande (journal).
+ */
+export async function stopAoPublicationTasksOf(tenantId: string, id: string, holder: string, path: string): ReturnType<NonNullable<AoDashboardActions['stopTasks']>> {
+  try {
+    const offer = await aoAccessFor(tenantId).offer(id)
+    if (!offer) return { error: 'Offre introuvable : rechargez la page.' }
+    if (!offer.jobId) return { error: 'Offre pas encore publiée : rien à arrêter.' }
+    await requestPublicationStop(offer.jobId, holder, new Date())
+    const { stopQueuedDiffusion } = await import('@/lib/social')
+    const diffusion = await stopQueuedDiffusion(offer.jobId)
+    revalidatePath(path)
+    const lead = diffusion === 'stopped' ? 'Diffusion LinkedIn arrêtée avant l’envoi. '
+      : diffusion === 'sent' ? 'La diffusion LinkedIn était déjà remise à Make : elle ne peut plus être arrêtée. '
+      : 'Une diffusion LinkedIn qui démarrerait est arrêtée. '
+    return { message: `${lead}Les e-mails automatiques aux candidats pas encore envoyés ne partiront pas ; ceux déjà envoyés ne peuvent pas être rappelés.` }
+  } catch (err) {
+    console.error('AO: arrêt des tâches de la publication impossible', id, errorOf(err))
+    return { error: 'Arrêt impossible pour le moment : réessayez dans quelques instants.' }
   }
 }
 
