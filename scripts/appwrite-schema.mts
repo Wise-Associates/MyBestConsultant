@@ -1,16 +1,17 @@
 #!/usr/bin/env -S npx tsx
-// Structure Appwrite (collections, attributs, index) décrite par appwrite.config.json, instantané du projet DEV,
-// appliquée aux projets par la CLI Appwrite épinglée (docs/adr/0011-structure-appwrite-appwrite-config.md).
+// Structure Appwrite (collections, attributs, index ; buckets, ADR 0017) décrite par appwrite.config.json, instantané du
+// projet DEV, appliquée aux projets par la CLI Appwrite épinglée (docs/adr/0011-structure-appwrite-appwrite-config.md).
 //
 //   npm run schema:pull                → remplace appwrite.config.json par la structure du projet DEV
 //   npm run schema:check -- dev|prod   → compare le fichier au projet, sans rien modifier (code 1 s'il diffère)
-//   npm run schema:push -- dev         → ajoute au projet DEV les collections, attributs et index du fichier
+//   npm run schema:push -- dev         → ajoute au projet DEV les collections, attributs, index et buckets du fichier
 //   npm run schema:push -- prod        → production : à lancer par un humain, après sauvegarde de la base
 //
 // Prérequis : une session de la CLI (`npm run appwrite -- login --endpoint https://appwrite.mybestconsultant.fr/v1`),
 // à fermer ensuite (`npm run appwrite -- logout`) : elle ouvre tous les projets du serveur.
 // schema:push n'applique que des ajouts et ne supprime rien (ce que seul le projet a est gardé) ; il refuse le reste
 // (recréations, qui perdent des données, modifications que la CLI 8.3.0 n'applique pas en réalité) : schema-diff.ts.
+// Un bucket n'est que créé : un bucket existant qui diffère du fichier est signalé, jamais modifié.
 // La CLI ne lit le projet que dans appwrite.config.json : chaque commande travaille dans un dossier temporaire dont le
 // fichier vise le projet et la base de l'environnement. Jamais --force : la CLI demande confirmation.
 import { spawnSync } from 'node:child_process'
@@ -21,8 +22,8 @@ import { join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 import {
-  configFor, describeChange, diffSchema, isAddition, isBlocking, pushCopy, SchemaFileError,
-  type AppwriteEnvironment, type SchemaChange, type SchemaCollection, type SchemaConfig, type SchemaDatabase,
+  configFor, describeChange, diffBuckets, diffSchema, isAddition, isBlocking, needsAttention, pushCopy, SchemaFileError,
+  type AppwriteEnvironment, type SchemaBucket, type SchemaChange, type SchemaCollection, type SchemaConfig, type SchemaDatabase,
 } from '../src/lib/appwrite/schema-diff'
 
 const ENVIRONMENTS = {
@@ -67,22 +68,30 @@ function runCli(args: string[], cwd: string, quiet = false): void {
 }
 
 /**
- * Structure du projet, lue par la CLI dans `dir` (lecture seule sur le projet). Le fichier part vide : la CLI ajoute
- * les collections lues à celles du fichier sans retirer les autres.
+ * Structure du projet, lue par la CLI dans `dir` (lecture seule sur le projet) : collections de la base, puis tous les
+ * buckets. Le fichier part vide : la CLI ajoute ce qu'elle lit à ce qu'il contient sans retirer le reste.
  */
-function readProject(environment: AppwriteEnvironment, dir: string): { database: SchemaDatabase; collections: SchemaCollection[] } {
+function readProject(environment: AppwriteEnvironment, dir: string): { database: SchemaDatabase; collections: SchemaCollection[]; buckets: SchemaBucket[] } {
   writeFileSync(join(dir, CONFIG_FILE), JSON.stringify({ projectId: environment.projectId }))
   runCli(['pull', 'collection', '--id', environment.databaseId], dir, true)
+  runCli(['pull', 'bucket'], dir, true)
   const project = readConfig(join(dir, CONFIG_FILE))
   const database = project.databases?.find(candidate => candidate.$id === environment.databaseId)
   if (!database) throw new Stop(`Base ${environment.databaseId} introuvable sur le projet ${environment.projectId}`)
-  return { database, collections: (project.collections ?? []).filter(collection => collection.databaseId === environment.databaseId) }
+  return {
+    database,
+    collections: (project.collections ?? []).filter(collection => collection.databaseId === environment.databaseId),
+    buckets: project.buckets ?? [],
+  }
 }
 
 function compare(environment: AppwriteEnvironment, dir: string): { copy: SchemaConfig; changes: SchemaChange[] } {
   const project = readProject(environment, dir)
   const config = configFor(readConfig(join(ROOT, CONFIG_FILE)), ENVIRONMENTS.dev, environment, project.database)
-  return { copy: pushCopy(config, project.collections), changes: diffSchema(config.collections ?? [], project.collections) }
+  return {
+    copy: pushCopy(config, project.collections, project.buckets),
+    changes: [...diffSchema(config.collections ?? [], project.collections), ...diffBuckets(config.buckets ?? [], project.buckets)],
+  }
 }
 
 function report(environment: AppwriteEnvironment, changes: SchemaChange[]): void {
@@ -104,15 +113,18 @@ async function confirmed(question: string, expected: string): Promise<boolean> {
 }
 
 function pull(dir: string): void {
-  const { collections } = readProject(ENVIRONMENTS.dev, dir)
+  const { collections, buckets } = readProject(ENVIRONMENTS.dev, dir)
   // Copié tel quel : le fichier écrit par la CLI garde les bornes 64 bits au chiffre près.
   copyFileSync(join(dir, CONFIG_FILE), join(ROOT, CONFIG_FILE))
-  console.log(`${CONFIG_FILE} : ${collections.length} collections du projet ${ENVIRONMENTS.dev.projectId}. Relisez : git diff ${CONFIG_FILE}`)
+  console.log(`${CONFIG_FILE} : ${collections.length} collections et ${buckets.length} buckets du projet ${ENVIRONMENTS.dev.projectId}. Relisez : git diff ${CONFIG_FILE}`)
 }
+
+const ATTENTION_HINT = '\nLignes ! : bucket existant différent du fichier, jamais modifié par schema:push — à corriger dans la console Appwrite avant de s\'en servir (variable APPWRITE_STORAGE_…).'
 
 function check(name: EnvironmentName, dir: string): void {
   const { changes } = compare(ENVIRONMENTS[name], dir)
   report(ENVIRONMENTS[name], changes)
+  if (changes.some(needsAttention)) console.log(ATTENTION_HINT)
   if (changes.length > 0) process.exitCode = 1
 }
 
@@ -128,6 +140,10 @@ async function push(name: EnvironmentName, dir: string): Promise<void> {
     process.exitCode = 1
     return
   }
+  if (changes.some(needsAttention)) {
+    console.log(ATTENTION_HINT)
+    process.exitCode = 1
+  }
   if (!changes.some(isAddition)) return
 
   if (!process.stdin.isTTY) throw new Stop('schema:push demande des confirmations : lancez-le dans un terminal')
@@ -142,20 +158,34 @@ async function push(name: EnvironmentName, dir: string): Promise<void> {
     throw new Stop('Le projet ou le fichier ont changé depuis la comparaison : rien n\'a été poussé, relancez npm run schema:push.')
   }
   writeFileSync(join(dir, CONFIG_FILE), JSON.stringify(current.copy, null, 4))
+  if (changes.some(change => change.kind === 'create-bucket')) {
+    // Fenêtre de quelques secondes : un bucket de même identifiant créé entre-temps serait réécrit par la CLI.
+    console.log('La CLI ne doit que créer des buckets : si elle affiche un tableau de modifications pour un bucket, répondez NO.')
+  }
 
   // La CLI traite les collections une à une et s'arrête à la première erreur : l'état du projet est relu dans tous les cas.
+  // Les buckets d'abord (la copie ne contient que ceux à créer), puis les collections ; chaque poussée seulement si elle
+  // a quelque chose à ajouter.
   let failed = false
-  try {
-    runCli(['push', 'collection', '--all', '--attempts', PUSH_ATTEMPTS], dir)
-  } catch (error) {
-    if (!(error instanceof Stop)) throw error
-    console.error(error.message)
-    failed = true
+  const pushes = [
+    changes.some(change => change.kind === 'create-bucket') && ['push', 'bucket', '--all'],
+    changes.some(change => isAddition(change) && change.kind !== 'create-bucket') && ['push', 'collection', '--all', '--attempts', PUSH_ATTEMPTS],
+  ].filter((args): args is string[] => Array.isArray(args))
+  for (const args of pushes) {
+    try {
+      runCli(args, dir)
+    } catch (error) {
+      if (!(error instanceof Stop)) throw error
+      console.error(error.message)
+      failed = true
+      break
+    }
   }
   console.log(failed ? '\nÉtat du projet après l\'échec :' : '\nVérification :')
   const after = compare(environment, dir)
   report(environment, after.changes)
-  if (failed || after.changes.some(isAddition)) {
+  if (after.changes.some(needsAttention)) console.log(ATTENTION_HINT)
+  if (failed || after.changes.some(isAddition) || after.changes.some(needsAttention)) {
     process.exitCode = 1
   } else if (name === 'dev') {
     // La CLI complète les réglages par défaut (array, encrypt…) d'un attribut écrit à la main dans le fichier ; sans

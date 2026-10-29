@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  configFor, describeChange, diffSchema, isAddition, isBlocking, pushCopy,
-  type SchemaCollection, type SchemaConfig,
+  configFor, describeChange, diffBuckets, diffSchema, isAddition, isBlocking, needsAttention, pushCopy,
+  type SchemaBucket, type SchemaChange, type SchemaCollection, type SchemaConfig,
 } from './schema-diff'
 
 const DEV = { projectId: 'projet-dev', databaseId: 'base-dev' }
@@ -179,7 +179,58 @@ describe('structure Appwrite : copie poussée par schema:push', () => {
       attributes: [collection().attributes[0], { key: 'ville', type: 'string', required: false, array: false, size: 128 }],
       indexes: [],
     })
-    const copy = pushCopy({ ...file, collections: [local, collection({ $id: 'nouvelle' })] }, [remote])
+    const copy = pushCopy({ ...file, collections: [local, collection({ $id: 'nouvelle' })] }, [remote], [])
     assert.deepEqual(kinds(copy.collections ?? [], [remote]), ['add-attribute offres.ville', 'create-collection nouvelle'])
+  })
+})
+
+describe('structure Appwrite : buckets (ADR 0017)', () => {
+  const bucket = (patch: Partial<SchemaBucket> = {}): SchemaBucket => ({
+    $id: 'social_scenes', $permissions: [], fileSecurity: true, name: 'Social scenes', enabled: true, maximumFileSize: 10_485_760,
+    allowedFileExtensions: ['jpg', 'png'], compression: 'none', encryption: false, antivirus: false, ...patch,
+  })
+  const summary = (changes: SchemaChange[]) => changes.map(change => `${change.kind} ${change.target}`)
+
+  it('crée un bucket absent du projet, permissions affichées avant la confirmation', () => {
+    const changes = diffBuckets([bucket()], [])
+    assert.deepEqual(summary(changes), ['create-bucket bucket social_scenes'])
+    assert.equal(isAddition(changes[0]), true)
+    assert.match(changes[0].detail ?? '', /\$permissions : \[\], fileSecurity : true/)
+    assert.match(describeChange(changes[0]), /^\+ bucket social_scenes : bucket créé/)
+  })
+
+  it('ne voit rien entre deux buckets identiques, et ignore les buckets du projet absents du fichier', () => {
+    assert.deepEqual(diffBuckets([bucket()], [bucket(), bucket({ $id: 'autre' })]), [])
+  })
+
+  it('signale un bucket existant qui diffère, sans le modifier ni bloquer les ajouts', () => {
+    const changes = diffBuckets([bucket()], [bucket({ $permissions: ['read("any")'], maximumFileSize: 5_242_880 })])
+    assert.deepEqual(summary(changes), ['bucket-settings bucket social_scenes'])
+    assert.equal(isAddition(changes[0]), false)
+    assert.equal(isBlocking(changes[0]), false)
+    assert.equal(needsAttention(changes[0]), true, 'à corriger dans la console : schema:push répond 1')
+    assert.match(changes[0].detail ?? '', /\$permissions : \["read\(\\"any\\"\)"\] → \[\]/)
+    assert.match(describeChange(changes[0]), /^! bucket social_scenes : réglage différent sur le projet, à corriger dans la console/)
+  })
+
+  it('copie poussée : seulement les buckets à créer, jamais un bucket existant (la CLI réécrirait ses réglages)', () => {
+    const config: SchemaConfig = { projectId: DEV.projectId, collections: [], buckets: [bucket(), bucket({ $id: 'nouveau' })] }
+    const copy = pushCopy(config, [], [bucket({ maximumFileSize: 1 })])
+    assert.deepEqual(copy.buckets?.map(b => b.$id), ['nouveau'])
+  })
+
+  it('détail de la création : permissions, sécurité des fichiers, chiffrement, antivirus, taille, extensions', () => {
+    assert.match(diffBuckets([bucket({ encryption: true })], [])[0].detail ?? '', /enabled : true, encryption : true, antivirus : false, 10485760 o max/)
+  })
+
+  it('refuse un fichier qui décrit deux fois le même bucket : la CLI le réécrirait sans le montrer', () => {
+    const file: SchemaConfig = { projectId: DEV.projectId, databases: [{ $id: DEV.databaseId, name: 'Base DEV', enabled: true }], collections: [], buckets: [bucket(), bucket({ name: 'copie' })] }
+    assert.throws(() => configFor(file, DEV, PROD, { $id: PROD.databaseId, name: 'base de production', enabled: true }), /deux fois le bucket social_scenes/)
+  })
+
+  it('les buckets du fichier suivent la copie vers un autre projet : ils appartiennent au projet, pas à la base', () => {
+    const file: SchemaConfig = { projectId: DEV.projectId, databases: [{ $id: DEV.databaseId, name: 'Base DEV', enabled: true }], collections: [], buckets: [bucket()] }
+    const copy = configFor(file, DEV, PROD, { $id: PROD.databaseId, name: 'base de production', enabled: true })
+    assert.deepEqual(copy.buckets, [bucket()])
   })
 })
