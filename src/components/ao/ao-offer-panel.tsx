@@ -22,7 +22,7 @@ interface Props {
   publishNote: string
   /** Suivi de l'offre (validation, offre en ligne, LinkedIn, sourcing) et page où relancer une diffusion. */
   tracking: TrackingStep[]
-  social: { href: string; label: string }
+  social: { href: string; label: string; jobParam?: string }
   /**
    * Préparation et publication de cette offre, tenues par le tableau (offer-publications.tsx) : elles continuent si le
    * panneau est fermé, et le panneau rouvert les retrouve.
@@ -121,6 +121,11 @@ export function AoOfferPanel({ row, actions, paths, publishNote, tracking, socia
     ['Expérience', row.experience || '—'],
     ['Date limite', row.deadline || '—'],
   ]
+  const closeButton = <button type="button" onClick={onClose} style={{ ...secondaryButton, padding: '8px 12px' }}><X size={15} aria-hidden />Fermer</button>
+  // Page où relancer la diffusion : ouverte sur l'offre publique elle-même quand elle sait la montrer.
+  const socialLink = social.jobParam && jobId
+    ? { label: social.label, href: `${social.href}?${social.jobParam}=${encodeURIComponent(jobId)}` }
+    : social
 
   return (
     // Au-dessus de la barre de navigation fixe de l'espace recruteur (z-index 9000, site-navbar-client.tsx), qui
@@ -147,7 +152,7 @@ export function AoOfferPanel({ row, actions, paths, publishNote, tracking, socia
                 Tout arrêter
               </button>
             )}
-            <button type="button" onClick={onClose} style={{ ...secondaryButton, padding: '8px 12px' }}><X size={15} aria-hidden />Fermer</button>
+            {closeButton}
           </div>
           {/* Dans la barre : le compte rendu reste visible même si l'on a fait défiler le panneau. */}
           {stopNotice && (
@@ -175,7 +180,7 @@ export function AoOfferPanel({ row, actions, paths, publishNote, tracking, socia
           </div>
         </div>
 
-        <TrackingStepper steps={tracking} social={social}
+        <TrackingStepper steps={tracking} social={socialLink}
           onShowCandidates={actions.sourcing ? () => document.getElementById('ao-offer-sourcing')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : undefined} />
 
         {error && (
@@ -341,6 +346,11 @@ export function AoOfferPanel({ row, actions, paths, publishNote, tracking, socia
             </p>
           </section>
         )}
+
+        {/* Bas du panneau : « Fermer » aussi, pour ne pas avoir à remonter après avoir lu ou publié. */}
+        <div className="-mx-7 -mb-7 px-7 py-3 flex justify-end" style={{ borderTop: '1px solid var(--admin-line)' }}>
+          {closeButton}
+        </div>
       </aside>
     </div>
   )
