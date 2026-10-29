@@ -11,7 +11,7 @@ import {
 } from '@/lib/social-content'
 import { SAMPLE_POSTER_ID, SCENE_DAILY_LIMITS, isQueuedOverdue, parsePosterImage, posterUrl, sceneTimeoutMs } from '@/lib/social-poster/rules'
 import { isPublicationStopped } from '@/lib/ao/state'
-import { STOPPED_DIFFUSION_ERROR, stopsDelivery } from '@/lib/publication-stop'
+import { STOPPED_DIFFUSION_ERROR, diffusionStopOutcome, isStoppedDiffusion, stopsDelivery } from '@/lib/publication-stop'
 import type { Job } from '@/types'
 
 // Publication multi-réseaux (Modules 9 et 15) — orchestration côté plateforme.
@@ -180,7 +180,7 @@ export async function latestSocialStateByJob(jobIds: string[]): Promise<Map<stri
     ])
     for (const d of res.documents) {
       const p = docToPost(d)
-      const stopped = p.status === 'failed' && p.error === STOPPED_DIFFUSION_ERROR
+      const stopped = isStoppedDiffusion(p.status, p.error)
       if (!out.has(p.jobId)) out.set(p.jobId, { status: p.status, stale: p.stale, results: p.results, stopped })
     }
     if (res.documents.length < PAGE) return out
@@ -422,7 +422,8 @@ export async function deliverSocialPost(id: string, deadline = deliveryDeadline(
       await databases.updateDocument(DB_ID, COLLECTIONS.SOCIAL_POSTS, id, { status: 'failed', attempts: attempts + 1, error: STOPPED_DIFFUSION_ERROR })
       return { status: 'failed' as const, error: STOPPED_DIFFUSION_ERROR }
     }
-    if (await stopped()) return markStopped()
+    // await : un échec de cette écriture doit passer par le catch ci-dessous (document jamais laissé « en file »).
+    if (await stopped()) return await markStopped()
     const stored = parse<Record<string, unknown> | null>(doc.payloadJson, null)
     const rawImage = (stored?.content as { image?: { url?: unknown } } | undefined)?.image
     if (!stored || typeof rawImage?.url !== 'string') throw new Error('contenu de la publication illisible')
@@ -435,7 +436,7 @@ export async function deliverSocialPost(id: string, deadline = deliveryDeadline(
     // posé avant sa création) l'emporte. Reste une fenêtre de quelques millisecondes entre cette lecture et l'écriture.
     const current = await databases.getDocument(DB_ID, COLLECTIONS.SOCIAL_POSTS, id)
     if (current.status !== 'queued') return { status: current.status as SocialStatus, error: typeof current.error === 'string' ? current.error : undefined }
-    if (await stopped()) return markStopped()
+    if (await stopped()) return await markStopped()
     await databases.updateDocument(DB_ID, COLLECTIONS.SOCIAL_POSTS, id, {
       status: 'sent', attempts: attempts + 1, sentAt: new Date().toISOString(), completedAt: null, error: null,
       resultsJson: '[]', imagesJson: JSON.stringify([rawImage.url]), payloadJson: JSON.stringify({ ...payload, posterNote }),
@@ -474,11 +475,10 @@ async function stopRequested(jobId: string): Promise<boolean> {
 
 /**
  * « Tout arrêter » du panneau d'une offre AO : sa dernière diffusion, si elle est automatique et pas encore remise à
- * Make, passe « arrêtée » tout de suite (deliverSocialPost revérifie juste avant l'envoi). `sent` : déjà remise à Make,
- * plus rien à arrêter ; `none` : aucune diffusion en cours (une diffusion qui démarre est arrêtée par le marqueur posé
- * par l'appelant, requestPublicationStop).
+ * Make, passe « arrêtée » tout de suite (deliverSocialPost revérifie juste avant l'envoi). Autres cas : voir
+ * diffusionStopOutcome (publication-stop.ts) ; une diffusion qui démarre est arrêtée par le marqueur posé par l'appelant.
  */
-export async function stopQueuedDiffusion(jobId: string): Promise<'stopped' | 'sent' | 'none'> {
+export async function stopQueuedDiffusion(jobId: string): Promise<ReturnType<typeof diffusionStopOutcome>> {
   const { databases } = createAdminClient()
   const res = await databases.listDocuments(DB_ID, COLLECTIONS.SOCIAL_POSTS, [
     Query.equal('jobId', jobId),
@@ -486,13 +486,12 @@ export async function stopQueuedDiffusion(jobId: string): Promise<'stopped' | 's
     Query.orderDesc('$createdAt'), Query.limit(1),
   ])
   const doc = res.documents[0]
-  if (!doc) return 'none'
-  const post = docToPost(doc)
-  if (post.status === 'queued' && stopsDelivery(post, true)) {
+  const post = doc ? docToPost(doc) : null
+  const outcome = diffusionStopOutcome(post)
+  if (doc && post && outcome === 'stopped') {
     await databases.updateDocument(DB_ID, COLLECTIONS.SOCIAL_POSTS, doc.$id, { status: 'failed', attempts: post.attempts + 1, error: STOPPED_DIFFUSION_ERROR })
-    return 'stopped'
   }
-  return post.status === 'sent' || post.status === 'images_ready' || post.status === 'published' || post.status === 'partial' ? 'sent' : 'none'
+  return outcome
 }
 
 /** Prépare puis envoie (création automatique d'une offre, déjà lancée en arrière-plan par l'appelant). */
@@ -602,6 +601,11 @@ export async function tryAutoPublishJob(job: Job & { $id: string }, deadline?: n
     }
   } catch (e) {
     console.error('[social] publication automatique échouée :', e instanceof Error ? e.message : e)
+  }
+  // Arrêt demandé depuis le panneau de l'offre (publication-stop.ts) : pas de publication LinkedIn directe non plus.
+  if (!linkedInHandled && await stopRequested(job.$id)) {
+    console.info('[social] publication LinkedIn directe non faite : arrêt demandé depuis le panneau de l\'offre', job.$id)
+    return
   }
   if (!linkedInHandled) {
     try {

@@ -20,3 +20,17 @@ export function stopIsActive(expiresAt: unknown, now: number): boolean {
 export function stopsDelivery(post: { trigger: 'auto' | 'manual'; attempts: number }, stopActive: boolean): boolean {
   return stopActive && post.trigger === 'auto' && post.attempts === 0
 }
+
+/** Diffusion arrêtée depuis le panneau (et non en échec). */
+export const isStoppedDiffusion = (status: string, error: string) => status === 'failed' && error === STOPPED_DIFFUSION_ERROR
+
+/**
+ * Ce que « Tout arrêter » fait de la dernière diffusion d'une offre : `stopped` à marquer arrêtée (automatique, pas
+ * encore remise à Make) ; `running` en cours mais lancée ou relancée à la main, donc pas arrêtée ; `sent` déjà remise à
+ * Make ; `none` aucune en cours (une diffusion qui démarre est arrêtée par le marqueur).
+ */
+export function diffusionStopOutcome(post: { status: string; trigger: 'auto' | 'manual'; attempts: number } | null): 'stopped' | 'running' | 'sent' | 'none' {
+  if (!post) return 'none'
+  if (post.status === 'queued') return stopsDelivery(post, true) ? 'stopped' : 'running'
+  return ['sent', 'images_ready', 'published', 'partial'].includes(post.status) ? 'sent' : 'none'
+}
