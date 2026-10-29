@@ -16,6 +16,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AoOfferPanel } from './ao-offer-panel'
 import { AdminPageHeader } from '@/components/admin/admin-page-header'
 import { WorkBadge, useOfferPublications } from './offer-publications'
+import { TrackingIcons, TrackingLegend } from './offer-tracking'
+import { trackingSteps, type TrackingStep } from '@/lib/ao/tracking'
 import {
   BRAND, CONTRACT_LABEL, ENGAGEMENT_LABEL, REMOTE_LABEL, STATUS_UI, control, formatAmount, formatDay, optionStyle, secondaryButton,
 } from '@/app/admin/candidats/labels'
@@ -34,6 +36,10 @@ interface Props {
   loadError: string
   /** Lecture des boîtes suspendue pour tout l'espace (abonnement inactif) : bandeau en tête. */
   accessAlert?: string
+  /** Étapes de suivi des offres publiées, par offre (tracking-store.ts) ; les autres sont calculées ici. */
+  tracking: Record<string, TrackingStep[]>
+  /** Suivi illisible : bandeau, les offres restent affichées. */
+  trackingError?: string
   actions: AoDashboardActions
   paths: AoDashboardPaths
   copy: AoDashboardCopy
@@ -58,7 +64,7 @@ const TABLE_COLUMNS = [
   { key: 'tjm', label: 'TJM', title: 'TJM ou salaire', width: 80, show: 'hidden sm:table-cell' },
   { key: 'skills', label: 'Compétences', width: 200, show: 'hidden min-[1400px]:table-cell' },
   { key: 'sources', label: 'Source', title: 'Canal d’arrivée : e-mails de la boîte AO, ou veille des sites publics (scraping)', width: 88, show: 'hidden 2xl:table-cell' },
-  { key: 'status', label: 'Statut', width: 92, show: 'hidden sm:table-cell' },
+  { key: 'status', label: 'Suivi', title: 'Statut de l’offre ; une fois publiée : offre en ligne, LinkedIn et sourcing (survolez les icônes)', width: 104, show: 'hidden sm:table-cell' },
   { key: 'actions', label: 'Actions', width: 116, show: '' },
 ] as const satisfies readonly { key: string; label: string; title?: string; width: number | undefined; show: string }[]
 
@@ -87,7 +93,7 @@ export interface MailboxIssue {
   at: string | null
 }
 
-export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, inboxConfigured, mailboxIssues, loadError, accessAlert, actions, paths, copy, titleInAdminBar }: Props) {
+export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, inboxConfigured, mailboxIssues, loadError, accessAlert, tracking, trackingError, actions, paths, copy, titleInAdminBar }: Props) {
   // Synchronisation en arrière-plan (AoSyncProvider, layout de l'espace) : elle continue quand on quitte la page et se
   // retrouve en revenant. Les données renvoyées par ses passages ne remplacent celles de la page que si elles sont
   // arrivées après elles : la page rechargée (retour sur la page, fin de synchronisation) l'emporte sur un passage plus
@@ -123,6 +129,19 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
       text: work === 'preparing' ? `Version anonymisée de « ${title} » prête : ouvrez l'offre pour la relire et la publier.` : `Offre « ${title} » publiée.`,
     })
   })
+
+  // Diffusion et sourcing avancent en arrière-plan après une publication : tant qu'une étape est en cours, la page est
+  // relue toutes les 15 s. Une diffusion envoyée à Make reste « en attente » jusqu'à 10 min après son envoi (lui-même
+  // jusqu'à 4,5 min après la publication) : 15 min au plus, le compte repartant à chaque changement d'état.
+  const stepsOf = (r: AoOfferRow) => tracking[r.$id] ?? trackingSteps(r)
+  const workingKey = Object.entries(tracking)
+    .flatMap(([id, steps]) => steps.filter(s => s.tone === 'working').map(s => `${id}:${s.key}:${s.text}`)).join('|')
+  useEffect(() => {
+    if (!workingKey) return
+    let refreshes = 0
+    const timer = setInterval(() => { if (++refreshes > 60) clearInterval(timer); else router.refresh() }, 15_000)
+    return () => clearInterval(timer)
+  }, [workingKey, router])
 
   // Les lignes viennent du serveur (rafraîchies après chaque action) : seul le filtrage est local.
   const filtered = useMemo(() => filterAoOffers(rows, filters), [rows, filters])
@@ -238,6 +257,7 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
         <Banner key={m.label} tone="error" text={`Boîte ${m.label}${m.at ? ` (tentative du ${formatDay(m.at)})` : ''} : ${m.error}`} />
       ))}
       {loadError && <Banner tone="error" text={loadError} />}
+      {trackingError && <Banner tone="error" text={trackingError} />}
       {sync.progress && (
         <p role="status" aria-live="polite" className="flex items-center gap-2 text-sm p-3 rounded-xl" style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)', color: 'var(--admin-fg)' }}>
           <Loader2 size={15} className="animate-spin shrink-0" />
@@ -313,9 +333,10 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
 
       {/* Tableau */}
       <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--admin-line)' }}>
-        <div className="px-6 py-4 flex items-center justify-between" style={{ background: 'var(--admin-panel)', borderBottom: '1px solid var(--admin-line)' }}>
-          <h2 className="font-semibold text-sm text-admin-fg">Offres extraites</h2>
-          <span className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>{filtered.length} résultat{filtered.length > 1 ? 's' : ''} sur {rows.length}</span>
+        <div className="px-6 py-4 flex items-center gap-4" style={{ background: 'var(--admin-panel)', borderBottom: '1px solid var(--admin-line)' }}>
+          <h2 className="font-semibold text-sm text-admin-fg mr-auto">Offres extraites</h2>
+          <TrackingLegend />
+          <span className="text-xs shrink-0" style={{ color: 'var(--admin-fg-muted)' }}>{filtered.length} résultat{filtered.length > 1 ? 's' : ''} sur {rows.length}</span>
         </div>
         {/* Pas de défilement horizontal : largeurs fixes (sur les en-têtes, lues par table-fixed), une ligne par cellule (texte complet au survol), colonnes
             secondaires masquées sur les écrans étroits (toutes restent dans le panneau de détail). */}
@@ -373,7 +394,11 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
                 <td className={cell('sources')} style={{ color: 'var(--admin-fg-muted)' }}>{AO_CHANNEL_LABEL[r.channel]}</td>
                 <td className={cell('status')}>
                   {work ? <WorkBadge work={work} /> : (
-                    <span className="text-xs font-medium px-2 py-1 rounded-md" style={{ color: STATUS_UI[r.status].color, background: 'var(--admin-panel-raised)' }}>{STATUS_UI[r.status].label}</span>
+                    // Statut (20 px) puis, une fois publiée, le suivi (16 px) : la hauteur du titre et du client, ligne constante.
+                    <div className="flex flex-col items-start gap-0">
+                      <span className="text-xs leading-4 font-medium px-2 py-0.5 rounded-md" style={{ color: STATUS_UI[r.status].color, background: 'var(--admin-panel-raised)' }}>{STATUS_UI[r.status].label}</span>
+                      {(r.status === 'published' || r.jobId) && <TrackingIcons steps={stepsOf(r)} />}
+                    </div>
                   )}
                 </td>
                 <td className={cell('actions')}>
@@ -432,6 +457,7 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
 
       {selected && (
         <AoOfferPanel row={selected} actions={actions} paths={paths} publishNote={copy.publishNote}
+          tracking={stepsOf(selected)} social={copy.social}
           publication={publications.of(selected.$id)}
           onPrepare={() => publications.prepare(selected.$id, selected.title)}
           onPublish={(draft, skillsText) => publications.publish(selected.$id, selected.title, draft, skillsText)}

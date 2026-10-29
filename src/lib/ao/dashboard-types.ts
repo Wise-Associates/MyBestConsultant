@@ -106,6 +106,8 @@ export interface AoDashboardCopy {
   scope: string
   /** Sous le formulaire de publication : ce que la publication déclenche. */
   publishNote: string
+  /** Suivi de la publication : page où relancer une diffusion LinkedIn en échec ou sans confirmation. */
+  social: { href: string; label: string }
   /** Lien de retour au-dessus du titre (espace recruteur, sans menu latéral). */
   back?: { href: string; label: string }
 }
