@@ -158,6 +158,33 @@ export async function latestPostsByJob(tenantId: string): Promise<Record<string,
   }
 }
 
+/**
+ * État de la dernière diffusion de chaque offre `jobIds` (suivi du tableau AO), 25 offres au plus par appel (taille
+ * d'une requête Appwrite). Seuls les champs de l'état sont lus : pas le corps envoyé à Make (jusqu'à 20 000 caractères
+ * par publication). Les erreurs remontent à l'appelant.
+ */
+export async function latestSocialStateByJob(jobIds: string[]): Promise<Map<string, Pick<SocialPost, 'status' | 'stale' | 'results'>>> {
+  const out = new Map<string, Pick<SocialPost, 'status' | 'stale' | 'results'>>()
+  if (!jobIds.length) return out
+  const { databases } = createAdminClient()
+  const PAGE = 100
+  let cursor: string | undefined
+  for (;;) {
+    const res = await databases.listDocuments(DB_ID, COLLECTIONS.SOCIAL_POSTS, [
+      Query.equal('jobId', jobIds),
+      // Avec Query.select, Appwrite ne renvoie que les champs nommés, $id et dates comprises (docToPost en a besoin).
+      Query.select(['$id', '$createdAt', '$updatedAt', 'jobId', 'status', 'resultsJson', 'sentAt']),
+      Query.orderDesc('$createdAt'), Query.limit(PAGE), ...(cursor ? [Query.cursorAfter(cursor)] : []),
+    ])
+    for (const d of res.documents) {
+      const p = docToPost(d)
+      if (!out.has(p.jobId)) out.set(p.jobId, { status: p.status, stale: p.stale, results: p.results })
+    }
+    if (res.documents.length < PAGE) return out
+    cursor = res.documents[res.documents.length - 1].$id
+  }
+}
+
 export async function getPost(id: string): Promise<SocialPost | null> {
   try { const { databases } = createAdminClient(); return docToPost(await databases.getDocument(DB_ID, COLLECTIONS.SOCIAL_POSTS, id)) } catch { return null }
 }
