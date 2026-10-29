@@ -66,5 +66,6 @@ consigne sans guillemets ni caractères de contrôle.
   par publication, quelques centaines de Ko). Une purge pourra suivre celle des publications si elle est décidée.
 - Changer le dessin de l'affiche ne modifie pas les affiches déjà publiées (déjà téléchargées par les réseaux) ; le
   CDN garde au plus un jour l'ancienne version de celles qui ont été servies.
-- Mise en place : `npm run social:setup -- <env> [--apply] [--prod]` (bucket), puis `APPWRITE_STORAGE_SOCIAL_SCENES`.
+- Mise en place : bucket `social_scenes` créé par `npm run schema:push -- dev|prod` (ADR 0017, qui remplace le script
+  `social:setup` du 2026-10-23), puis `APPWRITE_STORAGE_SOCIAL_SCENES`.
   Le code fonctionne sans (affiches sans photo).

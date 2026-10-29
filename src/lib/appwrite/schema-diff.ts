@@ -1,6 +1,6 @@
 // Structure Appwrite décrite par appwrite.config.json, comparée à celle d'un projet comme la compare
 // `appwrite push collection` (CLI 8.3.0, lib/commands/push.js) — règles pures utilisées par
-// scripts/appwrite-schema.mts (docs/adr/0011-structure-appwrite-appwrite-config.md).
+// scripts/appwrite-schema.mts (docs/adr/0011-structure-appwrite-appwrite-config.md ; buckets : ADR 0017).
 
 export interface SchemaAttribute {
   key: string
@@ -32,11 +32,26 @@ export interface SchemaDatabase {
   enabled: boolean
 }
 
-/** Contenu de appwrite.config.json (seules les collections sont gérées par ce fichier). */
+/** Bucket tel que la CLI l'écrit dans appwrite.config.json (KeysStorage de lib/config.js). */
+export interface SchemaBucket {
+  $id: string
+  $permissions: string[]
+  fileSecurity: boolean
+  name: string
+  enabled: boolean
+  maximumFileSize: number
+  allowedFileExtensions: string[]
+  compression: string
+  encryption: boolean
+  antivirus: boolean
+}
+
+/** Contenu de appwrite.config.json : collections de la base, et buckets du projet (ADR 0017). */
 export interface SchemaConfig {
   projectId: string
   databases?: SchemaDatabase[]
   collections?: SchemaCollection[]
+  buckets?: SchemaBucket[]
 }
 
 export interface AppwriteEnvironment {
@@ -67,6 +82,11 @@ export interface AppwriteEnvironment {
  *   s'applique pas, et la CLI ne compare pas cet état.
  * - `collection-settings` : permissions, sécurité par document, activation ou nom de la collection : la CLI les affiche
  *   mais n'applique que le nom.
+ *
+ * Buckets (ADR 0017) : `create-bucket`, ajout (bucket absent du projet, créé vide). `bucket-settings` : un bucket du
+ * projet dont un réglage diffère du fichier, jamais modifié — `push bucket` réécrirait tous ses réglages, permissions
+ * comprises — : il ne bloque pas les ajouts (la copie poussée ne contient que les buckets à créer) mais est à corriger
+ * dans la console (`needsAttention` : ligne « ! », schema:push répond 1).
  */
 export type SchemaChangeKind =
   | 'create-collection'
@@ -82,6 +102,8 @@ export type SchemaChangeKind =
   | 'recreate-index'
   | 'unavailable-index'
   | 'collection-settings'
+  | 'create-bucket'
+  | 'bucket-settings'
 
 export interface SchemaChange {
   kind: SchemaChangeKind
@@ -91,8 +113,9 @@ export interface SchemaChange {
   detail?: string
 }
 
-const ADDITIONS: ReadonlySet<SchemaChangeKind> = new Set(['create-collection', 'add-attribute', 'add-index'])
-const KEPT: ReadonlySet<SchemaChangeKind> = new Set(['kept-attribute', 'kept-index'])
+const ADDITIONS: ReadonlySet<SchemaChangeKind> = new Set(['create-collection', 'add-attribute', 'add-index', 'create-bucket'])
+// Signalés sans rien bloquer : gardés tels quels sur le projet.
+const KEPT: ReadonlySet<SchemaChangeKind> = new Set(['kept-attribute', 'kept-index', 'bucket-settings'])
 
 // Clés comparées par la CLI (KeysAttributes de lib/config.js), selon qu'elle les dit modifiables ou non (changeableKeys).
 const ATTRIBUTE_UPDATABLE = ['required', 'default', 'min', 'max', 'elements']
@@ -100,10 +123,19 @@ const BOUNDS = ['min', 'max']
 const ATTRIBUTE_RECREATED = ['type', 'array', 'size', 'format', 'encrypt', 'relatedCollection', 'relationType', 'twoWay', 'twoWayKey', 'onDelete', 'side']
 const INDEX_RECREATED = ['type', 'attributes', 'orders']
 const COLLECTION_SETTINGS = ['$permissions', 'documentSecurity', 'enabled', 'name'] as const
+const BUCKET_SETTINGS = ['$permissions', 'fileSecurity', 'name', 'enabled', 'maximumFileSize', 'allowedFileExtensions', 'compression', 'encryption', 'antivirus'] as const
 
 /** Ce que schema:push applique. */
 export function isAddition(change: SchemaChange): boolean {
   return ADDITIONS.has(change.kind)
+}
+
+/**
+ * Bucket du projet différent du fichier : gardé tel quel, mais à corriger dans la console (permissions plus ouvertes,
+ * extension manquante…) avant de s'en servir — schema:push le signale et répond 1, même après ses ajouts.
+ */
+export function needsAttention(change: SchemaChange): boolean {
+  return change.kind === 'bucket-settings'
 }
 
 /** Ce qui empêche schema:push de pousser quoi que ce soit : tout sauf les ajouts et ce qui est gardé. */
@@ -216,12 +248,34 @@ export function diffSchema(local: SchemaCollection[], remote: SchemaCollection[]
   return changes
 }
 
+const bucketTarget = (bucket: SchemaBucket) => `bucket ${bucket.$id}`
+
+/**
+ * Buckets : ceux du fichier absents du projet sont à créer ; ceux du projet qui diffèrent du fichier sont signalés.
+ * Les buckets du projet absents du fichier ne sont pas comptés.
+ */
+export function diffBuckets(local: SchemaBucket[], remote: SchemaBucket[]): SchemaChange[] {
+  const remoteById = new Map(remote.map(bucket => [bucket.$id, bucket]))
+  return local.flatMap((bucket): SchemaChange[] => {
+    const existing = remoteById.get(bucket.$id)
+    if (!existing) {
+      // Créé avec les permissions du fichier : montrées avant la confirmation, comme pour une collection.
+      const access = `$permissions : ${JSON.stringify(bucket.$permissions)}, fileSecurity : ${bucket.fileSecurity}, enabled : ${bucket.enabled}, `
+        + `encryption : ${bucket.encryption}, antivirus : ${bucket.antivirus}, ${bucket.maximumFileSize} o max, extensions : ${JSON.stringify(bucket.allowedFileExtensions)}`
+      return [{ kind: 'create-bucket', target: bucketTarget(bucket), detail: access }]
+    }
+    const settings = changedKeys(existing, bucket, BUCKET_SETTINGS)
+    return settings ? [{ kind: 'bucket-settings', target: bucketTarget(bucket), detail: settings }] : []
+  })
+}
+
 /**
  * Copie poussée par schema:push : le fichier complété par les attributs et index que seul le projet a, pour que la CLI
- * ne supprime rien (voir `kept-*`).
+ * ne supprime rien (voir `kept-*`), et réduit aux buckets à créer, pour que la CLI ne réécrive aucun bucket existant.
  */
-export function pushCopy(config: SchemaConfig, remote: SchemaCollection[]): SchemaConfig {
+export function pushCopy(config: SchemaConfig, remote: SchemaCollection[], remoteBuckets: SchemaBucket[]): SchemaConfig {
   const remoteById = new Map(remote.map(collection => [collection.$id, collection]))
+  const remoteBucketIds = new Set(remoteBuckets.map(bucket => bucket.$id))
   const onlyRemote = <T extends { key: string }>(local: T[], project: T[]) => project.filter(entry => !local.some(own => own.key === entry.key))
   return {
     ...config,
@@ -234,6 +288,7 @@ export function pushCopy(config: SchemaConfig, remote: SchemaCollection[]): Sche
         indexes: [...collection.indexes, ...onlyRemote(collection.indexes, existing.indexes)],
       }
     }),
+    buckets: (config.buckets ?? []).filter(bucket => !remoteBucketIds.has(bucket.$id)),
   }
 }
 
@@ -257,10 +312,18 @@ export function configFor(config: SchemaConfig, source: AppwriteEnvironment, tar
   if (targetDatabase.$id !== target.databaseId) {
     throw new SchemaFileError(`Base ${targetDatabase.$id} lue sur ${target.projectId}, ${target.databaseId} attendue`)
   }
+  // Deux entrées pour un même bucket : la CLI créerait le premier puis le réécrirait avec le second, sans le montrer.
+  const bucketIds = (config.buckets ?? []).map(bucket => bucket.$id)
+  const duplicate = bucketIds.find((id, i) => bucketIds.indexOf(id) !== i)
+  if (duplicate !== undefined) {
+    throw new SchemaFileError(`appwrite.config.json décrit deux fois le bucket ${duplicate} : reprenez-le depuis git et relancez npm run schema:pull`)
+  }
   return {
     projectId: target.projectId,
     databases: [targetDatabase],
     collections: (config.collections ?? []).map(collection => ({ ...collection, databaseId: target.databaseId })),
+    // Les buckets appartiennent au projet, pas à la base : repris tels quels.
+    buckets: config.buckets ?? [],
   }
 }
 
@@ -278,9 +341,11 @@ const LABELS: Record<SchemaChangeKind, string> = {
   'recreate-index': 'la CLI supprimerait puis recréerait l\'index — nouvel index, puis suppression de l\'ancien par un script',
   'unavailable-index': 'index non disponible sur le projet (création échouée ou en cours) : sa contrainte ne s\'applique pas — console Appwrite ou script',
   'collection-settings': 'réglage de collection que schema:push n\'applique pas : console Appwrite ou script',
+  'create-bucket': 'bucket créé, vide',
+  'bucket-settings': 'réglage différent sur le projet, à corriger dans la console Appwrite avant de s\'en servir : schema:push ne modifie jamais un bucket existant (la CLI réécrirait tous ses réglages, permissions comprises)',
 }
 
 export function describeChange(change: SchemaChange): string {
-  const sign = isAddition(change) ? '+' : isBlocking(change) ? '✗' : '·'
+  const sign = isAddition(change) ? '+' : isBlocking(change) ? '✗' : needsAttention(change) ? '!' : '·'
   return `${sign} ${change.target} : ${LABELS[change.kind]}${change.detail ? ` (${change.detail})` : ''}`
 }

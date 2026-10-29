@@ -3941,5 +3941,173 @@
                 }
             ]
         }
+    ],
+    "buckets": [
+        {
+            "$id": "cvs",
+            "$permissions": [],
+            "fileSecurity": false,
+            "name": "CVs",
+            "enabled": true,
+            "maximumFileSize": 10485760,
+            "allowedFileExtensions": [
+                "pdf",
+                "doc",
+                "docx"
+            ],
+            "compression": "none",
+            "encryption": true,
+            "antivirus": false
+        },
+        {
+            "$id": "logos",
+            "$permissions": [
+                "read(\"any\")"
+            ],
+            "fileSecurity": false,
+            "name": "Logos",
+            "enabled": true,
+            "maximumFileSize": 2097152,
+            "allowedFileExtensions": [
+                "jpg",
+                "jpeg",
+                "png",
+                "webp"
+            ],
+            "compression": "none",
+            "encryption": false,
+            "antivirus": false
+        },
+        {
+            "$id": "media",
+            "$permissions": [
+                "read(\"any\")"
+            ],
+            "fileSecurity": false,
+            "name": "media",
+            "enabled": true,
+            "maximumFileSize": 10485760,
+            "allowedFileExtensions": [
+                "jpg",
+                "jpeg",
+                "png",
+                "webp",
+                "gif",
+                "svg"
+            ],
+            "compression": "none",
+            "encryption": false,
+            "antivirus": false
+        },
+        {
+            "$id": "recordings",
+            "$permissions": [
+                "create(\"any\")"
+            ],
+            "fileSecurity": false,
+            "name": "Recordings",
+            "enabled": true,
+            "maximumFileSize": 500000000,
+            "allowedFileExtensions": [
+                "webm",
+                "mp3",
+                "wav",
+                "m4a",
+                "ogg",
+                "txt"
+            ],
+            "compression": "none",
+            "encryption": true,
+            "antivirus": false
+        },
+        {
+            "$id": "vivier_cvs",
+            "$permissions": [
+                "create(\"any\")"
+            ],
+            "fileSecurity": false,
+            "name": "Vivier CVs",
+            "enabled": true,
+            "maximumFileSize": 10485760,
+            "allowedFileExtensions": [
+                "pdf",
+                "doc",
+                "docx"
+            ],
+            "compression": "gzip",
+            "encryption": true,
+            "antivirus": false
+        },
+        {
+            "$id": "support_attachments",
+            "$permissions": [],
+            "fileSecurity": false,
+            "name": "Support attachments",
+            "enabled": true,
+            "maximumFileSize": 8388608,
+            "allowedFileExtensions": [
+                "png",
+                "jpg",
+                "jpeg",
+                "webp",
+                "gif",
+                "pdf",
+                "txt",
+                "csv",
+                "doc",
+                "docx",
+                "xls",
+                "xlsx",
+                "ppt",
+                "pptx",
+                "zip"
+            ],
+            "compression": "none",
+            "encryption": true,
+            "antivirus": true
+        },
+        {
+            "$id": "cv_exports",
+            "$permissions": [],
+            "fileSecurity": true,
+            "name": "CV exports (format ESN)",
+            "enabled": true,
+            "maximumFileSize": 10485760,
+            "allowedFileExtensions": [
+                "docx"
+            ],
+            "compression": "none",
+            "encryption": true,
+            "antivirus": false
+        },
+        {
+            "$id": "social_scenes",
+            "$permissions": [],
+            "fileSecurity": true,
+            "name": "Social scenes (affiches réseaux)",
+            "enabled": true,
+            "maximumFileSize": 10485760,
+            "allowedFileExtensions": [
+                "jpg",
+                "png"
+            ],
+            "compression": "none",
+            "encryption": false,
+            "antivirus": false
+        },
+        {
+            "$id": "cv_templates",
+            "$permissions": [],
+            "fileSecurity": true,
+            "name": "CV templates (format ESN)",
+            "enabled": true,
+            "maximumFileSize": 10485760,
+            "allowedFileExtensions": [
+                "docx"
+            ],
+            "compression": "none",
+            "encryption": true,
+            "antivirus": false
+        }
     ]
 }
