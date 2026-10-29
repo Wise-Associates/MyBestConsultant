@@ -85,7 +85,8 @@ export default async function RecruiterAoOffersPage() {
         title: 'Appels d’offres',
         scope: 'de votre organisation',
         publishNote: 'Comme pour vos autres offres, la publication déclenche la diffusion sur les réseaux et le sourcing automatiques s’ils sont activés.',
-        social: { href: '/recruiter/dashboard', label: 'Republier depuis le tableau de bord' },
+        // ?offre=<id> : le tableau de bord fait défiler « Mes offres » jusqu'à cette offre (jobs-list-client.tsx).
+        social: { href: '/recruiter/dashboard', label: 'Republier depuis le tableau de bord', jobParam: 'offre' },
         back: { href: '/recruiter/dashboard', label: 'Retour à l’espace recruteur' },
       }}
     />
