@@ -81,7 +81,10 @@ function ToolTile({ href, title, subtitle, rgb, iconColor, children }: {
   )
 }
 
-export default async function RecruiterDashboard() {
+export default async function RecruiterDashboard({ searchParams }: { searchParams: Promise<{ offre?: string | string[] }> }) {
+  // ?offre=<id> : offre à montrer dans « Mes offres » (lien « Republier depuis le tableau de bord » du suivi des appels
+  // d'offres). Seulement comparé aux identifiants des offres déjà chargées pour l'organisation.
+  const { offre } = await searchParams
   const user = await getCurrentUser()
   if (!user) redirect('/login')
   if (!user.tenantId) redirect('/login')
@@ -273,7 +276,8 @@ export default async function RecruiterDashboard() {
         </div>
 
         {/* Mes offres */}
-        <JobsListClient jobs={jobs} appsByJob={appsByJobRecord} tenantId={user.tenantId} matchCountByJob={matchCountByJob} funnelStages={funnelStages} socialByJob={socialByJob} socialEnabled={isMakeConfigured()} />
+        <JobsListClient jobs={jobs} appsByJob={appsByJobRecord} tenantId={user.tenantId} matchCountByJob={matchCountByJob} funnelStages={funnelStages} socialByJob={socialByJob} socialEnabled={isMakeConfigured()}
+          focusJobId={typeof offre === 'string' ? offre : undefined} />
 
         <p className="text-center text-xs" style={{ color: 'var(--color-text-muted)' }}>
           Une question, un souci ? <Link href="/recruiter/support" className="font-semibold no-underline hover:underline" style={{ color: 'var(--color-primary)' }}>Contactez le support</Link>

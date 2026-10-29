@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
 import { ID } from 'appwrite'
 import {
   AlertCircle, Brain, CheckCircle2, ExternalLink, FileDown, FileText, Loader2, Mail, Maximize2, Phone, RefreshCw, Search, Sparkles, Trash2, Upload, Users,
@@ -313,12 +312,16 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>Correspond à</span>
                         {matches.slice(0, 3).map(m => (
-                          // Ouvre l'offre (sa page dans l'espace recruteur) sans ouvrir le profil de la carte.
-                          <Link key={m.jobId} href={`/recruiter/pipeline/${m.jobId}`} onClick={e => e.stopPropagation()} title={`Voir l’offre « ${offerTitles.get(m.jobId)} »`}
+                          // Détail de l'offre publiée, dans un nouvel onglet et sans ouvrir le profil de la carte : l'import et la
+                          // synchronisation des CV tournent dans cette page et s'arrêteraient si on la quittait.
+                          <a key={m.jobId} href={`/jobs/${m.jobId}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                            title={`Voir le détail de l’offre « ${offerTitles.get(m.jobId)} » (nouvel onglet)`}
                             className="inline-flex items-center gap-1 max-w-full px-2.5 py-1 rounded-full text-[11px] font-semibold no-underline transition-opacity hover:opacity-80 hover:underline"
                             style={{ background: `${scoreColor(m.score)}18`, color: scoreColor(m.score) }}>
                             <span className="truncate max-w-[180px]">{offerTitles.get(m.jobId)}</span>· {m.score}
-                          </Link>
+                            <ExternalLink className="h-2.5 w-2.5 shrink-0" aria-hidden />
+                            <span className="sr-only">(nouvel onglet)</span>
+                          </a>
                         ))}
                         {matches.length > 3 && <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>+{matches.length - 3}</span>}
                       </div>
