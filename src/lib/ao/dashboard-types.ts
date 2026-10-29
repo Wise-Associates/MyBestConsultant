@@ -79,6 +79,11 @@ export interface AoDashboardActions {
   previewPublication(id: string): Promise<{ preview?: PublicationPreview; error?: string }>
   publish(id: string, input: PublicationDraft): Promise<{ jobId?: string; error?: string }>
   setStatus(id: string, status: 'to_review' | 'ignored'): Promise<{ error?: string }>
+  /**
+   * « Tout arrêter » du panneau d'une offre publiée : diffusion LinkedIn pas encore remise à Make et e-mails automatiques
+   * aux candidats pas encore envoyés (stopAoPublicationTasksOf).
+   */
+  stopTasks?: (id: string) => Promise<{ message?: string; error?: string }>
   /** Section « Sourcing » du panneau (absente si la page ne fournit pas l'action) ; quota quotidien côté recruteurs. */
   sourcing?: (id: string, recompute?: boolean) => Promise<SourcingResult>
   listComments(offerId: string): Promise<{ comments?: AoCommentView[]; error?: string }>

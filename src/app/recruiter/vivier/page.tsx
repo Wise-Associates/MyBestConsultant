@@ -6,12 +6,16 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
 import { ArrowLeft, FolderOpen, MapPin, Users } from 'lucide-react'
+import { CvTemplateManager } from '@/components/cv-export/cv-template-manager'
+import { recruiterCvExportAccess } from '@/lib/cv-export/recruiter'
+import { deleteRecruiterCvTemplate, saveRecruiterCvTemplate } from '../cvtheque/actions'
 import { getGeneralVivier } from './actions'
 import { VivierClient } from './vivier-client'
 import { VivierTabs } from './vivier-tabs'
 
 // Import d'un CV dans le vivier général (Server Action de cette page) : profil créé par l'IA, puis comparaison aux
 // offres ouvertes par lots en parallèle, avec repli sur un autre modèle en cas d'échec ; « Synchroniser » de même.
+// Dépôt du modèle CV (bouton « Modèle CV », comme dans la CV Thèque) : cartographie par l'IA, deux réponses de 120 s.
 export const maxDuration = 300
 
 // « Mon vivier », en deux onglets : la liste des offres (par défaut), chacune avec son propre vivier (CV importés pour
@@ -21,7 +25,9 @@ export default async function VivierIndexPage({ searchParams }: { searchParams: 
   const user = await getCurrentUser()
   if (!user || (user.role !== 'recruiter' && user.role !== 'admin') || !user.tenantId) redirect('/login')
 
-  const [jobs, openJobs, general] = await Promise.all([getJobsByTenant(user.tenantId), getOpenJobsOfTenant(user.tenantId), getGeneralVivier()])
+  const [jobs, openJobs, general, cvExport] = await Promise.all([
+    getJobsByTenant(user.tenantId), getOpenJobsOfTenant(user.tenantId), getGeneralVivier(), recruiterCvExportAccess(user),
+  ])
 
   // Nombre de profils du vivier par offre (les siens ; tous pour un administrateur).
   const counts = new Map<string, number>()
@@ -42,7 +48,8 @@ export default async function VivierIndexPage({ searchParams }: { searchParams: 
           : 'Aucune offre ouverte pour l’instant : les CV seront comparés à vos offres depuis « Sans offre correspondante » une fois publiées.'}
       </p>
       <VivierClient jobId={null} bucketId={BUCKETS.VIVIER_CVS} initialCvs={general.cvs} loadError={general.error}
-        isAdmin={user.role === 'admin'} currentUserId={user.$id} openOffers={openJobs.map(j => ({ $id: j.$id, title: j.title }))} />
+        isAdmin={user.role === 'admin'} currentUserId={user.$id} openOffers={openJobs.map(j => ({ $id: j.$id, title: j.title }))}
+        cvExport={cvExport.access} cvExportError={cvExport.error} />
       {general.total > general.cvs.length && (
         <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Les {general.cvs.length} CV les plus récents sont affichés, sur {general.total}.</p>
       )}
@@ -84,14 +91,21 @@ export default async function VivierIndexPage({ searchParams }: { searchParams: 
             style={{ color: 'rgba(255,255,255,0.55)' }}>
             <ArrowLeft className="h-3.5 w-3.5" /> Retour à l&apos;espace recruteur
           </Link>
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(232,163,61,0.15)' }}>
-              <FolderOpen className="h-6 w-6" style={{ color: 'var(--color-primary)' }} />
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(232,163,61,0.15)' }}>
+                <FolderOpen className="h-6 w-6" style={{ color: 'var(--color-primary)' }} />
+              </div>
+              <div>
+                <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>Mon vivier</h1>
+                <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Importez vos CV sans choisir d&apos;offre, ou dans le vivier d&apos;une offre : chaque CV devient automatiquement un profil</p>
+              </div>
             </div>
-            <div>
-              <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>Mon vivier</h1>
-              <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Importez vos CV sans choisir d&apos;offre, ou dans le vivier d&apos;une offre : chaque CV devient automatiquement un profil</p>
-            </div>
+            {/* Le même bouton que la CV Thèque : un seul modèle par organisation, pour les deux pages. */}
+            {cvExport.access && (
+              <CvTemplateManager kind="organisation" template={cvExport.access.template} storage uploadDenied={cvExport.access.uploadDenied}
+                save={saveRecruiterCvTemplate} remove={deleteRecruiterCvTemplate} />
+            )}
           </div>
         </div>
       </div>

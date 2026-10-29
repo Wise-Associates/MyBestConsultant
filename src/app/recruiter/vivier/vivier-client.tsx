@@ -1,9 +1,10 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { ID } from 'appwrite'
 import {
-  AlertCircle, Brain, CheckCircle2, ExternalLink, FileText, Loader2, Mail, Maximize2, Phone, RefreshCw, Search, Sparkles, Trash2, Upload, Users,
+  AlertCircle, Brain, CheckCircle2, ExternalLink, FileDown, FileText, Loader2, Mail, Maximize2, Phone, RefreshCw, Search, Sparkles, Trash2, Upload, Users,
 } from 'lucide-react'
 import { getBrowserStorage } from '@/lib/appwrite/browser-client'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -12,7 +13,9 @@ import { CandidateAvatar } from '@/components/shared/candidate-avatar'
 import { CandidateProfileModal } from '@/app/recruiter/cvtheque/candidate-profile-modal'
 import type { CvThequeCandidate } from '@/app/recruiter/cvtheque/actions'
 import { VIVIER_MATCH_MIN_SCORE, matchingOffers, newOffersFor } from '@/lib/vivier-matching'
-import { attachVivierCv, deleteVivierCv, reanalyseVivierCv, type VivierCv } from './actions'
+import { EsnExportDialog } from '@/components/cv-export/esn-export-dialog'
+import type { CvExportAccess } from '@/lib/cv-export/recruiter'
+import { attachVivierCv, deleteVivierCv, getVivierCvExportVersions, reanalyseVivierCv, type VivierCv } from './actions'
 import { UnmatchedCvs } from './unmatched-cvs'
 
 type UploadStatus = 'uploading' | 'analysing' | 'error'
@@ -44,7 +47,7 @@ function displayedMatch(cv: VivierCv, offerFilter: string, openIds: Set<string>)
 }
 
 /** Vivier d'une offre (`jobId`), ou vivier général (`jobId` null) : CV comparés aux `openOffers` de l'organisation. */
-export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, currentUserId, openOffers = NO_OFFERS }: {
+export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, currentUserId, openOffers = NO_OFFERS, cvExport = null, cvExportError }: {
   jobId: string | null
   bucketId: string
   initialCvs: VivierCv[]
@@ -53,6 +56,9 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
   currentUserId: string
   /** Vivier général : offres ouvertes de l'organisation, la plus récente d'abord. */
   openOffers?: OpenOffer[]
+  /** « Format ESN » dans le modèle de l'organisation, comme dans la CV Thèque (ADR 0016) ; null : pas de bouton. */
+  cvExport?: CvExportAccess | null
+  cvExportError?: string
 }) {
   const general = jobId === null
   const [cvs, setCvs] = useState(initialCvs)
@@ -61,6 +67,7 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<'recent' | 'score'>('recent')
   const [openCv, setOpenCv] = useState<VivierCv | null>(null)
+  const [exportFor, setExportFor] = useState<VivierCv | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [notice, setNotice] = useState('')
@@ -207,6 +214,12 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
 
       {matchNoticeBox}
 
+      {cvExportError && (
+        <div role="status" className="flex items-center gap-3 p-4 rounded-2xl" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
+          <AlertCircle className="h-4 w-4 shrink-0" style={{ color: '#b45309' }} /><p className="text-sm" style={{ color: '#b45309' }}>{cvExportError}</p>
+        </div>
+      )}
+
       {(loadError || notice) && (
         <div className="flex items-center gap-3 p-4 rounded-2xl" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)' }}>
           <AlertCircle className="h-4 w-4 shrink-0" style={{ color: '#ef4444' }} /><p className="text-sm" style={{ color: '#dc2626' }}>{loadError || notice}</p>
@@ -300,9 +313,12 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>Correspond à</span>
                         {matches.slice(0, 3).map(m => (
-                          <span key={m.jobId} className="inline-flex items-center gap-1 max-w-full px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{ background: `${scoreColor(m.score)}18`, color: scoreColor(m.score) }}>
+                          // Ouvre l'offre (sa page dans l'espace recruteur) sans ouvrir le profil de la carte.
+                          <Link key={m.jobId} href={`/recruiter/pipeline/${m.jobId}`} onClick={e => e.stopPropagation()} title={`Voir l’offre « ${offerTitles.get(m.jobId)} »`}
+                            className="inline-flex items-center gap-1 max-w-full px-2.5 py-1 rounded-full text-[11px] font-semibold no-underline transition-opacity hover:opacity-80 hover:underline"
+                            style={{ background: `${scoreColor(m.score)}18`, color: scoreColor(m.score) }}>
                             <span className="truncate max-w-[180px]">{offerTitles.get(m.jobId)}</span>· {m.score}
-                          </span>
+                          </Link>
                         ))}
                         {matches.length > 3 && <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>+{matches.length - 3}</span>}
                       </div>
@@ -337,6 +353,17 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
                   {cv.cvFileId && (
                     <a href={`/api/vivier-cv/${cv.cvFileId}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold no-underline transition-opacity hover:opacity-90" style={{ background: 'rgba(11,29,81,0.06)', color: 'var(--color-primary)' }}><ExternalLink className="h-3.5 w-3.5" />Voir le CV</a>
                   )}
+                  {/* Profil créé seulement : son nom sert au contrôle d'anonymisation de l'export. */}
+                  {cvExport?.template && cv.cvFileId && cv.profileReady && (
+                    <button type="button" onClick={() => setExportFor(cv)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-opacity hover:opacity-90"
+                      style={{
+                        background: 'color-mix(in srgb, var(--color-primary) 10%, transparent)', color: 'var(--color-primary)',
+                        border: '1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)',
+                      }}>
+                      <FileDown className="h-3.5 w-3.5" />CV format cabinet
+                    </button>
+                  )}
                   {cv.candidateEmail && <a href={`mailto:${cv.candidateEmail}`} aria-label="Écrire au candidat" className="p-2 rounded-xl" style={{ background: 'rgba(59,130,246,0.08)', color: '#2563eb' }}><Mail className="h-4 w-4" /></a>}
                   {cv.candidatePhone && <a href={`tel:${cv.candidatePhone}`} aria-label="Appeler le candidat" className="p-2 rounded-xl" style={{ background: 'rgba(16,185,129,0.08)', color: '#10b981' }}><Phone className="h-4 w-4" /></a>}
                   <button type="button" onClick={() => remove(cv)} disabled={working} aria-label="Supprimer" className="ml-auto p-2 rounded-xl disabled:opacity-40" style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}><Trash2 className="h-4 w-4" /></button>
@@ -369,6 +396,13 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      )}
+
+      {cvExport?.template && (
+        // key : choix et compte rendu remis à zéro pour chaque CV
+        <EsnExportDialog key={exportFor?.$id ?? 'none'} candidate={exportFor && { id: exportFor.$id, name: exportFor.candidateName || exportFor.fileName }}
+          onClose={() => setExportFor(null)} endpoint="/api/recruiter/vivier/cv-export" loadVersions={getVivierCvExportVersions}
+          esn={cvExport.template.esn} generationDenied={cvExport.generationDenied} quotaLimited />
       )}
 
       {openCv && <CandidateProfileModal candidate={toCandidate(openCv)} vivier matchScore={displayedMatch(openCv, offerFilter, openIds).score} onClose={() => setOpenCv(null)} />}

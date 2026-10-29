@@ -460,6 +460,7 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
           tracking={stepsOf(selected)} social={copy.social}
           publication={publications.of(selected.$id)}
           onPrepare={() => publications.prepare(selected.$id, selected.title)}
+          onStopPreparing={() => publications.stopPreparing(selected.$id)}
           onPublish={(draft, skillsText) => publications.publish(selected.$id, selected.title, draft, skillsText)}
           onEdit={patch => publications.edit(selected.$id, patch)}
           onCancel={() => publications.cancel(selected.$id)}

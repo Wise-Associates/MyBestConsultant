@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  NOTES_MAX_LENGTH, initialChoice, parseStoredExport, serializeNotes, storedFor, versionView, type CvExportVersion,
+  CANDIDATE_ID, NOTES_MAX_LENGTH, initialChoice, parseStoredExport, serializeNotes, storedFor, ownsVivierCv, versionView, vivierExportKey, type CvExportVersion,
 } from './stored'
 
 const DOC = {
@@ -110,5 +110,38 @@ describe('initialChoice', () => {
   it('propose les deux langues quand elles sont enregistrées pour cette anonymisation', () => {
     const versions = [version('renforcee', 'fr', '2026-10-22T10:00:00.000Z'), version('renforcee', 'en', '2026-10-23T10:00:00.000Z')]
     assert.deepEqual(initialChoice(versions), { langs: 'both', mode: 'renforcee' })
+  })
+})
+
+describe('vivierExportKey', () => {
+  it('clé d’un CV du vivier : tient dans l’attribut et n’est jamais acceptée par les routes des candidats', () => {
+    const key = vivierExportKey('6a1b2c3d4e5f60718293')
+    assert.equal(key, 'vivier:6a1b2c3d4e5f60718293')
+    assert.ok(key && key.length <= 36)
+    assert.equal(CANDIDATE_ID.test(key ?? ''), false)
+  })
+
+  it('identifiant invalide ou trop long : refusé', () => {
+    assert.equal(vivierExportKey('../6a1b2c3d4e5f6'), null)
+    assert.equal(vivierExportKey(''), null)
+    assert.equal(vivierExportKey('a'.repeat(30)), null)
+  })
+})
+
+describe('ownsVivierCv', () => {
+  const owner = { tenantId: 'org1', userId: 'rec1' }
+
+  it('le recruteur qui a importé le CV, dans son organisation : oui', () => {
+    assert.equal(ownsVivierCv({ tenantId: 'org1', recruiterId: 'rec1' }, owner), true)
+  })
+
+  it('un autre recruteur de la même organisation, ou une autre organisation : non', () => {
+    assert.equal(ownsVivierCv({ tenantId: 'org1', recruiterId: 'rec2' }, owner), false)
+    assert.equal(ownsVivierCv({ tenantId: 'org2', recruiterId: 'rec1' }, owner), false)
+  })
+
+  it('document sans organisation ni recruteur, ou session incomplète : non', () => {
+    assert.equal(ownsVivierCv({}, owner), false)
+    assert.equal(ownsVivierCv({ tenantId: '', recruiterId: '' }, { tenantId: '', userId: '' }), false)
   })
 })
