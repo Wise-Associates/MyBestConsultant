@@ -309,7 +309,8 @@ export async function stopAoPublicationTasksOf(tenantId: string, id: string, hol
     revalidatePath(path)
     const lead = diffusion === 'stopped' ? 'Diffusion LinkedIn arrêtée avant l’envoi. '
       : diffusion === 'sent' ? 'La diffusion LinkedIn était déjà remise à Make : elle ne peut plus être arrêtée. '
-      : 'Une diffusion LinkedIn qui démarrerait est arrêtée. '
+      : diffusion === 'running' ? 'Une diffusion LinkedIn lancée ou relancée à la main est en cours : elle n’est pas arrêtée. '
+      : 'Une diffusion LinkedIn automatique qui démarrerait est arrêtée. '
     return { message: `${lead}Les e-mails automatiques aux candidats pas encore envoyés ne partiront pas ; ceux déjà envoyés ne peuvent pas être rappelés.` }
   } catch (err) {
     console.error('AO: arrêt des tâches de la publication impossible', id, errorOf(err))
