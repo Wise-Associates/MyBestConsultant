@@ -97,8 +97,11 @@ function jobStep(jobId: string, job: AoTrackingFacts['job'], now: number): Track
 }
 
 function socialStep(social: AoTrackingFacts['social'], directPostedAt: string | null, recent: boolean, socialAuto: boolean): TrackingStep {
-  // Arrêtée avant l'envoi (« Tout arrêter » du panneau, publication-stop.ts) : un choix, pas un échec.
-  if (social?.stopped) return step('social', 'todo', 'Arrêtée avant l’envoi')
+  // Arrêtée avant l'envoi (« Tout arrêter » du panneau, publication-stop.ts) : un choix, pas un échec — sauf si un envoi
+  // direct de l'ancien circuit est parti quand même : il l'emporte, une publication est peut-être en ligne.
+  if (social?.stopped) {
+    return directPostedAt ? step('social', 'warning', 'Envoyée directement, sans confirmation') : step('social', 'todo', 'Arrêtée avant l’envoi')
+  }
   // 1. Résultat propre à LinkedIn, rappelé par Make : lui seul dit que la publication est sur LinkedIn.
   const linkedin = social?.results.find(r => r.network === 'linkedin')
   // Lien venu de Make, affiché comme lien cliquable : https seulement (déjà vérifié à la réception, handleCallback).

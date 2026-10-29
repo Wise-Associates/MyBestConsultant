@@ -24,6 +24,11 @@ export async function tryAutoSourceCandidates(job: Job & { $id: string }): Promi
       }
       const { subject, message, error } = await generateOutreachMessageCore(match.candidateId, job.$id)
       if (error || !message) continue
+      // Revérifié juste avant l'envoi : la rédaction du message par l'IA prend plusieurs secondes.
+      if (await emailsStopped(job.$id)) {
+        console.info('[sourcing] e-mails automatiques arrêtés depuis le panneau de l\'offre', job.$id)
+        break
+      }
       await sendOutreachEmailCore(match.candidateId, subject, message)
     }
   } catch (e) {
