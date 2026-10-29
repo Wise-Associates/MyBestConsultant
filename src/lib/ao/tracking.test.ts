@@ -114,6 +114,11 @@ describe('suivi d’une offre AO : LinkedIn', () => {
     assert.deepEqual([step.tone, step.text], ['todo', 'Arrêtée avant l’envoi'])
   })
 
+  it('diffusion arrêtée mais envoi direct de l’ancien circuit parti quand même : l’envoi l’emporte', () => {
+    const step = socialOf({ status: 'failed', stale: false, stopped: true, results: [] }, { job: { ...ONLINE, linkedinPostedAt: ago(DAY) } })
+    assert.deepEqual([step.tone, step.text], ['warning', 'Envoyée directement, sans confirmation'])
+  })
+
   it('diffusion automatique inactive : non suivie, même juste après la publication', () => {
     const step = socialOf(null, { job: JUST_PUBLISHED }, { now: NOW, socialAuto: false })
     assert.deepEqual([step.tone, step.text], ['todo', 'Non suivie (diffusion automatique inactive)'])
