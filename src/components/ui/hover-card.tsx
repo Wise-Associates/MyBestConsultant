@@ -7,13 +7,23 @@ import { useId, useRef, useState, type ReactNode } from 'react'
  * la liste complète d'éléments abrégés sans agrandir la ligne. Position fixe, calculée à l'ouverture : la carte n'est
  * pas coupée par un conteneur qui défile (tableau). Échap la ferme. Le déclencheur n'ouvre pas la ligne qui le contient.
  */
-export function HoverCard({ label, ariaLabel, children }: { label: string; ariaLabel: string; children: ReactNode }) {
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
+export function HoverCard({ label, ariaLabel, children, bare = false }: {
+  label: ReactNode
+  ariaLabel: string
+  children: ReactNode
+  /** Déclencheur sans cadre ni texte grisé : pour un déclencheur qui porte son propre style (icônes d'état…). */
+  bare?: boolean
+}) {
+  const [position, setPosition] = useState<{ top?: number; bottom?: number; left: number } | null>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const id = useId()
   const open = () => {
     const rect = trigger.current?.getBoundingClientRect()
-    if (rect) setPosition({ top: rect.bottom + 6, left: Math.max(8, Math.min(rect.left, window.innerWidth - 296)) })
+    if (!rect) return
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - 296))
+    // Déclencheur dans la moitié basse de l'écran (dernières lignes d'un tableau) : la carte s'ouvre au-dessus, sinon
+    // elle serait coupée par le bas de la fenêtre.
+    setPosition(rect.top > window.innerHeight / 2 ? { bottom: window.innerHeight - rect.top + 6, left } : { top: rect.bottom + 6, left })
   }
   const close = () => setPosition(null)
 
@@ -29,8 +39,8 @@ export function HoverCard({ label, ariaLabel, children }: { label: string; ariaL
         onFocus={open}
         onBlur={close}
         onKeyDown={e => { if (e.key === 'Escape') close() }}
-        className="text-[11px] px-1.5 py-0.5 rounded-md focus-visible:ring-2 focus-visible:ring-offset-1"
-        style={{ color: 'var(--admin-fg-muted, var(--color-text-muted))', border: '1px solid var(--admin-line, var(--color-border))' }}
+        className={`${bare ? 'inline-flex' : 'text-[11px] px-1.5 py-0.5'} rounded-md focus-visible:ring-2 focus-visible:ring-offset-1`}
+        style={bare ? undefined : { color: 'var(--admin-fg-muted, var(--color-text-muted))', border: '1px solid var(--admin-line, var(--color-border))' }}
       >
         {label}
       </button>
@@ -38,9 +48,10 @@ export function HoverCard({ label, ariaLabel, children }: { label: string; ariaL
         <span
           role="tooltip"
           id={id}
-          className="fixed z-50 w-[280px] p-3 rounded-xl text-xs"
+          // whitespace-normal : la carte est souvent dans une cellule de tableau tronquée (nowrap), son texte doit revenir à la ligne.
+          className="fixed z-50 w-[280px] p-3 rounded-xl text-xs whitespace-normal"
           style={{
-            top: position.top, left: position.left,
+            top: position.top, bottom: position.bottom, left: position.left,
             background: 'var(--admin-panel, var(--color-surface))', color: 'var(--admin-fg, var(--color-text))',
             border: '1px solid var(--admin-line, var(--color-border))', boxShadow: '0 12px 32px -12px rgba(0,0,0,0.25)',
           }}

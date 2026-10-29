@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react'
 import { AlertTriangle, Ban, Check, Copy, Download, ExternalLink, Loader2, Paperclip, RotateCcw, Send, ShieldAlert, Sparkles, Users, X } from 'lucide-react'
 import { AO_CHANNEL_LABEL, type AoOfferRow } from '@/lib/ao/filters'
 import { findIdentifiers } from '@/lib/ao/name-match'
@@ -8,6 +8,8 @@ import type { AoDashboardActions, AoDashboardPaths, PublicationDraft, SourcedCan
 import type { AoContract, AoRemote } from '@/lib/ao/types'
 import { AoDescription } from './ao-description'
 import { WorkBadge, type OfferPublication } from './offer-publications'
+import { TrackingStepper } from './offer-tracking'
+import type { TrackingStep } from '@/lib/ao/tracking'
 import {
   BRAND, CONTRACT_LABEL, ENGAGEMENT_LABEL, REMOTE_LABEL, STATUS_UI, control, fieldLabel, formatAmount, formatDay, optionStyle, primaryButton, secondaryButton,
 } from '@/app/admin/candidats/labels'
@@ -18,6 +20,9 @@ interface Props {
   paths: Pick<AoDashboardPaths, 'originalApi' | 'jobs'>
   /** Sous le formulaire de publication : ce que la publication déclenche dans cet espace. */
   publishNote: string
+  /** Suivi de l'offre (validation, offre en ligne, LinkedIn, sourcing) et page où relancer une diffusion. */
+  tracking: TrackingStep[]
+  social: { href: string; label: string }
   /**
    * Préparation et publication de cette offre, tenues par le tableau (offer-publications.tsx) : elles continuent si le
    * panneau est fermé, et le panneau rouvert les retrouve.
@@ -30,7 +35,7 @@ interface Props {
   onClose: () => void
 }
 
-export function AoOfferPanel({ row, actions, paths, publishNote, publication, onPrepare, onPublish, onEdit, onCancel, onClose }: Props) {
+export function AoOfferPanel({ row, actions, paths, publishNote, tracking, social, publication, onPrepare, onPublish, onEdit, onCancel, onClose }: Props) {
   const { preview, draft, skillsText, running } = publication
   const [statusError, setStatusError] = useState('')
   const [pending, start] = useTransition()
@@ -108,6 +113,9 @@ export function AoOfferPanel({ row, actions, paths, publishNote, publication, on
           <button type="button" onClick={onClose} aria-label="Fermer" style={{ ...secondaryButton, padding: 8 }}><X size={16} /></button>
         </div>
 
+        <TrackingStepper steps={tracking} social={social}
+          onShowCandidates={actions.sourcing ? () => document.getElementById('ao-offer-sourcing')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : undefined} />
+
         {error && (
           <p role="alert" className="text-sm p-3 rounded-lg" style={{ color: '#b91c1c', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>{error}</p>
         )}
@@ -137,7 +145,7 @@ export function AoOfferPanel({ row, actions, paths, publishNote, publication, on
             </div>
           </section>
         )}
-        {actions.sourcing && <Sourcing offerId={row.$id} sourcing={actions.sourcing} />}
+        {actions.sourcing && <Sourcing offerId={row.$id} sourcing={actions.sourcing} version={tracking.find(s => s.key === 'sourcing')?.text ?? ''} />}
         <Originals emailId={row.emailId} attachments={row.attachments} originalApi={paths.originalApi} />
         <section>
           <p style={{ ...fieldLabel, marginBottom: 12 }}>Description</p>
@@ -363,13 +371,22 @@ const ORIGIN_LABEL: Record<SourcedCandidate['origin'], string> = { pool: 'Base c
  * lu à l'ouverture (matching de la publication, ou dernier calcul à la demande) : aucun appel d'IA tant qu'on ne clique
  * pas sur « Trouver des candidats » / « Recalculer » (un appel d'IA, environ une minute).
  */
-function Sourcing({ offerId, sourcing }: { offerId: string; sourcing: NonNullable<AoDashboardActions['sourcing']> }) {
+function Sourcing({ offerId, sourcing, version }: {
+  offerId: string
+  sourcing: NonNullable<AoDashboardActions['sourcing']>
+  /** État du sourcing dans le suivi de l'offre : le résultat est relu quand il change (fin du sourcing automatique). */
+  version: string
+}) {
   const [result, setResult] = useState<SourcingResult | null>(null)
   const [computing, setComputing] = useState(false)
   const [pending, startTransition] = useTransition()
+  // L'action change d'identité à chaque relecture de la page (suivi en cours : toutes les 15 s) : lue par une ref, pour
+  // ne relire le résultat qu'à l'ouverture de l'offre et quand son suivi change, pas à chaque relecture.
+  const sourcingRef = useRef(sourcing)
+  useEffect(() => { sourcingRef.current = sourcing })
   useEffect(() => {
-    startTransition(async () => setResult(await sourcing(offerId)))
-  }, [offerId, sourcing])
+    startTransition(async () => setResult(await sourcingRef.current(offerId)))
+  }, [offerId, version])
   const run = () => startTransition(async () => {
     setComputing(true)
     setResult(await sourcing(offerId, true))
@@ -378,7 +395,7 @@ function Sourcing({ offerId, sourcing }: { offerId: string; sourcing: NonNullabl
   const candidates = result?.candidates
   const computed = !!result?.computedAt
   return (
-    <section>
+    <section id="ao-offer-sourcing" className="scroll-mt-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p style={{ ...fieldLabel, marginBottom: 0 }}>Sourcing : meilleurs candidats</p>
         <button type="button" onClick={run} disabled={pending} style={{ ...secondaryButton, fontSize: 13 }}>

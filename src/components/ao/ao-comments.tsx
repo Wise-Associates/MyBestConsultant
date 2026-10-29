@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { Loader2, MessageSquare, Trash2 } from 'lucide-react'
 import { MAX_COMMENT_LENGTH } from '@/lib/ao/comment-input'
 import type { AoCommentView, AoDashboardActions } from '@/lib/ao/dashboard-types'
@@ -22,13 +22,17 @@ export function AoComments({ offerId, actions, onChanged }: { offerId: string; a
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const { listComments, addComment, deleteComment } = actions
+  // L'action change d'identité à chaque relecture de la page (suivi des publications en cours : toutes les 15 s) : lue
+  // par une ref, pour ne relire les commentaires qu'à l'ouverture de la fenêtre.
+  const listRef = useRef(listComments)
+  useEffect(() => { listRef.current = listComments })
   useEffect(() => {
     startTransition(async () => {
-      const res = await listComments(offerId)
+      const res = await listRef.current(offerId)
       if (res.comments) setComments(res.comments)
       else setError(res.error ?? 'Commentaires illisibles.')
     })
-  }, [offerId, listComments])
+  }, [offerId])
   const add = () => startTransition(async () => {
     setError('')
     const res = await addComment(offerId, draft)

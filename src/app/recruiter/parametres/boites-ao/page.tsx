@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import type { AoOfferRow } from '@/lib/ao/filters'
 import { loadAoView } from '@/lib/ao/platform-view'
+import type { TrackingStep } from '@/lib/ao/tracking'
+import { loadAoTracking } from '@/lib/ao/tracking-store'
 import { canUseAoSourcing } from '@/lib/ao/tenancy'
 import type { AoEmail } from '@/lib/ao/types'
 import { AoOffersDashboard, type MailboxIssue } from '@/components/ao/ao-offers-dashboard'
@@ -44,6 +46,15 @@ export default async function RecruiterAoOffersPage() {
     console.error('AO: tableau de l\'organisation illisible', user.tenantId, err instanceof Error ? err.message : err)
     loadError = 'Impossible de charger vos appels d’offres pour le moment : rechargez la page dans quelques instants.'
   }
+  // Suivi des offres publiées (offre en ligne, LinkedIn, sourcing) : lu à part, son échec n'empêche pas d'afficher les offres.
+  let tracking: Record<string, TrackingStep[]> = {}
+  let trackingError = ''
+  try {
+    tracking = await loadAoTracking(rows)
+  } catch (err) {
+    console.error('AO: suivi des publications de l\'organisation illisible', user.tenantId, err instanceof Error ? err.message : err)
+    trackingError = 'Suivi des publications indisponible (offre en ligne, LinkedIn, sourcing) : rechargez la page dans quelques instants.'
+  }
 
   return (
     <AoOffersDashboard
@@ -53,6 +64,8 @@ export default async function RecruiterAoOffersPage() {
       mailboxIssues={mailboxIssues}
       loadError={loadError}
       accessAlert={accessAlert}
+      tracking={tracking}
+      trackingError={trackingError}
       actions={{
         retryEmail: retryRecruiterAoEmail, deleteOffer: deleteRecruiterAoOffer,
         previewPublication: previewRecruiterAoPublication, publish: publishRecruiterAoOffer, setStatus: setRecruiterAoOfferStatus,
@@ -71,6 +84,7 @@ export default async function RecruiterAoOffersPage() {
         title: 'Appels d’offres',
         scope: 'de votre organisation',
         publishNote: 'Comme pour vos autres offres, la publication déclenche la diffusion sur les réseaux et le sourcing automatiques s’ils sont activés.',
+        social: { href: '/recruiter/dashboard', label: 'Republier depuis le tableau de bord' },
         back: { href: '/recruiter/dashboard', label: 'Retour à l’espace recruteur' },
       }}
     />
