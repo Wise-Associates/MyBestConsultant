@@ -91,7 +91,7 @@ export function SocialDevPanel({ env, callbackUrl, posterEnv, zernioEnv }: {
 function PosterPanel({ env }: { env: { openai: boolean; scenes: boolean } }) {
   const checks = [
     { ok: env.openai, label: 'Clé OpenAI', hint: 'Config IA (clé OpenAI) ou variable OPENAI_API_KEY — modèle : OPENAI_IMAGE_MODEL, gpt-image-2 par défaut' },
-    { ok: env.scenes, label: 'Stockage des photos', hint: 'Variable APPWRITE_STORAGE_SOCIAL_SCENES (npm run social:setup)' },
+    { ok: env.scenes, label: 'Stockage des photos', hint: 'Variable APPWRITE_STORAGE_SOCIAL_SCENES (bucket créé par npm run schema:push)' },
   ]
   return (
     <section className="rounded-2xl p-5 space-y-4" style={card}>

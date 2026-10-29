@@ -2,6 +2,7 @@
 
 - Statut : accepté
 - Date : 2026-10-27
+- Complétée par : 0017 (buckets dans le fichier, créés par schema:push)
 
 ## Contexte
 
@@ -67,7 +68,8 @@ Constats du 2026-10-27, en lisant le code de la CLI :
 - **Ce qui reste un script (ou la console)** : les données (remplissage, rattachement), les suppressions et changements
   de type (ajouter le nouvel attribut, migrer, supprimer l'ancien après le déploiement du code), les modifications d'un
   attribut existant (le rendre obligatoire une fois rempli…), un index unique sur une collection qui a des données
-  (vérifier les doublons ; remplacement en deux temps), les réglages de collection et les buckets (absents du fichier). Les scripts `*:setup` existants restent : ils
+  (vérifier les doublons ; remplacement en deux temps), les réglages de collection et les buckets (absents du fichier ;
+  depuis l'ADR 0017, ils y sont et schema:push crée ceux qui manquent). Les scripts `*:setup` existants restent : ils
   portent des étapes de données et décrivent la mise en place déjà faite.
 
 ## Conséquences
