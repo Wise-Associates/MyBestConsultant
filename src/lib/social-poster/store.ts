@@ -6,7 +6,7 @@ import { BUCKETS } from '@/lib/appwrite/config'
 import type { PosterScene } from './poster'
 import { sceneMime } from './scene'
 
-// Scènes photo des affiches (ADR 0015) : bucket privé `social_scenes` (npm run social:setup), un fichier par publication,
+// Scènes photo des affiches (ADR 0015) : bucket privé `social_scenes` (appwrite.config.json, npm run schema:push), un fichier par publication,
 // d'identifiant celui de la publication. Gardées pour que l'affiche, redessinée à chaque téléchargement, montre toujours
 // la même photo. Facultatif : sans APPWRITE_STORAGE_SOCIAL_SCENES, les affiches partent sans photo.
 
