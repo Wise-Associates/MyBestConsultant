@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { MapPin, Brain, ChevronRight, Layers } from 'lucide-react'
@@ -15,16 +15,29 @@ const CONTRACT_LABELS: Record<string, string> = {
 }
 
 export function JobsListClient({
-  jobs, appsByJob, tenantId, matchCountByJob, funnelStages, socialByJob = {}, socialEnabled = false,
+  jobs, appsByJob, tenantId, matchCountByJob, funnelStages, socialByJob = {}, socialEnabled = false, focusJobId,
 }: {
   jobs: Job[]; appsByJob: Record<string, CandidateApp[]>; tenantId: string
   matchCountByJob: Record<string, number>; funnelStages: FunnelStage[]
   socialByJob?: Record<string, SocialInfo>; socialEnabled?: boolean
+  /** Offre à montrer (?offre= de la page, depuis le suivi d'un appel d'offres publié). */
+  focusJobId?: string
 }) {
   const router = useRouter()
   const [openJobId, setOpenJobId] = useState<string | null>(null)
   const openJob = openJobId ? jobs.find(j => j.$id === openJobId) : null
   const sortedStages = [...funnelStages].sort((a, b) => a.order - b.order)
+
+  // Amenée à l'écran à l'arrivée seulement : les rafraîchissements de l'état des diffusions (SocialStatus) ne font pas
+  // redéfiler la page. Le focus suit, pour le clavier et les lecteurs d'écran.
+  const focusRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const row = focusRef.current
+    if (!row) return
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    row.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' })
+    row.focus({ preventScroll: true })
+  }, [focusJobId])
 
   return (
     <>
@@ -54,14 +67,19 @@ export function JobsListClient({
               const jobApps = appsByJob[job.$id] ?? []
               const appCount = jobApps.length
               const isSelected = openJobId === job.$id
+              const isFocused = focusJobId === job.$id
               const stageCounts = sortedStages
                 .map(stage => ({ stage, count: jobApps.filter(a => a.status === stage.slug).length }))
                 .filter(s => s.count > 0)
               return (
                 <div key={job.$id}
+                  ref={isFocused ? focusRef : undefined} tabIndex={isFocused ? -1 : undefined}
                   onClick={() => router.push(`/recruiter/pipeline/${job.$id}/matching`)}
-                  className="group px-5 py-4 transition-colors hover:bg-[rgba(139,92,246,0.05)] cursor-pointer"
-                  style={{ background: isSelected ? 'rgba(11,29,81,0.05)' : 'transparent' }}>
+                  className="group px-5 py-4 transition-colors hover:bg-[rgba(139,92,246,0.05)] cursor-pointer focus:outline-none"
+                  style={{
+                    background: isSelected ? 'rgba(11,29,81,0.05)' : isFocused ? 'rgba(232,163,61,0.1)' : 'transparent',
+                    boxShadow: isFocused ? 'inset 3px 0 0 var(--color-primary)' : undefined,
+                  }}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
