@@ -35,13 +35,14 @@ export function lockIdFor(tenantId: string): string {
  * version publiée d'une offre AO par les recruteurs (publication-copy.ts) : par organisation (d), pour toutes (h).
  * CV du vivier général comparés aux offres (vivier-matching.ts) : par organisation (n), pour toutes (o). Photos des
  * affiches des publications sur les réseaux (src/lib/social.ts, payées par la clé OpenAI de Config IA) : par
- * organisation (i), pour toute la plateforme (e).
+ * organisation (i), pour toute la plateforme (e). Recherches et analyses de brief de MBC Search (src/lib/mbc-search) : par
+ * organisation (k), pour toutes les organisations (z).
  */
 const COUNTER_PREFIX = {
   vision: 'v', tables: 't', mailboxTests: 'c', mailboxTarget: 'm', mailboxTestsAll: 'g', assistantUser: 'a', assistantAll: 'b',
   cvExportOrg: 'x', cvExportAll: 'y', cvTemplateOrg: 'u', cvTemplatePreview: 'p', aoSourcingOrg: 's', aoSourcingAll: 'q',
   aoRetryOrg: 'r', aoRetryAll: 'w', aoRewriteOrg: 'd', aoRewriteAll: 'h', vivierMatchOrg: 'n', vivierMatchAll: 'o',
-  cvTemplateAll: 'f', socialScenes: 'i', socialScenesAll: 'e',
+  cvTemplateAll: 'f', socialScenes: 'i', socialScenesAll: 'e', mbcSearchOrg: 'k', mbcSearchAll: 'z',
 } as const
 export type DailyCounter = keyof typeof COUNTER_PREFIX
 
