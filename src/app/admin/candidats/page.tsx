@@ -64,7 +64,6 @@ export default async function AdminAoOffersPage({ searchParams }: { searchParams
         jobs: '/admin/jobs',
       }}
       copy={{
-        eyebrow: 'RECRUTEMENT',
         title: 'Candidats',
         scope: 'de la plateforme',
       }}

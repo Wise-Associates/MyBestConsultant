@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import Link from 'next/link'
 import {
-  AlertCircle, ArrowLeft, ArrowRight, GitBranch, Loader2, Pencil, Plus, Trash2, Users, X,
+  AlertCircle, ArrowRight, GitBranch, Loader2, Pencil, Plus, Trash2, Users, X,
 } from 'lucide-react'
 import { STAGE_LIMITS, STAGE_TEMPLATES } from '@/lib/funnel-config'
 import { PhasesEditor, toPhaseDraft, type PhaseDraft } from '@/components/recruiter/phases-editor'
@@ -108,9 +107,6 @@ export function FunnelClient({ initial, initialTab, initialPipeline }: { initial
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <div style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-8">
-          <Link href="/recruiter/dashboard" className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Retour à l&apos;espace recruteur
-          </Link>
           <div className="flex items-center gap-4 mb-6">
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(232,163,61,0.15)' }}><GitBranch className="h-6 w-6" style={{ color: '#E8A33D' }} /></div>
             <div>

@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { getJobById } from '@/lib/appwrite/jobs'
 import { getVivierForJob } from '../actions'
-import { ArrowLeft, FolderOpen, Brain } from 'lucide-react'
+import { FolderOpen, Brain } from 'lucide-react'
 import { VivierClient } from '../vivier-client'
 import { BUCKETS } from '@/lib/appwrite/config'
 import { recruiterCvExportAccess } from '@/lib/cv-export/recruiter'
@@ -25,12 +25,7 @@ export default async function VivierPage({ params }: { params: Promise<{ jobId: 
     }}>
             <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
         <div className="max-w-6xl mx-auto px-6 py-8">
-          <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
-            <Link href="/recruiter/dashboard"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold no-underline transition-opacity hover:opacity-80"
-              style={{ color: 'rgba(255,255,255,0.55)' }}>
-              <ArrowLeft className="h-3.5 w-3.5" /> Retour à l&apos;espace recruteur
-            </Link>
+          <div className="flex items-center justify-end gap-4 flex-wrap mb-4">
             <Link href={`/recruiter/pipeline/${jobId}/matching`}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold no-underline transition-opacity hover:opacity-80"
               style={{ background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.3)' }}>

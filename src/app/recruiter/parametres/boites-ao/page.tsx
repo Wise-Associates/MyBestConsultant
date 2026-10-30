@@ -81,10 +81,8 @@ export default async function RecruiterAoOffersPage({ searchParams }: { searchPa
         jobs: '/recruiter/annonces',
       }}
       copy={{
-        eyebrow: 'ESPACE RECRUTEUR',
         title: 'Appels d’offres',
         scope: 'de votre organisation',
-        back: { href: '/recruiter/dashboard', label: 'Retour à l’espace recruteur' },
       }}
     />
   )

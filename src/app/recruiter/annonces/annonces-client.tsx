@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
-  ArrowLeft, Layers, Search, Download, FileText, MapPin, Users, Video, Brain, Star, TrendingUp, Briefcase,
+  Layers, Search, Download, FileText, MapPin, Users, Video, Brain, Star, TrendingUp, Briefcase,
   ChevronDown, ChevronLeft, ChevronRight, Kanban, ExternalLink, Clock, CheckCircle2, Printer,
 } from 'lucide-react'
 import { withOrphanStages, resolveStatus } from '@/lib/funnel-stage-utils'
@@ -163,9 +163,6 @@ export function AnnoncesClient({ data }: { data: AnnoncesData }) {
       {/* ── En-tête écran ── */}
       <div className="no-print" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="max-w-6xl mx-auto px-6 py-8">
-          <Link href="/recruiter/dashboard" className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Retour à l&apos;espace recruteur
-          </Link>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(232,163,61,0.15)' }}>

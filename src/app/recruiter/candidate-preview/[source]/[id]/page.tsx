@@ -1,9 +1,8 @@
 import { redirect, notFound } from 'next/navigation'
-import Link from 'next/link'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
-import { ArrowLeft, Mail, Phone, FileText, Briefcase, GraduationCap } from 'lucide-react'
+import { Mail, Phone, FileText, Briefcase, GraduationCap } from 'lucide-react'
 import type { CvProfile } from '@/lib/cv-profile-extract'
 
 // Lightweight "fiche candidat" for the two Matching populations that don't have a full
@@ -51,11 +50,6 @@ export default async function CandidatePreviewPage({ params }: { params: Promise
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="max-w-2xl mx-auto px-6 py-8">
-          <Link href="/recruiter/dashboard"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80"
-            style={{ color: 'rgba(255,255,255,0.55)' }}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Retour à l&apos;espace recruteur
-          </Link>
           <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
             {source === 'pool' ? 'Base candidats' : 'Mon vivier'}
           </p>

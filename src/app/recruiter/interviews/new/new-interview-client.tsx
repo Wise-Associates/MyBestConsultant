@@ -197,11 +197,6 @@ export function NewInterviewClient({ initialForm, prefilled, appId, jobId }: { i
     }}>
       <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
         <div className="max-w-xl mx-auto px-6 py-10">
-        <Link href="/recruiter/dashboard"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80"
-          style={{ color: '#c4b5fd' }}>
-          <ArrowLeft className="h-3.5 w-3.5" /> Retour à l&apos;espace recruteur
-        </Link>
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(124,58,237,0.18)' }}>
             <Brain className="h-6 w-6" style={{ color: '#a78bfa' }} />
