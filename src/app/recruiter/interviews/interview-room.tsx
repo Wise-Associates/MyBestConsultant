@@ -64,11 +64,6 @@ function AnalysisReport({ analysis, candidateName, onRestart }: {
 
   return (
     <div className="max-w-2xl mx-auto px-6 py-12 space-y-8">
-      <Link href="/recruiter/dashboard"
-        className="inline-flex items-center gap-1.5 text-xs font-semibold no-underline transition-opacity hover:opacity-80"
-        style={{ color: '#7c3aed' }}>
-        <ArrowLeft className="h-3.5 w-3.5" /> Retour à l&apos;espace recruteur
-      </Link>
       {/* Header */}
       <div className="text-center space-y-4">
         <div className="w-24 h-24 mx-auto relative">
@@ -330,11 +325,6 @@ export function InterviewRoom({
         background: 'var(--page-bg)',
       }} className="flex items-center justify-center">
         <div className="text-center max-w-md space-y-6 px-6">
-          <Link href="/recruiter/dashboard"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold no-underline transition-opacity hover:opacity-80"
-            style={{ color: '#7c3aed' }}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Retour à l&apos;espace recruteur
-          </Link>
           <CheckCircle2 className="h-16 w-16 mx-auto" style={{ color: '#10b981' }} />
           <div>
             <h2 className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>Entretien terminé</h2>

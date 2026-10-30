@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Brain, ChevronRight, Clock, Play, ArrowLeft, Search, ListChecks, Mic, Video, MessageSquare, TrendingUp, TrendingDown, Minus, ScanSearch } from 'lucide-react'
+import { Brain, ChevronRight, Clock, Play, Search, ListChecks, Mic, Video, MessageSquare, TrendingUp, TrendingDown, Minus, ScanSearch } from 'lucide-react'
 import { Pagination } from '@/components/shared/pagination'
 import type { InterviewSession } from './actions'
 
@@ -72,11 +72,6 @@ export function InterviewsIndexClient({ sessions }: { sessions: InterviewSession
     }}>
             <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
         <div className="max-w-4xl mx-auto px-6 py-10">
-          <Link href="/recruiter/dashboard"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80"
-            style={{ color: 'rgba(255,255,255,0.55)' }}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Retour à l&apos;espace recruteur
-          </Link>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(232,163,61,0.15)' }}>

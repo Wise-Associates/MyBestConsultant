@@ -549,11 +549,6 @@ export function ImportClient({ tenantName }: { tenantName: string }) {
       {/* Header */}
       <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
         <div className="max-w-2xl mx-auto px-6 py-10">
-          <Link href="/recruiter/dashboard"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80"
-            style={{ color: '#c4b5fd' }}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Retour à l&apos;espace recruteur
-          </Link>
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold mb-4"
             style={{ background: 'rgba(37,99,235,0.18)', color: '#60a5fa' }}>
             <Sparkles className="h-3.5 w-3.5" /> Propulsé par l&apos;IA
