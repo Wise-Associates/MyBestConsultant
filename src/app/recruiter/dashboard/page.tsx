@@ -9,7 +9,7 @@ import { resolveStatus } from '@/lib/funnel-stage-utils'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
-import { Briefcase, Users, Star, TrendingUp, Upload, Brain, MessageSquare, Building2, Calendar, FolderSearch, FolderOpen, BarChart3, Layers, GitBranch, Inbox, Users as TeamIcon } from 'lucide-react'
+import { Briefcase, Users, Star, TrendingUp } from 'lucide-react'
 import { CreateJobDialog } from './create-job-dialog'
 import type { CandidateApp } from './applications-panel'
 import { JobsListClient } from './jobs-list-client'
@@ -61,26 +61,6 @@ async function resolveCandidateNames(
   return map
 }
 
-function ToolTile({ href, title, subtitle, rgb, iconColor, children }: {
-  href: string; title: string; subtitle: string; rgb: string; iconColor: string; children: React.ReactNode
-}) {
-  return (
-    <Link href={href}
-      className="group relative overflow-hidden rounded-3xl p-5 flex flex-col gap-3 no-underline transition-all duration-300 hover:-translate-y-1 shadow-[0_10px_30px_-10px_rgba(11,29,81,0.14)]"
-      style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-      <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full transition-transform duration-500 group-hover:scale-125"
-        style={{ background: `radial-gradient(circle, rgba(${rgb},0.22), transparent 70%)` }} />
-      <div className="relative w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `rgba(${rgb},0.12)`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)', color: iconColor }}>
-        {children}
-      </div>
-      <div className="relative">
-        <p className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>{title}</p>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{subtitle}</p>
-      </div>
-    </Link>
-  )
-}
-
 export default async function RecruiterDashboard({ searchParams }: { searchParams: Promise<{ offre?: string | string[] }> }) {
   // ?offre=<id> : offre à montrer dans « Mes offres » (lien « Republier depuis le tableau de bord » du suivi des appels
   // d'offres). Seulement comparé aux identifiants des offres déjà chargées pour l'organisation.
@@ -90,10 +70,9 @@ export default async function RecruiterDashboard({ searchParams }: { searchParam
   if (!user.tenantId) redirect('/login')
 
   const { latestPostsByJob, isMakeConfigured } = await import('@/lib/social')
-  const [jobs, allApplications, tenant, matchCountByJob, funnelStages, socialPosts] = await Promise.all([
+  const [jobs, allApplications, matchCountByJob, funnelStages, socialPosts] = await Promise.all([
     getJobsByTenant(user.tenantId),
     getApplicationsByTenant(user.tenantId),
-    createAdminClient().databases.getDocument(DB_ID, COLLECTIONS.TENANTS, user.tenantId).catch(() => null),
     countMatchesByJob(user.tenantId),
     getFunnelStages(user.tenantId),
     latestPostsByJob(user.tenantId),
@@ -139,123 +118,9 @@ export default async function RecruiterDashboard({ searchParams }: { searchParam
     })
   }
 
-  const memberSince = tenant ? new Date(tenant.$createdAt as string).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) : null
-
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      {/* Header */}
-      <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
-        <div className="max-w-6xl mx-auto px-6 py-8 flex flex-wrap items-center justify-between gap-6">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-              Espace recruteur
-            </p>
-            <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>
-              Bonjour, {user.firstName} 👋
-            </h1>
-          </div>
-
-          {tenant && (
-            <div className="flex items-center gap-4 px-5 py-3.5 rounded-2xl"
-              style={{ background: 'rgba(124,58,237,0.18)', border: '1px solid rgba(124,58,237,0.4)', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-              <div className="w-11 h-11 rounded-xl overflow-hidden shrink-0 flex items-center justify-center font-bold"
-                style={{ background: 'var(--color-primary)', color: 'white', boxShadow: '0 0 0 3px rgba(255,255,255,0.12)' }}>
-                {tenant.logoUrl
-                  // eslint-disable-next-line @next/next/no-img-element
-                  ? <img src={tenant.logoUrl as string} alt="" className="w-full h-full object-cover" />
-                  : <Building2 className="h-5 w-5" />}
-              </div>
-              <div>
-                <p className="text-sm font-bold" style={{ color: 'white' }}>{tenant.name as string}</p>
-                {memberSince && (
-                  <p className="text-[11px] flex items-center gap-1 mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                    <Calendar className="h-3 w-3" />Membre depuis {memberSince}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
-        {/* Actions */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
-          <Suspense fallback={<div className="rounded-3xl" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }} />}>
-            <CreateJobDialog tenantId={user.tenantId} companyName={user.firstName + ' ' + user.lastName} variant="tile" />
-          </Suspense>
-          <Link href="/recruiter/reporting"
-            className="group relative overflow-hidden rounded-3xl p-5 flex flex-col gap-3 no-underline transition-all duration-300 hover:-translate-y-1 shadow-[0_10px_30px_-10px_rgba(11,29,81,0.14)] hover:shadow-[0_20px_45px_-12px_rgba(14,165,233,0.3)]"
-            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-            <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full transition-transform duration-500 group-hover:scale-125"
-              style={{ background: 'radial-gradient(circle, rgba(14,165,233,0.22), transparent 70%)' }} />
-            <div className="relative w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(14,165,233,0.12)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)' }}>
-              <BarChart3 className="h-5 w-5" style={{ color: '#0ea5e9' }} />
-            </div>
-            <div className="relative">
-              <p className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>Reporting</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Suivi et performance</p>
-            </div>
-          </Link>
-          <Link href="/recruiter/vivier"
-            className="group relative overflow-hidden rounded-3xl p-5 flex flex-col gap-3 no-underline transition-all duration-300 hover:-translate-y-1 shadow-[0_10px_30px_-10px_rgba(11,29,81,0.14)] hover:shadow-[0_20px_45px_-12px_rgba(232,163,61,0.3)]"
-            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-            <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full transition-transform duration-500 group-hover:scale-125"
-              style={{ background: 'radial-gradient(circle, rgba(232,163,61,0.22), transparent 70%)' }} />
-            <div className="relative w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(232,163,61,0.12)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)' }}>
-              <FolderOpen className="h-5 w-5" style={{ color: '#b8862f' }} />
-            </div>
-            <div className="relative">
-              <p className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>Mon vivier</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>CV importés par offre</p>
-            </div>
-          </Link>
-          <Link href="/recruiter/screening"
-            className="group relative overflow-hidden rounded-3xl p-5 flex flex-col gap-3 no-underline transition-all duration-300 hover:-translate-y-1 shadow-[0_10px_30px_-10px_rgba(11,29,81,0.14)] hover:shadow-[0_20px_45px_-12px_rgba(124,58,237,0.3)]"
-            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-            <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full transition-transform duration-500 group-hover:scale-125"
-              style={{ background: 'radial-gradient(circle, rgba(124,58,237,0.22), transparent 70%)' }} />
-            <div className="relative w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(124,58,237,0.1)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)' }}>
-              <Brain className="h-5 w-5" style={{ color: '#7c3aed' }} />
-            </div>
-            <div className="relative">
-              <p className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>Screening CV</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Analyse IA des candidatures</p>
-            </div>
-          </Link>
-          <Link href="/recruiter/interviews"
-            className="group relative overflow-hidden rounded-3xl p-5 flex flex-col gap-3 no-underline transition-all duration-300 hover:-translate-y-1 shadow-[0_10px_30px_-10px_rgba(11,29,81,0.14)] hover:shadow-[0_20px_45px_-12px_rgba(16,185,129,0.3)]"
-            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-            <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full transition-transform duration-500 group-hover:scale-125"
-              style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.22), transparent 70%)' }} />
-            <div className="relative w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(16,185,129,0.1)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)' }}>
-              <MessageSquare className="h-5 w-5" style={{ color: '#10b981' }} />
-            </div>
-            <div className="relative">
-              <p className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>Entretiens IA</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Candidats et analyses</p>
-            </div>
-          </Link>
-          <Link href="/recruiter/cvtheque"
-            className="group relative overflow-hidden rounded-3xl p-5 flex flex-col gap-3 no-underline transition-all duration-300 hover:-translate-y-1 shadow-[0_10px_30px_-10px_rgba(11,29,81,0.14)] hover:shadow-[0_20px_45px_-12px_rgba(184,134,11,0.3)]"
-            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-            <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full transition-transform duration-500 group-hover:scale-125"
-              style={{ background: 'radial-gradient(circle, rgba(184,134,11,0.22), transparent 70%)' }} />
-            <div className="relative w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(184,134,11,0.12)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)' }}>
-              <FolderSearch className="h-5 w-5" style={{ color: 'var(--color-primary)' }} />
-            </div>
-            <div className="relative">
-              <p className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>CV Thèque</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Rechercher un profil candidat</p>
-            </div>
-          </Link>
-          <ToolTile href="/recruiter/annonces" title="Suivi des annonces" subtitle="Avancement et rapports PDF" rgb="99,102,241" iconColor="#6366f1"><Layers className="h-5 w-5" /></ToolTile>
-          <ToolTile href="/recruiter/funnel" title="Processus de recrutement" subtitle="Pipelines, phases et statuts" rgb="245,158,11" iconColor="#d97706"><GitBranch className="h-5 w-5" /></ToolTile>
-          <ToolTile href="/recruiter/marque-employeur" title="Marque employeur" subtitle="Votre page publique" rgb="236,72,153" iconColor="#db2777"><Building2 className="h-5 w-5" /></ToolTile>
-          <ToolTile href="/recruiter/equipe" title="Mon équipe" subtitle="Inviter et partager" rgb="20,184,166" iconColor="#0d9488"><TeamIcon className="h-5 w-5" /></ToolTile>
-          <ToolTile href="/recruiter/parametres/boites-ao" title="Appels d'offres" subtitle="Reçus dans vos boîtes e-mail" rgb="14,165,233" iconColor="#0284c7"><Inbox className="h-5 w-5" /></ToolTile>
-        </div>
-
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
@@ -275,9 +140,15 @@ export default async function RecruiterDashboard({ searchParams }: { searchParam
           ))}
         </div>
 
-        {/* Mes offres */}
+        {/* Mes offres : filtres, création d'une offre au bout de leur ligne, puis la liste. Les autres outils sont dans le
+            sous-menu de l'espace (layout recruteur). */}
         <JobsListClient jobs={jobs} appsByJob={appsByJobRecord} tenantId={user.tenantId} matchCountByJob={matchCountByJob} funnelStages={funnelStages} socialByJob={socialByJob} socialEnabled={isMakeConfigured()}
-          focusJobId={typeof offre === 'string' ? offre : undefined} />
+          focusJobId={typeof offre === 'string' ? offre : undefined}
+          action={
+            <Suspense fallback={null}>
+              <CreateJobDialog tenantId={user.tenantId} companyName={user.firstName + ' ' + user.lastName} variant="primary" />
+            </Suspense>
+          } />
 
         <p className="text-center text-xs" style={{ color: 'var(--color-text-muted)' }}>
           Une question, un souci ? <Link href="/recruiter/support" className="font-semibold no-underline hover:underline" style={{ color: 'var(--color-primary)' }}>Contactez le support</Link>

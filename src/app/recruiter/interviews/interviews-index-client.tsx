@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Brain, ChevronRight, Clock, Play, ArrowLeft, Search, ListChecks, Mic, Video, MessageSquare, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { Brain, ChevronRight, Clock, Play, ArrowLeft, Search, ListChecks, Mic, Video, MessageSquare, TrendingUp, TrendingDown, Minus, ScanSearch } from 'lucide-react'
 import { Pagination } from '@/components/shared/pagination'
 import type { InterviewSession } from './actions'
 
@@ -87,7 +87,13 @@ export function InterviewsIndexClient({ sessions }: { sessions: InterviewSession
                 <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Agent autonome · Questions générées · Analyse automatique</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Le screening des CV est rangé avec les entretiens (rubrique « Entretiens IA » du sous-menu). */}
+              <Link href="/recruiter/screening"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold no-underline transition-all"
+                style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.16)', color: 'rgba(255,255,255,0.8)' }}>
+                <ScanSearch className="h-4 w-4" />Screening CV
+              </Link>
               <Link href="/recruiter/interviews/questions"
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold no-underline transition-all"
                 style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.16)', color: 'rgba(255,255,255,0.8)' }}>

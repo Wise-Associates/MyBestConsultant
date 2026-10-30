@@ -1,7 +1,9 @@
 'use client'
 
 import { createContext, useContext, useState, useCallback } from 'react'
-import { PageLoader } from './page-loader'
+
+// Opérations longues lancées par une page (ex. screening des CV) : une barre de progression en haut de l'écran, la page
+// restant visible et lisible (elle montre elle-même ce qui est en cours). Plus de voile plein écran (2026-10-30).
 
 interface LoadingCtx {
   isLoading: boolean
@@ -39,7 +41,7 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{ isLoading, startLoading, stopLoading, withLoading }}>
       {children}
-      {isLoading && <PageLoader message={message} />}
+      {isLoading && <div className="mbc-busy-progress" role="progressbar" aria-label={message} />}
     </Ctx.Provider>
   )
 }
