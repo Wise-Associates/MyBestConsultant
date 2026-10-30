@@ -328,6 +328,29 @@ body { overflow-x: clip; max-width: 100%; }
   .mbc-nav-progress { transition: none; }
 }
 
+/* Opération longue en cours (LoadingProvider, ex. screening des CV) : même barre, en mouvement continu faute de
+   progression connue. Remplace l'ancien voile plein écran (2026-10-30). */
+.mbc-busy-progress {
+  position: fixed; top: 0; left: 0; right: 0; height: 3px;
+  z-index: 2147483647;
+  overflow: hidden;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--color-brand-orange) 22%, transparent);
+}
+.mbc-busy-progress::before {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 40%;
+  background: var(--color-brand-orange);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-brand-orange) 60%, transparent);
+  animation: mbc-busy-progress 1.2s ease-in-out infinite;
+}
+@keyframes mbc-busy-progress {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mbc-busy-progress::before { animation: none; width: 100%; opacity: .7; }
+}
+
 /* ── Assistant IA (module portable src/assistant) ─────────────────────────────────────────────
    Ses variables --assistant-* associées aux jetons du thème. Rendu dans <main class="mbc-app"> :
    --hero-bg y est l'anthracite des bandeaux de l'espace connecté. */

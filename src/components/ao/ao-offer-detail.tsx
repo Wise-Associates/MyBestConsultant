@@ -7,6 +7,7 @@ import { findIdentifiers, findNames } from '@/lib/ao/name-match'
 import { PLAIN_EMAIL } from '@/lib/ao/origin'
 import type { AoDashboardActions, AoDashboardPaths, PublicationDraft, PublicationMode, SourcedCandidate, SourcingResult } from '@/lib/ao/dashboard-types'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
+import { Skeleton, SkeletonRegion } from '@/components/shared/skeleton'
 import { AoDescription } from './ao-description'
 import { WorkBadge, type OfferPublication } from './offer-publications'
 import { TrackingStepper } from './offer-tracking'
@@ -522,19 +523,33 @@ function Originals({ emailId, attachments, originalApi }: { emailId: string; att
         <div id="ao-original-view" className="mt-3 space-y-2">
           <div className="flex items-center justify-between gap-3 flex-wrap text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
             {/* Le contenu du cadre (e-mail ou message d'erreur) est illisible pour la page : seul le chargement est suivi. */}
-            <span aria-live="polite" className="inline-flex items-center gap-1.5">
-              {viewLoaded
-                ? 'Scripts désactivés et images distantes masquées dans cet affichage.'
-                : <><Loader2 size={13} className="animate-spin motion-reduce:animate-none" aria-hidden />Lecture de l’e-mail dans la boîte…</>}
+            <span aria-live="polite">
+              {viewLoaded ? 'Scripts désactivés et images distantes masquées dans cet affichage.' : 'Lecture de l’e-mail dans la boîte…'}
             </span>
             <a href={viewUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:underline">
               <ExternalLink size={13} aria-hidden />Ouvrir dans un nouvel onglet
             </a>
           </div>
-          {/* Sandbox sans allow-scripts ni allow-same-origin : le contenu de l'expéditeur ne peut rien exécuter ni lire de la page. */}
-          <iframe src={viewUrl} title="E-mail d’origine" sandbox="allow-popups allow-popups-to-escape-sandbox" referrerPolicy="no-referrer"
-            onLoad={() => setViewLoaded(true)} className="w-full rounded-lg"
-            style={{ height: '70vh', minHeight: 360, border: '1px solid var(--admin-line)', background: '#fff' }} />
+          <div className="relative">
+            {/* Sandbox sans allow-scripts ni allow-same-origin : le contenu de l'expéditeur ne peut rien exécuter ni lire de la page. */}
+            <iframe src={viewUrl} title="E-mail d’origine" sandbox="allow-popups allow-popups-to-escape-sandbox" referrerPolicy="no-referrer"
+              onLoad={() => setViewLoaded(true)} className="w-full rounded-lg"
+              style={{ height: '70vh', minHeight: 360, border: '1px solid var(--admin-line)', background: '#fff' }} />
+            {/* Pendant la lecture dans la boîte (plusieurs secondes) : l'e-mail en gris, en-tête puis texte. */}
+            {!viewLoaded && (
+              <div aria-hidden className="absolute inset-0 rounded-lg overflow-hidden" style={{ border: '1px solid var(--admin-line)', background: 'var(--admin-panel)' }}>
+                <div className="px-5 py-4 space-y-2.5" style={{ background: 'var(--admin-bg)', borderBottom: '1px solid var(--admin-line)' }}>
+                  {[56, 44, 36, 64].map((w, i) => (
+                    <div key={i} className="flex gap-4"><Skeleton tone="admin" className="h-3 w-12" /><Skeleton tone="admin" className="h-3" style={{ width: `${w}%` }} /></div>
+                  ))}
+                </div>
+                <div className="p-5 space-y-3">
+                  <Skeleton tone="admin" className="h-5 w-1/2" />
+                  {[100, 96, 92, 98, 70].map((w, i) => <Skeleton key={i} tone="admin" className="h-3.5" style={{ width: `${w}%` }} />)}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </section>
@@ -597,9 +612,9 @@ function Sourcing({ offerId, sourcing, version, onComputingChange, stopRef }: {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p style={{ ...fieldLabel, marginBottom: 0 }}>Sourcing : meilleurs candidats</p>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={run} disabled={pending || computing} style={{ ...secondaryButton, fontSize: 13 }}>
-            {pending || computing ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />}
-            {computing ? 'Analyse des CV…' : pending ? 'Lecture…' : computed ? 'Recalculer' : 'Trouver des candidats'}
+          <button type="button" onClick={run} disabled={pending || computing} style={{ ...secondaryButton, fontSize: 13, opacity: pending ? 0.6 : 1 }}>
+            {computing ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />}
+            {computing ? 'Analyse des CV…' : computed ? 'Recalculer' : 'Trouver des candidats'}
           </button>
           {computing && (
             <button type="button" onClick={stop} style={{ ...secondaryButton, fontSize: 13, color: '#b91c1c', borderColor: '#b91c1c55' }}>
@@ -609,6 +624,21 @@ function Sourcing({ offerId, sourcing, version, onComputingChange, stopRef }: {
         </div>
       </div>
       <div aria-live="polite">
+        {/* Relecture du dernier résultat (pas de calcul) : sa forme en gris. */}
+        {pending && !computing && (
+          <SkeletonRegion label="Lecture du sourcing enregistré…" className="mt-2 space-y-2">
+            <Skeleton tone="admin" className="h-3 w-72 max-w-full" />
+            {[0, 1].map(i => (
+              <div key={i} className="flex items-start gap-3 p-3 rounded-lg" style={{ background: 'var(--admin-panel-raised)' }}>
+                <Skeleton tone="admin" className="h-4 w-8 shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton tone="admin" className="h-3.5 w-40" />
+                  <Skeleton tone="admin" className="h-3 w-4/5" />
+                </div>
+              </div>
+            ))}
+          </SkeletonRegion>
+        )}
         {stopped && (
           <p className="text-xs mt-2" style={{ color: 'var(--admin-fg-muted)' }}>
             Recherche arrêtée : le calcul déjà demandé se termine sur le serveur ; son résultat s’affichera à la prochaine ouverture.

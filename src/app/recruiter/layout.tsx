@@ -9,6 +9,7 @@ import { VerifyEmailBanner } from '@/components/shared/verify-email-banner'
 import { RecruiterIdentityProvider } from '@/components/recruiter/identity-context'
 import { MbcAssistant } from '@/components/assistant/mbc-assistant'
 import { AoSyncProvider } from '@/components/ao/ao-sync-provider'
+import { RecruiterSubnav } from '@/components/recruiter/recruiter-subnav'
 
 export default async function RecruiterLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser()
@@ -33,6 +34,8 @@ export default async function RecruiterLayout({ children }: { children: React.Re
       <VerifyEmailBanner verified={user.emailVerification} />
       <RecruiterIdentityProvider value={{ name: `${user.firstName} ${user.lastName}`.trim(), company }}>
         <main className="mbc-app">
+          {/* Rubriques de l'espace recruteur, sur toutes ses pages (demande du 2026-10-30 : à la place des cartes du tableau de bord). */}
+          <RecruiterSubnav />
           {/* « Synchroniser maintenant » des appels d'offres continue d'une page de l'espace recruteur à l'autre. */}
           <AoSyncProvider endpoint="/api/recruiter/ao/sync" pagePath="/recruiter/parametres/boites-ao" scope="de votre organisation">
             {children}
