@@ -13,6 +13,7 @@ export function ResendButton() {
     setError(null)
     startTransition(async () => {
       const result = await sendVerificationEmailAction()
+      console.log('resend result', result)
       if (result.error) setError(result.error)
       else setSent(true)
     })
