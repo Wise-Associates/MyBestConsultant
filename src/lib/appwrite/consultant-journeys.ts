@@ -1,5 +1,5 @@
 import 'server-only'
-import { Query, type Models } from 'node-appwrite'
+import { AppwriteException, Query, type Models } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { parseJourney, type JourneyState } from '@/lib/consultant-journey'
@@ -50,8 +50,25 @@ function docToJourney(d: Models.Document): StoredJourney {
   }
 }
 
-const isNotFound = (err: unknown) => (err as { code?: number }).code === 404
-const isConflict = (err: unknown) => (err as { code?: number }).code === 409
+// « document_not_found » seulement : une collection absente répond aussi 404, ce n'est pas « pas de parcours ».
+const isNotFound = (err: unknown) => err instanceof AppwriteException && err.type === 'document_not_found'
+const isConflict = (err: unknown) => err instanceof AppwriteException && err.type === 'document_already_exists'
+
+/**
+ * Message à afficher quand la collection n'est pas utilisable sur ce projet (structure non poussée, attribut ou index
+ * encore en cours de création) ; null pour une autre erreur (message générique, cause dans les journaux).
+ */
+export function journeyStoreProblem(err: unknown): string | null {
+  if (!(err instanceof AppwriteException)) return null
+  if (err.type === 'collection_not_found' || err.type === 'database_not_found') {
+    return 'La collection « consultant_journeys » n’existe pas sur ce projet Appwrite : lancez npm run schema:push -- dev.'
+  }
+  if (err.type === 'attribute_not_found' || err.type === 'attribute_not_available' || err.type === 'index_not_found'
+    || err.type === 'general_query_invalid' || err.type === 'document_invalid_structure') {
+    return `La collection « consultant_journeys » est incomplète sur ce projet (${err.type}) : comparez-la à appwrite.config.json avec npm run schema:check -- dev.`
+  }
+  return null
+}
 
 /** Parcours d'une candidature (null : pas encore démarré). Ne vérifie pas l'organisation : à faire par l'appelant. */
 export async function getJourney(applicationId: string): Promise<StoredJourney | null> {

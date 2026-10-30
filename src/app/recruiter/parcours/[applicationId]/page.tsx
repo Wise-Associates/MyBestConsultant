@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
-import { getJourney, isJourneyStoreConfigured, type StoredJourney } from '@/lib/appwrite/consultant-journeys'
+import { getJourney, isJourneyStoreConfigured, journeyStoreProblem, type StoredJourney } from '@/lib/appwrite/consultant-journeys'
 import { JourneyView } from './journey-view'
 
 // Parcours d'un consultant sur une offre (ADR 0021). Candidature d'une autre organisation : 404.
@@ -21,12 +21,20 @@ export default async function ConsultantJourneyPage({ params }: { params: Promis
 
   const jobId = application.jobId as string
   const configured = isJourneyStoreConfigured()
-  const [candidate, job, stored] = await Promise.all([
+  const [candidate, job, read] = await Promise.all([
     databases.getDocument(DB_ID, COLLECTIONS.USERS, application.candidateId as string).catch(() => null),
     databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId).catch(() => null),
-    configured ? getJourney(applicationId) : Promise.resolve<StoredJourney | null>(null),
+    configured
+      ? getJourney(applicationId).then(journey => ({ journey, problem: null }), (err: unknown) => {
+        const problem = journeyStoreProblem(err)
+        if (!problem) throw err
+        console.error('Parcours consultant : lecture impossible', err instanceof Error ? err.message : err)
+        return { journey: null, problem }
+      })
+      : Promise.resolve<{ journey: StoredJourney | null; problem: string | null }>({ journey: null, problem: null }),
   ])
   // Document d'une autre organisation sous cet identifiant : traité comme absent (ne devrait pas arriver).
+  const stored = read.journey
   const journeyDoc = stored && stored.tenantId === user.tenantId ? stored : null
   const journey = journeyDoc?.journey ?? null
   const unreadable = journeyDoc !== null && journey === null
@@ -46,6 +54,7 @@ export default async function ConsultantJourneyPage({ params }: { params: Promis
       journey={journey}
       version={journeyDoc ? journeyDoc.version : null}
       unreadable={unreadable}
+      storeProblem={read.problem}
     />
   )
 }

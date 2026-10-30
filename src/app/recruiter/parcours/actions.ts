@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
-import { JourneyConflictError, createJourney, getJourney, updateJourney } from '@/lib/appwrite/consultant-journeys'
+import { JourneyConflictError, createJourney, getJourney, journeyStoreProblem, updateJourney } from '@/lib/appwrite/consultant-journeys'
 import { applyJourneyAction, newJourney, type JourneyAction } from '@/lib/consultant-journey'
 
 // Actions du parcours consultant (ADR 0021). Une Server Action est un point d'entrée POST public : chaque action
@@ -44,7 +44,7 @@ async function authorize(applicationId: string) {
 function failure(err: unknown, what: string): JourneyActionResult {
   if (err instanceof JourneyConflictError) return { ok: false, error: err.message }
   console.error(`Parcours consultant : ${what} impossible`, err instanceof Error ? err.message : err)
-  return { ok: false, error: 'Enregistrement impossible pour le moment. Réessayez dans un instant.' }
+  return { ok: false, error: journeyStoreProblem(err) ?? 'Enregistrement impossible pour le moment. Réessayez dans un instant.' }
 }
 
 export async function startConsultantJourneyAction(applicationId: unknown): Promise<JourneyActionResult> {

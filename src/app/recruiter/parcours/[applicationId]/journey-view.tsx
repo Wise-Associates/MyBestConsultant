@@ -46,10 +46,12 @@ export interface JourneyViewProps {
   journey: JourneyState | null
   version: number | null
   unreadable: boolean
+  /** Collection inutilisable sur ce projet (message pour l'utilisateur). */
+  storeProblem?: string | null
 }
 
 export function JourneyView({
-  applicationId, jobId, candidateName, jobTitle, aoOfferId, score, configured, journey, version, unreadable,
+  applicationId, jobId, candidateName, jobTitle, aoOfferId, score, configured, journey, version, unreadable, storeProblem = null,
 }: JourneyViewProps) {
   const steps = journeySteps(journey, { fromAo: aoOfferId !== null, score })
 
@@ -97,6 +99,8 @@ export function JourneyView({
           <p role="status" className="rounded-2xl p-5 text-sm" style={{ ...card, color: 'var(--color-text-muted)' }}>
             Le suivi des parcours n’est pas encore activé sur cet environnement (collection « consultant_journeys » à créer).
           </p>
+        ) : storeProblem ? (
+          <p role="alert" className="rounded-2xl p-5 text-sm" style={{ ...card, color: '#b91c1c' }}>{storeProblem}</p>
         ) : unreadable ? (
           <p role="alert" className="rounded-2xl p-5 text-sm" style={{ ...card, color: '#b91c1c' }}>
             Ce parcours est illisible et ne peut pas être modifié. Contactez le support en indiquant cette candidature.

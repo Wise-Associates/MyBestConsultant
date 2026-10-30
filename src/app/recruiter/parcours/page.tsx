@@ -1,11 +1,11 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { Query } from 'node-appwrite'
+import { AppwriteException, Query } from 'node-appwrite'
 import { ChevronRight, Route } from 'lucide-react'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
-import { isJourneyStoreConfigured, listTenantJourneys, type StoredJourney } from '@/lib/appwrite/consultant-journeys'
+import { isJourneyStoreConfigured, journeyStoreProblem, listTenantJourneys, type StoredJourney } from '@/lib/appwrite/consultant-journeys'
 import { JOURNEY_STAGES, isJourneyComplete, stageDef, stageIndex } from '@/lib/consultant-journey'
 
 // Liste des parcours consultant de l'organisation (ADR 0021). Un parcours se démarre depuis la fiche d'un candidat.
@@ -28,7 +28,7 @@ export default async function ConsultantJourneysPage() {
 
   const configured = isJourneyStoreConfigured()
   let journeys: StoredJourney[] = []
-  let loadError = false
+  let loadError: string | null = null
   let candidates = new Map<string, string>()
   let jobs = new Map<string, string>()
   if (configured) {
@@ -41,7 +41,9 @@ export default async function ConsultantJourneysPage() {
       ])
     } catch (err) {
       console.error('Parcours consultant : lecture de la liste impossible', err instanceof Error ? err.message : err)
-      loadError = true
+      // Type de l'erreur Appwrite affiché (jamais son message) : il suffit souvent à trouver la cause.
+      const type = err instanceof AppwriteException && err.type ? ` (${err.type})` : ''
+      loadError = journeyStoreProblem(err) ?? `Les parcours n’ont pas pu être chargés${type}. Rechargez la page dans un instant.`
     }
   }
   const total = JOURNEY_STAGES.length
@@ -71,7 +73,7 @@ export default async function ConsultantJourneysPage() {
           </p>
         ) : loadError ? (
           <p role="alert" className="rounded-2xl p-5 text-sm" style={{ ...card, color: '#b91c1c' }}>
-            Les parcours n’ont pas pu être chargés. Rechargez la page dans un instant.
+            {loadError}
           </p>
         ) : journeys.length === 0 ? (
           <div className="rounded-2xl p-8 text-center" style={card}>
