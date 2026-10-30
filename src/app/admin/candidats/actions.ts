@@ -1,7 +1,7 @@
 'use server'
 
 import { requireAdmin } from '@/lib/appwrite/auth'
-import type { PublicationDraft, SourcingResult } from '@/lib/ao/dashboard-types'
+import type { PublicationDraft, PublicationMode, SourcingResult } from '@/lib/ao/dashboard-types'
 import {
   addAoOfferCommentOf, aoOfferSourcingOf, deleteAoOfferCommentOf, deleteAoOfferOf, listAoOfferCommentsOf, previewAoPublicationOf,
   publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, stopAoPublicationTasksOf,
@@ -22,9 +22,10 @@ export async function retryAoEmail(id: string) {
 }
 
 /** Version anonymisée proposée à l'admin avant publication. */
-export async function previewAoPublication(id: string) {
+export async function previewAoPublication(id: string, mode?: PublicationMode) {
   await requireAdmin()
-  return previewAoPublicationOf(PLATFORM_TENANT_ID, id)
+  // Valeur venue du navigateur : tout ce qui n'est pas « raw » donne la version anonymisée.
+  return previewAoPublicationOf(PLATFORM_TENANT_ID, id, { mode: mode === 'raw' ? 'raw' : 'anonymized' })
 }
 
 export async function publishAoOffer(id: string, input: PublicationDraft) {

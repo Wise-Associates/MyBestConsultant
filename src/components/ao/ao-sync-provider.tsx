@@ -4,11 +4,9 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
-import type { AoSyncPassResult } from '@/lib/ao/dashboard-types'
-import type { AoOfferRow } from '@/lib/ao/filters'
+import type { AoPageView, AoSyncPassResult } from '@/lib/ao/dashboard-types'
 import type { AoSyncReport } from '@/lib/ao/sync'
 import { afterBatch } from '@/lib/ao/sync-loop'
-import type { AoEmail } from '@/lib/ao/types'
 
 // « Synchroniser maintenant » en arrière-plan. La boucle de petits passages vit dans le layout de l'espace (admin,
 // recruteur), qui reste monté d'une page à l'autre : elle continue quand on quitte la page AO, et la page retrouve en
@@ -34,8 +32,11 @@ interface AoSyncValue {
   progress: SyncProgress | null
   /** Message de fin de la dernière synchronisation (gardé jusqu'à sa fermeture, même vu plus tard). */
   notice: SyncNotice
-  /** Offres et e-mails renvoyés par le dernier passage ; `version` augmente à chaque passage. */
-  live: { version: number; rows: AoOfferRow[]; recentEmails: AoEmail[] } | null
+  /**
+   * Tableau renvoyé par le dernier passage (celui qu'affichait la page AO : `query`, ses filtres) ;
+   * `version` augmente à chaque passage.
+   */
+  live: { version: number; view: AoPageView & { query: string } } | null
   start(): void
   stop(): void
   clearNotice(): void
@@ -76,9 +77,14 @@ function endNotice(reason: Extract<ReturnType<typeof afterBatch>, { action: 'sto
   }
 }
 
-/** Un passage (route POST de l'espace). Une réponse d'erreur du serveur devient un message, jamais une exception. */
-async function syncPass(endpoint: string): Promise<AoSyncPassResult> {
-  const res = await fetch(endpoint, { method: 'POST', cache: 'no-store' })
+/**
+ * Un passage (route POST de l'espace). Une réponse d'erreur du serveur devient un message, jamais une exception. Page AO
+ * affichée : ses filtres sont envoyés (?tableau=), le passage renvoie la liste filtrée à jour.
+ */
+async function syncPass(endpoint: string, pagePath: string): Promise<AoSyncPassResult> {
+  const onPage = window.location.pathname === pagePath
+  const url = onPage ? `${endpoint}?tableau=${encodeURIComponent(window.location.search.slice(1))}` : endpoint
+  const res = await fetch(url, { method: 'POST', cache: 'no-store' })
   const body = (await res.json().catch(() => null)) as AoSyncPassResult | null
   if (!res.ok) return { error: body?.error ?? `Synchronisation impossible (erreur ${res.status}) : relancez dans un instant.` }
   return body ?? { error: 'Réponse du serveur illisible : relancez la synchronisation.' }
@@ -149,7 +155,7 @@ export function AoSyncProvider({ endpoint, pagePath, scope, children }: Props) {
     let detached = false
     try {
       for (;;) {
-        const res = await syncPass(endpoint)
+        const res = await syncPass(endpoint, pagePath)
         if (!mounted.current) {
           detached = true
           return
@@ -168,8 +174,8 @@ export function AoSyncProvider({ endpoint, pagePath, scope, children }: Props) {
         setProgress({ ...total })
         writeSaved(storageKey, total)
         // Nouvelles offres de ce passage affichées tout de suite sur la page AO (filtres, tri et panneau ouvert gardés).
-        const { rows, recentEmails } = res
-        if (rows && recentEmails) setLive(previous => ({ version: (previous?.version ?? 0) + 1, rows, recentEmails }))
+        const { view } = res
+        if (view) setLive(previous => ({ version: (previous?.version ?? 0) + 1, view }))
         const step = afterBatch(r)
         if (stopRequested.current) {
           setNotice({ tone: 'ok', text: `Synchronisation arrêtée : ${summaryOf(total)}${total.remaining ? ` · ${total.remaining} restant(s) pour la prochaine fois` : ''}.` })
@@ -200,7 +206,7 @@ export function AoSyncProvider({ endpoint, pagePath, scope, children }: Props) {
         router.refresh()
       }
     }
-  }, [endpoint, router, scope, storageKey])
+  }, [endpoint, pagePath, router, scope, storageKey])
 
   // Onglet rechargé pendant une synchronisation : elle reprend là où elle en était (lancée hors du rendu de l'effet,
   // annulée si le composant est démonté entre-temps).

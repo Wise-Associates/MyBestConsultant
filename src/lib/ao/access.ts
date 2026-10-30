@@ -1,7 +1,7 @@
 import type { AoSource } from './sources'
 import type { AoEmail, AoOffer } from './types'
 
-/** Lectures dont dépend le contrôle d'accès : Appwrite en production (offer-actions.ts), données fictives en test. */
+/** Lectures dont dépend le contrôle d'accès : Appwrite en production (aoAccessFor, platform-view.ts), données fictives en test. */
 export interface AoAccessStore {
   getEmail(id: string): Promise<AoEmail | null>
   getSource(id: string): Promise<AoSource | null>

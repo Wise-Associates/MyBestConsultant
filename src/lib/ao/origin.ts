@@ -37,7 +37,13 @@ export function domainLabel(address: string): string {
   return labels.length >= 3 && labels[tld].length === 2 && SECOND_LEVEL.has(labels[tld - 1]) ? labels[tld - 2] : labels[tld - 1]
 }
 
-const isOwn = (address: string, ownDomains: string[]) => {
+/**
+ * Adresse e-mail simple, sans « ? », « % » ni « & » : citée telle quelle dans un e-mail hostile, une adresse comme
+ * « achats%40client.fr?bcc=… » deviendrait un lien mailto: avec un destinataire caché. Utilisable dans le navigateur.
+ */
+export const PLAIN_EMAIL = /^[a-z0-9._+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i
+
+export const isOwn = (address: string, ownDomains: string[]) => {
   const label = domainLabel(address)
   return !!label && ownDomains.some(d => domainLabel(`x@${d}`) === label)
 }

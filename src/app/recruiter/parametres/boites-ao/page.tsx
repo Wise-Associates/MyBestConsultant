@@ -2,45 +2,45 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
-import type { AoOfferRow } from '@/lib/ao/filters'
-import { loadAoView } from '@/lib/ao/platform-view'
+import type { AoPageView } from '@/lib/ao/dashboard-types'
+import { filtersFromSearchParams, filtersToSearchParams } from '@/lib/ao/filters'
+import { emptyAoView, loadAoView, searchParamsOf } from '@/lib/ao/platform-view'
 import type { TrackingStep } from '@/lib/ao/tracking'
 import { loadAoTracking } from '@/lib/ao/tracking-store'
 import { canUseAoSourcing } from '@/lib/ao/tenancy'
-import type { AoEmail } from '@/lib/ao/types'
 import { AoOffersDashboard, type MailboxIssue } from '@/components/ao/ao-offers-dashboard'
 import {
-  addRecruiterAoOfferComment, deleteRecruiterAoOffer, deleteRecruiterAoOfferComment, listRecruiterAoOfferComments,
-  previewRecruiterAoPublication, publishRecruiterAoOffer, recruiterAoOfferSourcing, retryRecruiterAoEmail, setRecruiterAoOfferStatus,
-  stopRecruiterAoPublicationTasks,
+  addRecruiterAoOfferComment, deleteRecruiterAoOffer, deleteRecruiterAoOfferComment, listRecruiterAoOfferComments, retryRecruiterAoEmail,
 } from './actions'
 
 // Appels d'offres reçus dans les boîtes de l'organisation du recruteur (ADR 0005, phase C) : même tableau que
 // /admin/candidats, limité à ses boîtes ; tous ses recruteurs le voient. Boîtes : ./boites.
-// « Réessayer » (Server Action de cette page) traite un e-mail tout de suite (150 s au plus). « Publier » répond tout de
-// suite, la diffusion sur les réseaux et le sourcing continuent après la réponse (after()) dans ce même délai.
+// « Réessayer » (Server Action de cette page) traite un e-mail tout de suite (150 s au plus). La publication se fait sur la
+// page de l'offre (./[offerId]).
 // « Synchroniser maintenant » passe par /api/recruiter/ao/sync, enchaîné par AoSyncProvider (layout recruteur).
 export const maxDuration = 300
 
-export default async function RecruiterAoOffersPage() {
+// Filtres dans l'adresse : la liste est filtrée par le serveur. Chaque offre a sa page (./[offerId]).
+export default async function RecruiterAoOffersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) redirect('/login')
+  const sp = searchParamsOf(await searchParams)
+  const filters = filtersFromSearchParams(sp)
 
-  let rows: AoOfferRow[] = []
-  let emails: AoEmail[] = []
+  let view: AoPageView = emptyAoView()
   let inboxConfigured = false
   let mailboxIssues: MailboxIssue[] = []
   let accessAlert: string | undefined
   let loadError = ''
   try {
     const { databases } = createAdminClient()
-    const [tenant, view] = await Promise.all([databases.getDocument(DB_ID, COLLECTIONS.TENANTS, user.tenantId), loadAoView(user.tenantId)])
+    const [tenant, loaded] = await Promise.all([databases.getDocument(DB_ID, COLLECTIONS.TENANTS, user.tenantId), loadAoView(user.tenantId, filters)])
     if (!canUseAoSourcing(tenant.$id, typeof tenant.subscriptionStatus === 'string' ? tenant.subscriptionStatus : null)) {
       accessAlert = 'Votre abonnement n’est pas actif : vos boîtes ne sont pas lues. Elles le seront dès sa réactivation (page « Abonnement »).'
     }
-    rows = view.rows
-    emails = view.recentEmails
-    const enabled = view.sources.filter(s => s.enabled)
+    const { sources, ...pageView } = loaded
+    view = pageView
+    const enabled = sources.filter(s => s.enabled)
     inboxConfigured = enabled.length > 0
     mailboxIssues = enabled.filter(s => s.lastError).map(s => ({ label: s.label, error: s.lastError, at: s.lastSyncAt }))
   } catch (err) {
@@ -51,7 +51,7 @@ export default async function RecruiterAoOffersPage() {
   let tracking: Record<string, TrackingStep[]> = {}
   let trackingError = ''
   try {
-    tracking = await loadAoTracking(rows)
+    tracking = await loadAoTracking(view.rows)
   } catch (err) {
     console.error('AO: suivi des publications de l\'organisation illisible', user.tenantId, err instanceof Error ? err.message : err)
     trackingError = 'Suivi des publications indisponible (offre en ligne, LinkedIn, sourcing) : rechargez la page dans quelques instants.'
@@ -59,8 +59,9 @@ export default async function RecruiterAoOffersPage() {
 
   return (
     <AoOffersDashboard
-      rows={rows}
-      recentEmails={emails}
+      view={view}
+      filters={filters}
+      query={filtersToSearchParams(filters).toString()}
       inboxConfigured={inboxConfigured}
       mailboxIssues={mailboxIssues}
       loadError={loadError}
@@ -69,11 +70,10 @@ export default async function RecruiterAoOffersPage() {
       trackingError={trackingError}
       actions={{
         retryEmail: retryRecruiterAoEmail, deleteOffer: deleteRecruiterAoOffer,
-        previewPublication: previewRecruiterAoPublication, publish: publishRecruiterAoOffer, setStatus: setRecruiterAoOfferStatus,
-        sourcing: recruiterAoOfferSourcing, stopTasks: stopRecruiterAoPublicationTasks,
         listComments: listRecruiterAoOfferComments, addComment: addRecruiterAoOfferComment, deleteComment: deleteRecruiterAoOfferComment,
       }}
       paths={{
+        list: '/recruiter/parametres/boites-ao',
         statistics: '/recruiter/parametres/boites-ao/statistiques',
         mailboxes: '/recruiter/parametres/boites-ao/boites',
         exportApi: '/api/recruiter/ao/export',
@@ -84,9 +84,6 @@ export default async function RecruiterAoOffersPage() {
         eyebrow: 'ESPACE RECRUTEUR',
         title: 'Appels d’offres',
         scope: 'de votre organisation',
-        publishNote: 'Comme pour vos autres offres, la publication déclenche la diffusion sur les réseaux et le sourcing automatiques s’ils sont activés.',
-        // ?offre=<id> : le tableau de bord fait défiler « Mes offres » jusqu'à cette offre (jobs-list-client.tsx).
-        social: { href: '/recruiter/dashboard', label: 'Republier depuis le tableau de bord', jobParam: 'offre' },
         back: { href: '/recruiter/dashboard', label: 'Retour à l’espace recruteur' },
       }}
     />

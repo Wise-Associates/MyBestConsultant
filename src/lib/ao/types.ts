@@ -44,6 +44,21 @@ export interface AoOfferDetails {
   engagement: AoEngagement
   /** Technologies, langages, outils et plateformes cités (distincts des compétences). */
   technologies: string[]
+  /**
+   * Interlocuteur du client pour cette offre, lu par l'IA dans l'e-mail (signature, contact désigné) : donnée interne,
+   * jamais publiée. null : aucun (offre lue avant cette donnée, tableau joint, veille) — la page montre alors l'expéditeur.
+   */
+  contact: AoContact | null
+  /** Lien vers l'annonce ou l'avis d'origine cité par l'e-mail (« Avis officiel », page de l'offre) ; '' sans lien. */
+  sourceUrl: string
+}
+
+/** Chaque valeur est recopiée de l'e-mail (keepCitedContact, parse.ts) ; '' si l'e-mail ne la donne pas. */
+export interface AoContact {
+  name: string
+  role: string
+  email: string
+  phone: string
 }
 
 /**

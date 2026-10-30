@@ -1,5 +1,5 @@
 // Recherche de noms dans un texte, casse, accents et ponctuation ignorés. Partagée par l'anonymisation des offres
-// publiées (anonymize.ts, serveur) et par la relecture de la version publiée dans le navigateur (ao-offer-panel.tsx) :
+// publiées (anonymize.ts, serveur) et par la relecture de la version publiée dans le navigateur (ao-offer-detail.tsx) :
 // règles pures, sans dépendance serveur. Testées dans publication-copy.test.ts et ao.test.ts.
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
@@ -44,11 +44,12 @@ export function replaceNames(text: string, names: string[][], label: string): st
  */
 export const REFERENCE_CODE = /\b(?!(?:ISO|IEC|EN|AS|IATF|ISAE|ARP|NF|STD)[-_]?\d)(?![A-Z]{1,6}[-_]?(?:19|20)\d{2}\b)[A-Z]{1,6}[-_]?\d{4,}\b/g
 
+/** Noms encore présents dans le texte, tels qu'écrits (relecture d'une version non anonymisée : noms de personnes). */
+export function findNames(text: string, names: string[][]): string[] {
+  return [...new Set(occurrences(text, names).map(({ start, end }) => text.slice(start, end)))]
+}
+
 /** Noms à masquer et références encore présents dans le texte, tels qu'écrits (relecture avant publication). */
 export function findIdentifiers(text: string, names: string[][]): string[] {
-  const found = [
-    ...occurrences(text, names).map(({ start, end }) => text.slice(start, end)),
-    ...[...text.matchAll(REFERENCE_CODE)].map(m => m[0]),
-  ]
-  return [...new Set(found)]
+  return [...new Set([...findNames(text, names), ...[...text.matchAll(REFERENCE_CODE)].map(m => m[0])])]
 }

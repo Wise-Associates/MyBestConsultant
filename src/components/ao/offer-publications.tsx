@@ -1,20 +1,23 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
-import type { AoDashboardActions, PublicationDraft, PublicationPreview } from '@/lib/ao/dashboard-types'
+import type { AoDashboardActions, PublicationDraft, PublicationMode, PublicationPreview } from '@/lib/ao/dashboard-types'
 
-// Préparation et publication d'une offre AO, tenues par le tableau et non par le panneau de détail : elles durent
-// (rédaction par l'IA : une trentaine de secondes ; publication avec diffusion et sourcing : une minute ou plus) et
-// continuent si l'on ferme le panneau. La ligne affiche alors « Modifications en cours », et le panneau rouvert retrouve
-// l'opération, le brouillon ou son résultat. Rien n'est gardé si l'on quitte la page : le serveur termine quand même
-// l'opération lancée (offre publiée visible au retour ; brouillon à préparer de nouveau).
+// Préparation et publication d'une offre AO, tenues par la section AO (AoPublicationsProvider, dans le layout de la
+// section : liste et pages des offres) et non par la page de l'offre : elles durent (rédaction par l'IA : une trentaine
+// de secondes ; publication avec diffusion et sourcing : une minute ou plus) et continuent si l'on passe à l'offre
+// suivante ou revient à la liste. La ligne affiche alors « Modifications en cours », et la page de l'offre rouverte
+// retrouve l'opération, le brouillon ou son résultat. Rien n'est gardé si l'on quitte la section : le serveur termine
+// quand même l'opération lancée (offre publiée visible au retour ; brouillon à préparer de nouveau).
 
 export type PublicationWork = 'preparing' | 'publishing'
 
 export interface OfferPublication {
   /** Opération en cours sur le serveur, null sinon. */
   running: PublicationWork | null
+  /** Version préparée (ou en préparation) : anonymisée, ou telle que reçue (« Publier sans anonymiser »). */
+  mode: PublicationMode
   preview: PublicationPreview | null
   draft: PublicationDraft | null
   /** Compétences telles que saisies (séparées par des virgules), découpées à la publication. */
@@ -24,17 +27,18 @@ export interface OfferPublication {
   jobId: string | null
 }
 
-export const IDLE_PUBLICATION: OfferPublication = { running: null, preview: null, draft: null, skillsText: '', error: '', jobId: null }
+export const IDLE_PUBLICATION: OfferPublication = { running: null, mode: 'anonymized', preview: null, draft: null, skillsText: '', error: '', jobId: null }
 
-/** Fin d'une opération : le tableau prévient si le panneau de l'offre a été fermé entre-temps. */
+/** Fin d'une opération : un message prévient si la page de l'offre n'est plus affichée. */
 export interface PublicationOutcome {
   id: string
   title: string
   work: PublicationWork
+  mode: PublicationMode
   error: string
 }
 
-export function useOfferPublications(
+function useOfferPublications(
   actions: Pick<AoDashboardActions, 'previewPublication' | 'publish'>,
   onSettled: (outcome: PublicationOutcome) => void,
 ) {
@@ -45,14 +49,14 @@ export function useOfferPublications(
   // est ignorée grâce à ce numéro de lancement.
   const preparations = useRef<Record<string, number>>({})
 
-  async function prepare(id: string, title: string) {
+  async function prepare(id: string, title: string, mode: PublicationMode) {
     const run = (preparations.current[id] ?? 0) + 1
     preparations.current[id] = run
-    update(id, { running: 'preparing', error: '' })
+    update(id, { running: 'preparing', mode, error: '' })
     let error = ''
     let preview: PublicationPreview | undefined
     try {
-      const res = await actions.previewPublication(id)
+      const res = await actions.previewPublication(id, mode)
       if (res.preview) preview = res.preview
       else error = res.error ?? 'Aperçu impossible.'
     } catch (err) {
@@ -61,7 +65,7 @@ export function useOfferPublications(
     }
     if (preparations.current[id] !== run) return
     update(id, { running: null, error, ...(preview && { preview, draft: preview.draft, skillsText: preview.draft.skills.join(', ') }) })
-    onSettled({ id, title, work: 'preparing', error })
+    onSettled({ id, title, work: 'preparing', mode, error })
   }
 
   /** Abandonne la préparation en cours : la rédaction déjà demandée se termine sur le serveur, sa version est ignorée. */
@@ -84,7 +88,7 @@ export function useOfferPublications(
       error = 'Publication interrompue (connexion perdue) : rechargez la page pour voir si l\'offre a été publiée.'
     }
     update(id, { running: null, error })
-    onSettled({ id, title, work: 'publishing', error })
+    onSettled({ id, title, work: 'publishing', mode: draft.anonymized ? 'anonymized' : 'raw', error })
   }
 
   return {
@@ -99,7 +103,7 @@ export function useOfferPublications(
 }
 
 const WORK_DETAIL: Record<PublicationWork, string> = {
-  preparing: 'Rédaction de la version anonymisée en cours',
+  preparing: 'Préparation de la version à publier en cours',
   publishing: 'Publication en cours : création de l’offre, diffusion et recherche de candidats',
 }
 
@@ -112,4 +116,47 @@ export function WorkBadge({ work }: { work: PublicationWork }) {
       Modifications en cours
     </span>
   )
+}
+
+type Notice = { tone: 'ok' | 'error'; text: string }
+
+interface AoPublicationsValue extends ReturnType<typeof useOfferPublications> {
+  /** Fin d'une opération sur une offre dont la page n'est pas affichée (gardée jusqu'à sa fermeture). */
+  notice: Notice | null
+  clearNotice(): void
+  /** Offre affichée sur sa page : la fin de ses opérations s'y lit directement, sans message en plus. */
+  setOpenOffer(id: string | null): void
+}
+
+const AoPublicationsContext = createContext<AoPublicationsValue | null>(null)
+
+export function useAoPublications(): AoPublicationsValue {
+  const value = useContext(AoPublicationsContext)
+  if (!value) throw new Error('useAoPublications : AoPublicationsProvider absent du layout de la section AO.')
+  return value
+}
+
+/**
+ * Préparations et publications des offres de la section AO, gardées d'une page à l'autre de la section (liste, offre
+ * précédente ou suivante). Les actions viennent de l'espace (admin ou recruteur) et vérifient elles-mêmes l'appelant.
+ */
+export function AoPublicationsProvider({ actions, children }: {
+  actions: Pick<AoDashboardActions, 'previewPublication' | 'publish'>
+  children: ReactNode
+}) {
+  const [notice, setNotice] = useState<Notice | null>(null)
+  const openOffer = useRef<string | null>(null)
+  const publications = useOfferPublications(actions, ({ id, title, work, mode, error }) => {
+    if (openOffer.current === id) return
+    if (error) return setNotice({ tone: 'error', text: `« ${title} » : ${error}` })
+    const version = mode === 'raw' ? 'Version non anonymisée' : 'Version anonymisée'
+    setNotice({
+      tone: 'ok',
+      text: work === 'preparing' ? `${version} de « ${title} » prête : ouvrez l'offre pour la relire et la publier.` : `Offre « ${title} » publiée.`,
+    })
+  })
+  const clearNotice = useCallback(() => setNotice(null), [])
+  const setOpenOffer = useCallback((id: string | null) => { openOffer.current = id }, [])
+  const value: AoPublicationsValue = { ...publications, notice, clearNotice, setOpenOffer }
+  return <AoPublicationsContext.Provider value={value}>{children}</AoPublicationsContext.Provider>
 }
