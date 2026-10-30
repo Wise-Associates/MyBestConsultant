@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { getInterviewSessions } from '../actions'
 import Link from 'next/link'
-import { Brain, ExternalLink, Download, CheckCircle2, XCircle, TrendingUp, AlertTriangle, ChevronRight, Target, Award, Video, ArrowLeft, ClipboardList } from 'lucide-react'
+import { Brain, ExternalLink, Download, CheckCircle2, XCircle, TrendingUp, AlertTriangle, ChevronRight, Target, Award, Video, ClipboardList } from 'lucide-react'
 import { ResendInviteButton } from './resend-invite-button'
 import { RetryAnalysisButton } from './retry-analysis-button'
 import { AudioPlayer, MultiTrackAudioPlayer } from '@/components/shared/audio-player'
@@ -37,11 +37,6 @@ export default async function InterviewDetailPage({ params }: { params: Promise<
     }}>
             <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
         <div className="max-w-3xl mx-auto px-6 py-10">
-        <Link href="/recruiter/dashboard"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80"
-          style={{ color: '#c4b5fd' }}>
-          <ArrowLeft className="h-3.5 w-3.5" /> Retour à l&apos;espace recruteur
-        </Link>
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>Entretien IA</p>

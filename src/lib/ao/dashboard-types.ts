@@ -144,7 +144,6 @@ export interface AoDashboardPaths {
 
 /** Textes propres à l'espace de la page. */
 export interface AoDashboardCopy {
-  eyebrow: string
   title: string
   /** Boîtes lues, à la suite de « boîte(s) » : « de la plateforme », « de votre organisation ». */
   scope: string
@@ -155,6 +154,4 @@ export interface AoDashboardCopy {
    * paramètre d'adresse par lequel cette page reçoit l'offre publique à montrer (`?offre=<id>` du tableau de bord recruteur).
    */
   social: { href: string; label: string; jobParam?: string }
-  /** Lien de retour au-dessus du titre (espace recruteur, sans menu latéral). */
-  back?: { href: string; label: string }
 }

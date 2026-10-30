@@ -7,7 +7,7 @@ import { Query } from 'node-appwrite'
 import type { CvProfile } from '@/lib/cv-profile-extract'
 import type { InterviewAnalysis } from '@/app/recruiter/interviews/actions'
 import {
-  ArrowLeft, Mail, Phone, MapPin, Navigation, Briefcase, Building2,
+  Mail, Phone, MapPin, Navigation, Briefcase, Building2,
   GraduationCap, FileText, ExternalLink, Link2, ClipboardList, Video, ChevronRight, Star,
   GitBranch, ThumbsUp, ThumbsDown, Scale, CheckCircle2,
 } from 'lucide-react'
@@ -120,11 +120,6 @@ export default async function CandidateProfilePage({ params, searchParams }: {
     <div id="candidate-report" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <div className="sticky top-0 z-20 no-print" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="max-w-3xl mx-auto px-6 py-6">
-          <Link href="/recruiter/dashboard"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 no-underline transition-opacity hover:opacity-80"
-            style={{ color: '#c4b5fd' }}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Retour à l&apos;espace recruteur
-          </Link>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-4">
               <CandidateAvatar photoUrl={candidate.photoUrl as string} initials={name[0]?.toUpperCase() ?? '?'} size={56}

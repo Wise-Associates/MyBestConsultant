@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import {
-  ArrowLeft, Building2, Check, ExternalLink, Globe, ImagePlus, Loader2, MapPin, Plus, Trash2, Upload, Users, X,
+  Building2, Check, ExternalLink, Globe, ImagePlus, Loader2, MapPin, Plus, Trash2, Upload, Users, X,
   Sparkles, Video, AlertCircle, Eye,
 } from 'lucide-react'
 import { BENEFIT_ICONS, BENEFIT_SUGGESTIONS, BenefitIcon, VALUE_SUGGESTIONS } from '@/lib/brand-icons'
@@ -123,9 +123,6 @@ export function BrandEditor({ initial }: { initial: EmployerBrand }) {
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 96 }}>
       <div style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
-          <Link href="/recruiter/dashboard" className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Retour à l&apos;espace recruteur
-          </Link>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(232,163,61,0.15)' }}>
