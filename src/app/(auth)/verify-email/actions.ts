@@ -1,7 +1,9 @@
 'use server'
 
+import { AppwriteException } from 'node-appwrite'
 import { createGuestClient, createSessionClient } from '@/lib/appwrite/client'
 import { getSessionToken } from '@/lib/appwrite/auth'
+import { translateAuthError } from '@/lib/appwrite/auth-errors'
 
 export async function sendVerificationEmailAction(): Promise<{ error?: string; success?: true }> {
   const sessionToken = await getSessionToken()
@@ -13,7 +15,10 @@ export async function sendVerificationEmailAction(): Promise<{ error?: string; s
     await account.createVerification(`${origin}/verify-email/confirm`)
     return { success: true }
   } catch (e) {
-    return { error: e instanceof Error ? e.message : 'Erreur lors de l\'envoi' }
+    // La cause (type et message Appwrite, qui ne contiennent pas l'adresse) va dans les journaux ; l'utilisateur lit un
+    // message en français. Le message nomme le paramètre refusé, par exemple l'hôte de l'URL de retour absent des plateformes.
+    console.error('[verify-email] envoi impossible :', e instanceof AppwriteException ? `${e.type} — ${e.message}` : e instanceof Error ? e.message : e)
+    return { error: translateAuthError(e, 'verify') }
   }
 }
 
