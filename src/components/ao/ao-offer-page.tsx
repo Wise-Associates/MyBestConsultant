@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, type CSSProperties, type ReactNode } from 'react'
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 import { AdminPageHeader } from '@/components/admin/admin-page-header'
+import { startNavigationProgress } from '@/components/shared/navigation-progress'
 import type { AoDashboardActions, AoDashboardCopy, AoDashboardPaths, AoOfferNeighbours } from '@/lib/ao/dashboard-types'
 import type { AoOfferRow } from '@/lib/ao/filters'
 import { trackingSteps, type TrackingStep } from '@/lib/ao/tracking'
@@ -62,7 +63,9 @@ export function AoOfferPage({ row, tracking, trackingError, neighbours, query, a
     const onKey = (e: KeyboardEvent) => {
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || isTyping(e.target)) return
       const href = e.key === 'ArrowLeft' ? previousHref : e.key === 'ArrowRight' ? nextHref : null
-      if (href) router.push(href)
+      if (!href) return
+      startNavigationProgress()
+      router.push(href)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -110,9 +113,10 @@ export function AoOfferPage({ row, tracking, trackingError, neighbours, query, a
   )
 }
 
-/** Offre précédente ou suivante ; grisée en bout de liste. */
+/** Offre précédente ou suivante ; grisée en bout de liste. Sur mobile, la flèche seule : la barre tient sur une ligne. */
 function NavLink({ href, label, shortcut, icon, iconAfter }: { href: string | null; label: string; shortcut: string; icon: ReactNode; iconAfter?: boolean }) {
-  const content = iconAfter ? <>{label}{icon}</> : <>{icon}{label}</>
-  if (!href) return <span aria-disabled="true" style={{ ...navButton, opacity: 0.45, cursor: 'not-allowed' }}>{content}</span>
-  return <Link href={href} title={`${label} (touche ${shortcut})`} style={navButton}>{content}</Link>
+  const text = <span className="hidden sm:inline">{label}</span>
+  const content = iconAfter ? <>{text}{icon}</> : <>{icon}{text}</>
+  if (!href) return <span aria-disabled="true" aria-label={label} style={{ ...navButton, opacity: 0.45, cursor: 'not-allowed' }}>{content}</span>
+  return <Link href={href} aria-label={label} title={`${label} (touche ${shortcut})`} style={navButton}>{content}</Link>
 }

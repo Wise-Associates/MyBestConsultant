@@ -6,7 +6,14 @@ import { usePathname, useSearchParams } from 'next/navigation'
 // The App Router has no global "navigation pending" signal (useLinkStatus only works inside one
 // <Link>), so the bar starts on a click that <Link> turns into a client-side navigation (it calls
 // preventDefault) and completes when the URL changes. Navigations started with router.push()
-// don't show it.
+// show it when the caller announces them with startNavigationProgress().
+
+const START_EVENT = 'mbc:navigation-start'
+
+/** Avant un router.push() : la barre du haut avance jusqu'à l'arrivée de la page, comme pour un lien. */
+export function startNavigationProgress(): void {
+  window.dispatchEvent(new Event(START_EVENT))
+}
 
 // A navigation cancelled after the click never changes the URL: stop waiting after this delay
 const MAX_WAIT_MS = 15_000
@@ -36,12 +43,19 @@ export function NavigationProgress() {
       if (url.origin !== window.location.origin) return
       // Same page (or only the #hash changes): the URL won't change, nothing to wait for
       if (url.pathname === window.location.pathname && url.search === window.location.search) return
+      start()
+    }
+    function start() {
       setStartedFrom(currentUrlRef.current)
       setProgress(p => (p > 0 ? p : START_PROGRESS))
     }
     // On window so it runs after React's handlers (attached to document), once <Link> has called preventDefault
     window.addEventListener('click', onClick)
-    return () => window.removeEventListener('click', onClick)
+    window.addEventListener(START_EVENT, start)
+    return () => {
+      window.removeEventListener('click', onClick)
+      window.removeEventListener(START_EVENT, start)
+    }
   }, [])
 
   // Creep towards the ceiling while the next page loads

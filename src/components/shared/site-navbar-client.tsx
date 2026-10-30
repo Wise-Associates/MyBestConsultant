@@ -245,11 +245,14 @@ export function SiteNavbarClient({ siteName, logoUrl, navLinks, user, supportUnr
             {user && <UserDropdown user={user} />}
           </div>
 
+          {/* Mobile : support, menu et « Demander une présentation » groupés à droite de la barre (margin-left: auto ; les
+              liens du bureau, qui prennent la place libre sur grand écran, y sont masqués). Sur grand écran, rien ne bouge. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto', flexShrink: 0 }}>
           {/* Support Helpdesk — version compacte visible sur mobile */}
           {user && user.role !== 'admin' && <SupportButton role={user.role} unread={supportUnread} variant="mobile" />}
 
           {/* Mobile burger */}
-          <button className="nav-mobile-btn"
+          <button className="nav-mobile-btn" aria-label={mobileOpen ? 'Fermer le menu' : 'Ouvrir le menu'} aria-expanded={mobileOpen}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', padding: 8, display: 'none' }}
             onClick={() => setMobileOpen(v => !v)}>
             {mobileOpen ? <X style={{ width: 22, height: 22 }} /> : <Menu style={{ width: 22, height: 22 }} />}
@@ -267,6 +270,7 @@ export function SiteNavbarClient({ siteName, logoUrl, navLinks, user, supportUnr
               <span className="mbc-nav-cta-text">Demander une présentation</span>
             </Link>
           )}
+          </div>
         </div>
 
         {/* Mobile menu */}
