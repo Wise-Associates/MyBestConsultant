@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers'
 import { createAdminClient, createSessionClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from './config'
-import { ID, Query, type Models } from 'node-appwrite'
+import { AppwriteException, ID, Query, type Models } from 'node-appwrite'
 import type { UserProfile, UserRole } from '@/types'
 import { READABLE_SLUG_ATTEMPTS, slugCandidate } from '@/lib/tenant-slug'
 
@@ -240,7 +240,12 @@ export async function registerUser(params: {
     const { account: sessionAccount } = createSessionClient(session.secret)
     const origin = process.env.NEXT_PUBLIC_APP_URL ?? 'https://mybestconsultant.fr'
     await sessionAccount.createVerification(`${origin}/verify-email/confirm`)
-  } catch { /* ignore — user can resend from /verify-email */ }
+  } catch (err) {
+    // L'inscription continue (l'email se redemande depuis /verify-email), mais l'échec est journalisé : sans SMTP sur le
+    // serveur Appwrite (« general_smtp_disabled »), ou avec un NEXT_PUBLIC_APP_URL dont l'hôte n'est pas une plateforme Web
+    // du projet (« general_argument_invalid »), aucun email de vérification ne part.
+    console.error('[auth] email de vérification non envoyé à l’inscription :', err instanceof AppwriteException ? `${err.type} — ${err.message}` : err instanceof Error ? err.message : err)
+  }
 
   return { session, role: params.role }
 }

@@ -24,7 +24,9 @@ export default async function VerifyEmailPage() {
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
 
           <div className="px-8 py-6 text-center" style={{ borderBottom: '1px solid var(--color-border)' }}>
-            <h1 className="text-xl font-bold" style={{ color: 'var(--color-text)' }}>
+            {/* Taille écrite ici : la règle h1 de globals.css (hors couche Tailwind) l'emporte sur text-xl, et le titre
+                débordait de la carte. */}
+            <h1 className="font-bold" style={{ color: 'var(--color-text)', fontSize: '1.25rem', lineHeight: 1.4 }}>
               Vérification de l&apos;email
             </h1>
             <p className="text-sm mt-1" style={{ color: 'var(--color-text-muted)' }}>
@@ -54,7 +56,7 @@ export default async function VerifyEmailPage() {
                 <MailCheck className="h-8 w-8" style={{ color: '#B8860B' }} />
               </div>
               <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
-                Un email de vérification a été envoyé à cette adresse. Cliquez sur le lien qu&apos;il contient pour confirmer votre compte.
+                Pour confirmer votre compte, cliquez sur le lien de l&apos;email de vérification. Vous ne l&apos;avez pas reçu ? Regardez dans vos courriers indésirables, ou renvoyez-le.
               </p>
               <ResendButton />
               <p className="text-center text-sm pt-1" style={{ color: 'var(--color-text-muted)' }}>
