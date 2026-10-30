@@ -9,7 +9,7 @@ import { resolveStatus } from '@/lib/funnel-stage-utils'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
-import { Briefcase, Users, Star, TrendingUp, Upload, Brain, MessageSquare, Building2, Calendar, FolderSearch, FolderOpen, BarChart3, Layers, GitBranch, Inbox, Users as TeamIcon } from 'lucide-react'
+import { Briefcase, Users, Star, TrendingUp, Upload, Brain, MessageSquare, Building2, Calendar, FolderSearch, FolderOpen, BarChart3, Layers, GitBranch, Inbox, Radar, Users as TeamIcon } from 'lucide-react'
 import { CreateJobDialog } from './create-job-dialog'
 import type { CandidateApp } from './applications-panel'
 import { JobsListClient } from './jobs-list-client'
@@ -249,6 +249,7 @@ export default async function RecruiterDashboard({ searchParams }: { searchParam
               <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Rechercher un profil candidat</p>
             </div>
           </Link>
+          <ToolTile href="/recruiter/mbc-search" title="MBC Search" subtitle="Trouver des profils avec l'IA" rgb="249,115,22" iconColor="var(--color-brand-orange)"><Radar className="h-5 w-5" /></ToolTile>
           <ToolTile href="/recruiter/annonces" title="Suivi des annonces" subtitle="Avancement et rapports PDF" rgb="99,102,241" iconColor="#6366f1"><Layers className="h-5 w-5" /></ToolTile>
           <ToolTile href="/recruiter/funnel" title="Processus de recrutement" subtitle="Pipelines, phases et statuts" rgb="245,158,11" iconColor="#d97706"><GitBranch className="h-5 w-5" /></ToolTile>
           <ToolTile href="/recruiter/marque-employeur" title="Marque employeur" subtitle="Votre page publique" rgb="236,72,153" iconColor="#db2777"><Building2 className="h-5 w-5" /></ToolTile>
