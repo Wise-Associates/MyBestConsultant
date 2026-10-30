@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState, useTransition } from 'react'
+import { Skeleton, SkeletonRegion } from '@/components/shared/skeleton'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Plus, X, Loader2, Sparkles, RefreshCw, Library, ChevronDown, PencilLine, FileUp } from 'lucide-react'
 import { createJobAction, listMyJobsForLibrary } from './actions'
@@ -8,7 +9,11 @@ import { generateJobDraft, improveJobDraft, type JobDraft } from './ai-job-draft
 import { ImportPanel } from './import-panel'
 import type { Job } from '@/types'
 
-export function CreateJobDialog({ tenantId, companyName, variant = 'button' }: { tenantId: string; companyName: string; variant?: 'button' | 'tile' }) {
+/**
+ * button : sur fond sombre ; primary : bouton plein aux couleurs du thème, sur fond clair, à la hauteur des champs de la
+ * barre de filtres du tableau de bord (pleine largeur sur mobile) ; tile : carte.
+ */
+export function CreateJobDialog({ tenantId, companyName, variant = 'button' }: { tenantId: string; companyName: string; variant?: 'button' | 'primary' | 'tile' }) {
   const searchParams = useSearchParams()
   // Le CTA "Déposer une offre" de la page d'accueil renvoie ici avec ce paramètre pour
   // ouvrir directement la saisie manuelle, au lieu de laisser le recruteur la chercher.
@@ -144,8 +149,10 @@ export function CreateJobDialog({ tenantId, companyName, variant = 'button' }: {
       ) : (
         <button
           onClick={() => setOpen(true)}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-opacity hover:opacity-80"
-          style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)' }}>
+          className={`flex items-center justify-center gap-2 px-5 rounded-xl text-sm font-semibold whitespace-nowrap transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-(--color-primary) ${variant === 'primary' ? 'w-full sm:w-auto h-11 sm:h-10' : 'py-2.5'}`}
+          style={variant === 'primary'
+            ? { background: 'var(--color-primary)', color: 'var(--color-primary-fg)', border: '1px solid var(--color-primary)' }
+            : { background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)' }}>
           <Plus className="h-4 w-4" /> Créer une offre
         </button>
       )}
@@ -197,9 +204,9 @@ export function CreateJobDialog({ tenantId, companyName, variant = 'button' }: {
                 {libraryOpen && (
                   <div className="rounded-lg max-h-40 overflow-y-auto" style={{ background: 'var(--color-background)', border: '1px solid var(--color-border)' }}>
                     {isLoadingLibrary || libraryJobs === null ? (
-                      <p className="text-xs px-3 py-3 flex items-center gap-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                        <Loader2 className="h-3 w-3 animate-spin" /> Chargement de vos offres…
-                      </p>
+                      <SkeletonRegion label="Chargement de vos offres…" className="px-3 py-2.5 space-y-2.5">
+                        {[70, 55, 62].map((w, i) => <Skeleton key={i} className="h-3" style={{ width: `${w}%` }} />)}
+                      </SkeletonRegion>
                     ) : libraryJobs.length === 0 ? (
                       <p className="text-xs px-3 py-3" style={{ color: 'var(--color-text-muted)' }}>Aucune offre publiée pour l&apos;instant.</p>
                     ) : (
