@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { updateApplicationStatus, updateApplicationCard, deleteApplication, getJobById } from '@/lib/appwrite/jobs'
+import { deleteJourney } from '@/lib/appwrite/consultant-journeys'
 import { logFunnelEvent, getFunnelEvents, getStagesForJob, replaceStages, ensureColumns } from '@/lib/appwrite/funnel'
 import { alignToColumn, columnOf, currentIndex, funnelForCandidate, sanitizeFunnel, serializeFunnel, STEP_TYPES, type FunnelStep, type StepResult, type StepStatus } from '@/lib/candidate-funnel'
 import { callLLM } from '@/lib/ai/llm-router'
@@ -125,8 +126,13 @@ export async function updateApplicationCardAction(
 
 export async function deleteApplicationAction(applicationId: string, jobId: string): Promise<{ error?: string }> {
   try {
-    await requireRecruiter()
+    const user = await requireRecruiter()
+    // Server Action publique : la candidature doit être de l'organisation du recruteur.
+    const { databases } = createAdminClient()
+    const application = await databases.getDocument(DB_ID, COLLECTIONS.APPLICATIONS, applicationId)
+    if (application.tenantId !== user.tenantId) throw new Error('Non autorisé')
     await deleteApplication(applicationId)
+    await deleteJourney(applicationId)
     revalidatePath(`/recruiter/pipeline/${jobId}`)
     revalidatePath('/recruiter/dashboard')
     return {}

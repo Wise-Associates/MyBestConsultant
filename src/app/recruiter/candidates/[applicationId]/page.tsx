@@ -9,7 +9,7 @@ import type { InterviewAnalysis } from '@/app/recruiter/interviews/actions'
 import {
   Mail, Phone, MapPin, Navigation, Briefcase, Building2,
   GraduationCap, FileText, ExternalLink, Link2, ClipboardList, Video, ChevronRight, Star,
-  GitBranch, ThumbsUp, ThumbsDown, Scale, CheckCircle2,
+  GitBranch, ThumbsUp, ThumbsDown, Scale, CheckCircle2, Route,
 } from 'lucide-react'
 import { CandidateAvatar } from '@/components/shared/candidate-avatar'
 import { CvDetailExpander } from '@/components/shared/cv-detail-expander'
@@ -134,7 +134,15 @@ export default async function CandidateProfilePage({ params, searchParams }: {
                 {job && <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>A postulé pour : {job.title as string}</p>}
               </div>
             </div>
-            <ExportPdfButton />
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Parcours consultant de cette candidature, de l'AO à la facture (ADR 0021). */}
+              <Link href={`/recruiter/parcours/${applicationId}`}
+                className="inline-flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl no-underline"
+                style={{ background: 'var(--color-brand-orange)', color: '#1C1C1E' }}>
+                <Route className="h-4 w-4" aria-hidden /> Parcours consultant
+              </Link>
+              <ExportPdfButton />
+            </div>
           </div>
         </div>
       </div>

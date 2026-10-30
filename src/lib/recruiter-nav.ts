@@ -2,7 +2,7 @@
 // rubriques, dans l'ordre affiché, et la rubrique d'une page. Demande du 2026-10-30 : un sous-menu à la place des
 // cartes du tableau de bord. Règles pures, testées dans recruiter-nav.test.ts.
 
-export type RecruiterSectionKey = 'dashboard' | 'ao' | 'reporting' | 'vivier' | 'cvtheque' | 'equipe' | 'interviews'
+export type RecruiterSectionKey = 'dashboard' | 'ao' | 'parcours' | 'reporting' | 'vivier' | 'cvtheque' | 'equipe' | 'interviews'
 
 export interface RecruiterSection {
   key: RecruiterSectionKey
@@ -17,6 +17,8 @@ export const RECRUITER_SECTIONS: RecruiterSection[] = [
   // « Mes offres », sans rubrique depuis le 2026-10-30) partent des offres du tableau de bord.
   { key: 'dashboard', label: 'Tableau de bord', href: '/recruiter/dashboard', also: ['/recruiter/pipeline', '/recruiter/candidates', '/recruiter/candidate-preview', '/recruiter/import', '/recruiter/funnel', '/recruiter/annonces'] },
   { key: 'ao', label: 'Appels d’offres', href: '/recruiter/parametres/boites-ao', also: [] },
+  // Parcours consultant, de l'AO à la facture (ADR 0021, demande du 2026-10-30).
+  { key: 'parcours', label: 'Parcours', href: '/recruiter/parcours', also: [] },
   { key: 'reporting', label: 'Reporting', href: '/recruiter/reporting', also: [] },
   { key: 'vivier', label: 'Mon vivier', href: '/recruiter/vivier', also: [] },
   { key: 'cvtheque', label: 'CV Thèque', href: '/recruiter/cvtheque', also: [] },

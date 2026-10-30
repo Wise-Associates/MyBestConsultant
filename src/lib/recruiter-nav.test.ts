@@ -5,7 +5,7 @@ import { RECRUITER_SECTIONS, recruiterSectionOf } from './recruiter-nav'
 describe('sous-menu de l\'espace recruteur', () => {
   it('garde les rubriques dans l\'ordre demandé', () => {
     assert.deepEqual(RECRUITER_SECTIONS.map(s => s.label), [
-      'Tableau de bord', 'Appels d’offres', 'Reporting', 'Mon vivier', 'CV Thèque', 'Mon équipe', 'Entretiens IA',
+      'Tableau de bord', 'Appels d’offres', 'Parcours', 'Reporting', 'Mon vivier', 'CV Thèque', 'Mon équipe', 'Entretiens IA',
     ])
   })
 
@@ -15,6 +15,7 @@ describe('sous-menu de l\'espace recruteur', () => {
     assert.equal(recruiterSectionOf('/recruiter/vivier/job42'), 'vivier')
     assert.equal(recruiterSectionOf('/recruiter/interviews/new'), 'interviews')
     assert.equal(recruiterSectionOf('/recruiter/reporting/'), 'reporting')
+    assert.equal(recruiterSectionOf('/recruiter/parcours/app7'), 'parcours')
   })
 
   it('range les pages sans rubrique propre sous la rubrique d\'où elles partent', () => {

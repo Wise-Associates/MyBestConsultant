@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useId, useRef, useState, type ComponentType } from 'react'
-import { BarChart3, ChevronDown, FolderOpen, FolderSearch, Inbox, LayoutDashboard, MessageSquare, Users } from 'lucide-react'
+import { BarChart3, ChevronDown, FolderOpen, FolderSearch, Inbox, LayoutDashboard, MessageSquare, Route, Users } from 'lucide-react'
 import { RECRUITER_SECTIONS, recruiterSectionOf, type RecruiterSectionKey } from '@/lib/recruiter-nav'
 
 // Sous-menu de l'espace recruteur, sous la barre du site (layout recruteur) : les rubriques (recruiter-nav.ts), la
@@ -14,6 +14,7 @@ import { RECRUITER_SECTIONS, recruiterSectionOf, type RecruiterSectionKey } from
 const ICONS: Record<RecruiterSectionKey, ComponentType<{ className?: string; 'aria-hidden'?: boolean }>> = {
   dashboard: LayoutDashboard,
   ao: Inbox,
+  parcours: Route,
   reporting: BarChart3,
   vivier: FolderOpen,
   cvtheque: FolderSearch,
