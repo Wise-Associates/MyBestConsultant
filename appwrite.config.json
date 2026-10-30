@@ -3571,6 +3571,24 @@
                     "size": 20,
                     "default": null,
                     "encrypt": false
+                },
+                {
+                    "key": "contact",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 1000,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "sourceUrl",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 1000,
+                    "default": null,
+                    "encrypt": false
                 }
             ],
             "indexes": []
@@ -3936,6 +3954,137 @@
                     "status": "available",
                     "attributes": [
                         "version"
+                    ],
+                    "orders": []
+                }
+            ]
+        },
+        {
+            "$id": "ao_offer_index",
+            "$permissions": [],
+            "databaseId": "bestconsultant-dev",
+            "name": "AO offer index",
+            "enabled": true,
+            "documentSecurity": false,
+            "attributes": [
+                {
+                    "key": "tenantId",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "status",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 20,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "contractType",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 20,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "remote",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 20,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "salary",
+                    "type": "integer",
+                    "required": false,
+                    "array": false,
+                    "min": 0,
+                    "max": 1000000,
+                    "default": null
+                },
+                {
+                    "key": "receivedAt",
+                    "type": "datetime",
+                    "required": false,
+                    "array": false,
+                    "format": "",
+                    "default": null
+                },
+                {
+                    "key": "sourceCount",
+                    "type": "integer",
+                    "required": false,
+                    "array": false,
+                    "min": 0,
+                    "max": 1000000,
+                    "default": null
+                },
+                {
+                    "key": "city",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 200,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "skills",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 1000,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "sender",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 600,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "search",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 100000,
+                    "default": null,
+                    "encrypt": false
+                }
+            ],
+            "indexes": [
+                {
+                    "key": "tenant_received",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "tenantId",
+                        "receivedAt"
+                    ],
+                    "orders": []
+                },
+                {
+                    "key": "tenant_status",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "tenantId",
+                        "status",
+                        "receivedAt"
                     ],
                     "orders": []
                 }

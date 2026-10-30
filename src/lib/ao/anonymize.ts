@@ -101,16 +101,11 @@ export interface PublicOffer {
  * chevauche un (« Groupe BNP » dans « Groupe BNP Paribas ») ne peut pas empêcher son masquage.
  */
 export function toPublicOffer(offer: AoOfferFields, names: string[][], label = DEFAULT_CLIENT_LABEL, extra: string[][] = []): PublicOffer {
-  const extras = [
-    offer.duration && `Durée de la mission : ${offer.duration}`,
-    offer.startDate && `Démarrage : ${offer.startDate}`,
-    offer.experience && `Expérience requise : ${offer.experience}`,
-  ].filter(Boolean) as string[]
   const scrub = (text: string) => {
     const known = scrubContacts(text, names, label)
     return extra.length ? scrubContacts(known, extra, label) : known
   }
-  const description = [offer.description, ...extras].filter(Boolean).join('\n\n')
+  const description = descriptionWithTerms(offer)
   return {
     // « RFC00094758 - Consultant SEO » : le séparateur qui suivait la référence retirée ne reste pas en tête.
     title: scrub(offer.title).replace(TITLE_EDGES, ''),
@@ -119,5 +114,47 @@ export function toPublicOffer(offer: AoOfferFields, names: string[][], label = D
     // Une compétence qui nomme le client (« Outil interne BNP ») est retirée plutôt que remplacée.
     skills: offer.skills.filter(s => !revealsName(s, names) && !revealsName(s, extra)).map(scrub).filter(Boolean),
     location: scrub(offer.location),
+  }
+}
+
+/** Description suivie de la durée, du démarrage et de l'expérience, que l'offre publique n'a pas en champs à part. */
+function descriptionWithTerms(offer: AoOfferFields): string {
+  const terms = [
+    offer.duration && `Durée de la mission : ${offer.duration}`,
+    offer.startDate && `Démarrage : ${offer.startDate}`,
+    offer.experience && `Expérience requise : ${offer.experience}`,
+  ].filter(Boolean) as string[]
+  return [offer.description, ...terms].filter(Boolean).join('\n\n')
+}
+
+/**
+ * Coordonnées personnelles seules : e-mails (même déguisés), téléphones et lignes de contact (« Contact : Marie
+ * Dupont »). Noms de sociétés, références et liens restent.
+ */
+export function removePersonalContacts(text: string): string {
+  return text
+    .replace(CONTACT_LINE, '')
+    .replace(OBFUSCATED_EMAIL, '')
+    .replace(EMAIL, '')
+    .replace(PHONE, '')
+    .replace(EMPTY_BRACKETS, '')
+    .replace(/(\S)[ \t]{2,}(?=\S)/g, '$1 ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+/**
+ * Version publique NON anonymisée (« Publier sans anonymiser », choix de la personne qui publie, décision du
+ * 2026-10-30) : l'offre telle que reçue, client compris, sans les coordonnées personnelles de l'interlocuteur, qu'une
+ * page publique n'a pas à exposer.
+ */
+export function rawPublicOffer(offer: AoOfferFields): PublicOffer {
+  return {
+    title: removePersonalContacts(offer.title).replace(TITLE_EDGES, ''),
+    companyName: removePersonalContacts(offer.companyName),
+    description: removePersonalContacts(descriptionWithTerms(offer)) || removePersonalContacts(offer.title),
+    skills: offer.skills.map(removePersonalContacts).filter(Boolean),
+    location: removePersonalContacts(offer.location),
   }
 }

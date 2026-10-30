@@ -1,7 +1,7 @@
 'use server'
 
 import { getCurrentUser } from '@/lib/appwrite/auth'
-import type { PublicationDraft } from '@/lib/ao/dashboard-types'
+import type { PublicationDraft, PublicationMode } from '@/lib/ao/dashboard-types'
 import {
   addAoOfferCommentOf, aoOfferSourcingOf, deleteAoOfferCommentOf, deleteAoOfferOf, listAoOfferCommentsOf, previewAoPublicationOf,
   publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, stopAoPublicationTasksOf, tenantSubscriptionStatus,
@@ -106,10 +106,15 @@ async function rewriteSlot(user: UserProfile, tenantId: string): Promise<string 
   return null
 }
 
-export async function previewRecruiterAoPublication(id: string) {
+export async function previewRecruiterAoPublication(id: string, mode?: PublicationMode) {
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
-  return previewAoPublicationOf(me.tenantId, id, { beforeAi: () => rewriteSlot(me.user, me.tenantId) })
+  // Valeur venue du navigateur : tout ce qui n'est pas « raw » donne la version anonymisée. La version non anonymisée
+  // n'appelle pas l'IA : aucune place de quota prise.
+  return previewAoPublicationOf(me.tenantId, id, {
+    mode: mode === 'raw' ? 'raw' : 'anonymized',
+    beforeAi: () => rewriteSlot(me.user, me.tenantId),
+  })
 }
 
 /** Offre publique de l'organisation, diffusée et sourcée comme une offre créée par ses recruteurs (publishAoOfferOf). */

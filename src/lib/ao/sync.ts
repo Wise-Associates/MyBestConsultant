@@ -8,11 +8,12 @@ import { inboxSettingsFor } from './inbox-settings'
 import { withAoInbox, type AoInbox, type AoInboxSettings, type InboxEnvelope } from './imap'
 import { citedClients, formatSender, fromVeille, originalSender, senderCompany } from './origin'
 import { emailDeadline, isPastDeadline } from './dates'
-import { TruncatedAnswerError } from './parse'
+import { keepCitedContact, TruncatedAnswerError } from './parse'
 import {
-  createAoEmail, createAoOffer, findAoDuplicate, findAoEmailByMessageId,
-  hasAoEmails, incrementAoSources, listRetryableAoEmails, nextStepFor, purgeAoRecords, saveAoOfferDetails, settledMessageIds, updateAoEmail,
+  createAoEmail, createAoOffer, deleteAoOfferAndDetails, findAoDuplicate, findAoEmailByMessageId,
+  hasAoEmails, incrementAoSources, listRetryableAoEmails, nextStepFor, purgeAoRecords, reconcileAoOfferIndex, saveAoOfferDetails, saveAoOfferIndex, settledMessageIds, updateAoEmail,
 } from './repo'
+import { senderOf, type AoIndexContext } from './offer-index'
 import { MAX_ATTEMPTS, attemptsAfterFailure, canDeferEmail } from './attempts'
 import { MAX_TABLE_ROWS } from './spreadsheet'
 import {
@@ -124,8 +125,8 @@ const emptyReport = (): AoSyncReport => ({
 
 /** Configuration du serveur : son absence fait échouer le passage en entier (et non boîte par boîte, en silence). */
 function assertConfigured(): void {
-  if (!COLLECTIONS.AO_EMAILS || !COLLECTIONS.AO_OFFERS || !COLLECTIONS.AO_STATE || !COLLECTIONS.AO_SOURCES || !COLLECTIONS.AO_OFFER_DETAILS) {
-    throw new Error('APPWRITE_COLLECTION_AO_EMAILS / _AO_OFFERS / _AO_STATE / _AO_SOURCES / _AO_OFFER_DETAILS non définies : créez les collections (npm run ao:setup) et ajoutez ces variables.')
+  if (!COLLECTIONS.AO_EMAILS || !COLLECTIONS.AO_OFFERS || !COLLECTIONS.AO_STATE || !COLLECTIONS.AO_SOURCES || !COLLECTIONS.AO_OFFER_DETAILS || !COLLECTIONS.AO_OFFER_INDEX) {
+    throw new Error('APPWRITE_COLLECTION_AO_EMAILS / _AO_OFFERS / _AO_STATE / _AO_SOURCES / _AO_OFFER_DETAILS / _AO_OFFER_INDEX non définies : créez les collections (npm run ao:setup, npm run schema:push) et ajoutez ces variables.')
   }
   assertCredentialsKey()
 }
@@ -139,6 +140,14 @@ export async function syncAoInbox({ now = new Date(), maxEmails = 25, budgetMs =
   if (!tenantId) {
     await purgeAoRecords(new Date(now.getTime() - RETENTION_DAYS * DAY_MS))
     await purgeDailyState(new Date(now.getTime() - 7 * DAY_MS))
+    // Index de la liste : les offres des deux derniers jours dont la ligne manque ou diffère sont reconstruites. Un
+    // échec n'empêche pas de lire les boîtes : journalisé, il est rattrapé au passage suivant.
+    try {
+      const rebuilt = await reconcileAoOfferIndex(new Date(now.getTime() - 2 * DAY_MS))
+      if (rebuilt) console.warn(`AO: ${rebuilt} ligne(s) d'index de la liste reconstruite(s)`)
+    } catch (err) {
+      console.error('AO: rattrapage de l\'index de la liste impossible', err instanceof Error ? err.message : String(err))
+    }
   }
 
   const sources = await listEnabledSources(tenantId)
@@ -391,6 +400,7 @@ async function processEnvelope(
       const llmWait = Math.min(MAX_LLM_WAIT_MS, timeLeft() - 10_000)
       if (llmWait < MIN_LLM_WAIT_MS) throw new RetryLater('plus assez de temps pour l\'extraction : e-mail repris au prochain passage', !canDefer)
       fromAi = (await extractOffersFromEmail(content.text, llmWait, aiOrigin, org.name, message.receivedAt)).offers
+        .map(o => keepCitedContact(o, content.text, source.ownDomains))
     }
     const read = [...content.tableOffers, ...fromAi]
     // Veille (scraping) : une offre dont la date limite est déjà passée n'a plus d'intérêt, elle n'est pas créée
@@ -413,18 +423,28 @@ async function processEnvelope(
     let duplicates = 0
     let outdated = 0
     const seen = new Set<string>()
+    // Ligne d'index de chaque offre créée (liste filtrée par le serveur, offer-index.ts) : mêmes valeurs que
+    // celles que l'e-mail vient d'enregistrer (expéditeur, objet, date de réception).
+    const indexContext: AoIndexContext = {
+      tenantId: org.tenantId,
+      receivedAt: message.receivedAt.toISOString(),
+      subject: message.subject.slice(0, 500),
+      sender: senderOf({ origin: origin ? formatSender(origin) : '', fromName: message.fromName.slice(0, 200), fromAddress: message.fromAddress.slice(0, 320) }),
+    }
     for (const offer of offers) {
       const fingerprint = offerFingerprint(offer, org.tenantId)
       if (seen.has(fingerprint)) { duplicates++; continue } // même offre dans le corps et une pièce jointe
       seen.add(fingerprint)
       const duplicate = await findAoDuplicate(fingerprint, new Date(now.getTime() - DUPLICATE_WINDOW_DAYS * DAY_MS))
       // Offre de la veille : détails toujours enregistrés, ils portent le canal affiché dans la colonne « Source ».
-      const details =
-        scraping || offer.engagement || offer.technologies.length ? { engagement: offer.engagement, technologies: offer.technologies } : null
+      const details = scraping || offer.engagement || offer.technologies.length || offer.contact || offer.sourceUrl
+        ? { engagement: offer.engagement, technologies: offer.technologies, contact: offer.contact, sourceUrl: offer.sourceUrl }
+        : null
       const channel = scraping ? 'scraping' : 'email'
       // Créée par un essai interrompu de ce même e-mail : c'est la sienne, pas un doublon (ses détails ont pu manquer).
       // Vérifié avant l'échéance : une reprise le lendemain de la date limite complète l'offre déjà créée.
       if (duplicate?.emailId === emailId) {
+        await saveAoOfferIndex(duplicate, indexContext)
         if (details) await saveAoOfferDetails(duplicate.$id, details, channel)
         created++
         continue
@@ -438,6 +458,18 @@ async function processEnvelope(
         duplicates++
       } else {
         const saved = await createAoOffer(offer, { fingerprint, emailId })
+        // Ligne d'index juste après l'offre : sans elle, l'offre n'apparaîtrait nulle part, et une reprise de l'e-mail qui
+        // l'extrairait autrement (autre empreinte) ne la retrouverait pas. Échec : l'offre est retirée, l'e-mail repris
+        // (ou « Réessayer ») la recrée entière. Les détails viennent ensuite : s'ils échouent, l'offre reste visible et la
+        // reprise du même e-mail les complète (branche ci-dessus).
+        try {
+          await saveAoOfferIndex(saved, indexContext)
+        } catch (err) {
+          await deleteAoOfferAndDetails(saved.$id).catch(cleanup => {
+            console.error('AO: offre créée sans ligne d\'index, à reprendre par npm run ao:index', saved.$id, cleanup instanceof Error ? cleanup.message : String(cleanup))
+          })
+          throw err
+        }
         if (details) await saveAoOfferDetails(saved.$id, details, channel)
         created++
       }

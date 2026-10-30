@@ -105,3 +105,4 @@ par leur abonnement.
   disparaissent de son tableau, de ses statistiques et de son export, et une organisation qui reçoit beaucoup d'offres
   (tableaux joints : 500 par jour) peut le provoquer pour les autres. Chaque affichage lit aussi ces 2 000 offres. À
   corriger en lisant les e-mails de l'organisation puis leurs offres (index sur `ao_offers.emailId`, `ao:setup`).
+  **Résolue le 2026-10-30 par l'ADR 0019** (index `ao_offer_index` portant l'organisation, liste filtrée par le serveur).

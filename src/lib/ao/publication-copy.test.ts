@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { findIdentifiers, words } from './name-match'
+import { findIdentifiers, findNames, words } from './name-match'
 import { descriptionFromCopy, maskNames, maskTermsOf, parsePublicationCopy, type PublicationCopy } from './publication-copy'
 import { publicLabel, toPublicOffer } from './anonymize'
 import type { AoOfferFields } from './types'
@@ -92,6 +92,12 @@ describe('relecture de la version publiée : ce qui identifierait encore le clie
     const names = [words('Société Générale'), words('BNPP')]
     const text = 'Mission pour la SOCIETE GENERALE (bnpp) — demande RFC00094023, lot DH038970, AO-0042.'
     assert.deepEqual(findIdentifiers(text, names), ['SOCIETE GENERALE', 'bnpp', 'RFC00094023', 'DH038970', 'AO-0042'])
+  })
+
+  it('version non anonymisée : ne signale que les noms de personnes, pas les références qu\'elle garde', () => {
+    const text = 'Demande RFC00094023 : envoyez vos CV à Marie Dupont avant le 12/11.'
+    assert.deepEqual(findNames(text, [words('Marie Dupont')]), ['Marie Dupont'])
+    assert.deepEqual(findNames('Demande RFC00094023.', [words('Marie Dupont')]), [])
   })
 
   it('ne signale ni les normes, ni les années, ni les versions', () => {

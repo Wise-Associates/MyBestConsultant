@@ -1,7 +1,6 @@
 import { requireAdmin } from '@/lib/appwrite/auth'
-import type { AoOfferRow } from '@/lib/ao/filters'
-import { listAoOfferRows } from '@/lib/ao/repo'
-import { listSources } from '@/lib/ao/sources'
+import { EMPTY_AO_FILTERS, type AoOfferRow } from '@/lib/ao/filters'
+import { listAllAoOfferRows } from '@/lib/ao/repo'
 import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 import { AoStatsView } from '@/components/ao/ao-stats-view'
 
@@ -13,8 +12,7 @@ export default async function AoStatsPage() {
   let rows: AoOfferRow[] = []
   let loadError = ''
   try {
-    const sources = await listSources(PLATFORM_TENANT_ID)
-    rows = await listAoOfferRows(sources.map(s => s.$id))
+    rows = await listAllAoOfferRows(PLATFORM_TENANT_ID, EMPTY_AO_FILTERS)
   } catch (err) {
     console.error('AO: statistiques indisponibles', err instanceof Error ? err.message : err)
     loadError = 'Impossible de charger les offres AO : vérifiez les collections AO (npm run ao:setup) et leurs variables APPWRITE_COLLECTION_AO_*.'

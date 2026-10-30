@@ -20,14 +20,25 @@ export interface PublicationDraft {
   reviewed: boolean
   /** Noms que l'IA dit avoir retirés (sigles, entités, projets) : masqués eux aussi à la publication. */
   maskTerms: string[]
+  /**
+   * false : publication non anonymisée, choisie par la personne qui publie (« Publier sans anonymiser ») — client et
+   * noms gardés, coordonnées personnelles retirées (rawPublicOffer). Absent ou true : anonymisée (ADR 0013).
+   */
+  anonymized: boolean
 }
+
+/** anonymized : version anonymisée (IA ou règles, ADR 0013) ; raw : l'offre telle que reçue, à relire (sans IA). */
+export type PublicationMode = 'anonymized' | 'raw'
 
 export interface PublicationPreview {
   draft: PublicationDraft
   /** Offres déjà en ligne au même intitulé et dans la même ville (risque de doublon). */
   similarJobs: { id: string; title: string; location: string }[]
-  /** ai : version rédigée par l'IA ; rules : par les règles automatiques seules (IA refusée ou en échec, voir `notice`). */
-  rewrite: 'ai' | 'rules'
+  /**
+   * ai : version rédigée par l'IA ; rules : par les règles automatiques seules (IA refusée ou en échec, voir `notice`) ;
+   * raw : version non anonymisée (offre telle que reçue, coordonnées personnelles retirées).
+   */
+  rewrite: 'ai' | 'rules' | 'raw'
   /** Pourquoi l'IA n'a pas rédigé cette version ; vide sinon. */
   notice: string
   /** Noms à signaler s'ils réapparaissent pendant la relecture (mots normalisés, name-match.ts). */
@@ -62,21 +73,47 @@ export interface AoCommentView {
   mine: boolean
 }
 
+/** Indicateurs du haut du tableau, sur toutes les offres de l'organisation (pas seulement celles qui passent les filtres). */
+export interface AoOfferCounts {
+  toReview: number
+  published: number
+  ignored: number
+  /** E-mails fusionnés dans une offre déjà reçue (somme des sourceCount - 1). */
+  duplicates: number
+}
+
+/** Place d'une offre dans la liste filtrée (page de l'offre) : offres précédente et suivante, dans l'ordre du tableau. */
+export interface AoOfferNeighbours {
+  previous: string | null
+  next: string | null
+  /** Rang de l'offre (1 pour la première) ; null si elle ne passe pas les filtres (statut changé depuis…). */
+  position: number | null
+  total: number
+}
+
+/** Le tableau : offres filtrées par le serveur (index de la liste, offer-index.ts). */
+export interface AoPageView {
+  rows: AoOfferRow[]
+  /** Offres listées (AO_MAX_LISTED au plus : les plus récentes). */
+  total: number
+  counts: AoOfferCounts
+  recentEmails: AoEmail[]
+}
+
 /**
  * Réponse d'un passage de « Synchroniser maintenant » (route POST …/sync de l'espace, enchaînée par AoSyncProvider),
- * avec les données à jour du tableau.
+ * avec, si la page AO est affichée, son tableau à jour (`query` : ses filtres, forme canonique).
  */
 export interface AoSyncPassResult {
   report?: AoSyncReport
-  rows?: AoOfferRow[]
-  recentEmails?: AoEmail[]
+  view?: AoPageView & { query: string }
   error?: string
 }
 
 export interface AoDashboardActions {
   retryEmail(id: string): Promise<{ report?: AoSyncReport; error?: string }>
   deleteOffer(id: string): Promise<{ error?: string }>
-  previewPublication(id: string): Promise<{ preview?: PublicationPreview; error?: string }>
+  previewPublication(id: string, mode?: PublicationMode): Promise<{ preview?: PublicationPreview; error?: string }>
   publish(id: string, input: PublicationDraft): Promise<{ jobId?: string; error?: string }>
   setStatus(id: string, status: 'to_review' | 'ignored'): Promise<{ error?: string }>
   /**
@@ -93,6 +130,8 @@ export interface AoDashboardActions {
 
 /** Liens propres à l'espace de la page. */
 export interface AoDashboardPaths {
+  /** La liste des offres ; la page d'une offre est `${list}/<id>`. */
+  list: string
   statistics: string
   mailboxes: string
   /** Export Excel (GET, filtres du tableau en paramètres). */

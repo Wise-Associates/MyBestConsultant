@@ -1,8 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/appwrite/auth'
-import type { AoOfferRow } from '@/lib/ao/filters'
-import { listAoOfferRows } from '@/lib/ao/repo'
-import { listSources } from '@/lib/ao/sources'
+import { EMPTY_AO_FILTERS, type AoOfferRow } from '@/lib/ao/filters'
+import { listAllAoOfferRows } from '@/lib/ao/repo'
 import { AoStatsView } from '@/components/ao/ao-stats-view'
 
 // Statistiques des appels d'offres de l'organisation du recruteur (même périmètre que /recruiter/parametres/boites-ao).
@@ -14,8 +13,7 @@ export default async function RecruiterAoStatsPage() {
   let rows: AoOfferRow[] = []
   let loadError = ''
   try {
-    const sources = await listSources(user.tenantId)
-    rows = await listAoOfferRows(sources.map(s => s.$id))
+    rows = await listAllAoOfferRows(user.tenantId, EMPTY_AO_FILTERS)
   } catch (err) {
     console.error('AO: statistiques de l\'organisation indisponibles', user.tenantId, err instanceof Error ? err.message : err)
     loadError = 'Impossible de charger vos appels d’offres pour le moment : rechargez la page dans quelques instants.'

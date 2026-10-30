@@ -1,21 +1,20 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { HoverCard } from '@/components/ui/hover-card'
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useEffect, useEffectEvent, useRef, useState, useTransition } from 'react'
 import { summaryOf, useAoSync } from './ao-sync-provider'
-import { AlertCircle, ArrowLeft, BarChart3, CheckCircle2, Download, Eye, Inbox, MessageSquare, Trash2, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
-import { AO_CHANNEL_LABEL, EMPTY_AO_FILTERS, filterAoOffers, filtersToSearchParams, type AoFilters, type AoOfferRow } from '@/lib/ao/filters'
+import { ArrowLeft, BarChart3, Download, Eye, Inbox, MessageSquare, Trash2, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
+import { AO_CHANNEL_LABEL, AO_MAX_LISTED, EMPTY_AO_FILTERS, filtersToSearchParams, type AoFilters, type AoOfferRow } from '@/lib/ao/filters'
 import { MAX_ATTEMPTS } from '@/lib/ao/attempts'
-import type { AoDashboardActions, AoDashboardCopy, AoDashboardPaths } from '@/lib/ao/dashboard-types'
+import type { AoDashboardActions, AoDashboardCopy, AoDashboardPaths, AoPageView } from '@/lib/ao/dashboard-types'
 import type { AoSyncReport } from '@/lib/ao/sync'
-import type { AoEmail } from '@/lib/ao/types'
 import { AoComments } from './ao-comments'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { AoOfferPanel } from './ao-offer-panel'
 import { AdminPageHeader } from '@/components/admin/admin-page-header'
-import { WorkBadge, useOfferPublications } from './offer-publications'
+import { WorkBadge, useAoPublications } from './offer-publications'
+import { Banner } from './ao-banner'
 import { TrackingIcons, TrackingLegend } from './offer-tracking'
 import { trackingSteps, type TrackingStep } from '@/lib/ao/tracking'
 import {
@@ -28,8 +27,12 @@ import { SENIORITY_SHORT, seniorityOf } from '@/lib/ao/stats'
 // ses textes (src/lib/ao/dashboard-types.ts).
 
 interface Props {
-  rows: AoOfferRow[]
-  recentEmails: AoEmail[]
+  /** Offres affichées : filtrées par le serveur (offer-index.ts). */
+  view: AoPageView
+  /** Filtres appliqués (lus dans l'adresse par la page). */
+  filters: AoFilters
+  /** Filtres de `view`, forme canonique : une mise à jour de la synchronisation ne s'affiche que pour eux. */
+  query: string
   inboxConfigured: boolean
   /** Boîtes de l'espace dont la dernière lecture a échoué (ou qui ne sont pas lues). */
   mailboxIssues: MailboxIssue[]
@@ -40,9 +43,10 @@ interface Props {
   tracking: Record<string, TrackingStep[]>
   /** Suivi illisible : bandeau, les offres restent affichées. */
   trackingError?: string
-  actions: AoDashboardActions
+  /** Actions de la liste ; celles d'une offre sont sur sa page (ao-offer-page.tsx). */
+  actions: Pick<AoDashboardActions, 'retryEmail' | 'deleteOffer' | 'listComments' | 'addComment' | 'deleteComment'>
   paths: AoDashboardPaths
-  copy: AoDashboardCopy
+  copy: Pick<AoDashboardCopy, 'eyebrow' | 'title' | 'scope' | 'back'>
   /** Espace admin : titre et sous-titre dans la barre du haut du layout (AdminPageHeader), outils restant dans la page. */
   titleInAdminBar?: boolean
 }
@@ -83,6 +87,8 @@ const toolbarSegment =
   'inline-flex items-center gap-2 px-3.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#F97316] disabled:cursor-not-allowed'
 /** Libellé court dans le tableau ; le libellé complet est en infobulle et dans le panneau. */
 const ENGAGEMENT_SHORT = { assistance: 'AT', forfait: 'Forfait', '': '—' } as const
+/** Nombre d'offres affiché : Appwrite ne compte pas au-delà de AO_MAX_LISTED (« 5 000+ »). */
+const countLabel = (n: number) => (n >= AO_MAX_LISTED ? `${AO_MAX_LISTED.toLocaleString('fr-FR')}+` : n.toLocaleString('fr-FR'))
 /** Date courte du tableau (21/10/26) ; la date complète est en infobulle. */
 const shortDay = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })
 
@@ -93,22 +99,31 @@ export interface MailboxIssue {
   at: string | null
 }
 
-export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, inboxConfigured, mailboxIssues, loadError, accessAlert, tracking, trackingError, actions, paths, copy, titleInAdminBar }: Props) {
+export function AoOffersDashboard({ view, filters, query, inboxConfigured, mailboxIssues, loadError, accessAlert, tracking, trackingError, actions, paths, copy, titleInAdminBar }: Props) {
   // Synchronisation en arrière-plan (AoSyncProvider, layout de l'espace) : elle continue quand on quitte la page et se
-  // retrouve en revenant. Les données renvoyées par ses passages ne remplacent celles de la page que si elles sont
-  // arrivées après elles : la page rechargée (retour sur la page, fin de synchronisation) l'emporte sur un passage plus
-  // ancien, sans retour en arrière.
+  // retrouve en revenant. Le tableau renvoyé par ses passages ne remplace celui du serveur que s'il est arrivé après
+  // lui et porte sur les mêmes filtres : la page rechargée (retour sur la page, fin de synchronisation,
+  // filtre changé) l'emporte sur un passage plus ancien, sans retour en arrière.
   const sync = useAoSync()
   const liveVersion = sync.live?.version ?? 0
-  const [pageData, setPageData] = useState({ rows: pageRows, liveVersion })
-  if (pageData.rows !== pageRows) setPageData({ rows: pageRows, liveVersion })
-  const current = sync.live && sync.live.version > pageData.liveVersion ? sync.live : null
-  const rows = current?.rows ?? pageRows
-  const recentEmails = current?.recentEmails ?? pageEmails
-  const [filters, setFilters] = useState<AoFilters>(EMPTY_AO_FILTERS)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Filtres saisis : appliqués par le serveur (adresse de la page) 300 ms après la dernière frappe.
+  const [draft, setDraft] = useState<AoFilters>(filters)
+  // Filtres modifiés pas encore demandés au serveur (attente de la fin de la frappe).
+  const [typed, setTyped] = useState<AoFilters | null>(null)
+  const [loading, startLoading] = useTransition()
+  const filtersKey = filtersToSearchParams(filters).toString()
+  const [pageData, setPageData] = useState({ view, liveVersion })
+  if (pageData.view !== view) {
+    setPageData({ view, liveVersion })
+    // Nouvelles données du serveur : le formulaire reprend les filtres appliqués (retour arrière du navigateur, lien,
+    // réinitialisation), sauf pendant une frappe ou un chargement, où il montre ce qui est en cours de saisie ou demandé.
+    if (!loading && typed === null && filtersToSearchParams(draft).toString() !== filtersKey) setDraft(filters)
+  }
+  const current = sync.live && sync.live.version > pageData.liveVersion && sync.live.view.query === query ? sync.live.view : null
+  const { rows, recentEmails, counts, total } = current ?? view
   const [notice, setNotice] = useState<Notice>(null)
   const router = useRouter()
+  const pathname = usePathname()
   // Fenêtres « Commentaires » et « Supprimer » : identifiant de l'offre concernée (null : fermée).
   const [commentsFor, setCommentsFor] = useState<string | null>(null)
   const [deleteFor, setDeleteFor] = useState<string | null>(null)
@@ -117,18 +132,9 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
   const [retrying, startRetry] = useTransition()
   const [retryingId, setRetryingId] = useState<string | null>(null)
   const noticeRef = useRef<HTMLDivElement>(null)
-  // Préparations et publications : elles continuent si l'on ferme le panneau de l'offre (offer-publications.tsx). À leur
-  // fin, un message prévient seulement si ce panneau n'est plus ouvert (sinon il affiche lui-même le résultat).
-  const openIdRef = useRef<string | null>(null)
-  useEffect(() => { openIdRef.current = selectedId }, [selectedId])
-  const publications = useOfferPublications(actions, ({ id, title, work, error }) => {
-    if (openIdRef.current === id) return
-    if (error) return setNotice({ tone: 'error', text: `« ${title} » : ${error}` })
-    setNotice({
-      tone: 'ok',
-      text: work === 'preparing' ? `Version anonymisée de « ${title} » prête : ouvrez l'offre pour la relire et la publier.` : `Offre « ${title} » publiée.`,
-    })
-  })
+  // Préparations et publications des offres (pages des offres) : tenues par la section AO, elles continuent ici ; leur
+  // fin est annoncée par un message (offer-publications.tsx).
+  const publications = useAoPublications()
 
   // Diffusion et sourcing avancent en arrière-plan après une publication : tant qu'une étape est en cours, la page est
   // relue toutes les 15 s. Une diffusion envoyée à Make reste « en attente » jusqu'à 10 min après son envoi (lui-même
@@ -143,9 +149,7 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
     return () => clearInterval(timer)
   }, [workingKey, router])
 
-  // Les lignes viennent du serveur (rafraîchies après chaque action) : seul le filtrage est local.
-  const filtered = useMemo(() => filterAoOffers(rows, filters), [rows, filters])
-  const selected = rows.find(r => r.$id === selectedId) ?? null
+  // Les lignes viennent du serveur (rafraîchies après chaque action), filtrées par lui.
   const commentsRow = rows.find(r => r.$id === commentsFor) ?? null
   const deleteRow = rows.find(r => r.$id === deleteFor) ?? null
 
@@ -156,20 +160,35 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
     const res = await actions.deleteOffer(deleteRow.$id)
     setDeleting(false)
     if (res.error) return setDeleteError(res.error)
-    if (selectedId === deleteRow.$id) setSelectedId(null)
     setDeleteFor(null)
     setNotice({ tone: 'ok', text: `Offre « ${deleteRow.title} » supprimée.` })
     router.refresh()
   }
   const failedEmails = recentEmails.filter(e => e.status === 'failed')
-  const stats = {
-    toReview: rows.filter(r => r.status === 'to_review').length,
-    published: rows.filter(r => r.status === 'published').length,
-    ignored: rows.filter(r => r.status === 'ignored').length,
-    duplicates: rows.reduce((n, r) => n + r.sourceCount - 1, 0),
+  const allOffers = counts.toReview + counts.published + counts.ignored
+  const filtering = filtersKey !== ''
+  const exportHref = `${paths.exportApi}?${filtersKey}`
+  const totalLabel = countLabel(total)
+
+  /** Page d'une offre : les filtres suivent, pour passer aux offres précédente et suivante de cette liste. */
+  const offerHref = (id: string) => `${paths.list}/${encodeURIComponent(id)}${filtersKey ? `?${filtersKey}` : ''}`
+  /** Demande au serveur la liste filtrée (filtres dans l'adresse). */
+  function load(f: AoFilters) {
+    setTyped(null)
+    const search = filtersToSearchParams(f).toString()
+    startLoading(() => router.replace(search ? `${pathname}?${search}` : pathname, { scroll: false }))
   }
-  const exportHref = `${paths.exportApi}?${filtersToSearchParams(filters).toString()}`
-  const set = <K extends keyof AoFilters>(key: K, value: AoFilters[K]) => setFilters(f => ({ ...f, [key]: value }))
+  const set = <K extends keyof AoFilters>(key: K, value: AoFilters[K]) => {
+    const next = { ...draft, [key]: value }
+    setDraft(next)
+    setTyped(next)
+  }
+  const loadTyped = useEffectEvent((f: AoFilters) => load(f))
+  useEffect(() => {
+    if (!typed) return
+    const timer = setTimeout(() => loadTyped(typed), 300)
+    return () => clearTimeout(timer)
+  }, [typed])
   const amount = (value: string) => (value.trim() === '' || Number.isNaN(Number(value)) ? null : Math.max(0, Number(value)))
 
   function retry(id: string) {
@@ -186,8 +205,8 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
 
   // Le message s'affiche en haut de la page : on l'amène à l'écran, « Réessayer » étant plus bas.
   useEffect(() => {
-    if (notice || sync.notice) noticeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [notice, sync.notice])
+    if (notice || sync.notice || publications.notice) noticeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [notice, sync.notice, publications.notice])
 
   const description = `Appels d'offres reçus dans les boîtes ${copy.scope}, lus automatiquement.`
     + (recentEmails[0] ? ` Dernier e-mail : ${formatDay(recentEmails[0].receivedAt)}.` : '')
@@ -237,20 +256,21 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
               </button>
             )}
           </div>
-          <a href={exportHref} download aria-label={`Télécharger Excel (${filtered.length} offres)`}
-            title={`Exporte les ${filtered.length} offres affichées, filtres compris`}
+          <a href={exportHref} download aria-label={`Télécharger Excel (${totalLabel} offres)`}
+            title={`Exporte les ${totalLabel} offres filtrées (${AO_MAX_LISTED.toLocaleString('fr-FR')} au plus)`}
             className="inline-flex items-center gap-2.5 h-10 pl-3.5 pr-1.5 rounded-[10px] bg-[#F97316] text-[13px] font-semibold text-admin-fg transition-colors hover:bg-[#FB923C] active:bg-[#EA580C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-fg focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg">
             <Download size={15} aria-hidden />
             Télécharger Excel
             <span className="inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-md bg-admin-fg text-white text-xs font-semibold tabular-nums">
-              {filtered.length}
+              {totalLabel}
             </span>
           </a>
         </div>
       </div>
 
       {accessAlert && <Banner tone="error" text={accessAlert} />}
-      {!inboxConfigured && (
+      {/* Chargement impossible : seule l'erreur s'affiche (ni « aucune boîte », ni compteurs à zéro, qui seraient faux). */}
+      {!inboxConfigured && !loadError && (
         <Banner tone="error" text={`Aucune boîte ${copy.scope} n'est active : la lecture automatique est arrêtée. Ajoutez-en une dans « Boîtes de réception ».`} />
       )}
       {mailboxIssues.map(m => (
@@ -267,64 +287,65 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
       <div ref={noticeRef} className="space-y-3 empty:hidden">
         {sync.notice && <Banner tone={sync.notice.tone} text={sync.notice.text} onClose={sync.clearNotice} />}
         {notice && <Banner tone={notice.tone} text={notice.text} onClose={() => setNotice(null)} />}
+        {publications.notice && <Banner tone={publications.notice.tone} text={publications.notice.text} onClose={publications.clearNotice} />}
       </div>
 
       {/* Indicateurs (cliquables : filtrent la liste) */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      {!loadError && <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[
-          { label: 'À valider', value: stats.toReview, accent: BRAND, onClick: () => set('status', 'to_review') },
-          { label: 'Publiées', value: stats.published, accent: '#047857', onClick: () => set('status', 'published') },
-          { label: 'Ignorées', value: stats.ignored, accent: 'var(--admin-fg-subtle)', onClick: () => set('status', 'ignored') },
-          { label: 'Doublons fusionnés', value: stats.duplicates, accent: '#1d4ed8', onClick: undefined },
+          { label: 'À valider', value: counts.toReview, accent: BRAND, onClick: () => set('status', 'to_review') },
+          { label: 'Publiées', value: counts.published, accent: '#047857', onClick: () => set('status', 'published') },
+          { label: 'Ignorées', value: counts.ignored, accent: 'var(--admin-fg-subtle)', onClick: () => set('status', 'ignored') },
+          { label: 'Doublons fusionnés', value: counts.duplicates, accent: '#1d4ed8', onClick: undefined },
           { label: 'E-mails en erreur', value: failedEmails.length, accent: '#b91c1c', onClick: undefined },
         ].map(s => (
           <button key={s.label} type="button" onClick={s.onClick} disabled={!s.onClick}
             className="rounded-2xl p-5 text-left"
             style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)', cursor: s.onClick ? 'pointer' : 'default' }}>
-            <p className="text-2xl font-bold text-admin-fg" style={{ fontVariantNumeric: 'tabular-nums' }}>{s.value}</p>
+            <p className="text-2xl font-bold text-admin-fg" style={{ fontVariantNumeric: 'tabular-nums' }}>{countLabel(s.value)}</p>
             <p className="text-xs mt-1 flex items-center gap-2" style={{ color: 'var(--admin-fg-muted)' }}>
               <span className="inline-block w-2 h-2 rounded-full" style={{ background: s.accent }} />{s.label}
             </p>
           </button>
         ))}
-      </div>
+      </div>}
 
       {/* Filtres */}
       <div className="space-y-3">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[240px]">
             <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--admin-fg-muted)' }} />
-            <input value={filters.q} onChange={e => set('q', e.target.value)} aria-label="Rechercher"
+            <input value={draft.q} onChange={e => set('q', e.target.value)} aria-label="Rechercher"
               placeholder="Rechercher un intitulé, un client, une compétence, un objet d'e-mail…"
               style={{ ...control, width: '100%', paddingLeft: 36 }} />
           </div>
-          <select aria-label="Statut" value={filters.status} onChange={e => set('status', e.target.value as AoFilters['status'])} style={control}>
+          <select aria-label="Statut" value={draft.status} onChange={e => set('status', e.target.value as AoFilters['status'])} style={control}>
             <option value="all" style={optionStyle}>Tous les statuts</option>
             {Object.entries(STATUS_UI).map(([k, v]) => <option key={k} value={k} style={optionStyle}>{v.label}</option>)}
           </select>
-          <select aria-label="Type de contrat" value={filters.contractType} onChange={e => set('contractType', e.target.value as AoFilters['contractType'])} style={control}>
+          <select aria-label="Type de contrat" value={draft.contractType} onChange={e => set('contractType', e.target.value as AoFilters['contractType'])} style={control}>
             <option value="all" style={optionStyle}>Tous les contrats</option>
             {Object.entries(CONTRACT_LABEL).map(([k, v]) => <option key={k} value={k} style={optionStyle}>{v}</option>)}
           </select>
-          <select aria-label="Télétravail" value={filters.remote} onChange={e => set('remote', e.target.value as AoFilters['remote'])} style={control}>
+          <select aria-label="Télétravail" value={draft.remote} onChange={e => set('remote', e.target.value as AoFilters['remote'])} style={control}>
             <option value="all" style={optionStyle}>Tout mode de travail</option>
             {Object.entries(REMOTE_LABEL).map(([k, v]) => <option key={k} value={k} style={optionStyle}>{v}</option>)}
           </select>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <input aria-label="Ville" value={filters.city} onChange={e => set('city', e.target.value)} placeholder="Ville" style={{ ...control, width: 150 }} />
-          <input aria-label="Compétence" value={filters.skill} onChange={e => set('skill', e.target.value)} placeholder="Compétence" style={{ ...control, width: 150 }} />
-          <input aria-label="Expéditeur" value={filters.sender} onChange={e => set('sender', e.target.value)} placeholder="Expéditeur" style={{ ...control, width: 170 }} />
-          <input aria-label="Montant minimum" type="number" min={0} inputMode="numeric" value={filters.salaryMin ?? ''} onChange={e => set('salaryMin', amount(e.target.value))} placeholder="TJM / salaire min" style={{ ...control, width: 150 }} />
-          <input aria-label="Montant maximum" type="number" min={0} inputMode="numeric" value={filters.salaryMax ?? ''} onChange={e => set('salaryMax', amount(e.target.value))} placeholder="max" style={{ ...control, width: 100 }} />
+          <input aria-label="Ville" value={draft.city} onChange={e => set('city', e.target.value)} placeholder="Ville" style={{ ...control, width: 150 }} />
+          <input aria-label="Compétence" value={draft.skill} onChange={e => set('skill', e.target.value)} placeholder="Compétence" style={{ ...control, width: 150 }} />
+          <input aria-label="Expéditeur" value={draft.sender} onChange={e => set('sender', e.target.value)} placeholder="Expéditeur" style={{ ...control, width: 170 }} />
+          <input aria-label="Montant minimum" type="number" min={0} inputMode="numeric" value={draft.salaryMin ?? ''} onChange={e => set('salaryMin', amount(e.target.value))} placeholder="TJM / salaire min" style={{ ...control, width: 150 }} />
+          <input aria-label="Montant maximum" type="number" min={0} inputMode="numeric" value={draft.salaryMax ?? ''} onChange={e => set('salaryMax', amount(e.target.value))} placeholder="max" style={{ ...control, width: 100 }} />
           <label className="flex items-center gap-2 text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
             Reçues du
-            <input type="date" value={filters.from} onChange={e => set('from', e.target.value)} style={{ ...control, colorScheme: 'dark' }} />
+            <input type="date" value={draft.from} onChange={e => set('from', e.target.value)} style={{ ...control, colorScheme: 'dark' }} />
             au
-            <input type="date" value={filters.to} onChange={e => set('to', e.target.value)} style={{ ...control, colorScheme: 'dark' }} />
+            <input type="date" value={draft.to} onChange={e => set('to', e.target.value)} style={{ ...control, colorScheme: 'dark' }} />
           </label>
-          {JSON.stringify(filters) !== JSON.stringify(EMPTY_AO_FILTERS) && (
-            <button type="button" onClick={() => setFilters(EMPTY_AO_FILTERS)} className="text-xs underline" style={{ color: 'var(--admin-fg-muted)' }}>
+          {(filtering || filtersToSearchParams(draft).toString() !== '') && (
+            <button type="button" onClick={() => { setDraft(EMPTY_AO_FILTERS); load(EMPTY_AO_FILTERS) }} className="text-xs underline" style={{ color: 'var(--admin-fg-muted)' }}>
               Réinitialiser les filtres
             </button>
           )}
@@ -336,7 +357,10 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
         <div className="px-6 py-4 flex items-center gap-4" style={{ background: 'var(--admin-panel)', borderBottom: '1px solid var(--admin-line)' }}>
           <h2 className="font-semibold text-sm text-admin-fg mr-auto">Offres extraites</h2>
           <TrackingLegend />
-          <span className="text-xs shrink-0" style={{ color: 'var(--admin-fg-muted)' }}>{filtered.length} résultat{filtered.length > 1 ? 's' : ''} sur {rows.length}</span>
+          <span role="status" aria-live="polite" className="inline-flex items-center gap-1.5 text-xs shrink-0" style={{ color: 'var(--admin-fg-muted)' }}>
+            {loading && <Loader2 size={13} className="animate-spin motion-reduce:animate-none" aria-hidden />}
+            {loading ? 'Chargement…' : `${totalLabel} résultat${total > 1 ? 's' : ''}${filtering ? ` sur ${allOffers.toLocaleString('fr-FR')}` : ''}`}
+          </span>
         </div>
         {/* Pas de défilement horizontal : largeurs fixes (sur les en-têtes, lues par table-fixed), une ligne par cellule (texte complet au survol), colonnes
             secondaires masquées sur les écrans étroits (toutes restent dans le panneau de détail). */}
@@ -348,22 +372,22 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
               ))}
             </tr>
           </thead>
-          <tbody>
-            {filtered.length === 0 ? (
+          <tbody aria-busy={loading} className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+            {rows.length === 0 ? (
               <tr>
                 <td colSpan={TABLE_COLUMNS.length} className="text-center py-20" style={{ color: 'var(--admin-fg-muted)' }}>
                   <Inbox className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                  <p>{rows.length === 0 ? 'Aucune offre reçue pour l\'instant. Les appels d\'offres envoyés à la boîte AO apparaîtront ici.' : 'Aucune offre ne correspond à ces filtres.'}</p>
+                  <p>{loadError ? 'Liste indisponible : voir le message en haut de la page.' : allOffers === 0 ? 'Aucune offre reçue pour l\'instant. Les appels d\'offres envoyés à la boîte AO apparaîtront ici.' : 'Aucune offre ne correspond à ces filtres.'}</p>
                 </td>
               </tr>
-            ) : filtered.map(r => {
+            ) : rows.map(r => {
               const work = publications.of(r.$id).running
               return (
               // Seuls le titre et l'œil ouvrent le détail : un clic ailleurs dans la ligne (sélection de texte…) ne fait rien.
               <tr key={r.$id} className="hover:bg-admin-panel" style={{ borderBottom: '1px solid var(--admin-line)' }}>
                 <td className={cell('received')} title={formatDay(r.receivedAt)} style={{ color: 'var(--admin-fg-muted)', fontVariantNumeric: 'tabular-nums' }}>{shortDay(r.receivedAt)}</td>
                 <td className={cell('offer')}>
-                  <button type="button" onClick={() => setSelectedId(r.$id)} title={r.title} className="block w-full truncate text-left font-medium text-admin-fg hover:underline">{r.title}</button>
+                  <Link href={offerHref(r.$id)} title={r.title} className="block w-full truncate text-left font-medium text-admin-fg hover:underline">{r.title}</Link>
                   <p className="text-xs truncate" title={`${r.companyName || 'Client non précisé'} · ${r.senderName || r.senderAddress}`} style={{ color: 'var(--admin-fg-muted)' }}>
                     {/* Colonne Statut masquée sur petit écran : l'opération en cours est rappelée ici. */}
                     {work && <span className="sm:hidden font-medium" style={{ color: '#1d4ed8' }}>Modifications en cours · </span>}
@@ -403,9 +427,9 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
                 </td>
                 <td className={cell('actions')}>
                   <div className="flex items-center gap-1">
-                    <button type="button" onClick={() => setSelectedId(r.$id)} className={iconButton} aria-label={`Voir le détail : ${r.title}`} title="Voir le détail">
+                    <Link href={offerHref(r.$id)} className={iconButton} aria-label={`Voir le détail : ${r.title}`} title="Voir le détail">
                       <Eye size={16} />
-                    </button>
+                    </Link>
                     <button type="button" onClick={() => setCommentsFor(r.$id)} className={`${iconButton} relative`} aria-label={`Commentaires (${r.commentCount}) : ${r.title}`} title="Commentaires">
                       <MessageSquare size={16} />
                       {r.commentCount > 0 && (
@@ -428,6 +452,11 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
             })}
           </tbody>
         </table>
+        {total >= AO_MAX_LISTED && (
+          <p className="px-6 py-3 text-xs" style={{ background: 'var(--admin-panel)', borderTop: '1px solid var(--admin-line)', color: 'var(--admin-fg-muted)' }}>
+            Seules les {AO_MAX_LISTED.toLocaleString('fr-FR')} offres les plus récentes sont listées : affinez les filtres pour voir les autres.
+          </p>
+        )}
       </div>
 
       {/* E-mails en erreur */}
@@ -455,22 +484,11 @@ export function AoOffersDashboard({ rows: pageRows, recentEmails: pageEmails, in
         </div>
       )}
 
-      {selected && (
-        <AoOfferPanel row={selected} actions={actions} paths={paths} publishNote={copy.publishNote}
-          tracking={stepsOf(selected)} social={copy.social}
-          publication={publications.of(selected.$id)}
-          onPrepare={() => publications.prepare(selected.$id, selected.title)}
-          onStopPreparing={() => publications.stopPreparing(selected.$id)}
-          onPublish={(draft, skillsText) => publications.publish(selected.$id, selected.title, draft, skillsText)}
-          onEdit={patch => publications.edit(selected.$id, patch)}
-          onCancel={() => publications.cancel(selected.$id)}
-          onClose={() => setSelectedId(null)} />
-      )}
 
       {/* Commentaires de l'offre : discussion interne, hors du panneau de détail. */}
       <Dialog open={commentsRow !== null} onOpenChange={open => { if (!open) setCommentsFor(null) }}>
         {commentsRow && (
-          // z-10000 : au-dessus de la barre fixe de l'espace recruteur, comme le panneau de détail (ao-offer-panel.tsx).
+          // z-10000 : au-dessus de la barre fixe de l'espace recruteur (z-index 9000, site-navbar-client.tsx).
           <DialogContent className="admin-light z-10000 sm:max-w-[640px] max-h-[85vh] overflow-y-auto" style={{ background: 'var(--admin-panel)' }}>
             <DialogHeader>
               <DialogTitle className="text-admin-fg" style={{ fontSize: '1.05rem' }}>Commentaires</DialogTitle>
@@ -521,17 +539,4 @@ function noticeOf(r: AoSyncReport, scope: string, lead = ''): NonNullable<Notice
     tone: r.failed || r.errors.length ? 'error' : 'ok',
     text: `${lead}${parts.join(' · ')}${r.errors.length ? ` — ${r.failed ? `${r.failed} en erreur : ` : ''}${r.errors.slice(0, 2).join(' ; ')}` : ''}`,
   }
-}
-
-function Banner({ tone, text, onClose }: { tone: 'ok' | 'error'; text: string; onClose?: () => void }) {
-  const color = tone === 'ok' ? '#047857' : '#b91c1c'
-  const Icon = tone === 'ok' ? CheckCircle2 : AlertCircle
-  return (
-    <div role={tone === 'error' ? 'alert' : 'status'} className="flex items-start gap-3 p-4 rounded-xl"
-      style={{ background: tone === 'ok' ? 'rgba(52,211,153,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${tone === 'ok' ? 'rgba(52,211,153,0.25)' : 'rgba(239,68,68,0.2)'}` }}>
-      <Icon className="h-4 w-4 shrink-0 mt-0.5" style={{ color }} />
-      <p className="text-sm flex-1" style={{ color }}>{text}</p>
-      {onClose && <button type="button" onClick={onClose} aria-label="Fermer"><X size={14} style={{ color }} /></button>}
-    </div>
-  )
 }
