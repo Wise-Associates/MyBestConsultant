@@ -1,16 +1,16 @@
 import 'server-only'
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
-import { z } from 'zod'
+import { parsePublishInput } from './publication-input'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { createJob, getActiveJobs, getJobById, oneMonthFromNow } from '@/lib/appwrite/jobs'
 import { descriptionForPublication } from '@/lib/description-sections'
 import type { Job, UserProfile } from '@/types'
-import { aoAccess, isDocumentId } from './access'
+import { isDocumentId } from './access'
 import { callLLM } from '@/lib/ai/llm-router'
 import { llmUnavailableReason } from './ai-failures'
-import { namesToHide, publicLabel, scrubContacts, toPublicOffer } from './anonymize'
+import { namesToHide, publicLabel, rawPublicOffer, scrubContacts, toPublicOffer, type PublicOffer } from './anonymize'
 import {
   PUBLICATION_PROMPT, descriptionFromCopy, maskNames, maskTermsOf, parsePublicationCopy, publicationRequest, type PublicationCopy,
 } from './publication-copy'
@@ -20,17 +20,18 @@ import { createAoComment, deleteAoComment, deleteAoCommentsOfOffer, getAoComment
 import { getJobMatches, runPoolMatching } from '@/lib/matching-core'
 import { candidateNames, matchCandidatesForOffer } from '@/lib/sourcing-core'
 import { bestMatches } from '@/lib/sourcing-rules'
-import type { AoCommentView, AoDashboardActions, AoSyncPassResult, PublicationDraft, PublicationPreview, SourcingResult } from './dashboard-types'
+import type { AoCommentView, AoDashboardActions, AoSyncPassResult, PublicationDraft, PublicationMode, PublicationPreview, SourcingResult } from './dashboard-types'
 import { cityKey, titleKey } from './fingerprint'
 import { parseSender } from './origin'
-import { loadAoView } from './platform-view'
+import { filtersFromSearchParams, filtersToSearchParams } from './filters'
+import { aoAccessFor, loadAoView } from './platform-view'
 import {
-  deleteAoOfferAndDetails, getAoEmail, getAoOffer, getAoOfferSourcing, listAoEmailsByIds, listAoOfferDetails, saveAoOfferSourcing,
+  deleteAoOfferAndDetails, getAoOfferSourcing, listAoEmailsByIds, listAoOfferDetails, saveAoOfferSourcing,
   updateAoEmail, updateAoOffer,
 } from './repo'
 import { getAoSource } from './sources'
 import { requestPublicationStop } from './state'
-import { syncAoEmail, syncAoInbox } from './sync'
+import { syncAoEmail, syncAoInbox, type AoSyncReport } from './sync'
 import type { AoOffer } from './types'
 
 // Cœur des actions du tableau AO, partagé par /admin/candidats (boîtes de la plateforme) et
@@ -40,7 +41,6 @@ import type { AoOffer } from './types'
 
 const errorOf = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
-export const aoAccessFor = (tenantId: string) => aoAccess({ getEmail: getAoEmail, getSource: getAoSource, getOffer: getAoOffer }, tenantId)
 
 /** Statut d'abonnement d'une organisation (null : aucun), pour les droits qui en dépendent (tenancy.ts, sourcing-access.ts). */
 export async function tenantSubscriptionStatus(tenantId: string): Promise<string | null> {
@@ -51,20 +51,26 @@ export async function tenantSubscriptionStatus(tenantId: string): Promise<string
 
 /**
  * Noms à masquer : client de l'offre et clients cités par l'appel d'offres (avec leurs sigles), nom et domaine de
- * l'expéditeur de l'e-mail et de celui du message d'origine (sauf ceux de l'organisation qui lit la boîte).
- * `clients` : les clients seuls, tels qu'écrits, pour la consigne donnée à l'IA.
+ * l'expéditeur de l'e-mail, de celui du message d'origine et de l'interlocuteur lu par l'IA (sauf ceux de
+ * l'organisation qui lit la boîte). `clients` : les clients seuls, tels qu'écrits, pour la consigne donnée à l'IA.
+ * `people` : les noms de ces personnes seules, signalés à la relecture d'une version non anonymisée.
  */
-async function hiddenNamesFor(offer: AoOffer): Promise<{ clients: string[]; names: string[][] }> {
-  const email = (await listAoEmailsByIds([offer.emailId])).get(offer.emailId)
+async function hiddenNamesFor(offer: AoOffer): Promise<{ clients: string[]; names: string[][]; people: string[][] }> {
+  const [emails, details] = await Promise.all([listAoEmailsByIds([offer.emailId]), listAoOfferDetails([offer.$id])])
+  const email = emails.get(offer.emailId)
+  const contact = details.get(offer.$id)?.contact
   const source = email?.sourceId ? await getAoSource(email.sourceId) : null
   const clients = [offer.companyName, ...(email?.citedClients ?? [])].filter(Boolean)
+  const senders = [
+    { name: email?.fromName, address: email?.fromAddress },
+    parseSender(email?.origin ?? '') ?? {},
+    ...(contact ? [{ name: contact.name, address: contact.email }] : []),
+  ]
   return {
     clients,
-    names: namesToHide(
-      clients,
-      [{ name: email?.fromName, address: email?.fromAddress }, parseSender(email?.origin ?? '') ?? {}],
-      source?.ownDomains ?? [],
-    ),
+    names: namesToHide(clients, senders, source?.ownDomains ?? []),
+    // Sans adresse : seulement les noms (pas les domaines, qui nomment des sociétés).
+    people: namesToHide([], senders.map(sender => ({ name: sender.name }))),
   }
 }
 
@@ -73,15 +79,27 @@ async function hiddenNamesFor(offer: AoOffer): Promise<{ clients: string[]; name
  * lues (sync-loop.ts). Peu d'e-mails par passage : les offres apparaissent au fil de l'eau. Boîtes de l'organisation
  * seulement (verrou par organisation : un passage planifié en cours fait répondre `skipped`).
  */
-export async function syncAoNow(tenantId: string, holder: string): Promise<AoSyncPassResult> {
+export async function syncAoNow(tenantId: string, holder: string, pageQuery: string | null): Promise<AoSyncPassResult> {
+  let report: AoSyncReport
   try {
-    const report = await syncAoInbox({ maxEmails: 2, budgetMs: 120_000, holder, tenantId })
-    // Données à jour renvoyées avec le compte rendu : la page les affiche tout de suite. Un rafraîchissement de la page
-    // (revalidatePath, router.refresh) serait abandonné par Next.js au profit du passage suivant, lancé aussitôt.
-    const { rows, recentEmails } = await loadAoView(tenantId)
-    return { report, rows, recentEmails }
+    report = await syncAoInbox({ maxEmails: 2, budgetMs: 120_000, holder, tenantId })
   } catch (err) {
+    console.error('AO: synchronisation impossible', tenantId, errorOf(err))
     return { error: `Synchronisation impossible : ${errorOf(err)}` }
+  }
+  // Données à jour renvoyées avec le compte rendu, pour la page affichée (`pageQuery` : ses filtres ; null hors de la
+  // page AO) : elle les affiche tout de suite. Un rafraîchissement de la page (revalidatePath,
+  // router.refresh) serait abandonné par Next.js au profit du passage suivant, lancé aussitôt.
+  if (pageQuery === null) return { report }
+  try {
+    const filters = filtersFromSearchParams(new URLSearchParams(pageQuery))
+    const { rows, total, counts, recentEmails } = await loadAoView(tenantId, filters)
+    return { report, view: { rows, total, counts, recentEmails, query: filtersToSearchParams(filters).toString() } }
+  } catch (err) {
+    // Le passage a eu lieu : son compte rendu compte, la synchronisation continue. La page est relue à la fin
+    // (router.refresh) et affiche alors sa propre erreur si la lecture échoue encore.
+    console.error('AO: page du tableau non relue après un passage', tenantId, errorOf(err))
+    return { report }
   }
 }
 
@@ -124,16 +142,16 @@ export async function retryAoEmailOf(
  * (publication-copy.ts), sinon par les règles automatiques seules. `beforeAi` est appelé juste avant l'IA, une fois
  * l'offre vérifiée : son message de refus (quota du jour des recruteurs…) donne la version des règles, comme une IA en
  * échec. Dans tous les cas, le résultat repasse par l'anonymisation, puis doit être relu et validé avant publication.
+ * `mode: 'raw'` (« Publier sans anonymiser ») : l'offre telle que reçue, sans IA ni quota, à relire de la même façon.
  */
 export async function previewAoPublicationOf(
   tenantId: string,
   id: string,
-  { beforeAi }: { beforeAi?: () => Promise<string | null> } = {},
+  { beforeAi, mode = 'anonymized' }: { beforeAi?: () => Promise<string | null>; mode?: PublicationMode } = {},
 ): ReturnType<AoDashboardActions['previewPublication']> {
   try {
     const offer = await aoAccessFor(tenantId).offer(id)
     if (!offer) return { error: 'Offre introuvable.' }
-    const { clients, names } = await hiddenNamesFor(offer)
     const key = `${titleKey(offer.title)}|${cityKey(offer.location)}`
     const similarJobs = (await getActiveJobs())
       .filter(job => `${titleKey(job.title)}|${cityKey(job.location)}` === key)
@@ -141,11 +159,17 @@ export async function previewAoPublicationOf(
       .map(job => ({ id: job.$id, title: job.title, location: job.location }))
     const terms = { contractType: offer.contractType, remote: offer.remote, salary: offer.salary, reviewed: false }
 
+    const { clients, names, people } = await hiddenNamesFor(offer)
+    if (mode === 'raw') {
+      // Version non anonymisée : client et références restent ; les noms de personnes connus sont signalés à la relecture.
+      const draft = { ...rawPublicOffer(offer), ...terms, maskTerms: [], anonymized: false }
+      return { preview: { draft, similarJobs, rewrite: 'raw', notice: '', watchNames: people } }
+    }
     const copy = (await beforeAi?.()) ?? (await rewriteForPublication(offer, clients, names))
     if (typeof copy === 'string') {
       const pub = toPublicOffer(offer, names)
       // Mise en forme (sections, puces) après l'anonymisation, qui retire les lignes de contact d'après leur début de ligne.
-      const draft = { ...pub, description: descriptionForPublication(pub.description), ...terms, maskTerms: [] }
+      const draft = { ...pub, description: descriptionForPublication(pub.description), ...terms, maskTerms: [], anonymized: true }
       return { preview: { draft, similarJobs, rewrite: 'rules', notice: copy, watchNames: names } }
     }
     const maskTerms = maskTermsOf(copy)
@@ -156,7 +180,7 @@ export async function previewAoPublicationOf(
       ...offer, title: copy.title, description: descriptionFromCopy(copy), location: copy.location || offer.location, skills: copy.skills,
       duration: '', startDate: '', experience: '', // déjà dans la section « Modalités »
     }, names, label, extra)
-    const preview: PublicationPreview = { draft: { ...pub, ...terms, maskTerms }, similarJobs, rewrite: 'ai', notice: '', watchNames: [...names, ...extra] }
+    const preview: PublicationPreview = { draft: { ...pub, ...terms, maskTerms, anonymized: true }, similarJobs, rewrite: 'ai', notice: '', watchNames: [...names, ...extra] }
     return { preview }
   } catch (err) {
     return { error: errorOf(err) }
@@ -178,30 +202,10 @@ async function rewriteForPublication(offer: AoOffer, clients: string[], names: s
   }
 }
 
-/** Champs de l'offre publique ; la publication y ajoute la validation de la relecture (PublishSchema). */
-const DraftFieldsSchema = z.object({
-  title: z.string().trim().min(2).max(200),
-  companyName: z.string().trim().min(2).max(200),
-  description: z.string().trim().min(20).max(20_000),
-  location: z.string().trim().max(200),
-  contractType: z.enum(['cdi', 'cdd', 'freelance', 'mission']),
-  remote: z.enum(['onsite', 'hybrid', 'remote']),
-  salary: z.number().int().positive().max(999_999).nullable(),
-  skills: z.array(z.string().trim().min(1).max(60)).max(10),
-})
-
 /**
- * `reviewed` : la personne qui publie a relu et validé la version anonymisée (case « J'ai relu », ADR 0013).
- * `maskTerms` : noms que l'IA dit avoir retirés ; envoyés par le navigateur, ils ne peuvent que masquer davantage.
- */
-const PublishSchema = DraftFieldsSchema.extend({
-  reviewed: z.literal(true),
-  maskTerms: z.array(z.string().trim().max(80)).max(30),
-})
-
-/**
- * Publie la copie anonymisée d'une offre AO. `jobTenantId` : organisation de l'offre publique (« admin » pour les
- * boîtes de la plateforme, comme l'import d'offres ; celle du recruteur sinon).
+ * Publie une offre AO : sa copie anonymisée, ou non anonymisée si la personne qui publie l'a choisi (parsePublishInput).
+ * `jobTenantId` : organisation de l'offre publique (« admin » pour les boîtes de la plateforme, comme l'import
+ * d'offres ; celle du recruteur sinon).
  */
 export async function publishAoOfferOf(
   tenantId: string,
@@ -212,25 +216,28 @@ export async function publishAoOfferOf(
 ): ReturnType<AoDashboardActions['publish']> {
   // Début de la requête : la diffusion sur les réseaux, en arrière-plan, doit finir avant maxDuration (page.tsx).
   const requestStart = Date.now()
-  const parsed = PublishSchema.safeParse(input)
-  if (!parsed.success) {
-    if (parsed.error.issues.some(issue => issue.path[0] === 'reviewed')) return { error: 'Relisez la version publiée, puis cochez « J\'ai relu » pour la valider.' }
-    return { error: 'Champs invalides : vérifiez le titre, la description (20 caractères minimum) et le montant.' }
-  }
-  // Sans `reviewed` ni `maskTerms`, qui ne font pas partie de l'offre publique.
-  const fields = DraftFieldsSchema.parse(parsed.data)
+  const parsed = parsePublishInput(input)
+  if (parsed.error !== undefined) return { error: parsed.error }
+  const { fields } = parsed
   try {
     const offer = await aoAccessFor(tenantId).offer(id)
     if (!offer) return { error: 'Offre introuvable.' }
     if (offer.status === 'published' || offer.jobId) return { error: 'Cette offre est déjà publiée.' }
 
-    const { names } = await hiddenNamesFor(offer)
-    const extra = maskNames(parsed.data.maskTerms)
-    // Le client reste masqué sur le site, même si son nom (ou celui de l'expéditeur) ou des coordonnées ont été saisis
-    // comme libellé.
-    const label = publicLabel(fields.companyName, [...names, ...extra])
-    // Filet de sécurité : tout le texte édité repasse par l'anonymisation avant d'être publié.
-    const pub = toPublicOffer({ ...offer, ...fields, duration: '', startDate: '', experience: '' }, names, label, extra)
+    const edited = { ...offer, ...fields, duration: '', startDate: '', experience: '' }
+    let pub: PublicOffer
+    if (parsed.anonymized) {
+      const { names } = await hiddenNamesFor(offer)
+      const extra = maskNames(parsed.maskTerms)
+      // Le client reste masqué sur le site, même si son nom (ou celui de l'expéditeur) ou des coordonnées ont été saisis
+      // comme libellé.
+      const label = publicLabel(fields.companyName, [...names, ...extra])
+      // Filet de sécurité : tout le texte édité repasse par l'anonymisation avant d'être publié.
+      pub = toPublicOffer(edited, names, label, extra)
+    } else {
+      // Non anonymisée : seules les coordonnées personnelles saisies ou restées dans le texte sont retirées.
+      pub = rawPublicOffer(edited)
+    }
 
     // Identifiant fixe : une double publication (deux onglets, nouvel essai après une erreur) échoue en 409
     // au lieu de créer une seconde offre, une seconde diffusion et un second sourcing.
@@ -456,6 +463,7 @@ export async function deleteAoOfferOf(tenantId: string, id: string): ReturnType<
     await deleteAoOfferAndDetails(offer.$id)
     return {}
   } catch (err) {
+    console.error('AO: suppression d\'offre impossible', id, errorOf(err))
     return { error: `Suppression impossible : ${errorOf(err)}` }
   }
 }

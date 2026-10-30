@@ -47,7 +47,8 @@ export async function countAoComments(offerIds: string[]): Promise<Map<string, n
   const counts = new Map<string, number>()
   if (!COLLECTIONS.AO_COMMENTS) return counts
   const { databases } = createAdminClient()
-  for (const batch of batchByLength([...new Set(offerIds.filter(Boolean))])) {
+  // Lots lus en parallèle : chaque appel à Appwrite coûte un aller-retour réseau.
+  await Promise.all(batchByLength([...new Set(offerIds.filter(Boolean))]).map(async batch => {
     let cursor: string | null = null
     for (;;) {
       const res: Models.DocumentList<Models.Document> = await databases.listDocuments(DB_ID, COLLECTIONS.AO_COMMENTS, [
@@ -55,10 +56,10 @@ export async function countAoComments(offerIds: string[]): Promise<Map<string, n
         ...(cursor ? [Query.cursorAfter(cursor)] : []),
       ])
       for (const doc of res.documents) counts.set(String(doc.offerId), (counts.get(String(doc.offerId)) ?? 0) + 1)
-      if (res.documents.length < 500) break
+      if (res.documents.length < 500) return
       cursor = res.documents[res.documents.length - 1].$id
     }
-  }
+  }))
   return counts
 }
 
