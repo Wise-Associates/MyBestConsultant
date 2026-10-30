@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { HoverCard } from '@/components/ui/hover-card'
 import { useEffect, useEffectEvent, useRef, useState, useTransition } from 'react'
 import { summaryOf, useAoSync } from './ao-sync-provider'
-import { ArrowLeft, BarChart3, Download, Eye, Inbox, MessageSquare, Trash2, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
+import { BarChart3, Download, Eye, Inbox, MessageSquare, Trash2, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
 import { AO_CHANNEL_LABEL, AO_MAX_LISTED, EMPTY_AO_FILTERS, filtersToSearchParams, type AoFilters, type AoOfferRow } from '@/lib/ao/filters'
 import { MAX_ATTEMPTS } from '@/lib/ao/attempts'
 import type { AoDashboardActions, AoDashboardCopy, AoDashboardPaths, AoPageView } from '@/lib/ao/dashboard-types'
@@ -46,7 +46,7 @@ interface Props {
   /** Actions de la liste ; celles d'une offre sont sur sa page (ao-offer-page.tsx). */
   actions: Pick<AoDashboardActions, 'retryEmail' | 'deleteOffer' | 'listComments' | 'addComment' | 'deleteComment'>
   paths: AoDashboardPaths
-  copy: Pick<AoDashboardCopy, 'eyebrow' | 'title' | 'scope' | 'back'>
+  copy: Pick<AoDashboardCopy, 'title' | 'scope'>
   /** Espace admin : titre et sous-titre dans la barre du haut du layout (AdminPageHeader), outils restant dans la page. */
   titleInAdminBar?: boolean
 }
@@ -219,14 +219,9 @@ export function AoOffersDashboard({ view, filters, query, inboxConfigured, mailb
           <AdminPageHeader title={copy.title} description={description} />
         ) : (
           <div>
-            {copy.back && (
-              <Link href={copy.back.href} className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 hover:underline" style={{ color: 'var(--admin-fg-muted)' }}>
-                <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> {copy.back.label}
-              </Link>
-            )}
-            <p className="text-[11px] font-semibold tracking-[0.14em] mb-1.5" style={{ color: 'var(--admin-fg-muted)' }}>{copy.eyebrow}</p>
-            <h1 className="text-[28px] font-bold tracking-tight text-admin-fg">{copy.title}</h1>
-            <p className="text-sm mt-1" style={{ color: 'var(--admin-fg-muted)' }}>{description}</p>
+            {/* Titre lu par les lecteurs d'écran seulement : le sous-menu de l'espace montre déjà la rubrique. */}
+            <h1 className="sr-only">{copy.title}</h1>
+            <p className="text-sm" style={{ color: 'var(--admin-fg-muted)' }}>{description}</p>
           </div>
         )}
         <div className="flex items-center gap-3 flex-wrap">

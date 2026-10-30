@@ -2,10 +2,9 @@
 
 import { WhatsAppContact } from '@/components/recruiter/whatsapp-contact'
 import { useMemo, useState } from 'react'
-import Link from 'next/link'
 import {
   Users, Sparkles, ExternalLink, AlertCircle, Mail, Phone,
-  MapPin, Navigation, Building2, FolderSearch, ArrowLeft, Maximize2, FileDown,
+  MapPin, Navigation, Building2, FolderSearch, Maximize2, FileDown,
 } from 'lucide-react'
 import { deleteRecruiterCvTemplate, getRecruiterCvExportVersions, saveRecruiterCvTemplate, type CvThequeCandidate } from './actions'
 import { EsnExportDialog } from '@/components/cv-export/esn-export-dialog'
@@ -120,11 +119,6 @@ export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExpor
             {/* Header */}
       <div style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
         <div className="max-w-6xl mx-auto px-6 py-8">
-          <Link href="/recruiter/dashboard"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80"
-            style={{ color: 'rgba(255,255,255,0.6)' }}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Retour à l&apos;espace recruteur
-          </Link>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 mb-1">
