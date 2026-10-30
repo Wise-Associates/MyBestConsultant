@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { contractOf, parseNumber, remoteOf } from '@/lib/job-import'
 import { placeUnlabeledDates } from './dates'
-import type { AoEngagement, ExtractedOffer } from './types'
+import { isOwn, PLAIN_EMAIL } from './origin'
+import type { AoContact, AoEngagement, ExtractedOffer } from './types'
 
 // La réponse de l'IA est une donnée non fiable : on la valide champ par champ, on normalise ce qui peut
 // l'être (contrat, télétravail, montant, compétences) et on écarte les offres sans titre.
@@ -34,6 +35,27 @@ export function engagementOf(value: string): AoEngagement {
   return ''
 }
 
+
+/** Lien web seulement (http, https) : un lien « javascript: » ou « mailto: » n'est pas une annonce. */
+const webUrl = z.unknown().optional().transform(v => {
+  const value = asText(v).slice(0, 1000)
+  try {
+    return ['http:', 'https:'].includes(new URL(value).protocol) ? value : ''
+  } catch {
+    return ''
+  }
+})
+
+const contactField = z.unknown().optional().transform((v): AoContact | null => {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null
+  const raw = v as Record<string, unknown>
+  // Ni chevrons, ni guillemets, barres obliques inverses ou caractères de contrôle, qui n'ont rien à faire dans un nom
+  // ou un numéro et allongeraient le JSON enregistré au-delà de son attribut.
+  const field = (key: string, max: number) => asText(raw[key]).replace(/[<>"\\\u0000-\u001f]/g, '').trim().slice(0, max)
+  const contact = { name: field('name', 200), role: field('role', 200), email: field('email', 320).toLowerCase(), phone: field('phone', 40) }
+  return contact.name || contact.email || contact.phone ? contact : null
+})
+
 const OfferSchema = z.object({
   title: shortText(200).pipe(z.string().min(2)),
   companyName: shortText(200),
@@ -53,7 +75,49 @@ const OfferSchema = z.object({
   deadline: shortText(100),
   endClient: shortText(200),
   experience: shortText(100),
+  contact: contactField,
+  sourceUrl: webUrl,
 })
+
+/** Chiffres d'un numéro, indicatif français ramené au 0 : « +33 6 12 34 56 78 » et « 06.12.34.56.78 » sont le même. */
+const phoneDigits = (value: string) => {
+  const digits = value.replace(/\D/g, '')
+  return digits.startsWith('33') && digits.length === 11 ? `0${digits.slice(2)}` : digits
+}
+const PHONE_LIKE = /\+?\d[\d\s.\-()]{6,}\d/g
+
+/**
+ * Règle « ne rien inventer » pour le contact et le lien d'origine : chaque valeur du contact absente du texte lu par
+ * l'IA est retirée (nom, fonction, e-mail, numéro, quelle que soit sa mise en forme), le lien doit y figurer tel quel.
+ * Un contact de nos domaines est le collaborateur qui transfère l'e-mail, pas l'interlocuteur du client : écarté.
+ */
+export function keepCitedContact<T extends Pick<ExtractedOffer, 'contact' | 'sourceUrl'>>(offer: T, text: string, ownDomains: string[]): T {
+  const folded = fold(text)
+  const c = offer.contact
+  let contact: AoContact | null = null
+  if (c && !(c.email && isOwn(c.email, ownDomains))) {
+    const phones = new Set((text.match(PHONE_LIKE) ?? []).map(phoneDigits))
+    const kept = {
+      name: c.name && fold(c.name).split(/\s+/).filter(w => w.length > 1).every(w => folded.includes(w)) ? c.name : '',
+      role: c.role && folded.includes(fold(c.role)) ? c.role : '',
+      email: PLAIN_EMAIL.test(c.email) && folded.includes(c.email) ? c.email : '',
+      phone: phoneDigits(c.phone).length >= 9 && phones.has(phoneDigits(c.phone)) ? c.phone : '',
+    }
+    contact = kept.name || kept.email || kept.phone ? kept : null
+  }
+  return { ...offer, contact, sourceUrl: offer.sourceUrl && text.includes(offer.sourceUrl) ? offer.sourceUrl : '' }
+}
+
+// Règle métier : un stage n'est pas un contrat de travail (convention de stage), ni un CDI ni un CDD. La consigne le
+// dit à l'IA et lui fait garder « Stage » dans le titre ; on le garantit ici d'après ce titre (au singulier :
+// « Chargé des relations écoles et stages » est un vrai poste). Sa gratification, mensuelle, s'afficherait comme un
+// TJM (formatAmount) : elle reste dans la description.
+const INTERNSHIP_TITLE = /\b(stage|stagiaire|internship|intern)\b/
+
+/** Offre de stage d'après son titre : contrat « mission » (ni CDI, ni CDD, ni freelance) et aucun montant. */
+export function withInternshipTerms(offer: ExtractedOffer): ExtractedOffer {
+  return INTERNSHIP_TITLE.test(fold(offer.title)) ? { ...offer, contractType: 'mission', salary: null } : offer
+}
 
 /** Réponse de l'IA : les champs d'une offre, plus les dates citées sans libellé, classées ensuite (dates.ts), pas par l'IA. */
 const AiOfferSchema = OfferSchema.extend({
@@ -106,7 +170,7 @@ export function parseOffersJson(raw: string, reference: Date): ParsedOffers {
       continue
     }
     const { otherDates, ...offer } = parsed.data
-    offers.push({ ...offer, ...placeUnlabeledDates(offer, otherDates, reference), deadlineFromText: Boolean(offer.deadline.trim()) })
+    offers.push(withInternshipTerms({ ...offer, ...placeUnlabeledDates(offer, otherDates, reference), deadlineFromText: Boolean(offer.deadline.trim()) }))
   }
   return { offers, rejected }
 }

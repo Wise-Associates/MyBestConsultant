@@ -1,12 +1,13 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import * as XLSX from 'xlsx'
-import { parseOffersJson, TruncatedAnswerError } from './parse'
+import { keepCitedContact, parseOffersJson, TruncatedAnswerError } from './parse'
 import { emailDeadline } from './dates'
 
 const RECEIVED = new Date('2026-10-21T09:00:00Z')
 import { cityKey, offerFingerprint, titleKey } from './fingerprint'
-import { DEFAULT_CLIENT_LABEL, namesToHide, revealsName, scrubContacts, toPublicOffer } from './anonymize'
+import { DEFAULT_CLIENT_LABEL, namesToHide, rawPublicOffer, revealsName, scrubContacts, toPublicOffer } from './anonymize'
+import { parsePublishInput } from './publication-input'
 import Anthropic from '@anthropic-ai/sdk'
 import { LLMChainError, LLMHttpError, LLMNotConfiguredError, LLMUnreachableError } from '@/lib/ai/llm-router'
 import { claudeProblem, llmUnavailableReason, openAiProblem } from './ai-failures'
@@ -24,7 +25,7 @@ import { AO_RETRY_DAILY_LIMITS, RETRY_QUOTA_MESSAGE, attemptsAfterFailure, canDe
 import { AO_EXCEL_HEADERS, buildAoWorkbook } from './excel'
 import { buildEmailContent } from './extract'
 import { MAX_TABLE_ROWS, readTableAttachment, tableOffersOf } from './spreadsheet'
-import { EMPTY_AO_FILTERS, filterAoOffers, filtersFromSearchParams, filtersToSearchParams, type AoFilters, type AoOfferRow } from './filters'
+import { EMPTY_AO_FILTERS, filtersFromSearchParams, filtersToSearchParams, type AoFilters } from './filters'
 import { descriptionForPublication } from '../description-sections'
 import type { AoEmail, ExtractedOffer } from './types'
 
@@ -44,6 +45,8 @@ const offer = (over: Partial<ExtractedOffer> = {}): ExtractedOffer => ({
   engagement: 'assistance',
   technologies: ['TypeScript', 'AWS'],
   experience: '5 ans minimum',
+  contact: null,
+  sourceUrl: '',
   ...over,
 })
 
@@ -89,6 +92,60 @@ describe('parseOffersJson', () => {
     assert.equal(offers[0].remote, 'remote')
     assert.equal(offers[0].salary, null)
     assert.deepEqual(offers[0].skills, ['a', 'b'])
+  })
+
+  it('ne classe jamais un stage en CDI ou en CDD, et n\'affiche pas sa gratification comme un TJM', () => {
+    const { offers } = parseOffersJson(JSON.stringify([
+      { title: 'Stage - Développeur web', contractType: 'cdi', salary: 1200 },
+      { title: 'Stagiaire data analyst', contractType: 'cdd' },
+      { title: 'Software Engineer Intern', contractType: 'freelance', salary: 900 },
+      { title: 'Data engineer', contractType: 'cdi', salary: 55000 },
+      { title: 'Chargé des relations écoles et stages', contractType: 'cdi', salary: 42000 },
+    ]), RECEIVED)
+    assert.deepEqual(offers.map(o => [o.contractType, o.salary]), [
+      ['mission', null], ['mission', null], ['mission', null], ['cdi', 55000], ['cdi', 42000],
+    ])
+  })
+
+  it('lit le contact et le lien d\'origine, et écarte ce qui n\'est ni un contact ni un lien web', () => {
+    const { offers } = parseOffersJson(JSON.stringify([
+      { title: 'PO', contact: { name: 'Claire Martin', role: 'Acheteuse', email: 'Claire.Martin@Client-Fictif.fr', phone: '' }, sourceUrl: 'https://exemple.test/avis/42' },
+      { title: 'Dev', contact: { name: '', role: 'Acheteuse', email: '', phone: '' }, sourceUrl: 'javascript:alert(1)' },
+      { title: 'QA', contact: 'Claire', sourceUrl: 'pas un lien' },
+    ]), RECEIVED)
+    assert.deepEqual(offers[0].contact, { name: 'Claire Martin', role: 'Acheteuse', email: 'claire.martin@client-fictif.fr', phone: '' })
+    assert.equal(offers[0].sourceUrl, 'https://exemple.test/avis/42')
+    assert.deepEqual(offers.slice(1).map(o => [o.contact, o.sourceUrl]), [[null, ''], [null, '']])
+  })
+
+  it('ne garde du contact et du lien que ce qui figure dans l\'e-mail (rien d\'inventé)', () => {
+    const text = 'De : Claire Martin <claire.martin@client-fictif.fr>\nAcheteuse IT — Tél. +33 6 12 34 56 78\nAvis officiel : https://exemple.test/avis/42'
+    const cited = { name: 'Claire Martin', role: 'Acheteuse IT', email: 'claire.martin@client-fictif.fr', phone: '06 12 34 56 78' }
+    assert.deepEqual(keepCitedContact({ contact: cited, sourceUrl: 'https://exemple.test/avis/42' }, text, ['wise-associates.fr']),
+      { contact: cited, sourceUrl: 'https://exemple.test/avis/42' })
+    const invented = { name: 'Paul Durand', role: 'Directeur des achats', email: 'paul.durand@client-fictif.fr', phone: '01 99 99 99 99' }
+    assert.deepEqual(keepCitedContact({ contact: invented, sourceUrl: 'https://exemple.test/avis/43' }, text, ['wise-associates.fr']),
+      { contact: null, sourceUrl: '' })
+    // Seul le numéro inventé est retiré : le reste du contact figure dans l'e-mail.
+    assert.deepEqual(keepCitedContact({ contact: { ...cited, phone: '07 00 00 00 00' }, sourceUrl: '' }, text, []).contact, { ...cited, phone: '' })
+  })
+
+  it('écarte une adresse qui cacherait un destinataire dans le lien mailto: (?bcc=, %40)', () => {
+    const address = 'achats%40client-fictif.fr?bcc=espion@piege.test'
+    const text = `Répondre à : ${address}\nClaire Martin`
+    const kept = keepCitedContact({ contact: { name: 'Claire Martin', role: '', email: address, phone: '' }, sourceUrl: '' }, text, [])
+    assert.deepEqual(kept.contact, { name: 'Claire Martin', role: '', email: '', phone: '' })
+  })
+
+  it('retire du contact guillemets, barres obliques inverses et caractères de contrôle', () => {
+    const { offers } = parseOffersJson(JSON.stringify([{ title: 'PO', contact: { name: 'Claire "CM" Martin\\\u0007', role: '', email: '', phone: '' } }]), RECEIVED)
+    assert.equal(offers[0].contact?.name, 'Claire CM Martin')
+  })
+
+  it('écarte un contact de nos domaines : c\'est le collaborateur qui transfère, pas le client', () => {
+    const text = 'Marc Leroy\nmarc.leroy@wise-associates.fr\n---------- Message transféré ----------'
+    const ours = { name: 'Marc Leroy', role: '', email: 'marc.leroy@wise-associates.fr', phone: '' }
+    assert.equal(keepCitedContact({ contact: ours, sourceUrl: '' }, text, ['wise-associates.fr']).contact, null)
   })
 
   it('refuse une réponse sans tableau JSON (l\'e-mail sera réessayé)', () => {
@@ -282,23 +339,13 @@ describe('report faute de temps', () => {
 })
 
 describe('filtres', () => {
-  const row = (over: Partial<AoOfferRow> = {}): AoOfferRow => ({
-    ...offer(), $id: 'o1', createdAt: '2026-10-10T08:00:00.000Z', fingerprint: 'f', emailId: 'e1', status: 'to_review',
-    jobId: null, sourceCount: 1, senderAddress: 'ao@esn.fr', senderName: 'ESN Conseil', forwardedBy: '', attachments: [], commentCount: 0, subject: 'AO React', receivedAt: '2026-10-10T08:00:00.000Z', channel: 'email',
-    ...over,
-  })
-  const rows = [row(), row({ $id: 'o2', location: 'Lyon', contractType: 'cdi', salary: 55000, status: 'published', receivedAt: '2026-10-15T08:00:00.000Z' })]
-
-  it('combine les critères (ville sans accents, contrat, statut, montant, dates)', () => {
-    const f = (over: Partial<AoFilters>) => filterAoOffers(rows, { ...EMPTY_AO_FILTERS, ...over }).map(r => r.$id)
-    assert.deepEqual(f({ city: 'LYON' }), ['o2'])
-    assert.deepEqual(f({ contractType: 'freelance' }), ['o1'])
-    assert.deepEqual(f({ status: 'published' }), ['o2'])
-    assert.deepEqual(f({ salaryMin: 600 }), ['o2'])
-    assert.deepEqual(f({ from: '2026-10-11' }), ['o2'])
-    assert.deepEqual(f({ to: '2026-10-10' }), ['o1'])
-    assert.deepEqual(f({ q: 'developpeur', sender: 'esn conseil' }), ['o1', 'o2'])
-    assert.deepEqual(f({ skill: 'node' }), ['o1', 'o2'])
+  it('ignore les dates impossibles et arrondit les montants (attribut entier), bornés à 1 000 000', () => {
+    const f = filtersFromSearchParams(new URLSearchParams('from=2026-13-01&to=2026-02-30&min=450.6&max=1e30'))
+    assert.equal(f.from, '')
+    assert.equal(f.to, '')
+    assert.equal(f.salaryMin, 451)
+    assert.equal(f.salaryMax, 1_000_000)
+    assert.equal(filtersFromSearchParams(new URLSearchParams('from=2024-02-29')).from, '2024-02-29')
   })
 
   it('fait l\'aller-retour avec l\'URL d\'export et ignore les valeurs invalides', () => {
@@ -944,5 +991,40 @@ describe('offres de la veille (scraping)', () => {
     assert.equal(fromUnlabeled?.deadlineFromText, false)
     const [labeled] = parseOffersJson(raw('16/11/2026', []), RECEIVED).offers
     assert.equal(labeled?.deadlineFromText, true)
+  })
+})
+
+describe('publication non anonymisée (« Publier sans anonymiser »)', () => {
+  const draft = {
+    title: 'Data engineer BNP Paribas', companyName: 'BNP Paribas', description: 'Mission chez BNP Paribas, projet RFC00094023, équipe data.',
+    location: 'Paris', contractType: 'freelance', remote: 'hybrid', salary: 600, skills: ['Spark'], reviewed: true, maskTerms: [],
+  }
+
+  it('garde le client, les noms et les références, mais retire les coordonnées personnelles', () => {
+    const pub = rawPublicOffer(offer({
+      description: 'Au sein de BNP Paribas (réf. RFC00094023).\nContact : Claire Martin\nÉcrire à claire.martin@client-fictif.fr ou au 06 12 34 56 78.\nAvis : https://exemple.test/avis/42',
+    }))
+    assert.equal(pub.companyName, 'BNP Paribas')
+    assert.match(pub.description, /BNP Paribas/)
+    assert.match(pub.description, /RFC00094023/)
+    assert.match(pub.description, /https:\/\/exemple\.test\/avis\/42/)
+    for (const personal of ['Claire Martin', 'claire.martin@client-fictif.fr', '06 12 34 56 78']) {
+      assert.ok(!pub.description.includes(personal), `${personal} doit être retiré : ${pub.description}`)
+    }
+    assert.match(pub.description, /Durée de la mission : 6 mois renouvelables/)
+  })
+
+  it('anonymise par défaut : seule une demande explicite (anonymized: false) publie sans anonymiser', () => {
+    const withoutFlag = parsePublishInput(draft)
+    assert.equal(withoutFlag.error, undefined)
+    assert.equal(withoutFlag.error === undefined && withoutFlag.anonymized, true)
+    const raw = parsePublishInput({ ...draft, anonymized: false })
+    assert.equal(raw.error === undefined && raw.anonymized, false)
+    assert.equal(parsePublishInput({ ...draft, anonymized: 'non' }).error?.startsWith('Champs invalides'), true)
+  })
+
+  it('exige la relecture, que la version soit anonymisée ou non', () => {
+    assert.match(parsePublishInput({ ...draft, anonymized: false, reviewed: false }).error ?? '', /J'ai relu/)
+    assert.match(parsePublishInput({ ...draft, reviewed: undefined }).error ?? '', /J'ai relu/)
   })
 })

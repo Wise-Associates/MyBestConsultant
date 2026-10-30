@@ -1,5 +1,6 @@
 import 'server-only'
-import { simpleParser } from 'mailparser'
+import { simpleParser, type AddressObject } from 'mailparser'
+import type { EmailViewInput } from './email-view'
 import { withAoInbox } from './imap'
 import { inboxSettingsFor } from './inbox-settings'
 import { isErased, type AoSource } from './sources'
@@ -23,6 +24,22 @@ export async function fetchOriginal(email: Pick<AoEmail, 'uid' | 'messageId'>, s
     }
     return message.raw
   })
+}
+
+/** E-mail d'origine (.eml) lu pour l'affichage dans la page (email-view.ts) ; images intégrées (cid:) converties en data: par mailparser. */
+export async function parseOriginalView(raw: Buffer): Promise<EmailViewInput> {
+  const mail = await simpleParser(raw)
+  const addresses = (value: AddressObject | AddressObject[] | undefined) => (Array.isArray(value) ? value : value ? [value] : []).map(a => a.text).join(', ')
+  return {
+    subject: mail.subject ?? '',
+    from: mail.from?.text ?? '',
+    to: addresses(mail.to),
+    cc: addresses(mail.cc),
+    date: mail.date ?? null,
+    html: mail.html,
+    text: mail.text ?? '',
+    attachments: mail.attachments.filter(a => a.contentDisposition !== 'inline').map(a => a.filename || 'piece-jointe'),
+  }
 }
 
 /** Une pièce jointe de l'e-mail d'origine, retrouvée par son nom (celui enregistré à la lecture de l'e-mail). */

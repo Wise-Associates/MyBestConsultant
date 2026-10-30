@@ -1,7 +1,7 @@
 import type { AoChannel, AoContract, AoOffer, AoOfferDetails, AoOfferStatus, AoRemote } from './types'
 
-// Filtres de la page AO Offers, partagés par l'affichage (navigateur) et l'export Excel (serveur) :
-// le fichier téléchargé contient exactement les offres affichées.
+// Filtres de la page AO Offers, lus dans l'adresse de la page et de l'export Excel : appliqués par le serveur sur l'index
+// de la liste (indexFilterQueries, offer-index.ts), le fichier téléchargé contient exactement les offres filtrées.
 
 /** Offre enrichie des informations de l'e-mail d'origine. */
 export interface AoOfferRow extends AoOffer, AoOfferDetails {
@@ -40,6 +40,12 @@ export interface AoFilters {
   to: string
 }
 
+/**
+ * Offres listées au plus (tableau, export, statistiques) : Appwrite ne compte pas au-delà de 5 000 documents. Au-delà,
+ * les plus récentes ; les filtres restreignent la liste.
+ */
+export const AO_MAX_LISTED = 5000
+
 export const EMPTY_AO_FILTERS: AoFilters = {
   q: '', status: 'all', contractType: 'all', remote: 'all', city: '', skill: '', sender: '',
   salaryMin: null, salaryMax: null, from: '', to: '',
@@ -49,35 +55,16 @@ const STATUSES = ['to_review', 'published', 'ignored'] as const
 const CONTRACTS = ['cdi', 'cdd', 'freelance', 'mission'] as const
 const REMOTES = ['onsite', 'hybrid', 'remote'] as const
 const DATE = /^\d{4}-\d{2}-\d{2}$/
+/** Jour AAAA-MM-JJ qui existe (« 2026-13-01 » ou « 2026-02-30 » sont refusés). */
+const isDay = (value: string | null): value is string =>
+  !!value && DATE.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().startsWith(value)
 
-const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 const pick = <T extends string>(value: string | null, allowed: readonly T[]): T | 'all' =>
   allowed.includes(value as T) ? (value as T) : 'all'
+/** Montant entier (l'attribut l'est), borné au montant le plus haut qu'une offre peut avoir. */
 const amount = (value: string | null) => {
   const n = Number(value)
-  return value && Number.isFinite(n) && n >= 0 ? n : null
-}
-
-export function filterAoOffers<T extends AoOfferRow>(rows: T[], f: AoFilters): T[] {
-  const q = fold(f.q.trim())
-  const city = fold(f.city.trim())
-  const skill = fold(f.skill.trim())
-  const sender = fold(f.sender.trim())
-  return rows.filter(r => {
-    if (f.status !== 'all' && r.status !== f.status) return false
-    if (f.contractType !== 'all' && r.contractType !== f.contractType) return false
-    if (f.remote !== 'all' && r.remote !== f.remote) return false
-    if (city && !fold(r.location).includes(city)) return false
-    if (skill && !r.skills.some(s => fold(s).includes(skill))) return false
-    if (sender && !fold(`${r.senderName} ${r.senderAddress}`).includes(sender)) return false
-    if (f.salaryMin !== null && (r.salary === null || r.salary < f.salaryMin)) return false
-    if (f.salaryMax !== null && (r.salary === null || r.salary > f.salaryMax)) return false
-    const day = r.receivedAt.slice(0, 10)
-    if (f.from && day < f.from) return false
-    if (f.to && day > f.to) return false
-    if (q && !fold([r.title, r.companyName, r.location, r.description, r.subject, ...r.skills].join(' ')).includes(q)) return false
-    return true
-  })
+  return value && Number.isFinite(n) && n >= 0 ? Math.min(Math.round(n), 1_000_000) : null
 }
 
 export function filtersFromSearchParams(sp: URLSearchParams): AoFilters {
@@ -92,8 +79,8 @@ export function filtersFromSearchParams(sp: URLSearchParams): AoFilters {
     sender: text('sender'),
     salaryMin: amount(sp.get('min')),
     salaryMax: amount(sp.get('max')),
-    from: DATE.test(sp.get('from') ?? '') ? (sp.get('from') as string) : '',
-    to: DATE.test(sp.get('to') ?? '') ? (sp.get('to') as string) : '',
+    from: isDay(sp.get('from')) ? (sp.get('from') as string) : '',
+    to: isDay(sp.get('to')) ? (sp.get('to') as string) : '',
   }
 }
 
