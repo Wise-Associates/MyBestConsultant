@@ -2,7 +2,7 @@
 // rubriques, dans l'ordre affiché, et la rubrique d'une page. Demande du 2026-10-30 : un sous-menu à la place des
 // cartes du tableau de bord. Règles pures, testées dans recruiter-nav.test.ts.
 
-export type RecruiterSectionKey = 'dashboard' | 'funnel' | 'ao' | 'reporting' | 'vivier' | 'cvtheque' | 'equipe' | 'interviews'
+export type RecruiterSectionKey = 'dashboard' | 'funnel' | 'ao' | 'reporting' | 'vivier' | 'cvtheque' | 'mbcsearch' | 'equipe' | 'interviews'
 
 export interface RecruiterSection {
   key: RecruiterSectionKey
@@ -23,6 +23,8 @@ export const RECRUITER_SECTIONS: RecruiterSection[] = [
   { key: 'reporting', label: 'Reporting', href: '/recruiter/reporting', also: [] },
   { key: 'vivier', label: 'Mon vivier', href: '/recruiter/vivier', also: [] },
   { key: 'cvtheque', label: 'CV Thèque', href: '/recruiter/cvtheque', also: [] },
+  // Recherche de profils hors de la plateforme, via Apollo.io (ADR 0018).
+  { key: 'mbcsearch', label: 'MBC Search', href: '/recruiter/mbc-search', also: [] },
   // La marque employeur se gère depuis la page de l'équipe.
   { key: 'equipe', label: 'Mon équipe', href: '/recruiter/equipe', also: ['/recruiter/marque-employeur'] },
   // Le screening des CV n'a pas de rubrique : il est rangé avec les entretiens IA (lien sur leur page).

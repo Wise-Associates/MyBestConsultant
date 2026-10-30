@@ -5,7 +5,7 @@ import { RECRUITER_SECTIONS, recruiterSectionOf } from './recruiter-nav'
 describe('sous-menu de l\'espace recruteur', () => {
   it('garde les rubriques dans l\'ordre demandé', () => {
     assert.deepEqual(RECRUITER_SECTIONS.map(s => s.label), [
-      'Tableau de bord', 'Pipelines', 'Appels d’offres', 'Reporting', 'Mon vivier', 'CV Thèque', 'Mon équipe', 'Entretiens IA',
+      'Tableau de bord', 'Pipelines', 'Appels d’offres', 'Reporting', 'Mon vivier', 'CV Thèque', 'MBC Search', 'Mon équipe', 'Entretiens IA',
     ])
   })
 
@@ -16,6 +16,7 @@ describe('sous-menu de l\'espace recruteur', () => {
     assert.equal(recruiterSectionOf('/recruiter/interviews/new'), 'interviews')
     assert.equal(recruiterSectionOf('/recruiter/reporting/'), 'reporting')
     assert.equal(recruiterSectionOf('/recruiter/funnel'), 'funnel')
+    assert.equal(recruiterSectionOf('/recruiter/mbc-search'), 'mbcsearch')
   })
 
   it('range les pages sans rubrique propre sous la rubrique d\'où elles partent', () => {
