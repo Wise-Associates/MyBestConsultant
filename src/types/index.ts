@@ -38,6 +38,8 @@ export interface Job {
   salary?: number // €/month for CDI, TJM for freelance/mission
   companyName?: string // denormalized from tenant for display speed
   expiresAt?: string   // ISO date — auto-deactivation
+  /** Recruteur affecté (identifiant Auth, « Mon espace ») ; absent : non affecté. */
+  recruiterId?: string
 }
 
 export interface Application {

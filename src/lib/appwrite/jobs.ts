@@ -23,6 +23,7 @@ function docToJob(doc: Record<string, unknown>): Job {
     salary: doc.salary as number | undefined,
     companyName: doc.companyName as string | undefined,
     expiresAt: doc.expiresAt as string | undefined,
+    recruiterId: (doc.recruiterId as string | null) || undefined,
   }
 }
 
@@ -174,6 +175,7 @@ export async function createJob(data: {
   salary?: number
   companyName?: string
   expiresAt?: string
+  recruiterId?: string
 }, id?: string): Promise<Job> {
   const { databases } = createAdminClient()
   // `id` fixe (offre publiée depuis un appel d'offres) : une seconde création échoue (409) au lieu de faire un doublon.

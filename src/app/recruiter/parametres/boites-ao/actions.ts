@@ -3,7 +3,7 @@
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import type { PublicationDraft, PublicationMode } from '@/lib/ao/dashboard-types'
 import {
-  addAoOfferCommentOf, aoOfferSourcingOf, deleteAoOfferCommentOf, deleteAoOfferOf, listAoOfferCommentsOf, previewAoPublicationOf,
+  addAoOfferCommentOf, aoOfferSourcingOf, assignAoOfferOf, deleteAoOfferCommentOf, deleteAoOfferOf, listAoOfferCommentsOf, previewAoPublicationOf,
   publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, stopAoPublicationTasksOf, tenantSubscriptionStatus,
 } from '@/lib/ao/offer-actions'
 import { AO_RETRY_DAILY_LIMITS, RETRY_QUOTA_MESSAGE } from '@/lib/ao/attempts'
@@ -159,4 +159,12 @@ export async function deleteRecruiterAoOffer(id: string) {
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
   return deleteAoOfferOf(me.tenantId, id)
+}
+
+/** Recruteur de l'organisation affecté à l'offre (« Mon espace » une fois publiée ; demande de Dav du 2026-10-31). */
+export async function assignRecruiterAoOffer(id: string, userId: string) {
+  const me = await recruiter()
+  if (!me) return { error: SESSION_EXPIRED }
+  if (typeof id !== 'string' || typeof userId !== 'string' || userId.length > 36) return { error: 'Affectation invalide.' }
+  return assignAoOfferOf(me.tenantId, id, userId, [PATH, `${PATH}/${id}`, '/recruiter/espace'])
 }

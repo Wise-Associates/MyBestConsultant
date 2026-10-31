@@ -5,12 +5,13 @@ import { RECRUITER_SECTIONS, recruiterSectionOf } from './recruiter-nav'
 describe('sous-menu de l\'espace recruteur', () => {
   it('garde les rubriques dans l\'ordre demandé', () => {
     assert.deepEqual(RECRUITER_SECTIONS.map(s => s.label), [
-      'Tableau de bord', 'Appels d’offres', 'Parcours', 'Reporting', 'Mon vivier', 'CV Thèque', 'Mon équipe', 'Entretiens IA',
+      'Mon espace', 'Tableau de bord', 'Appels d’offres', 'Parcours', 'Reporting', 'Mon vivier', 'CV Thèque', 'Mon équipe', 'Entretiens IA',
     ])
   })
 
   it('met en surbrillance la rubrique de la page et de ses sous-pages', () => {
     assert.equal(recruiterSectionOf('/recruiter/dashboard'), 'dashboard')
+    assert.equal(recruiterSectionOf('/recruiter/espace'), 'espace')
     assert.equal(recruiterSectionOf('/recruiter/parametres/boites-ao/abc123'), 'ao')
     assert.equal(recruiterSectionOf('/recruiter/vivier/job42'), 'vivier')
     assert.equal(recruiterSectionOf('/recruiter/interviews/new'), 'interviews')

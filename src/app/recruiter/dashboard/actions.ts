@@ -46,6 +46,8 @@ export async function createJobAction(formData: FormData): Promise<{ error?: str
       salary: salaryRaw && Number.isFinite(salary) ? salary : undefined,
       companyName: formData.get('companyName') as string || undefined,
       expiresAt,
+      // L'offre arrive dans « Mon espace » de celui qui la crée (réaffectable depuis la vue de l'équipe).
+      recruiterId: user.userId,
     })
 
     // Publication sur les réseaux de MyBestConsultant (Make → Buffer) en arrière-plan ; à défaut, ancien auto-post LinkedIn.

@@ -3,15 +3,16 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useId, useRef, useState, type ComponentType } from 'react'
-import { BarChart3, ChevronDown, FolderOpen, FolderSearch, Inbox, LayoutDashboard, MessageSquare, Route, Users } from 'lucide-react'
+import { BarChart3, ChevronDown, FolderOpen, FolderSearch, Inbox, LayoutDashboard, LayoutGrid, MessageSquare, Route, Users } from 'lucide-react'
 import { RECRUITER_SECTIONS, recruiterSectionOf, type RecruiterSectionKey } from '@/lib/recruiter-nav'
 
 // Sous-menu de l'espace recruteur, sous la barre du site (layout recruteur) : les rubriques (recruiter-nav.ts), la
-// rubrique de la page en surbrillance. Grand écran (≥ 1024 px) : onglets, icônes dès 1280 px pour que tous les libellés
-// tiennent sur une ligne. Plus étroit : un bouton qui montre la rubrique courante et ouvre la liste des rubriques.
+// rubrique de la page en surbrillance. Grand écran (≥ 1024 px) : onglets sans icône (neuf rubriques depuis « Mon espace »,
+// 2026-10-31 : avec les icônes, elles ne tenaient plus sur une ligne). Plus étroit : un bouton qui montre la rubrique courante et ouvre la liste des rubriques.
 // Couleurs du thème du site (var(--color-…)), comme le reste de l'espace recruteur.
 
 const ICONS: Record<RecruiterSectionKey, ComponentType<{ className?: string; 'aria-hidden'?: boolean }>> = {
+  espace: LayoutGrid,
   dashboard: LayoutDashboard,
   ao: Inbox,
   parcours: Route,
@@ -36,14 +37,12 @@ export function RecruiterSubnav() {
         {/* Grand écran : une ligne d'onglets. */}
         <ul className="hidden lg:flex items-stretch gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           {RECRUITER_SECTIONS.map(section => {
-            const Icon = ICONS[section.key]
             const active = section.key === current
             return (
               <li key={section.key} className="shrink-0">
                 <Link href={section.href} aria-current={active ? 'page' : undefined}
                   className={`relative flex items-center gap-2 h-12 px-2.5 rounded-md text-sm whitespace-nowrap no-underline transition-colors ${focusRing} ${active ? 'font-semibold' : 'font-medium hover:bg-[var(--color-background)]'}`}
                   style={{ color: active ? 'var(--color-text)' : 'var(--color-text-muted)' }}>
-                  <Icon className="hidden xl:block h-4 w-4 shrink-0" aria-hidden />
                   {section.label}
                   {active && <span aria-hidden className="absolute left-2.5 right-2.5 bottom-0 h-0.5 rounded-full" style={{ background: 'var(--color-primary)' }} />}
                 </Link>

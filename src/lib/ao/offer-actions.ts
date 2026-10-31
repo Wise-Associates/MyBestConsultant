@@ -25,6 +25,7 @@ import { cityKey, titleKey } from './fingerprint'
 import { parseSender } from './origin'
 import { filtersFromSearchParams, filtersToSearchParams } from './filters'
 import { aoAccessFor, loadAoView } from './platform-view'
+import { checkAssignee, getAoAssignee, setAoAssignee, setJobRecruiter } from '@/lib/recruiter-assignment'
 import {
   deleteAoOfferAndDetails, getAoOfferSourcing, listAoEmailsByIds, listAoOfferDetails, saveAoOfferSourcing,
   updateAoEmail, updateAoOffer,
@@ -244,6 +245,11 @@ export async function publishAoOfferOf(
     const jobId = `ao${offer.$id}`
     await updateAoOffer(offer.$id, { status: 'published', jobId })
     const job = { ...fields, ...pub }
+    // Recruteur affecté sur la page de l'AO : l'offre publiée arrive dans son « Mon espace ». Illisible : publiée sans.
+    const recruiterId = await getAoAssignee(offer.$id).catch(err => {
+      console.error('AO: recruteur affecté illisible, offre publiée sans', offer.$id, errorOf(err))
+      return ''
+    })
     let created: Job | null = null
     try {
       created = await createJob({
@@ -257,6 +263,7 @@ export async function publishAoOfferOf(
         salary: job.salary ?? undefined,
         companyName: job.companyName || undefined,
         expiresAt: oneMonthFromNow(),
+        recruiterId: recruiterId || undefined,
       }, jobId)
     } catch (err) {
       if (!(await getJobById(jobId))) {
@@ -465,5 +472,26 @@ export async function deleteAoOfferOf(tenantId: string, id: string): ReturnType<
   } catch (err) {
     console.error('AO: suppression d\'offre impossible', id, errorOf(err))
     return { error: `Suppression impossible : ${errorOf(err)}` }
+  }
+}
+
+/**
+ * Affecte l'offre `id` de l'organisation à un de ses recruteurs (`userId` vide : personne). Avant publication, gardé
+ * sur l'offre AO et repris à la publication ; une offre déjà publiée change aussi de recruteur dans « Mon espace ».
+ */
+export async function assignAoOfferOf(tenantId: string, id: string, userId: string, paths: string[]): Promise<{ error?: string }> {
+  try {
+    const offer = await aoAccessFor(tenantId).offer(id)
+    if (!offer) return { error: 'Offre introuvable.' }
+    const refused = await checkAssignee(tenantId, userId)
+    if (refused) return { error: refused }
+    await setAoAssignee(offer.$id, userId)
+    if (offer.jobId && !(await setJobRecruiter(tenantId, offer.jobId, userId))) {
+      console.error('AO: offre publiée introuvable pour l\'affectation', offer.$id, offer.jobId)
+    }
+    for (const path of paths) revalidatePath(path)
+    return {}
+  } catch (err) {
+    return { error: `Affectation impossible : ${errorOf(err)}` }
   }
 }

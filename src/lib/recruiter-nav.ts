@@ -2,7 +2,7 @@
 // rubriques, dans l'ordre affiché, et la rubrique d'une page. Demande du 2026-10-30 : un sous-menu à la place des
 // cartes du tableau de bord. Règles pures, testées dans recruiter-nav.test.ts.
 
-export type RecruiterSectionKey = 'dashboard' | 'ao' | 'parcours' | 'reporting' | 'vivier' | 'cvtheque' | 'equipe' | 'interviews'
+export type RecruiterSectionKey = 'espace' | 'dashboard' | 'ao' | 'parcours' | 'reporting' | 'vivier' | 'cvtheque' | 'equipe' | 'interviews'
 
 export interface RecruiterSection {
   key: RecruiterSectionKey
@@ -13,6 +13,8 @@ export interface RecruiterSection {
 }
 
 export const RECRUITER_SECTIONS: RecruiterSection[] = [
+  // Espace du recruteur : ses recrutements et leur avancement (demande de Dav du 2026-10-31).
+  { key: 'espace', label: 'Mon espace', href: '/recruiter/espace', also: [] },
   // Pipeline, fiche candidat, import, processus de recrutement et suivi des annonces (lien « Suivi & rapports » de
   // « Mes offres », sans rubrique depuis le 2026-10-30) partent des offres du tableau de bord.
   { key: 'dashboard', label: 'Tableau de bord', href: '/recruiter/dashboard', also: ['/recruiter/pipeline', '/recruiter/candidates', '/recruiter/candidate-preview', '/recruiter/import', '/recruiter/funnel', '/recruiter/annonces'] },
