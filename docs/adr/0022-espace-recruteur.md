@@ -30,6 +30,12 @@ espace.
   « Toute l'équipe » (tous, avec un sélecteur pour réaffecter). « Ouvrir » mène au pipeline de l'offre, où le
   processus avance. Le vivier reste la page du vivier (CV visibles de celui qui les importe) : l'espace en montre le
   nombre et un bouton « Importer mes CV ».
+- **Un seul bloc, sans onglets** (demande du 2026-10-31, après la première version) : « Mon espace » n'a pas le
+  sous-menu des autres pages (`showsRecruiterSubnav`, `recruiter-nav.ts`, testé). Un même bloc regroupe les chiffres,
+  une tuile par rubrique de l'espace recruteur (mêmes libellés et adresses que le sous-menu) avec son chiffre — offres
+  en ligne, appels d'offres à valider, parcours en cours, CV du vivier, recruteurs, entretiens — et la liste des
+  recrutements. Un chiffre illisible laisse la tuile sans chiffre. Les autres pages gardent le sous-menu, dont
+  « Mon espace » est la première rubrique.
 
 ## Conséquences
 

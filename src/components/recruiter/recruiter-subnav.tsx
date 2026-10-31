@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useId, useRef, useState, type ComponentType } from 'react'
 import { BarChart3, ChevronDown, FolderOpen, FolderSearch, Inbox, LayoutDashboard, LayoutGrid, MessageSquare, Route, Users } from 'lucide-react'
-import { RECRUITER_SECTIONS, recruiterSectionOf, type RecruiterSectionKey } from '@/lib/recruiter-nav'
+import { RECRUITER_SECTIONS, recruiterSectionOf, showsRecruiterSubnav, type RecruiterSectionKey } from '@/lib/recruiter-nav'
 
 // Sous-menu de l'espace recruteur, sous la barre du site (layout recruteur) : les rubriques (recruiter-nav.ts), la
 // rubrique de la page en surbrillance. Grand écran (≥ 1024 px) : onglets sans icône (neuf rubriques depuis « Mon espace »,
@@ -29,6 +29,8 @@ export function RecruiterSubnav() {
   const pathname = usePathname()
   const current = recruiterSectionOf(pathname)
   const currentSection = RECRUITER_SECTIONS.find(s => s.key === current)
+  // « Mon espace » regroupe toutes les rubriques dans son propre bloc : pas d'onglets au-dessus (demande du 2026-10-31).
+  if (!showsRecruiterSubnav(pathname)) return null
 
   return (
     <nav aria-label="Rubriques de l’espace recruteur" className="relative z-30"

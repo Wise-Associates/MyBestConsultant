@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { RECRUITER_SECTIONS, recruiterSectionOf } from './recruiter-nav'
+import { RECRUITER_SECTIONS, recruiterSectionOf, showsRecruiterSubnav } from './recruiter-nav'
 
 describe('sous-menu de l\'espace recruteur', () => {
   it('garde les rubriques dans l\'ordre demandé', () => {
@@ -32,5 +32,12 @@ describe('sous-menu de l\'espace recruteur', () => {
     assert.equal(recruiterSectionOf('/recruiter/viviers'), null)
     assert.equal(recruiterSectionOf('/recruiter/support'), null)
     assert.equal(recruiterSectionOf('/recruiter/parametres'), null)
+  })
+
+  it('masque le sous-menu sur « Mon espace » seulement, qui regroupe toutes les rubriques', () => {
+    assert.equal(showsRecruiterSubnav('/recruiter/espace'), false)
+    assert.equal(showsRecruiterSubnav('/recruiter/espace/'), false)
+    assert.equal(showsRecruiterSubnav('/recruiter/dashboard'), true)
+    assert.equal(showsRecruiterSubnav('/recruiter/support'), true)
   })
 })

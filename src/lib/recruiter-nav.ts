@@ -38,3 +38,6 @@ export function recruiterSectionOf(pathname: string): RecruiterSectionKey | null
   const path = pathname.replace(/\/+$/, '') || '/'
   return RECRUITER_SECTIONS.find(section => [section.href, ...section.also].some(base => isUnder(path, base)))?.key ?? null
 }
+
+/** Sous-menu affiché sur la page ? Pas sur « Mon espace », qui regroupe déjà toutes les rubriques dans un seul bloc (demande du 2026-10-31). */
+export const showsRecruiterSubnav = (pathname: string) => recruiterSectionOf(pathname) !== 'espace'
