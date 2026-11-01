@@ -5,6 +5,8 @@
 // photo de la scène par un modèle d'image d'OpenAI) ; Make la publie via Buffer depuis son adresse et rappelle la
 // plateforme avec le résultat. Voir /admin/social pour le guide de configuration.
 
+import { kindOf, stripInline, type SectionKind } from './description-sections'
+
 // YouTube Shorts viendra en phase 2 (il exige une vidéo, pas une image).
 export const NETWORKS = ['linkedin', 'instagram', 'facebook', 'x'] as const
 export type Network = (typeof NETWORKS)[number]
@@ -49,7 +51,9 @@ export function sanitizeSocialConfig(raw: unknown): SocialConfig {
 
 export interface JobLite {
   id: string; title: string; company: string; location: string
-  contractType?: string; remote?: string; salary?: number; skills: string[]; description: string
+  contractType?: string; remote?: string; salary?: number; skills: string[]
+  /** Description publiée, retours à la ligne gardés (titres « ### », puces « - ») : reprise telle quelle sur LinkedIn. */
+  description: string
 }
 
 /** Offre fictive des tests (connexion à Make, pilote Zernio) et de l'affiche d'exemple : rien de réel n'est publié avec. */
@@ -102,7 +106,7 @@ export function fallbackCopy(job: JobLite): CopyDraft {
     hook: clip(job.title, 70),
     tagline: clip(job.company ? `Rejoignez ${job.company} et donnez un nouvel élan à votre carrière` : 'Une mission à la hauteur de votre expertise', 90),
     pitch: clip(sentences.slice(0, 2).join(' ') || `${job.company || 'Une entreprise'} recrute : ${job.title}.`, 320),
-    missionBullets: (sentences.slice(0, 3).length ? sentences.slice(0, 3) : [`Rejoignez ${job.company || 'une équipe ambitieuse'} sur cette mission.`]).map(s => clip(s.replace(/[.!?]+$/, ''), 90)),
+    missionBullets: (sentences.slice(0, 3).length ? sentences.slice(0, 3) : [`Rejoignez ${job.company || 'une équipe ambitieuse'} sur cette mission.`]).map(s => s.replace(/[.!?]+$/, '')),
     profileBullets: job.skills.slice(0, 5).length ? job.skills.slice(0, 5) : ['Profil senior', 'Autonomie', 'Esprit d’équipe'],
   }
 }
@@ -111,9 +115,10 @@ export function fallbackCopy(job: JobLite): CopyDraft {
 export function normalizeCopy(raw: unknown, job: JobLite): CopyDraft {
   const fb = fallbackCopy(job)
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
-  const list = (v: unknown, max: number, len: number) => Array.isArray(v) ? v.map(x => clip(String(x).trim(), len)).filter(Boolean).slice(0, max) : []
-  const mission = list(r.missionBullets, 3, 90)
-  const profile = list(r.profileBullets, 5, 40)
+  // Puces gardées entières (une puce coupée en plein mot se lisait sur les publications) ; chaque légende reste bornée par buildContent.
+  const list = (v: unknown, max: number) => Array.isArray(v) ? v.map(x => String(x).trim()).filter(Boolean).slice(0, max) : []
+  const mission = list(r.missionBullets, 3)
+  const profile = list(r.profileBullets, 5)
   return {
     hook: typeof r.hook === 'string' && r.hook.trim() ? clip(r.hook.trim(), 70) : fb.hook,
     tagline: typeof r.tagline === 'string' && r.tagline.trim() ? clip(r.tagline.trim(), 90) : fb.tagline,
@@ -130,6 +135,75 @@ export function jobUrl(baseUrl: string, jobId: string, network?: Network): strin
   return network ? `${u}?utm_source=${network}` : u
 }
 
+// Limite de LinkedIn : 3 000 caractères par publication ; marge gardée, la façon dont Buffer et LinkedIn comptent n'étant pas documentée.
+const LINKEDIN_MAX_CHARS = 2900
+
+const HEADING_EMOJI: Record<SectionKind, string> = { context: '🏢', tasks: '🎯', profile: '🧩', terms: '📋', other: '📌' }
+
+/** Ajoutée quand la description a été raccourcie : la suite est sur la page de l'offre, dont le lien suit. */
+const MORE_LINE = '➕ Suite de l’offre sur le lien ci-dessous'
+
+/** Section de la description : titre (vide pour l'introduction) puis lignes, lignes vides comprises. */
+interface LinkedInSection { title: string; lines: string[] }
+
+/**
+ * Description de l'offre (format de la page publique : titres « ### », puces « - ») en texte LinkedIn, qui n'affiche pas
+ * le markdown : titres précédés d'un emoji, puces « • », gras et italique retirés. Rangée par section pour pouvoir être
+ * raccourcie section par section.
+ */
+function linkedinSections(description: string): LinkedInSection[] {
+  const sections: LinkedInSection[] = [{ title: '', lines: [] }]
+  for (const raw of description.split('\n')) {
+    const line = raw.replace(/[ \t]+/g, ' ').trim()
+    const heading = /^#{1,6}\s+(.+)$/.exec(line)
+    if (heading) {
+      const title = stripInline(heading[1]).replace(/\s*:\s*$/, '')
+      // « Au programme » : titre des missions posé par « Préparer la publication » (descriptionFromCopy).
+      sections.push({ title: `${HEADING_EMOJI[/^au programme$/i.test(title) ? 'tasks' : kindOf(title)]} ${title}`, lines: [] })
+      continue
+    }
+    const item = /^[-*•]\s+(.+)$/.exec(line)
+    sections[sections.length - 1].lines.push(item ? `• ${stripInline(item[1])}` : stripInline(line))
+  }
+  return sections
+}
+
+const renderSections = (sections: LinkedInSection[]) =>
+  sections.flatMap(s => (s.title ? [s.title, ...s.lines] : s.lines)).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+
+const sectionLength = (s: LinkedInSection) => s.lines.reduce((n, line) => n + line.length, 0)
+
+/**
+ * Description qui tient en `max` caractères. Trop longue, chaque section perd ses dernières lignes, la plus longue
+ * d'abord, en gardant au moins la première : toutes les sections restent visibles avec leurs premières puces (couper par
+ * la fin faisait disparaître le profil derrière une longue liste de missions), et une ligne dit où lire la suite.
+ */
+function fitDescription(description: string, max: number): string {
+  const sections = linkedinSections(description)
+  const full = renderSections(sections)
+  if (full.length <= max) return full
+  const room = max - MORE_LINE.length - 2
+  while (renderSections(sections).length > room) {
+    const trimmable = sections.filter(s => s.lines.filter(Boolean).length > 1)
+    if (trimmable.length === 0) break
+    const longest = trimmable.reduce((a, b) => (sectionLength(b) > sectionLength(a) ? b : a))
+    longest.lines.splice(longest.lines.findLastIndex(Boolean), 1)
+  }
+  // Une section réduite à une ligne encore trop longue (paragraphe unique) : coupée au dernier mot entier.
+  return `${fitText(renderSections(sections), room)}\n\n${MORE_LINE}`
+}
+
+/** Texte trop long coupé à la dernière ligne entière qui tient (sinon au dernier mot entier), suivi de « … ». */
+function fitText(text: string, max: number): string {
+  if (text.length <= max) return text
+  if (max < 2) return ''
+  const cut = text.slice(0, max - 2)
+  const line = cut.lastIndexOf('\n')
+  if (line > max / 2) return `${cut.slice(0, line).trimEnd()}\n…`
+  const word = cut.lastIndexOf(' ')
+  return `${(word > 0 ? cut.slice(0, word) : cut).trimEnd()}…`
+}
+
 /** Longueur d'un tweet telle que X la compte : chaque URL vaut 23 caractères. */
 export function xLength(text: string): number {
   return text.replace(/https?:\/\/\S+/g, 'x'.repeat(23)).length
@@ -144,7 +218,8 @@ export function buildContent(job: JobLite, copy: CopyDraft, cfg: SocialConfig, o
   // ── Affiche unique ──
   const facts = conditions.filter(l => !l.startsWith('📍'))
   const image: PostImage = {
-    title: clip(job.title, 80), company: job.company, location: job.location, facts, skills: copy.profileBullets.slice(0, 4), tagline: copy.tagline,
+    // Pastilles de l'affiche : 40 caractères, la place qu'elles ont à l'image (bornes relues par social-poster/rules.ts).
+    title: clip(job.title, 80), company: job.company, location: job.location, facts, skills: copy.profileBullets.slice(0, 4).map(s => clip(s, 40)), tagline: copy.tagline,
   }
 
   // ── Textes par réseau ──
@@ -160,7 +235,13 @@ export function buildContent(job: JobLite, copy: CopyDraft, cfg: SocialConfig, o
   const rdv = calendly ? `📅 Envie d’en discuter ? Réservez un échange : ${calendly}` : ''
   const join = (...parts: string[]) => parts.filter(Boolean).join('\n\n')
 
-  const linkedin = clip(join(head, copy.tagline, meta, program, profile, [cta(urls.linkedin), rdv].filter(Boolean).join('\n'), tags.join(' ')), 2900)
+  // LinkedIn : le texte complet de l'offre publiée (son accroche remplace celle de l'IA), sans autre limite que celle de
+  // LinkedIn ; une offre trop longue est raccourcie section par section (fitDescription), jamais les liens ni les hashtags.
+  const hasDescription = job.description.trim() !== ''
+  const liEnd = join([cta(urls.linkedin), rdv].filter(Boolean).join('\n'), tags.join(' '))
+  const liTop = hasDescription ? join(head, meta) : join(head, copy.tagline, meta)
+  const liBody = hasDescription ? fitDescription(job.description, LINKEDIN_MAX_CHARS - liTop.length - liEnd.length - 4) : join(program, profile)
+  const linkedin = clip(join(liTop, liBody, liEnd), LINKEDIN_MAX_CHARS)
   const facebook = clip(join(head, copy.tagline, meta, program, [cta(urls.facebook), rdv].filter(Boolean).join('\n'), tags.slice(0, 3).join(' ')), 2900)
   // Instagram : les liens des légendes ne sont pas cliquables → on renvoie vers le lien de la bio.
   const instagram = clip(join(head, copy.tagline, meta, program, profile, ['👉 Postuler : lien dans la bio 🔗 mybestconsultant.fr', rdv].filter(Boolean).join('\n'), tags.join(' ')), 2100)
