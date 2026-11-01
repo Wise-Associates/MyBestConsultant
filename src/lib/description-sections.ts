@@ -182,7 +182,7 @@ export function parseDescription(raw: string): DescriptionSection[] {
 }
 
 /** Marques « **gras** » et « *italique* » retirées : ni la page publique ni le post LinkedIn ne les affichent. */
-const stripInline = (text: string) => text.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*\s][^*]*)\*/g, '$1')
+export const stripInline = (text: string) => text.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*\s][^*]*)\*/g, '$1')
 
 /**
  * Description pré-remplie dans « Préparer la publication » (AO Offers) : titres « ### », puces « - »,
