@@ -1,12 +1,12 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import * as XLSX from 'xlsx'
-import { keepCitedContact, parseOffersJson, TruncatedAnswerError } from './parse'
+import { keepCitedAliases, keepCitedContact, parseOffersJson, TruncatedAnswerError } from './parse'
 import { emailDeadline } from './dates'
 
 const RECEIVED = new Date('2026-10-21T09:00:00Z')
 import { cityKey, offerFingerprint, titleKey } from './fingerprint'
-import { DEFAULT_CLIENT_LABEL, namesToHide, rawPublicOffer, revealsName, scrubContacts, toPublicOffer } from './anonymize'
+import { DEFAULT_CLIENT_LABEL, distinctNames, namesToHide, rawPublicOffer, revealsName, scrubContacts, toPublicOffer } from './anonymize'
 import { parsePublishInput } from './publication-input'
 import Anthropic from '@anthropic-ai/sdk'
 import { LLMChainError, LLMHttpError, LLMNotConfiguredError, LLMUnreachableError } from '@/lib/ai/llm-router'
@@ -148,6 +148,31 @@ describe('parseOffersJson', () => {
     assert.equal(keepCitedContact({ contact: ours, sourceUrl: '' }, text, ['wise-associates.fr']).contact, null)
   })
 
+  it('lit les autres noms du client, bornés et sans doublon', () => {
+    const { offers } = parseOffersJson(JSON.stringify([
+      { title: 'Gouvernance des données', companyName: 'ENSMIS', clientAliases: ['la Fémis', 'la Fémis', ' <Fémis> ', '', 42, 'x'.repeat(300)] },
+      { title: 'PO' },
+    ]), RECEIVED)
+    assert.deepEqual(offers[0].clientAliases, ['la Fémis', 'Fémis', '42', 'x'.repeat(200)])
+    assert.deepEqual(offers[1].clientAliases, [])
+  })
+
+  it('ne garde des autres noms du client que ceux que cite l\'e-mail, hors la ville de l\'offre', () => {
+    const text = 'L\'ENSMIS (École nationale supérieure des métiers de l\'image et du son), dite la FEMIS, à Paris.'
+    const kept = keepCitedAliases({
+      location: 'Paris (75)',
+      clientAliases: ['École Nationale Supérieure des Métiers de l\'Image et du Son', 'la Fémis', 'Fémis', 'Ecole Femis', 'Paris', 'EMIS', ''],
+    }, text)
+    assert.deepEqual(kept.clientAliases, ['École Nationale Supérieure des Métiers de l\'Image et du Son', 'la Fémis', 'Fémis'])
+    assert.deepEqual(keepCitedAliases({ location: '', clientAliases: undefined }, text).clientAliases, undefined)
+  })
+
+  it('écarte un autre nom fait de mots génériques, qui serait masqué partout (« la Ville », « le SI »)', () => {
+    const text = 'La Ville de Lyon (la Ville) recrute pour son SI. Travail en groupe au sein de l\'École.'
+    const kept = keepCitedAliases({ location: 'Lyon', clientAliases: ['la Ville', 'Groupe', 'SI', 'l\'École', 'Ville de Lyon'] }, text)
+    assert.deepEqual(kept.clientAliases, ['Ville de Lyon'])
+  })
+
   it('refuse une réponse sans tableau JSON (l\'e-mail sera réessayé)', () => {
     assert.throws(() => parseOffersJson('Désolé, je ne peux pas.', RECEIVED), /aucun tableau JSON/)
   })
@@ -187,7 +212,7 @@ describe('anonymisation', () => {
   it('masque le client quelles que soient la casse, les accents, la forme juridique ou le sigle', () => {
     const names = namesToHide(['Société Générale SA (SG)'])
     const out = scrubContacts('SOCIETE GENERALE recrute ; la Société-Générale et SG cherchent. Le SGBD reste.', names, 'Grand compte – Banque')
-    assert.equal(out, 'Grand compte – Banque recrute ; la Grand compte – Banque et Grand compte – Banque cherchent. Le SGBD reste.')
+    assert.equal(out, 'Grand compte – Banque recrute ; le client confidentiel et Grand compte – Banque cherchent. Le SGBD reste.')
   })
 
   it('masque aussi l\'expéditeur (nom de deux mots ou plus, domaine) mais pas une messagerie publique', () => {
@@ -198,7 +223,12 @@ describe('anonymisation', () => {
 
   it('masque aussi l\'expéditeur d\'origine d\'un e-mail transféré', () => {
     const names = namesToHide([], [{ name: 'Camille Martin', address: 'c.martin@wise-associates.fr' }, { name: 'Dupont, Marie', address: 'marie.dupont@client-exemple.co.uk' }], WISE.ownDomains)
-    assert.equal(scrubContacts('Envoyé par Marie Dupont (Dupont, Marie) pour Client Exemple.', names, 'X'), 'Envoyé par X (X) pour X.')
+    // « X (X) » : les deux formes du nom sont masquées, le libellé n'est pas répété.
+    assert.equal(scrubContacts('Envoyé par Marie Dupont (Dupont, Marie) pour Client Exemple.', names, 'X'), 'Envoyé par X pour X.')
+  })
+
+  it('liste les noms masqués tels qu\'écrits, sans doublon', () => {
+    assert.deepEqual(distinctNames(['ENSMIS', ' la Fémis ', 'LA FEMIS', '', '—']), ['ENSMIS', 'la Fémis'])
   })
 
   it('détecte un libellé qui révèle le client', () => {
@@ -218,6 +248,47 @@ describe('anonymisation', () => {
     assert.match(pub.description, /Durée de la mission : 6 mois renouvelables/)
     assert.match(pub.description, /Démarrage : 01\/09\/2026/)
     assert.match(pub.description, /Expérience requise : 5 ans minimum/)
+  })
+
+  it('offre de la veille BOAMP : aucun nom du client, ni la référence de l\'avis, ni « L\'Client confidentiel »', () => {
+    // Publication du 2026-11-01 : seul le sigle était connu, le nom complet, le nom d'usage et l'avis restaient.
+    const description = 'L\'ENSMIS (École Nationale Supérieure des Métiers de l\'Image et du Son), également connue sous le nom de la Fémis, '
+      + 'lance un appel d\'offres publié au BOAMP (référence : 26-105130).\n\n### Cadre contractuel\nL\'acheteur est l\'ENSMIS, situé à Paris (75).'
+      + '\n\n### Référence BOAMP\n26-105130'
+    const clients = citedClients([offer({ companyName: 'ENSMIS', clientAliases: ['École Nationale Supérieure des Métiers de l\'Image et du Son', 'la Fémis'] })])
+    const pub = toPublicOffer(offer({ companyName: 'ENSMIS', description, duration: '', startDate: '', experience: '' }), namesToHide(clients))
+    assert.equal(pub.description, 'Le client confidentiel, également connue sous le nom de Client confidentiel, lance un appel '
+      + 'd\'offres publié au BOAMP.\n\n### Cadre contractuel\nL\'acheteur est le client confidentiel, situé à Paris (75).')
+  })
+
+  it('accorde l\'article élidé devant un nom masqué, quel que soit le libellé affiché', () => {
+    const names = namesToHide(['ENSMIS'])
+    assert.equal(scrubContacts('L\'ENSMIS recrute pour le compte d’ENSMIS, lorsqu\'ENSMIS le demande. Qu\'ENSMIS valide.', names, 'Grande école'),
+      'Le client confidentiel recrute pour le compte du client confidentiel, lorsque le client confidentiel le demande. Que le client confidentiel valide.')
+    assert.equal(scrubContacts('Mission pour ENSMIS, à l\'ENSMIS, au nom de l\'ENSMIS. À l\'ENSMIS !', names, 'Grande école'),
+      'Mission pour Grande école, au client confidentiel, au nom du client confidentiel. Au client confidentiel !')
+    assert.equal(scrubContacts('Avec l\' ENSMIS et l‘ENSMIS.', names, 'X'), 'Avec le client confidentiel et le client confidentiel.')
+    // Sans article élidé ou féminin, le libellé affiché ; le mot qui précède n'est pas touché.
+    assert.equal(scrubContacts('Appel de ENSMIS, voilà ENSMIS, au ENSMIS.', names, 'Grand établissement'),
+      'Appel de Grand établissement, voilà Grand établissement, au Grand établissement.')
+  })
+
+  it('accorde aussi l\'article féminin devant un nom masqué (« la Grand groupe bancaire »)', () => {
+    const names = namesToHide(['SNCF'])
+    assert.equal(scrubContacts('La SNCF lance, pour la SNCF, de la SNCF à la SNCF, une SNCF, cette SNCF.', names, 'Grand groupe'),
+      'Le client confidentiel lance, pour le client confidentiel, du client confidentiel au client confidentiel, un client confidentiel, ce client confidentiel.')
+    // Article dans le nom lui-même (autre nom « la Fémis ») : le nom entier est remplacé.
+    assert.equal(scrubContacts('Connue sous le nom de la Fémis.', namesToHide(['la Fémis']), 'X'), 'Connue sous le nom de X.')
+  })
+
+  it('ne répète pas le libellé quand le sigle et le nom complet se suivent', () => {
+    const names = namesToHide(['BNP Paribas', 'BNPP'])
+    assert.equal(scrubContacts('Le BNPP (BNP Paribas) et BNP Paribas ( BNPP ) recrutent.', names, 'Grand groupe bancaire'),
+      'Le Grand groupe bancaire et Grand groupe bancaire recrutent.')
+    assert.equal(scrubContacts('Chez l\'BNPP (BNP Paribas).', names, 'Grande banque'), 'Chez le client confidentiel.')
+    assert.equal(scrubContacts('La BNPP (l\'BNPP) recrute.', names, 'Grande banque'), 'Le client confidentiel recrute.')
+    // Une parenthèse qui ne contient pas que le nom reste.
+    assert.equal(scrubContacts('BNPP (filiale de BNP Paribas)', names, 'Grande banque'), 'Grande banque (filiale de Grande banque)')
   })
 
   it('met en forme la description à publier après l\'anonymisation, sans réintroduire de contact', () => {
@@ -958,6 +1029,17 @@ describe('client d\'une offre AO', () => {
     assert.deepEqual(cited, ['ESN Conseil', 'BNP Paribas'])
     const pub = toPublicOffer({ ...extracted[0], companyName: 'ESN Conseil' }, namesToHide(['ESN Conseil', ...cited], [{ name: '', address: 'ao@esn-conseil.fr' }]))
     assert.ok(!/BNP|ESN/i.test(JSON.stringify(pub)), JSON.stringify(pub))
+  })
+
+  it('garde aussi les autres noms des clients, après les clients eux-mêmes', () => {
+    const cited = citedClients([
+      offer({ companyName: 'ENSMIS', endClient: '', clientAliases: ['la Fémis', 'ENSMIS'] }),
+      offer({ companyName: 'BNP Paribas', endClient: 'Cardif', clientAliases: ['BNPP'] }),
+    ])
+    assert.deepEqual(cited, ['ENSMIS', 'BNP Paribas', 'Cardif', 'la Fémis', 'BNPP'])
+    const many = citedClients([offer({ companyName: 'Client', clientAliases: Array.from({ length: 30 }, (_, i) => `Nom ${i}`) })])
+    assert.equal(many.length, 20)
+    assert.equal(many[0], 'Client')
   })
 
   it('laisse le client lu dans l\'offre quand l\'expéditeur d\'origine est inconnu', () => {
