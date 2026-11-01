@@ -26,23 +26,47 @@ function occurrences(text: string, names: string[][]): { start: number; end: num
   return found
 }
 
-export function replaceNames(text: string, names: string[][], label: string): string {
+// Article juste avant un nom, qui ne s'accorde pas forcément avec le libellé qui le remplace : élidé (« L'ENSMIS »,
+// « d’ENSMIS », « de l'ENSMIS », « à l' ENSMIS », « lorsqu'ENSMIS » : « L'Client confidentiel ») ou féminin (« la SNCF »,
+// « de la SNCF », « une ESN », « cette école » : « la Grand groupe bancaire »). Les articles masculins restent.
+const ARTICLE_BEFORE = /(?<![\p{L}\p{N}])(?:((?:(?:à|de)[ \t]+)?l|d|\p{L}*qu)['’‘][ \t]?|((?:(?:à|de)[ \t]+)?la|une|cette)[ \t]+)$/iu
+
+/**
+ * Remplace chaque nom par `label`. `withArticle` : texte qui remplace un nom précédé d'un article élidé ou féminin,
+ * article compris ; reçoit l'article tel qu'écrit, sans l'apostrophe (« L », « d », « de l », « à l », « lorsqu », « la »,
+ * « de la », « une », « cette »).
+ */
+export function replaceNames(text: string, names: string[][], label: string, withArticle?: (article: string) => string): string {
   let out = ''
   let pos = 0
   for (const { start, end } of occurrences(text, names)) {
-    out += text.slice(pos, start) + label
+    const before = text.slice(pos, start)
+    const article = withArticle ? ARTICLE_BEFORE.exec(before) : null
+    out += article && withArticle ? before.slice(0, article.index) + withArticle(article[1] ?? article[2]) : before + label
     pos = end
   }
   return out + text.slice(pos)
 }
 
 /**
- * Références d'appels d'offres (« RFC00094023 », « DH038970 », « AO-0042 ») : 1 à 6 majuscules puis au moins 4
- * chiffres, d'un seul tenant. Elles désignent la demande chez le client : jamais publiées. N'en sont pas, et restent :
- * les normes (« ISO27001 », « IEC61508 », « EN50128 », « AS9100 », « IATF16949 », « ISAE3402 », « MIL-STD-1553 ») et les
- * versions datées d'une année (« AX2012 », « ES2015 ») ; « Java 17 » ou « 2026 » ne correspondent pas.
+ * Références d'appels d'offres, qui désignent la demande chez le client : jamais publiées.
+ * - Codes de demande (« RFC00094023 », « DH038970 », « AO-0042 ») : 1 à 6 majuscules puis au moins 4 chiffres, d'un seul
+ *   tenant. N'en sont pas, et restent : les normes (« ISO27001 », « IEC61508 », « EN50128 », « AS9100 », « IATF16949 »,
+ *   « ISAE3402 », « MIL-STD-1553 ») et les versions datées d'une année (« AX2012 », « ES2015 ») ; « Java 17 » ou « 2026 »
+ *   ne correspondent pas.
+ * - Numéros d'avis et d'offres relevés par la veille : BOAMP « 26-105130 » (année sur deux chiffres, tiret, 6 chiffres),
+ *   TED « 654321-2026 » (6 à 8 chiffres : les normes datées « ISO 27001-2022 », de 5 chiffres, restent) et, avant 2024,
+ *   « 2023/S 123-456789 », Choisir le service public « 2026-2442607 » et « MEF_2026-33005 ». Restent aussi les dates
+ *   (« 2026-01-15 »), les périodes (« 2025-2026 ») et les fourchettes de montants (« 45-550000 € »).
  */
-export const REFERENCE_CODE = /\b(?!(?:ISO|IEC|EN|AS|IATF|ISAE|ARP|NF|STD)[-_]?\d)(?![A-Z]{1,6}[-_]?(?:19|20)\d{2}\b)[A-Z]{1,6}[-_]?\d{4,}\b/g
+export const REFERENCE_CODE = new RegExp([
+  String.raw`\b(?!(?:ISO|IEC|EN|AS|IATF|ISAE|ARP|NF|STD)[-_]?\d)(?![A-Z]{1,6}[-_]?(?:19|20)\d{2}\b)[A-Z]{1,6}[-_]?\d{4,}\b`,
+  String.raw`\b[A-Z]{2,6}_20\d{2}-\d{4,}\b`,
+  String.raw`\b20\d{2}\/S[ \t]?\d{3}-\d{6}\b`,
+  String.raw`\b\d{6,8}-20\d{2}\b`,
+  String.raw`\b20\d{2}-\d{5,8}\b`,
+  String.raw`\b\d{2}-\d{6}\b(?![ \t  ]*(?:€|[kK]€|[eE]uros?\b|EUR\b))`,
+].join('|'), 'g')
 
 /** Noms encore présents dans le texte, tels qu'écrits (relecture d'une version non anonymisée : noms de personnes). */
 export function findNames(text: string, names: string[][]): string[] {

@@ -8,7 +8,7 @@ import { inboxSettingsFor } from './inbox-settings'
 import { withAoInbox, type AoInbox, type AoInboxSettings, type InboxEnvelope } from './imap'
 import { citedClients, formatSender, fromVeille, originalSender, senderCompany } from './origin'
 import { emailDeadline, isPastDeadline } from './dates'
-import { keepCitedContact, TruncatedAnswerError } from './parse'
+import { keepCitedAliases, keepCitedContact, TruncatedAnswerError } from './parse'
 import {
   createAoEmail, createAoOffer, deleteAoOfferAndDetails, findAoDuplicate, findAoEmailByMessageId,
   hasAoEmails, incrementAoSources, listRetryableAoEmails, nextStepFor, purgeAoRecords, reconcileAoOfferIndex, saveAoOfferDetails, saveAoOfferIndex, settledMessageIds, updateAoEmail,
@@ -400,7 +400,7 @@ async function processEnvelope(
       const llmWait = Math.min(MAX_LLM_WAIT_MS, timeLeft() - 10_000)
       if (llmWait < MIN_LLM_WAIT_MS) throw new RetryLater('plus assez de temps pour l\'extraction : e-mail repris au prochain passage', !canDefer)
       fromAi = (await extractOffersFromEmail(content.text, llmWait, aiOrigin, org.name, message.receivedAt)).offers
-        .map(o => keepCitedContact(o, content.text, source.ownDomains))
+        .map(o => keepCitedAliases(keepCitedContact(o, content.text, source.ownDomains), content.text))
     }
     const read = [...content.tableOffers, ...fromAi]
     // Veille (scraping) : une offre dont la date limite est déjà passée n'a plus d'intérêt, elle n'est pas créée

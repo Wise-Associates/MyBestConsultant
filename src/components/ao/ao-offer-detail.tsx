@@ -278,7 +278,21 @@ export function AoOfferDetail({ row, actions, paths, publishNote, tracking, soci
                   {' '}Ces règles sont réappliquées à la publication.
                 </>}
             </p>
+            {/* Les règles ne masquent que les noms connus : la personne qui relit doit savoir lesquels. */}
+            {!raw && preview.maskedNames.length > 0 && (
+              <p className="text-xs mt-2" style={{ color: 'var(--admin-fg-muted)' }}>
+                Masqués à la publication :{' '}
+                <span className="font-medium text-admin-fg">{preview.maskedNames.map(n => `« ${n} »`).join(', ')}</span>
+                {' '}ainsi que les expéditeurs extérieurs et l&apos;interlocuteur du client (nom, domaine). Tout autre nom du client (nom complet, sigle, nom d&apos;usage) reste dans le texte : retirez-le.
+              </p>
+            )}
           </div>
+          {!raw && preview.maskedNames.length === 0 && (
+            <div className="flex gap-2 text-sm p-3 rounded-lg" style={{ color: '#b45309', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
+              <AlertTriangle size={16} className="shrink-0 mt-0.5" aria-hidden />
+              <p>Aucun nom de client connu pour cette offre : seuls les expéditeurs extérieurs et l&apos;interlocuteur du client (nom, domaine) sont masqués. Retirez vous-même du texte tout nom du client.</p>
+            </div>
+          )}
           {raw && (
             <div className="flex gap-2 text-sm p-3 rounded-lg" style={{ color: '#b45309', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
               <AlertTriangle size={16} className="shrink-0 mt-0.5" aria-hidden />

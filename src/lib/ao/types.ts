@@ -69,6 +69,12 @@ export interface ExtractedOffer extends AoOfferFields, AoOfferDetails {
   deadline: string
   endClient: string
   /**
+   * Autres noms du client et du client final lus par l'IA (sigle, nom complet, nom d'usage : « ENSMIS », « la Fémis »),
+   * seulement ceux que cite l'e-mail (keepCitedAliases) : masqués à la publication avec eux (citedClients). Absent pour
+   * une ligne de tableau.
+   */
+  clientAliases?: string[]
+  /**
    * Date limite désignée comme telle par le texte ou le tableau, et non déduite d'une date sans libellé
    * (`placeUnlabeledDates`). Seule une telle date peut faire écarter une offre de la veille comme échue.
    */

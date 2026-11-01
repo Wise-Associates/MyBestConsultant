@@ -10,7 +10,7 @@ import type { Job, UserProfile } from '@/types'
 import { isDocumentId } from './access'
 import { callLLM } from '@/lib/ai/llm-router'
 import { llmUnavailableReason } from './ai-failures'
-import { namesToHide, publicLabel, rawPublicOffer, scrubContacts, toPublicOffer, type PublicOffer } from './anonymize'
+import { distinctNames, namesToHide, publicLabel, rawPublicOffer, scrubContacts, toPublicOffer, type PublicOffer } from './anonymize'
 import {
   PUBLICATION_PROMPT, descriptionFromCopy, maskNames, maskTermsOf, parsePublicationCopy, publicationRequest, type PublicationCopy,
 } from './publication-copy'
@@ -163,14 +163,14 @@ export async function previewAoPublicationOf(
     if (mode === 'raw') {
       // Version non anonymisée : client et références restent ; les noms de personnes connus sont signalés à la relecture.
       const draft = { ...rawPublicOffer(offer), ...terms, maskTerms: [], anonymized: false }
-      return { preview: { draft, similarJobs, rewrite: 'raw', notice: '', watchNames: people } }
+      return { preview: { draft, similarJobs, rewrite: 'raw', notice: '', watchNames: people, maskedNames: [] } }
     }
     const copy = (await beforeAi?.()) ?? (await rewriteForPublication(offer, clients, names))
     if (typeof copy === 'string') {
       const pub = toPublicOffer(offer, names)
       // Mise en forme (sections, puces) après l'anonymisation, qui retire les lignes de contact d'après leur début de ligne.
       const draft = { ...pub, description: descriptionForPublication(pub.description), ...terms, maskTerms: [], anonymized: true }
-      return { preview: { draft, similarJobs, rewrite: 'rules', notice: copy, watchNames: names } }
+      return { preview: { draft, similarJobs, rewrite: 'rules', notice: copy, watchNames: names, maskedNames: distinctNames(clients) } }
     }
     const maskTerms = maskTermsOf(copy)
     const extra = maskNames(maskTerms)
@@ -180,7 +180,10 @@ export async function previewAoPublicationOf(
       ...offer, title: copy.title, description: descriptionFromCopy(copy), location: copy.location || offer.location, skills: copy.skills,
       duration: '', startDate: '', experience: '', // déjà dans la section « Modalités »
     }, names, label, extra)
-    const preview: PublicationPreview = { draft: { ...pub, ...terms, maskTerms, anonymized: true }, similarJobs, rewrite: 'ai', notice: '', watchNames: [...names, ...extra] }
+    const preview: PublicationPreview = {
+      draft: { ...pub, ...terms, maskTerms, anonymized: true }, similarJobs, rewrite: 'ai', notice: '', watchNames: [...names, ...extra],
+      maskedNames: distinctNames([...clients, ...maskTerms]),
+    }
     return { preview }
   } catch (err) {
     return { error: errorOf(err) }
