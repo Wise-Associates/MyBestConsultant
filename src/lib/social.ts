@@ -194,14 +194,15 @@ export async function getPost(id: string): Promise<SocialPost | null> {
 
 // ── Rédaction ────────────────────────────────────────────────────────────────────────────────
 
-const plain = (s: string) => s.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
+const plainLines = (s: string) => s.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ').trim()
 
 /** Champs bornés : le corps envoyé à Make (et enregistré dans payloadJson, 20 000 caractères) doit tenir à coup sûr. */
 export function jobToLite(job: Job, company: string): JobLite {
   return {
     id: job.$id, title: job.title.slice(0, 200), company: (company || job.companyName || '').slice(0, 120), location: (job.location ?? '').slice(0, 120),
     contractType: job.contractType, remote: job.remote, salary: job.salary,
-    skills: (job.skills ?? []).slice(0, 15).map(k => k.slice(0, 40)), description: plain(job.description ?? '').slice(0, 1800),
+    // Retours à la ligne gardés : la description est publiée telle quelle sur LinkedIn, qui n'en affiche pas plus de 3 000 caractères.
+    skills: (job.skills ?? []).slice(0, 15).map(k => k.slice(0, 40)), description: plainLines(job.description ?? '').slice(0, 3000),
   }
 }
 
