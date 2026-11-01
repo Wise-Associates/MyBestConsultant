@@ -106,6 +106,16 @@ describe('relecture de la version publiée : ce qui identifierait encore le clie
     assert.deepEqual(findIdentifiers(text, []), [])
     assert.deepEqual(findIdentifiers('RFP99619, DH038917, AO-0042, RFC2026001', []), ['RFP99619', 'DH038917', 'AO-0042', 'RFC2026001'])
   })
+
+  it('repère les numéros d\'avis et d\'offres de la veille, mais ni les dates, ni les normes datées, ni les montants', () => {
+    assert.deepEqual(
+      findIdentifiers('Avis 26-105130, TED 654321-2026, JOUE 2023/S 123-456789, offres 2026-2442607 et MEF_2026-33005.', []),
+      ['26-105130', '654321-2026', '2023/S 123-456789', '2026-2442607', 'MEF_2026-33005'],
+    )
+    const text = 'Démarrage le 2026-01-15, période 2025-2026, 01-23-45-67-89, lot 3-12, Paris 75015, budget 90 000 €, code 12-1234, '
+      + 'ISO 27001-2022, ISO/IEC 27001-2013, EN 50128-2011, IEC 61508-2010, salaire 45-55000 € brut, 40-450000 €, 45-550000 euros'
+    assert.deepEqual(findIdentifiers(text, []), [])
+  })
 })
 
 describe('filet de sécurité de la publication : références retirées', () => {
@@ -121,6 +131,32 @@ describe('filet de sécurité de la publication : références retirées', () =>
     assert.equal(toPublicOffer(offer({ description: 'Votre réponse à la demande RFC00094023 avant vendredi.' }), []).description, 'Votre réponse à la demande avant vendredi.')
     assert.equal(toPublicOffer(offer({ title: 'RFC00094758 - Consultant SEO' }), []).title, 'Consultant SEO')
     assert.equal(toPublicOffer(offer({ title: 'Développeur Front IT (H/F) (DH038917)' }), []).title, 'Développeur Front IT (H/F)')
+  })
+
+  it('retire les numéros d\'avis des marchés publics avec leur libellé', () => {
+    const description = 'Procédure publiée au BOAMP (référence : 26-105130), aussi au JOUE (Avis n° 2023/S 123-456789).\n'
+      + 'Réf. TED : 654321-2026\nRéférence BOAMP n° 26-105131\n\n### Référence BOAMP\n26-105130\n\n'
+      + '**Référence :**\n26-105130\n\n### Références\nTrois références similaires exigées.'
+    assert.equal(toPublicOffer(offer({ description }), []).description,
+      'Procédure publiée au BOAMP, aussi au JOUE.\n\n### Références\nTrois références similaires exigées.')
+    assert.equal(toPublicOffer(offer({ title: '26-105130 - Gouvernance des données' }), []).title, 'Gouvernance des données')
+  })
+
+  it('retire aussi les autres formes de libellé, espaces insécables compris', () => {
+    const description = 'Avis BOAMP n° 26-105130\nN° TED : 654321-2026\nNuméro de l\'avis : 26-105131\n'
+      + 'Référence BOAMP : 26-105132\n* **Référence :** 26-105133\n- Réf. AO : DH038970\nMission de pilotage.'
+    assert.equal(toPublicOffer(offer({ description }), []).description, 'Mission de pilotage.')
+  })
+
+  it('garde le mot « référence » quand il ne présente pas une référence retirée', () => {
+    const description = 'Java 17, la version de référence.\nRéférence client exigée.\nRéférences : trois projets similaires.\n\n'
+      + '### Référence\nVous serez la référence technique.'
+    assert.equal(toPublicOffer(offer({ description }), []).description, description)
+    // Dans une phrase, seule la référence part : « la référence » reste lisible.
+    assert.equal(toPublicOffer(offer({ description: 'Merci d\'indiquer la référence DH038970 dans l\'objet.' }), []).description,
+      'Merci d\'indiquer la référence dans l\'objet.')
+    assert.equal(toPublicOffer(offer({ description: 'Publié au BOAMP sous la référence 26-105130 le 12 octobre.' }), []).description,
+      'Publié au BOAMP sous la référence le 12 octobre.')
   })
 
   it('masque d\'abord les noms connus : un terme retiré par l\'IA qui en chevauche un ne le laisse pas à moitié', () => {

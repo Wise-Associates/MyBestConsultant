@@ -19,6 +19,28 @@ const PHONE = /(?:(?:\+|00)33\s?\(?0?\)?\s?|\b0)[1-9](?:[\s.-]?\d{2}){4}\b|(?:\+
 // Lignes de contact typiques des appels d'offres : « Contact : Marie Dupont », « Tél. : … », « Réf. interne … ».
 // Préfixe « ### » admis : les tableaux joints donnent une section titrée par colonne (spreadsheet.ts).
 const CONTACT_LINE = /^\s*(?:#{1,6}\s*)?[-*•]?\s*\**\s*(contact|interlocut\w*|responsable du recrutement|recruteur|t[ée]l(?:[ée]phone)?\.?|mobile|portable|e-?mail|courriel|mail|r[ée]f(?:[ée]rence)?\.?\s*interne)\b.*$/gim
+// Libellé d'une référence d'appel d'offres : « Référence BOAMP », « Réf. AO », « N° de l'avis », « Numéro de l'avis »,
+// « Avis BOAMP n° », « N° TED ». Espaces insécables admis (« n° 26-105130 » s'écrit souvent ainsi). Les espaces de ces
+// expressions ne se suivent jamais sans un caractère obligatoire entre eux : une longue suite d'espaces ou d'étoiles ne
+// se lit que d'une façon (pas de retour arrière démesuré sur un texte saisi ou rédigé par l'IA).
+const SPACE = String.raw` \t  `
+const REFERENCE_LABEL = String.raw`(?:r[ée]f(?:[ée]rence)?\.?(?:[${SPACE}]+(?:boamp|ted|joue|ao|de[${SPACE}]+l['’]avis|du[${SPACE}]+march[ée]|de[${SPACE}]+la[${SPACE}]+consultation))?`
+  + String.raw`|(?:n[°o]|num[ée]ro)[${SPACE}]*(?:de[${SPACE}]+l['’]|d['’])avis|(?:avis|annonce)(?:[${SPACE}]+(?:boamp|ted|joue))?[${SPACE}]+n[°o]`
+  + String.raw`|n[°o][${SPACE}]*(?:boamp|ted|joue))(?:[${SPACE}]*n[°o])?`
+// Début de ligne (titre, puce, gras) : seule place, avec l'intérieur d'une parenthèse, où ces mots sont un libellé.
+// Dans une phrase, « indiquez la référence DH038970 dans l'objet » garde « la référence ».
+const LINE_START = String.raw`^[ \t]*(?:#{1,6}[ \t]*)?(?:[-*•][ \t]+)?(?:\*+[ \t]*)?`
+// Référence retirée, marquée le temps de retirer son libellé avec elle : REFERENCE_CODE distingue les majuscules
+// (« RFC00094023 », pas « java1234 »), son libellé non (« Référence », « RÉF. »).
+const REFERENCE_MARK = '\u0000'
+// « Réf. TED : 654321-2026 », « **Référence :** 26-105130 », « (référence : 26-105130) », « (Avis n° 26-105130) ».
+const LABELLED_REFERENCE = new RegExp(String.raw`(?:${LINE_START}|(?<=[([])[ \t]*)${REFERENCE_LABEL}[${SPACE}*]*(?::[${SPACE}*]*)?\u0000`, 'gim')
+// Titre ou libellé seul sur sa ligne dont la référence était sur la ligne suivante (« ### Référence BOAMP », puis
+// « 26-105130 ») : retirés ensemble. Un titre « ### Référence » sans référence dessous reste, comme « Références ».
+const REFERENCE_HEADING = new RegExp(
+  String.raw`${LINE_START}${REFERENCE_LABEL}(?:[${SPACE}*]*:)?[${SPACE}*]*\n(?:[ \t]*\n)?[ \t*]*\u0000[ \t*]*$`,
+  'gim',
+)
 // Restes d'une référence retirée : « (DH038970) » vide, « BNPP - RFC00094023 - Analyste » aux séparateurs doublés.
 const EMPTY_BRACKETS = /[ \t]*(?:\([ \t]*\)|\[[ \t]*\])/g
 const DOUBLED_SEPARATOR = /[ \t]+([-–—|])(?:[ \t]+[-–—|])+[ \t]+/g
@@ -54,8 +76,8 @@ export function namesToHide(clients: string[], senders: Partial<Sender>[] = [], 
 }
 
 /**
- * Retire e-mails, liens, téléphones, lignes de contact et références d'appel d'offres (name-match.ts) ; remplace les
- * noms à masquer par `label`.
+ * Retire e-mails, liens, téléphones, lignes de contact et références d'appel d'offres (name-match.ts) avec leur
+ * libellé ; remplace les noms à masquer par `label`.
  */
 export function scrubContacts(text: string, names: string[][], label = DEFAULT_CLIENT_LABEL): string {
   const out = text
@@ -64,11 +86,49 @@ export function scrubContacts(text: string, names: string[][], label = DEFAULT_C
     .replace(EMAIL, '')
     .replace(URL, '')
     .replace(PHONE, '')
-    .replace(REFERENCE_CODE, '')
+    .replace(REFERENCE_CODE, REFERENCE_MARK)
+    .replace(REFERENCE_HEADING, '')
+    .replace(LABELLED_REFERENCE, '')
+    .replaceAll(REFERENCE_MARK, '')
     .replace(EMPTY_BRACKETS, '')
     .replace(DOUBLED_SEPARATOR, ' $1 ')
     .replace(/(\S)[ \t]{2,}(?=\S)/g, '$1 ')
-  return replaceNames(out, names, label).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+  const masked = replaceNames(out, names, label, clientWithArticle)
+  // Sigle et nom complet masqués tous deux : « ENSMIS (École nationale…) » donnerait « Client confidentiel (Client confidentiel) ».
+  const labels = `(?:${escapeRegExp(label)}|${escapeRegExp(GENERIC_CLIENT)})`
+  return masked
+    .replace(new RegExp(`(${labels})[ \\t]*\\([ \\t]*(?:(?:le|du|au|un|ce)[ \\t]+)?${labels}[ \\t]*\\)`, 'gi'), '$1')
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** Libellé générique au fil du texte, après un article (« le client confidentiel »). */
+const GENERIC_CLIENT = DEFAULT_CLIENT_LABEL.toLowerCase()
+const MASCULINE_ARTICLE: Record<string, string> = {
+  'l': 'le', 'la': 'le', 'd': 'du', 'de l': 'du', 'de la': 'du', 'à l': 'au', 'à la': 'au', 'une': 'un', 'cette': 'ce',
+}
+
+/**
+ * Nom masqué précédé d'un article élidé ou féminin : « L'ENSMIS lance » → « Le client confidentiel lance », « offre
+ * d'ENSMIS » ou « de la SNCF » → « du client confidentiel », « à l'ENSMIS » → « au client confidentiel », « lorsqu'ENSMIS »
+ * → « lorsque le client confidentiel ». Toujours le libellé générique, quel que soit le libellé affiché : « client » est
+ * masculin, un secteur proposé par l'IA ne l'est pas toujours (« le Banque de détail »).
+ */
+function clientWithArticle(article: string): string {
+  const lower = article.toLowerCase().replace(/[ \t]+/g, ' ')
+  const phrase = `${MASCULINE_ARTICLE[lower] ?? `${lower}e le`} ${GENERIC_CLIENT}`
+  return article[0] === article[0].toLowerCase() ? phrase : phrase[0].toUpperCase() + phrase.slice(1)
+}
+
+/** Noms tels qu'écrits la première fois, sans doublon (casse, accents et ponctuation ignorés) : liste montrée à la relecture. */
+export function distinctNames(names: string[]): string[] {
+  const unique = new Map<string, string>()
+  for (const name of names.map(n => n.trim())) {
+    const key = words(name).join(' ')
+    if (key && !unique.has(key)) unique.set(key, name)
+  }
+  return [...unique.values()]
 }
 
 /** Vrai si le texte contient un des noms à masquer (ex. libellé « entreprise affichée » saisi par l'admin). */

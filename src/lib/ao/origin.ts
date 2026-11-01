@@ -170,10 +170,13 @@ const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').t
 const MAX_CITED_CLIENTS = 20
 
 /**
- * Clients cités par l'appel d'offres (colonne « Client » d'un tableau, client final lu par l'IA), relevés avant que le
- * client de l'offre ne devienne l'entreprise de l'expéditeur : enregistrés sur l'e-mail pour être masqués à la publication.
+ * Clients cités par l'appel d'offres (colonne « Client » d'un tableau, client final lu par l'IA) et leurs autres noms
+ * (sigle, nom complet, nom d'usage), relevés avant que le client de l'offre ne devienne l'entreprise de l'expéditeur :
+ * enregistrés sur l'e-mail pour être masqués à la publication. Les clients d'abord : au-delà de la limite, ce sont des
+ * autres noms qui manquent, pas un client.
  */
-export function citedClients(offers: Pick<ExtractedOffer, 'companyName' | 'endClient'>[]): string[] {
-  const names = offers.flatMap(o => [o.companyName, o.endClient]).map(n => n.trim()).filter(Boolean)
+export function citedClients(offers: Pick<ExtractedOffer, 'companyName' | 'endClient' | 'clientAliases'>[]): string[] {
+  const names = [...offers.flatMap(o => [o.companyName, o.endClient]), ...offers.flatMap(o => o.clientAliases ?? [])]
+    .map(n => n.trim()).filter(Boolean)
   return [...new Set(names)].slice(0, MAX_CITED_CLIENTS)
 }

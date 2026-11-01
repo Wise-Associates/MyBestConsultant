@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { contractOf, parseNumber, remoteOf } from '@/lib/job-import'
 import { placeUnlabeledDates } from './dates'
+import { words } from './name-match'
 import { isOwn, PLAIN_EMAIL } from './origin'
 import type { AoContact, AoEngagement, ExtractedOffer } from './types'
 
@@ -119,9 +120,39 @@ export function withInternshipTerms(offer: ExtractedOffer): ExtractedOffer {
   return INTERNSHIP_TITLE.test(fold(offer.title)) ? { ...offer, contractType: 'mission', salary: null } : offer
 }
 
+// Mots par lesquels un acheteur se désigne sans se nommer (« la Ville », « l'Établissement », « le SI ») : un autre nom
+// fait d'eux seuls serait masqué partout à la publication (« travail en groupe », « au cœur du SI »), sans que la
+// personne qui relit puisse le rétablir.
+const GENERIC_NAME_WORDS = new Set([
+  'l', 'le', 'la', 'les', 'ville', 'region', 'departement', 'metropole', 'commune', 'collectivite', 'etat', 'ministere',
+  'mairie', 'agence', 'office', 'institut', 'centre', 'hopital', 'etablissement', 'ecole', 'universite', 'organisme',
+  'structure', 'groupe', 'societe', 'entreprise', 'client', 'acheteur', 'direction', 'service', 'services', 'conseil',
+  'si', 'dsi', 'it',
+])
+
+/**
+ * Règle « ne rien inventer » pour les autres noms du client : seuls ceux que cite l'e-mail lu par l'IA, en mots entiers
+ * (casse, accents et ponctuation ignorés), sont gardés ; ils seront masqués partout à la publication. Écartés aussi, car
+ * ils disparaîtraient de toute l'offre : la ville de l'offre (comme pour les noms retirés par l'IA, publication-copy.ts)
+ * et un nom fait de mots génériques seulement (« la Ville », « Groupe »).
+ */
+export function keepCitedAliases<T extends Pick<ExtractedOffer, 'clientAliases' | 'location'>>(offer: T, text: string): T {
+  if (!offer.clientAliases?.length) return offer
+  const cited = ` ${words(text).join(' ')} `
+  const city = ` ${words(offer.location).join(' ')} `
+  const clientAliases = offer.clientAliases.filter(alias => {
+    const name = words(alias)
+    const key = ` ${name.join(' ')} `
+    return name.join('').length >= 2 && !name.every(w => GENERIC_NAME_WORDS.has(w)) && cited.includes(key) && !city.includes(key)
+  })
+  return { ...offer, clientAliases }
+}
+
 /** Réponse de l'IA : les champs d'une offre, plus les dates citées sans libellé, classées ensuite (dates.ts), pas par l'IA. */
 const AiOfferSchema = OfferSchema.extend({
   otherDates: z.unknown().optional().transform(v => (Array.isArray(v) ? v : []).map(d => asText(d).replace(/[<>]/g, '').slice(0, 100)).filter(Boolean).slice(0, 5)),
+  // Masqués à la publication, enregistrés avec les clients cités (200 caractères chacun : attribut citedClients).
+  clientAliases: z.unknown().optional().transform(v => [...new Set((Array.isArray(v) ? v : []).map(n => asText(n).replace(/[<>]/g, '').trim().slice(0, 200)).filter(Boolean))].slice(0, 8)),
 })
 
 /**

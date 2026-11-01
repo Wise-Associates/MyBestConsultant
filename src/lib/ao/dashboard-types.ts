@@ -43,6 +43,12 @@ export interface PublicationPreview {
   notice: string
   /** Noms à signaler s'ils réapparaissent pendant la relecture (mots normalisés, name-match.ts). */
   watchNames: string[][]
+  /**
+   * Version anonymisée : noms du client (et, pour la version de l'IA, ceux qu'elle dit avoir retirés) masqués à la
+   * publication, tels qu'écrits. Montrés à la relecture : tout autre nom du client reste dans le texte. Vide pour une
+   * version non anonymisée.
+   */
+  maskedNames: string[]
 }
 
 /** Candidat retenu pour une offre AO (les 5 meilleurs notés 65 ou plus, sourcing-rules.ts). */
