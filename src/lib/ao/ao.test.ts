@@ -25,7 +25,7 @@ import { AO_RETRY_DAILY_LIMITS, RETRY_QUOTA_MESSAGE, attemptsAfterFailure, canDe
 import { AO_EXCEL_HEADERS, buildAoWorkbook } from './excel'
 import { buildEmailContent } from './extract'
 import { MAX_TABLE_ROWS, readTableAttachment, tableOffersOf } from './spreadsheet'
-import { EMPTY_AO_FILTERS, filtersFromSearchParams, filtersToSearchParams, type AoFilters } from './filters'
+import { AO_MAX_LISTED, EMPTY_AO_FILTERS, filtersFromSearchParams, filtersToSearchParams, listOffsetFromSearchParams, listSizeFromSearchParams, listToSearchParams, type AoFilters } from './filters'
 import { descriptionForPublication } from '../description-sections'
 import type { AoEmail, ExtractedOffer } from './types'
 
@@ -1108,5 +1108,37 @@ describe('publication non anonymisée (« Publier sans anonymiser »)', () => {
   it('exige la relecture, que la version soit anonymisée ou non', () => {
     assert.match(parsePublishInput({ ...draft, anonymized: false, reviewed: false }).error ?? '', /J'ai relu/)
     assert.match(parsePublishInput({ ...draft, reviewed: undefined }).error ?? '', /J'ai relu/)
+  })
+})
+
+describe('tableau AO chargé par 50 (nb dans l\'adresse)', () => {
+  const size = (nb: string) => listSizeFromSearchParams(new URLSearchParams(nb ? { nb } : {}))
+  it('lit 50 par défaut, un multiple de 50 sinon, jamais plus que le plafond', () => {
+    assert.equal(size(''), 50)
+    assert.equal(size('100'), 100)
+    assert.equal(size('120'), 150, 'arrondi au lot suivant')
+    assert.equal(size('10'), 50)
+    assert.equal(size('-100'), 50)
+    assert.equal(size('abc'), 50)
+    assert.equal(size('999999'), AO_MAX_LISTED)
+  })
+
+  it('lit le début du lot suivant (depuis) : multiple de 50, jamais au-delà du dernier lot lisible', () => {
+    const offset = (depuis: string) => listOffsetFromSearchParams(new URLSearchParams(depuis ? { depuis } : {}))
+    assert.equal(offset(''), 0)
+    assert.equal(offset('50'), 50)
+    assert.equal(offset('120'), 100, 'ramené au lot')
+    assert.equal(offset('-50'), 0)
+    assert.equal(offset('x'), 0)
+    assert.equal(offset('999999'), AO_MAX_LISTED - 50)
+  })
+
+  it('écrit nb après les filtres, seulement au-delà de 50, et le relit tel quel', () => {
+    const filters: AoFilters = { ...EMPTY_AO_FILTERS, status: 'to_review', city: 'Lyon' }
+    assert.equal(listToSearchParams(filters, 50).toString(), filtersToSearchParams(filters).toString())
+    const sp = listToSearchParams(filters, 150)
+    assert.equal(sp.get('nb'), '150')
+    assert.equal(listSizeFromSearchParams(sp), 150)
+    assert.deepEqual(filtersFromSearchParams(sp), filters, 'nb n\'est pas un filtre')
   })
 })

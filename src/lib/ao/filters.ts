@@ -99,3 +99,34 @@ export function filtersToSearchParams(f: AoFilters): URLSearchParams {
   if (f.to) sp.set('to', f.to)
   return sp
 }
+
+/** Offres lues à la fois dans le tableau ; « Afficher 50 offres de plus » en ajoute autant (demande du 2026-11-02). */
+export const AO_PAGE_SIZE = 50
+
+/**
+ * Nombre d'offres affichées, lu dans l'adresse (`nb`) : un multiple de 50, de 50 à AO_MAX_LISTED. Dans l'adresse comme
+ * les filtres, pour que le passage d'une synchronisation, le retour depuis la page d'une offre et un rechargement
+ * gardent les offres déjà affichées.
+ */
+export function listSizeFromSearchParams(sp: URLSearchParams): number {
+  const n = Number.parseInt(sp.get('nb') ?? '', 10)
+  if (!Number.isFinite(n) || n <= AO_PAGE_SIZE) return AO_PAGE_SIZE
+  return Math.min(AO_MAX_LISTED, Math.ceil(n / AO_PAGE_SIZE) * AO_PAGE_SIZE)
+}
+
+/**
+ * Début du lot demandé par « Afficher 50 offres de plus » (`depuis`, route de la liste) : un multiple de 50, de 0 au
+ * dernier lot que Appwrite sait lire (il ne décale pas au-delà de AO_MAX_LISTED).
+ */
+export function listOffsetFromSearchParams(sp: URLSearchParams): number {
+  const n = Number.parseInt(sp.get('depuis') ?? '', 10)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.min(AO_MAX_LISTED - AO_PAGE_SIZE, Math.floor(n / AO_PAGE_SIZE) * AO_PAGE_SIZE)
+}
+
+/** Adresse de la liste : ses filtres, puis `nb` au-delà des 50 premières offres. L'export n'en tient pas compte. */
+export function listToSearchParams(f: AoFilters, size: number): URLSearchParams {
+  const sp = filtersToSearchParams(f)
+  if (size > AO_PAGE_SIZE) sp.set('nb', String(size))
+  return sp
+}

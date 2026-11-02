@@ -1,14 +1,17 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { HoverCard } from '@/components/ui/hover-card'
 import { useEffect, useEffectEvent, useRef, useState, useTransition } from 'react'
 import { summaryOf, useAoSync } from './ao-sync-provider'
 import { BarChart3, Download, Eye, Inbox, MessageSquare, Trash2, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
-import { AO_CHANNEL_LABEL, AO_MAX_LISTED, EMPTY_AO_FILTERS, filtersToSearchParams, type AoFilters, type AoOfferRow } from '@/lib/ao/filters'
+import {
+  AO_CHANNEL_LABEL, AO_MAX_LISTED, AO_PAGE_SIZE, EMPTY_AO_FILTERS, filtersFromSearchParams, filtersToSearchParams, listSizeFromSearchParams, listToSearchParams,
+  type AoFilters, type AoOfferRow,
+} from '@/lib/ao/filters'
 import { MAX_ATTEMPTS } from '@/lib/ao/attempts'
-import type { AoDashboardActions, AoDashboardCopy, AoDashboardPaths, AoPageView } from '@/lib/ao/dashboard-types'
+import type { AoDashboardActions, AoDashboardCopy, AoDashboardPaths, AoListPage, AoPageView } from '@/lib/ao/dashboard-types'
 import type { AoSyncReport } from '@/lib/ao/sync'
 import { AoComments } from './ao-comments'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -26,13 +29,20 @@ import { SENIORITY_SHORT, seniorityOf } from '@/lib/ao/stats'
 // /recruiter/parametres/boites-ao (boîtes de l'organisation) : chaque page fournit ses actions serveur, ses liens et
 // ses textes (src/lib/ao/dashboard-types.ts).
 
+/** Offres affichées après « Afficher 50 offres de plus » : toutes, à partir des offres de `base`. */
+interface Appended {
+  base: AoPageView
+  rows: AoOfferRow[]
+  total: number
+  size: number
+  tracking: Record<string, TrackingStep[]>
+}
+
 interface Props {
   /** Offres affichées : filtrées par le serveur (offer-index.ts). */
   view: AoPageView
   /** Filtres appliqués (lus dans l'adresse par la page). */
   filters: AoFilters
-  /** Filtres de `view`, forme canonique : une mise à jour de la synchronisation ne s'affiche que pour eux. */
-  query: string
   inboxConfigured: boolean
   /** Boîtes de l'espace dont la dernière lecture a échoué (ou qui ne sont pas lues). */
   mailboxIssues: MailboxIssue[]
@@ -99,7 +109,7 @@ export interface MailboxIssue {
   at: string | null
 }
 
-export function AoOffersDashboard({ view, filters, query, inboxConfigured, mailboxIssues, loadError, accessAlert, tracking, trackingError, actions, paths, copy, titleInAdminBar }: Props) {
+export function AoOffersDashboard({ view, filters, inboxConfigured, mailboxIssues, loadError, accessAlert, tracking: serverTracking, trackingError, actions, paths, copy, titleInAdminBar }: Props) {
   // Synchronisation en arrière-plan (AoSyncProvider, layout de l'espace) : elle continue quand on quitte la page et se
   // retrouve en revenant. Le tableau renvoyé par ses passages ne remplace celui du serveur que s'il est arrivé après
   // lui et porte sur les mêmes filtres : la page rechargée (retour sur la page, fin de synchronisation,
@@ -119,8 +129,23 @@ export function AoOffersDashboard({ view, filters, query, inboxConfigured, mailb
     // réinitialisation), sauf pendant une frappe ou un chargement, où il montre ce qui est en cours de saisie ou demandé.
     if (!loading && typed === null && filtersToSearchParams(draft).toString() !== filtersKey) setDraft(filters)
   }
-  const current = sync.live && sync.live.version > pageData.liveVersion && sync.live.view.query === query ? sync.live.view : null
-  const { rows, recentEmails, counts, total } = current ?? view
+  // Adresse de la liste affichée (filtres et `nb`, forme canonique) : « Afficher 50 offres de plus » y augmente `nb` sans
+  // relire la page (history.replaceState, suivi par useSearchParams), les passages de synchronisation l'envoient.
+  const searchParams = useSearchParams()
+  const listQuery = listToSearchParams(filtersFromSearchParams(searchParams), listSizeFromSearchParams(searchParams)).toString()
+  const current = sync.live && sync.live.version > pageData.liveVersion && sync.live.view.query === listQuery ? sync.live.view : null
+  const base = current ?? view
+  // Lots lus ensuite par « Afficher 50 offres de plus », à la suite des offres de `base`. Oubliés dès que `base` change
+  // (page relue par le serveur, passage de synchronisation) : `base` contient alors toutes les offres affichées (`nb`).
+  const [appended, setAppended] = useState<Appended | null>(null)
+  const extra = appended?.base === base ? appended : null
+  const { recentEmails, counts } = base
+  const rows = extra?.rows ?? base.rows
+  const total = extra?.total ?? base.total
+  const size = extra?.size ?? base.size
+  const tracking = extra?.tracking ?? serverTracking
+  const baseRef = useRef(base)
+  useEffect(() => { baseRef.current = base })
   const [notice, setNotice] = useState<Notice>(null)
   const router = useRouter()
   const pathname = usePathname()
@@ -165,13 +190,53 @@ export function AoOffersDashboard({ view, filters, query, inboxConfigured, mailb
     router.refresh()
   }
   const failedEmails = recentEmails.filter(e => e.status === 'failed')
-  const allOffers = counts.toReview + counts.published + counts.ignored
+  // Toutes les offres de l'organisation, sans filtre : les indicateurs, eux, suivent les filtres.
+  const allOffers = counts.received
   const filtering = filtersKey !== ''
   const exportHref = `${paths.exportApi}?${filtersKey}`
   const totalLabel = countLabel(total)
 
-  /** Page d'une offre : les filtres suivent, pour passer aux offres précédente et suivante de cette liste. */
-  const offerHref = (id: string) => `${paths.list}/${encodeURIComponent(id)}${filtersKey ? `?${filtersKey}` : ''}`
+  /**
+   * Page d'une offre : les filtres suivent, pour passer aux offres précédente et suivante de cette liste, ainsi que le
+   * nombre d'offres affichées (`nb`), pour revenir à la même liste.
+   */
+  const offerHref = (id: string) => `${paths.list}/${encodeURIComponent(id)}${listQuery ? `?${listQuery}` : ''}`
+  // « Afficher 50 offres de plus » : seules les 50 offres suivantes sont demandées au serveur (route GET de la liste,
+  // `depuis` = offres déjà demandées), puis ajoutées ; `nb` de l'adresse suit, pour un rechargement ou un retour.
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [moreError, setMoreError] = useState('')
+  const [focusRowId, setFocusRowId] = useState<string | null>(null)
+  const more = Math.min(AO_PAGE_SIZE, total - size)
+  async function showMore() {
+    const from = base
+    setLoadingMore(true)
+    setMoreError('')
+    try {
+      const params = filtersToSearchParams(filters)
+      params.set('depuis', String(size))
+      const res = await fetch(`${paths.listApi}?${params}`, { cache: 'no-store' })
+      const page = (await res.json().catch(() => null)) as (AoListPage & { error?: string }) | null
+      if (!res.ok || !page || page.error) return setMoreError(page?.error ?? `Chargement impossible (${res.status}).`)
+      // Tableau relu entre-temps (synchronisation, filtres) : ce lot ne lui correspond plus, il est écarté.
+      if (baseRef.current !== from) return
+      const known = new Set(rows.map(r => r.$id))
+      // Une offre arrivée entre deux lots décale la liste : celles déjà affichées ne sont pas répétées.
+      const added = page.rows.filter(r => !known.has(r.$id))
+      setAppended({ base: from, rows: [...rows, ...added], total: page.total, size: size + AO_PAGE_SIZE, tracking: { ...tracking, ...page.tracking } })
+      if (page.trackingError) setMoreError(page.trackingError)
+      setFocusRowId(added[0]?.$id ?? null)
+      window.history.replaceState(null, '', `${pathname}?${listToSearchParams(filters, size + AO_PAGE_SIZE)}`)
+    } catch {
+      setMoreError('Chargement impossible : connexion interrompue, réessayez.')
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+  // Après un lot : le focus va à la première offre ajoutée (clavier, lecteurs d'écran), sans faire défiler la page.
+  useEffect(() => {
+    if (!focusRowId) return
+    document.querySelector<HTMLElement>(`[data-ao-row="${CSS.escape(focusRowId)}"] a`)?.focus({ preventScroll: true })
+  }, [focusRowId])
   /** Demande au serveur la liste filtrée (filtres dans l'adresse). */
   function load(f: AoFilters) {
     setTyped(null)
@@ -285,24 +350,39 @@ export function AoOffersDashboard({ view, filters, query, inboxConfigured, mailb
         {publications.notice && <Banner tone={publications.notice.tone} text={publications.notice.text} onClose={publications.clearNotice} />}
       </div>
 
-      {/* Indicateurs (cliquables : filtrent la liste) */}
-      {!loadError && <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        {[
-          { label: 'À valider', value: counts.toReview, accent: BRAND, onClick: () => set('status', 'to_review') },
-          { label: 'Publiées', value: counts.published, accent: '#047857', onClick: () => set('status', 'published') },
-          { label: 'Ignorées', value: counts.ignored, accent: 'var(--admin-fg-subtle)', onClick: () => set('status', 'ignored') },
-          { label: 'Doublons fusionnés', value: counts.duplicates, accent: '#1d4ed8', onClick: undefined },
-          { label: 'E-mails en erreur', value: failedEmails.length, accent: '#b91c1c', onClick: undefined },
-        ].map(s => (
-          <button key={s.label} type="button" onClick={s.onClick} disabled={!s.onClick}
+      {/* Indicateurs : selon les filtres (statuts : tous les filtres sauf le statut ; countQueries). Un statut cliqué filtre
+          la liste, cliqué de nouveau retire ce filtre. Les e-mails en erreur sont ceux des boîtes, sans filtre. */}
+      {!loadError && <div className="space-y-2">
+        {filtering && (
+          <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
+            Selon vos filtres{filters.status !== 'all' ? ' (le statut mis à part, pour comparer les statuts)' : ''} ; « E-mails en erreur » n’est pas filtré.
+          </p>
+        )}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {([
+          { label: 'À valider', value: counts.toReview, accent: BRAND, status: 'to_review' },
+          { label: 'Publiées', value: counts.published, accent: '#047857', status: 'published' },
+          { label: 'Ignorées', value: counts.ignored, accent: 'var(--admin-fg-subtle)', status: 'ignored' },
+          { label: 'Doublons fusionnés', value: counts.duplicates, accent: '#1d4ed8', status: null },
+          { label: 'E-mails en erreur', value: failedEmails.length, accent: '#b91c1c', status: null },
+        ] as const).map(s => {
+          const active = s.status !== null && draft.status === s.status
+          return (
+          <button key={s.label} type="button" disabled={s.status === null} aria-pressed={s.status === null ? undefined : active}
+            onClick={s.status === null ? undefined : () => set('status', active ? 'all' : s.status)}
             className="rounded-2xl p-5 text-left"
-            style={{ background: 'var(--admin-panel)', border: '1px solid var(--admin-line)', cursor: s.onClick ? 'pointer' : 'default' }}>
+            style={{
+              background: 'var(--admin-panel)', border: `1px solid ${active ? 'var(--admin-fg)' : 'var(--admin-line)'}`,
+              boxShadow: active ? '0 0 0 1px var(--admin-fg)' : undefined, cursor: s.status === null ? 'default' : 'pointer',
+            }}>
             <p className="text-2xl font-bold text-admin-fg" style={{ fontVariantNumeric: 'tabular-nums' }}>{countLabel(s.value)}</p>
             <p className="text-xs mt-1 flex items-center gap-2" style={{ color: 'var(--admin-fg-muted)' }}>
               <span className="inline-block w-2 h-2 rounded-full" style={{ background: s.accent }} />{s.label}
             </p>
           </button>
-        ))}
+          )
+        })}
+        </div>
       </div>}
 
       {/* Filtres */}
@@ -379,7 +459,7 @@ export function AoOffersDashboard({ view, filters, query, inboxConfigured, mailb
               const work = publications.of(r.$id).running
               return (
               // Seuls le titre et l'œil ouvrent le détail : un clic ailleurs dans la ligne (sélection de texte…) ne fait rien.
-              <tr key={r.$id} className="hover:bg-admin-panel" style={{ borderBottom: '1px solid var(--admin-line)' }}>
+              <tr key={r.$id} data-ao-row={r.$id} className="hover:bg-admin-panel" style={{ borderBottom: '1px solid var(--admin-line)' }}>
                 <td className={cell('received')} title={formatDay(r.receivedAt)} style={{ color: 'var(--admin-fg-muted)', fontVariantNumeric: 'tabular-nums' }}>{shortDay(r.receivedAt)}</td>
                 <td className={cell('offer')}>
                   <Link href={offerHref(r.$id)} title={r.title} className="block w-full truncate text-left font-medium text-admin-fg hover:underline">{r.title}</Link>
@@ -447,7 +527,21 @@ export function AoOffersDashboard({ view, filters, query, inboxConfigured, mailb
             })}
           </tbody>
         </table>
-        {total >= AO_MAX_LISTED && (
+        {rows.length > 0 && (
+          <div className="px-6 py-3 flex flex-wrap items-center justify-between gap-3" style={{ background: 'var(--admin-panel)', borderTop: '1px solid var(--admin-line)' }}>
+            <p role="status" aria-live="polite" className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
+              {rows.length.toLocaleString('fr-FR')} offre{rows.length > 1 ? 's' : ''} affichée{rows.length > 1 ? 's' : ''} sur {totalLabel}
+            </p>
+            {more > 0 && (
+              <button type="button" onClick={showMore} disabled={loadingMore || loading} style={{ ...secondaryButton, fontSize: 13 }}>
+                {loadingMore && <Loader2 size={14} className="animate-spin motion-reduce:animate-none" aria-hidden />}
+                {loadingMore ? 'Chargement…' : `Afficher ${more} offre${more > 1 ? 's' : ''} de plus`}
+              </button>
+            )}
+            {moreError && <p role="alert" className="w-full text-xs" style={{ color: '#b91c1c' }}>{moreError}</p>}
+          </div>
+        )}
+        {total >= AO_MAX_LISTED && size >= AO_MAX_LISTED && (
           <p className="px-6 py-3 text-xs" style={{ background: 'var(--admin-panel)', borderTop: '1px solid var(--admin-line)', color: 'var(--admin-fg-muted)' }}>
             Seules les {AO_MAX_LISTED.toLocaleString('fr-FR')} offres les plus récentes sont listées : affinez les filtres pour voir les autres.
           </p>

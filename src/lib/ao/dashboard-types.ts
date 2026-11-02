@@ -1,6 +1,7 @@
 import type { JobMatchResult } from '@/lib/matching-core'
 import type { AoOfferRow } from './filters'
 import type { AoSyncReport } from './sync'
+import type { TrackingStep } from './tracking'
 import type { AoContract, AoEmail, AoRemote } from './types'
 
 // Contrat du tableau des appels d'offres (src/components/ao/ao-offers-dashboard.tsx), affiché dans /admin/candidats
@@ -86,6 +87,8 @@ export interface AoOfferCounts {
   ignored: number
   /** E-mails fusionnés dans une offre déjà reçue (somme des sourceCount - 1). */
   duplicates: number
+  /** Toutes les offres de l'organisation, sans filtre (les autres chiffres suivent les filtres : countQueries). */
+  received: number
 }
 
 /** Place d'une offre dans la liste filtrée (page de l'offre) : offres précédente et suivante, dans l'ordre du tableau. */
@@ -99,11 +102,26 @@ export interface AoOfferNeighbours {
 
 /** Le tableau : offres filtrées par le serveur (index de la liste, offer-index.ts). */
 export interface AoPageView {
+  /** Les `size` premières offres filtrées (moins s'il n'y en a pas autant). */
   rows: AoOfferRow[]
-  /** Offres listées (AO_MAX_LISTED au plus : les plus récentes). */
+  /** Offres qui passent les filtres (AO_MAX_LISTED au plus : les plus récentes). */
   total: number
+  /** Offres demandées (`nb` de l'adresse, par AO_PAGE_SIZE) : « Afficher 50 offres de plus » tant que size < total. */
+  size: number
   counts: AoOfferCounts
   recentEmails: AoEmail[]
+}
+
+/**
+ * Lot suivant du tableau (« Afficher 50 offres de plus », route GET …/liste de l'espace, `depuis` = offres déjà
+ * affichées) : ses offres, leur suivi de publication, et le nombre d'offres filtrées à cet instant.
+ */
+export interface AoListPage {
+  rows: AoOfferRow[]
+  total: number
+  tracking: Record<string, TrackingStep[]>
+  /** Suivi illisible : les offres sont là, leurs icônes de suivi sont calculées sans les faits lus. */
+  trackingError?: string
 }
 
 /**
@@ -142,6 +160,8 @@ export interface AoDashboardPaths {
   mailboxes: string
   /** Export Excel (GET, filtres du tableau en paramètres). */
   exportApi: string
+  /** Lot suivant du tableau (GET, filtres et `depuis` en paramètres) : AoListPage. */
+  listApi: string
   /** E-mail d'origine et pièces jointes : `${originalApi}/${emailId}`. */
   originalApi: string
   /** Liste des offres publiées, quand l'offre publique n'est pas connue. */

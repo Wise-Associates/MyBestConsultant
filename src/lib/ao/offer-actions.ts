@@ -23,7 +23,7 @@ import { bestMatches } from '@/lib/sourcing-rules'
 import type { AoCommentView, AoDashboardActions, AoSyncPassResult, PublicationDraft, PublicationMode, PublicationPreview, SourcingResult } from './dashboard-types'
 import { cityKey, titleKey } from './fingerprint'
 import { parseSender } from './origin'
-import { filtersFromSearchParams, filtersToSearchParams } from './filters'
+import { filtersFromSearchParams, listSizeFromSearchParams, listToSearchParams } from './filters'
 import { aoAccessFor, loadAoView } from './platform-view'
 import { checkAssignee, getAoAssignee, notifyAssigneeWarning, setAoAssignee, setJobRecruiter } from '@/lib/recruiter-assignment'
 import { shouldNotifyAssignee } from '@/lib/assignment-email'
@@ -94,9 +94,12 @@ export async function syncAoNow(tenantId: string, holder: string, pageQuery: str
   // router.refresh) serait abandonné par Next.js au profit du passage suivant, lancé aussitôt.
   if (pageQuery === null) return { report }
   try {
-    const filters = filtersFromSearchParams(new URLSearchParams(pageQuery))
-    const { rows, total, counts, recentEmails } = await loadAoView(tenantId, filters)
-    return { report, view: { rows, total, counts, recentEmails, query: filtersToSearchParams(filters).toString() } }
+    const params = new URLSearchParams(pageQuery)
+    const filters = filtersFromSearchParams(params)
+    // Autant d'offres que la page en affiche (« Afficher 50 offres de plus »), comparées par la même adresse.
+    const size = listSizeFromSearchParams(params)
+    const { rows, total, counts, recentEmails } = await loadAoView(tenantId, filters, size)
+    return { report, view: { rows, total, size, counts, recentEmails, query: listToSearchParams(filters, size).toString() } }
   } catch (err) {
     // Le passage a eu lieu : son compte rendu compte, la synchronisation continue. La page est relue à la fin
     // (router.refresh) et affiche alors sa propre erreur si la lecture échoue encore.

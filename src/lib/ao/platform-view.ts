@@ -1,8 +1,8 @@
 import 'server-only'
 import { aoAccess } from './access'
 import type { AoOfferNeighbours, AoPageView } from './dashboard-types'
-import type { AoFilters, AoOfferRow } from './filters'
-import { aoOfferCounts, getAoEmail, getAoOffer, getAoOfferRow, listAllAoOfferRows, listAoOfferIds, listRecentAoEmails } from './repo'
+import { AO_PAGE_SIZE, type AoFilters, type AoOfferRow } from './filters'
+import { aoOfferCounts, getAoEmail, getAoOffer, getAoOfferRow, listAoOfferIds, listAoOfferRowsRange, listRecentAoEmails } from './repo'
 import { getAoSource, listSources, type AoSource } from './sources'
 import { PLATFORM_TENANT_ID } from './tenancy'
 
@@ -21,27 +21,27 @@ export function searchParamsOf(record: Record<string, string | string[] | undefi
 
 /** Tableau vide (chargement impossible : la page affiche l'erreur). */
 export const emptyAoView = (): AoPageView => ({
-  rows: [], total: 0, counts: { toReview: 0, published: 0, ignored: 0, duplicates: 0 }, recentEmails: [],
+  rows: [], total: 0, size: AO_PAGE_SIZE, counts: { toReview: 0, published: 0, ignored: 0, duplicates: 0, received: 0 }, recentEmails: [],
 })
 
 /**
  * Données du tableau AO d'une organisation (ses boîtes seulement, ADR 0005) pour des filtres : partagées par la page et
  * par chaque passage du bouton « Synchroniser maintenant », qui les renvoie pour mettre le tableau à jour au fil de
  * l'eau. `tenantId` vient de la session de l'appelant (plateforme : /admin/candidats ; recruteur :
- * /recruiter/parametres/boites-ao).
+ * /recruiter/parametres/boites-ao). `size` : offres affichées (`nb` de l'adresse, par 50).
  */
-export async function loadAoView(tenantId: string, filters: AoFilters): Promise<AoPageView & { sources: AoSource[] }> {
+export async function loadAoView(tenantId: string, filters: AoFilters, size = AO_PAGE_SIZE): Promise<AoPageView & { sources: AoSource[] }> {
   const sources = await listSources(tenantId)
-  const [rows, counts, recentEmails] = await Promise.all([
-    listAllAoOfferRows(tenantId, filters),
-    aoOfferCounts(tenantId),
+  const [{ rows, total }, counts, recentEmails] = await Promise.all([
+    listAoOfferRowsRange(tenantId, filters, 0, size),
+    aoOfferCounts(tenantId, filters),
     listRecentAoEmails(sources.map(s => s.$id), 50),
   ])
-  return { rows, total: rows.length, counts, recentEmails, sources }
+  return { rows, total, size, counts, recentEmails, sources }
 }
 
 /** Page /admin/candidats (boîtes de la plateforme). */
-export const loadPlatformAoView = (filters: AoFilters) => loadAoView(PLATFORM_TENANT_ID, filters)
+export const loadPlatformAoView = (filters: AoFilters, size = AO_PAGE_SIZE) => loadAoView(PLATFORM_TENANT_ID, filters, size)
 
 /** Offre de la page de détail ; null si elle n'est pas à l'organisation `tenantId` ou n'existe plus. */
 export async function loadAoOfferRow(tenantId: string, offerId: string | null): Promise<AoOfferRow | null> {
