@@ -25,6 +25,8 @@ import { cityKey, titleKey } from './fingerprint'
 import { parseSender } from './origin'
 import { filtersFromSearchParams, filtersToSearchParams } from './filters'
 import { aoAccessFor, loadAoView } from './platform-view'
+import { checkAssignee, getAoAssignee, notifyAssigneeWarning, setAoAssignee, setJobRecruiter } from '@/lib/recruiter-assignment'
+import { shouldNotifyAssignee } from '@/lib/assignment-email'
 import {
   deleteAoOfferAndDetails, getAoOfferSourcing, listAoEmailsByIds, listAoOfferDetails, saveAoOfferSourcing,
   updateAoEmail, updateAoOffer,
@@ -247,6 +249,11 @@ export async function publishAoOfferOf(
     const jobId = `ao${offer.$id}`
     await updateAoOffer(offer.$id, { status: 'published', jobId })
     const job = { ...fields, ...pub }
+    // Recruteur affecté sur la page de l'AO : repris par l'offre publiée. Illisible : publiée sans recruteur.
+    const recruiterId = await getAoAssignee(offer.$id).catch(err => {
+      console.error('AO: recruteur affecté illisible, offre publiée sans', offer.$id, errorOf(err))
+      return ''
+    })
     let created: Job | null = null
     try {
       created = await createJob({
@@ -260,6 +267,7 @@ export async function publishAoOfferOf(
         salary: job.salary ?? undefined,
         companyName: job.companyName || undefined,
         expiresAt: oneMonthFromNow(),
+        recruiterId: recruiterId || undefined,
       }, jobId)
     } catch (err) {
       if (!(await getJobById(jobId))) {
@@ -468,5 +476,38 @@ export async function deleteAoOfferOf(tenantId: string, id: string): ReturnType<
   } catch (err) {
     console.error('AO: suppression d\'offre impossible', id, errorOf(err))
     return { error: `Suppression impossible : ${errorOf(err)}` }
+  }
+}
+
+/**
+ * Affecte l'offre `id` de l'organisation à un de ses recruteurs (`userId` vide : personne). Avant publication, gardé
+ * sur l'offre AO et repris à la publication ; une offre déjà publiée change aussi de recruteur. Le nouveau recruteur
+ * est prévenu par e-mail, `assigner` en copie (lien vers `assigner.offerPath`) ; un échec de l'e-mail n'annule pas
+ * l'affectation (`warning`).
+ */
+export async function assignAoOfferOf(
+  tenantId: string, id: string, userId: string, paths: string[],
+  assigner: { userId: string; name: string; offerPath: string },
+): Promise<{ error?: string; warning?: string }> {
+  try {
+    const offer = await aoAccessFor(tenantId).offer(id)
+    if (!offer) return { error: 'Offre introuvable.' }
+    const refused = await checkAssignee(tenantId, userId)
+    if (refused) return { error: refused }
+    const previous = await getAoAssignee(offer.$id)
+    await setAoAssignee(offer.$id, userId)
+    if (offer.jobId && !(await setJobRecruiter(tenantId, offer.jobId, userId))) {
+      console.error('AO: offre publiée introuvable pour l\'affectation', offer.$id, offer.jobId)
+    }
+    for (const path of paths) revalidatePath(path)
+    const warning = shouldNotifyAssignee(previous, userId, assigner.userId)
+      ? await notifyAssigneeWarning({
+        tenantId, assigneeId: userId, assignerId: assigner.userId, assignerName: assigner.name,
+        kind: 'ao', title: offer.title, location: offer.location, path: assigner.offerPath,
+      })
+      : null
+    return warning ? { warning } : {}
+  } catch (err) {
+    return { error: `Affectation impossible : ${errorOf(err)}` }
   }
 }

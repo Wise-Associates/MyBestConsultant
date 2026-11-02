@@ -62,6 +62,13 @@ function textBlock(text: string, notes: string[]): string {
 }
 
 /**
+ * CSP écrite dans le document lui-même : le fichier .html téléchargé (« E-mail d'origine (.html) ») est ouvert depuis
+ * le disque, sans les en-têtes de la route. Aucun script, aucun chargement extérieur, même si le nettoyage laissait
+ * passer quelque chose. (`sandbox` et `frame-ancestors` n'existent qu'en en-tête : la route les ajoute à l'affichage.)
+ */
+const FILE_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; base-uri 'none'"
+
+/**
  * Page HTML complète de l'e-mail : en-tête (expéditeur, destinataires, date, objet, pièces jointes), puis son contenu.
  * Document à part (cadre à origine opaque) : les couleurs sont celles des tokens --admin-* de globals.css, recopiées.
  * `contain: paint` sur le contenu de l'e-mail : un élément en position fixe ou absolue y reste enfermé, l'expéditeur ne
@@ -95,7 +102,7 @@ export function emailViewDocument(mail: EmailViewInput): string {
   ]
   const meta = rows.filter(([, value]) => value).map(([label, value]) => `<dt>${label}</dt><dd>${escapeHtml(value)}</dd>`).join('')
   return `<!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer">
+<html lang="fr"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${FILE_CSP}"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer">
 <title>${escapeHtml(mail.subject || 'E-mail d’origine')}</title>
 <style>
 body{margin:0;background:#fff;color:#2C2C2E;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}

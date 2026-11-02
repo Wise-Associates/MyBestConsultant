@@ -3589,6 +3589,15 @@
                     "size": 1000,
                     "default": null,
                     "encrypt": false
+                },
+                {
+                    "key": "assigneeId",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
                 }
             ],
             "indexes": []
