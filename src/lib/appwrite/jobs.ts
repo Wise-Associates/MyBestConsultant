@@ -1,5 +1,6 @@
 import { createAdminClient } from './client'
 import { DB_ID, COLLECTIONS } from './config'
+import { listAllDocuments } from './list-all'
 import { ID, Query } from 'node-appwrite'
 import type { Job, Application } from '@/types'
 import { expandLocationSearch, normalizeLocation } from '@/lib/regions'
@@ -139,22 +140,14 @@ export async function getJobById(id: string): Promise<Job | null> {
 
 export async function getJobsByTenant(tenantId: string): Promise<Job[]> {
   const { databases } = createAdminClient()
-  // Fetch jobs for this tenant + admin-published jobs (tenantId = '')
-  const [tenantRes, adminRes] = await Promise.all([
-    databases.listDocuments(DB_ID, COLLECTIONS.JOBS, [
-      Query.equal('tenantId', tenantId),
-      Query.orderDesc('$createdAt'),
-      Query.limit(100),
-    ]),
-    databases.listDocuments(DB_ID, COLLECTIONS.JOBS, [
-      Query.equal('tenantId', ''),
-      Query.orderDesc('$createdAt'),
-      Query.limit(100),
-    ]),
+  // Fetch jobs for this tenant + admin-published jobs (tenantId = ''), all of them (each read was capped at 100).
+  const [tenantDocs, adminDocs] = await Promise.all([
+    listAllDocuments(databases, DB_ID, COLLECTIONS.JOBS, [Query.equal('tenantId', tenantId), Query.orderDesc('$createdAt')]),
+    listAllDocuments(databases, DB_ID, COLLECTIONS.JOBS, [Query.equal('tenantId', ''), Query.orderDesc('$createdAt')]),
   ])
   const seen = new Set<string>()
   const all: Job[] = []
-  for (const doc of [...tenantRes.documents, ...adminRes.documents]) {
+  for (const doc of [...tenantDocs, ...adminDocs]) {
     if (!seen.has(doc.$id)) {
       seen.add(doc.$id)
       all.push(docToJob(doc as unknown as Record<string, unknown>))
@@ -218,12 +211,12 @@ export async function getApplicationsByJob(jobId: string): Promise<Application[]
 
 export async function getApplicationsByTenant(tenantId: string): Promise<Application[]> {
   const { databases } = createAdminClient()
-  const result = await databases.listDocuments(DB_ID, COLLECTIONS.APPLICATIONS, [
+  // All of them: the dashboard and reporting figures are computed on this list (it was capped at 500).
+  const docs = await listAllDocuments(databases, DB_ID, COLLECTIONS.APPLICATIONS, [
     Query.equal('tenantId', tenantId),
     Query.orderDesc('$createdAt'),
-    Query.limit(500),
   ])
-  return result.documents.map(d => docToApp(d as unknown as Record<string, unknown>))
+  return docs.map(d => docToApp(d as unknown as Record<string, unknown>))
 }
 
 export async function hasApplied(jobId: string, candidateId: string): Promise<boolean> {

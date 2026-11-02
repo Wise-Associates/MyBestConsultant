@@ -3,6 +3,7 @@ import { AppwriteException, ID, Query, type Models } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { getJobById } from '@/lib/appwrite/jobs'
+import { listAllDocuments } from '@/lib/appwrite/list-all'
 import { callLLM } from '@/lib/ai/llm-router'
 import { CALENDLY_URL } from '@/lib/site-links'
 import {
@@ -147,17 +148,22 @@ export async function listRecentPosts(limit = 50): Promise<SocialPost[]> {
   return res.documents.map(docToPost)
 }
 
-/** Dernière publication de chaque offre d'un tenant (pastille d'état dans le dashboard recruteur). */
+/**
+ * Dernière publication de chaque offre d'un tenant (colonne « Diffusion » du tableau de bord recruteur). Toutes ses
+ * publications sont lues (200 au plus avant : les offres plus anciennes paraissaient jamais diffusées), sans le corps
+ * envoyé à Make : seuls l'état, les résultats et les dates sont remplis. Les erreurs remontent à l'appelant.
+ */
 export async function latestPostsByJob(tenantId: string): Promise<Record<string, SocialPost>> {
-  try {
-    const { databases } = createAdminClient()
-    const res = await databases.listDocuments(DB_ID, COLLECTIONS.SOCIAL_POSTS, [Query.equal('tenantId', tenantId), Query.orderDesc('$createdAt'), Query.limit(200)])
-    const out: Record<string, SocialPost> = {}
-    for (const d of res.documents) { const p = docToPost(d); if (!out[p.jobId]) out[p.jobId] = p }
-    return out
-  } catch {
-    return {}
-  }
+  const { databases } = createAdminClient()
+  const docs = await listAllDocuments(databases, DB_ID, COLLECTIONS.SOCIAL_POSTS, [
+    Query.equal('tenantId', tenantId),
+    // Avec Query.select, Appwrite ne renvoie que les champs nommés, $id et dates comprises (docToPost en a besoin).
+    Query.select(['$id', '$createdAt', '$updatedAt', 'jobId', 'status', 'resultsJson', 'sentAt', 'error']),
+    Query.orderDesc('$createdAt'),
+  ])
+  const out: Record<string, SocialPost> = {}
+  for (const d of docs) { const p = docToPost(d); if (!out[p.jobId]) out[p.jobId] = p }
+  return out
 }
 
 /**

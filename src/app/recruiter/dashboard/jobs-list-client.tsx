@@ -1,48 +1,78 @@
 'use client'
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { MapPin, Brain, ChevronRight, Layers, Search } from 'lucide-react'
-import { JobActions } from './job-actions'
+import { Inbox, Users, AlertTriangle, Clock, ArrowRight, Layers, Search, X } from 'lucide-react'
+import { JobRow, ROW_GRID } from './job-row'
 import { JobApplicationsModal } from './job-applications-modal'
 import type { CandidateApp } from './applications-panel'
-import { SocialStatus, type SocialInfo } from './social-status'
+import type { SocialInfo } from './social-status'
 import type { Job, FunnelStage } from '@/types'
-import { EMPTY_JOB_FILTERS, filterJobs, isFiltering, type JobFilters } from '@/lib/recruiter-job-filters'
-import { startNavigationProgress } from '@/components/shared/navigation-progress'
+import type { JobFacts } from '@/lib/recruiter-dashboard'
+import {
+  EMPTY_JOB_FILTERS, filterJobs, isFiltering, matchesFocus,
+  type JobFilters, type JobFocus, type JobSort, type JobStatusFilter,
+} from '@/lib/recruiter-job-filters'
+
+/** Une ligne de « Mes offres », préparée par la page (faits et âges calculés sur le serveur). */
+export interface DashboardJobRow {
+  job: Job
+  facts: JobFacts
+  /** « il y a 3 j » : publication de l'offre. */
+  age: string
+  /** Offre partagée de la plateforme (tenantId '') : listée, mais ni modifiable ni diffusable par le recruteur. */
+  shared: boolean
+  /** Candidats déjà notés par l'IA pour l'offre (base et vivier de l'offre). */
+  matches: number
+  social?: SocialInfo
+}
 
 const CONTRACT_LABELS: Record<string, string> = {
   cdi: 'CDI', cdd: 'CDD', freelance: 'Freelance', mission: 'Mission',
 }
+const SORT_LABELS: Record<JobSort, string> = {
+  recent: 'Plus récentes', applications: 'Plus de candidatures', score: 'Meilleur score IA', expiry: 'Expiration proche',
+}
+const FOCUS_CHIPS: Record<JobFocus, string> = {
+  new: 'Nouvelles candidatures', noApplications: 'Sans candidature', diffusionFailed: 'Diffusion en échec', expiringSoon: 'Expire bientôt',
+}
+const PAGE_SIZE = 20
 
-/** Champs de la barre de filtres : même hauteur que le bouton « Créer une offre » (44 px sur mobile, 40 px ensuite). */
-const field = 'h-11 sm:h-10 px-3 rounded-xl text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)'
+const muted: CSSProperties = { color: 'var(--color-text-muted)' }
+const field = 'h-11 sm:h-10 px-3 rounded-xl text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-text)'
 const fieldStyle: CSSProperties = { background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }
+const plural = (n: number, one: string, many: string) => (n > 1 ? many : one)
 
 export function JobsListClient({
-  jobs, appsByJob, tenantId, matchCountByJob, funnelStages, socialByJob = {}, socialEnabled = false, focusJobId, action,
+  rows, appsByJob, funnelStages, socialEnabled, socialUnavailable, jobsWithNew, focusJobId, action,
 }: {
-  jobs: Job[]; appsByJob: Record<string, CandidateApp[]>; tenantId: string
-  matchCountByJob: Record<string, number>; funnelStages: FunnelStage[]
-  socialByJob?: Record<string, SocialInfo>; socialEnabled?: boolean
+  rows: DashboardJobRow[]; appsByJob: Record<string, CandidateApp[]>; funnelStages: FunnelStage[]
+  socialEnabled: boolean
+  /** L'état des diffusions n'a pas pu être lu : la colonne « Diffusion » n'est pas fiable. */
+  socialUnavailable: boolean
+  /** Offres qui ont au moins une nouvelle candidature (sous-titre de la tuile). */
+  jobsWithNew: number
   /** Offre à montrer (?offre= de la page, depuis le suivi d'un appel d'offres publié). */
   focusJobId?: string
-  /** Bouton au bout de la barre de filtres (« Créer une offre »), aligné sur elle. */
+  /** Bouton « Créer une offre », dans l'en-tête de « Mes offres ». */
   action?: ReactNode
 }) {
-  const router = useRouter()
   const [openJobId, setOpenJobId] = useState<string | null>(null)
   const [filters, setFilters] = useState<JobFilters>(EMPTY_JOB_FILTERS)
-  const set = <K extends keyof JobFilters>(key: K, value: JobFilters[K]) => setFilters(f => ({ ...f, [key]: value }))
+  // L'offre demandée par ?offre= doit être affichée, même au-delà des 20 premières.
+  const [visible, setVisible] = useState(() =>
+    Math.max(PAGE_SIZE, filterJobs(rows, EMPTY_JOB_FILTERS).findIndex(r => r.job.$id === focusJobId) + 1))
+  const update = (patch: Partial<JobFilters>) => { setFilters(f => ({ ...f, ...patch })); setVisible(PAGE_SIZE) }
   const filtering = isFiltering(filters)
-  const shown = filterJobs(jobs, filters)
-  const openJob = openJobId ? jobs.find(j => j.$id === openJobId) : null
+  const shown = filterJobs(rows, filters)
+  const openJob = openJobId ? rows.find(r => r.job.$id === openJobId)?.job : null
   const sortedStages = [...funnelStages].sort((a, b) => a.order - b.order)
+  const online = rows.filter(r => r.facts.state === 'online').length
+  const sharedCount = rows.filter(r => r.shared).length
 
   // Amenée à l'écran à l'arrivée seulement : les rafraîchissements de l'état des diffusions (SocialStatus) ne font pas
   // redéfiler la page. Le focus suit, pour le clavier et les lecteurs d'écran.
-  const focusRef = useRef<HTMLDivElement>(null)
+  const focusRef = useRef<HTMLElement>(null)
   useEffect(() => {
     const row = focusRef.current
     if (!row) return
@@ -51,149 +81,182 @@ export function JobsListClient({
     row.focus({ preventScroll: true })
   }, [focusJobId])
 
+  const count = (focus: JobFocus) => rows.filter(r => matchesFocus(r.facts, focus)).length
+  const newApplications = rows.reduce((sum, r) => sum + r.facts.newApplications, 0)
+  const noApplications = count('noApplications')
+  const noApplicationsWithMatches = rows.filter(r => matchesFocus(r.facts, 'noApplications') && r.matches > 0).length
+  const failed = count('diffusionFailed')
+  const expiring = count('expiringSoon')
+  const tiles: { focus: JobFocus; n: number; label: string; sub: string; icon: ReactNode; ink: string }[] = [
+    { focus: 'new', n: newApplications, label: plural(newApplications, 'nouvelle candidature', 'nouvelles candidatures'),
+      sub: newApplications > 0 ? `Réparties sur ${jobsWithNew} ${plural(jobsWithNew, 'offre', 'offres')}` : 'Toutes ont été traitées',
+      icon: <Inbox className="h-4.5 w-4.5" />, ink: 'var(--color-primary)' },
+    { focus: 'noApplications', n: noApplications, label: plural(noApplications, 'offre sans candidature', 'offres sans candidature'),
+      sub: noApplicationsWithMatches > 0 ? `Dont ${noApplicationsWithMatches} avec des correspondances IA` : 'Offres en ligne',
+      icon: <Users className="h-4.5 w-4.5" />, ink: 'var(--color-text)' },
+    { focus: 'diffusionFailed', n: failed, label: plural(failed, 'diffusion en échec', 'diffusions en échec'),
+      sub: 'Réseaux sociaux, à relancer', icon: <AlertTriangle className="h-4.5 w-4.5" />, ink: '#b91c1c' },
+    { focus: 'expiringSoon', n: expiring, label: plural(expiring, 'offre expire bientôt', 'offres expirent bientôt'),
+      sub: 'Dans les 7 prochains jours', icon: <Clock className="h-4.5 w-4.5" />, ink: '#b45309' },
+  ]
+
+  const tabs: { status: JobStatusFilter; label: string; n: number }[] = [
+    { status: 'all', label: 'Toutes', n: rows.length },
+    { status: 'active', label: 'En ligne', n: online },
+    { status: 'archived', label: 'Archivées', n: rows.length - online },
+  ]
+  const displayed = Math.min(visible, shown.length)
+
   return (
     <>
-      {/* Filtres de la liste, et la création d'une offre au bout de la même ligne. */}
-      <div role="search" aria-label="Filtrer mes offres" className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-        <div className="relative flex-1 min-w-0 sm:min-w-60">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={{ color: 'var(--color-text-muted)' }} aria-hidden />
-          <input type="search" value={filters.q} onChange={e => set('q', e.target.value)} aria-label="Rechercher une offre"
-            placeholder="Rechercher un intitulé, une ville…" className={`${field} w-full pl-9`} style={fieldStyle} />
+      <section aria-labelledby="a-traiter" className="flex flex-col gap-3">
+        <div className="flex items-baseline gap-2.5 flex-wrap">
+          <h2 id="a-traiter" className="text-base font-bold tracking-[-0.01em]" style={{ color: 'var(--color-text)' }}>À traiter</h2>
+          <p className="text-[13px]" style={muted}>Un clic filtre la liste de vos offres.</p>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:flex">
-          <select aria-label="Statut de l’offre" value={filters.status} onChange={e => set('status', e.target.value as JobFilters['status'])} className={field} style={fieldStyle}>
-            <option value="all">Tous les statuts</option>
-            <option value="active">En ligne</option>
-            <option value="archived">Archivées</option>
-          </select>
-          <select aria-label="Type de contrat" value={filters.contract} onChange={e => set('contract', e.target.value as JobFilters['contract'])} className={field} style={fieldStyle}>
-            <option value="all">Tous les contrats</option>
-            {Object.entries(CONTRACT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
+        <div className="flex gap-2.5 overflow-x-auto -mx-4 px-4 pb-1 sm:mx-0 sm:px-0 sm:pb-0 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:gap-3 sm:overflow-visible">
+          {tiles.map(t => {
+            const on = filters.focus === t.focus
+            return (
+              <button key={t.focus} type="button" aria-pressed={on} disabled={t.n === 0 && !on}
+                onClick={() => update({ focus: on ? null : t.focus })}
+                className="flex-none w-57.5 sm:w-auto text-left flex items-center gap-3.5 px-4 py-3.5 rounded-2xl cursor-pointer transition-colors hover:border-(--color-text-muted) disabled:cursor-default disabled:opacity-60 disabled:hover:border-(--color-border) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
+                style={{
+                  background: on ? 'color-mix(in srgb, var(--color-primary) 5%, var(--color-surface))' : 'var(--color-surface)',
+                  border: `1px solid ${on ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                  boxShadow: on ? '0 0 0 1px var(--color-primary)' : undefined,
+                  color: 'var(--color-text)',
+                }}>
+                <span aria-hidden className="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ background: `color-mix(in srgb, ${t.ink} 10%, transparent)`, color: t.ink }}>
+                  {t.icon}
+                </span>
+                <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                  <span className="text-sm font-semibold"><span className="text-lg tabular-nums">{t.n}</span> {t.label}</span>
+                  <span className="text-xs" style={muted}>{t.sub}</span>
+                </span>
+                <ArrowRight aria-hidden className="h-4 w-4 shrink-0" style={muted} />
+              </button>
+            )
+          })}
         </div>
-        {filtering && (
-          <button type="button" onClick={() => setFilters(EMPTY_JOB_FILTERS)} className="self-start sm:self-auto text-xs font-semibold underline underline-offset-2"
-            style={{ color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-            Réinitialiser
-          </button>
-        )}
-        {action && <div className="sm:ml-auto">{action}</div>}
-      </div>
+      </section>
 
-      <div className="rounded-3xl overflow-hidden" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 20px 50px -12px rgba(11,29,81,0.14)' }}>
-        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--color-border)' }}>
-          <h2 className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>
-            Mes offres ({filtering ? `${shown.length} sur ${jobs.length}` : jobs.length})
-          </h2>
-          {jobs.length > 0 && (
-            <Link href="/recruiter/annonces"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold no-underline transition-opacity hover:opacity-80"
-              style={{ background: 'rgba(232,163,61,0.14)', color: '#b8862f' }}>
-              <Layers className="h-3.5 w-3.5" /> Suivi &amp; rapports
-            </Link>
+      <section aria-labelledby="mes-offres" className="rounded-[20px]" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+        <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h2 id="mes-offres" className="text-lg sm:text-xl font-bold tracking-[-0.015em]" style={{ color: 'var(--color-text)' }}>Mes offres</h2>
+            <span className="text-xs font-semibold rounded-full px-2.5 py-0.5 tabular-nums"
+              style={{ background: 'color-mix(in srgb, var(--color-text) 7%, transparent)', color: 'var(--color-text)' }}>
+              {rows.length}
+            </span>
+            {sharedCount > 0 && <span className="text-xs" style={muted}>dont {sharedCount} de la plateforme</span>}
+          </div>
+          <div className="flex items-center gap-2.5 flex-wrap w-full sm:w-auto">
+            {rows.length > 0 && (
+              <Link href="/recruiter/annonces"
+                className="inline-flex items-center gap-2 h-11 sm:h-10 px-3.5 rounded-[10px] text-[13px] font-semibold no-underline transition-opacity hover:opacity-80"
+                style={{ background: 'rgba(232,163,61,0.14)', color: '#8f5e12' }}>
+                <Layers className="h-3.75 w-3.75" aria-hidden /> Suivi &amp; rapports
+              </Link>
+            )}
+            {action && <div className="flex-1 sm:flex-none">{action}</div>}
+          </div>
+        </div>
+
+        <div role="search" aria-label="Filtrer mes offres" className="px-4 sm:px-6 pb-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2.5">
+          <label className="relative block flex-1 min-w-0 sm:min-w-60">
+            <span className="sr-only">Rechercher une offre</span>
+            <Search aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={muted} />
+            <input type="search" value={filters.q} onChange={e => update({ q: e.target.value })}
+              placeholder="Rechercher un intitulé, une ville…" className={`${field} w-full pl-9 font-normal text-sm`}
+              style={{ ...fieldStyle, background: 'color-mix(in srgb, var(--color-text) 3%, var(--color-surface))' }} />
+          </label>
+          <div role="group" aria-label="Statut de l’offre" className="grid grid-cols-3 sm:flex gap-0.5 p-[3px] rounded-xl"
+            style={{ background: 'color-mix(in srgb, var(--color-text) 6%, transparent)' }}>
+            {tabs.map(tab => {
+              const on = filters.status === tab.status
+              return (
+                <button key={tab.status} type="button" aria-pressed={on} onClick={() => update({ status: tab.status })}
+                  className="h-[38px] sm:h-[34px] px-3 rounded-[9px] border-0 inline-flex items-center justify-center gap-1.5 text-[13px] cursor-pointer focus-visible:outline-2 focus-visible:outline-(--color-text)"
+                  style={{
+                    background: on ? 'var(--color-surface)' : 'transparent', color: 'var(--color-text)', fontWeight: on ? 600 : 500,
+                    boxShadow: on ? '0 1px 2px rgba(28,28,30,0.08), 0 0 0 1px rgba(28,28,30,0.04)' : undefined,
+                  }}>
+                  {tab.label} <span className="text-xs tabular-nums" style={muted}>{tab.n}</span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="grid grid-cols-2 gap-2.5 sm:flex">
+            <select aria-label="Type de contrat" value={filters.contract} onChange={e => update({ contract: e.target.value as JobFilters['contract'] })} className={field} style={fieldStyle}>
+              <option value="all">Tous les contrats</option>
+              {Object.entries(CONTRACT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <select aria-label="Trier les offres" value={filters.sort} onChange={e => update({ sort: e.target.value as JobSort })} className={field} style={fieldStyle}>
+              {Object.entries(SORT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+          {filters.focus && (
+            <button type="button" onClick={() => update({ focus: null })} aria-label={`Retirer le filtre « ${FOCUS_CHIPS[filters.focus]} »`}
+              className="self-start sm:self-auto h-8 pl-3 pr-2.5 rounded-full inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
+              style={{ background: 'var(--color-text)', color: 'var(--color-surface)', border: '1px solid var(--color-text)' }}>
+              {FOCUS_CHIPS[filters.focus]}<X className="h-3.5 w-3.5" aria-hidden />
+            </button>
           )}
         </div>
 
+        {socialUnavailable && (
+          <p role="status" className="mx-4 sm:mx-6 mb-4 px-3.5 py-2.5 rounded-xl text-[13px]" style={{ background: '#b4530914', color: '#b45309' }}>
+            L’état des diffusions sur les réseaux n’a pas pu être lu : la colonne « Diffusion » est incomplète. Rechargez la page dans quelques instants.
+          </p>
+        )}
+
+        <div aria-hidden className={`hidden lg:grid ${ROW_GRID} px-6 py-2.5 text-xs font-semibold`}
+          style={{ ...muted, background: 'color-mix(in srgb, var(--color-text) 2.5%, transparent)', borderTop: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }}>
+          <span>Offre</span><span>Candidatures</span><span>Pipeline</span><span>Diffusion</span><span className="text-right">Actions</span>
+        </div>
+
         {shown.length === 0 ? (
-          <div className="py-16 text-center px-6">
-            <p className="text-sm mb-4" style={{ color: 'var(--color-text-muted)' }}>
-              {jobs.length === 0 ? 'Aucune offre. Créez votre première offre pour commencer.' : 'Aucune offre ne correspond à ces filtres.'}
+          <div className="py-14 px-6 text-center flex flex-col items-center gap-3 border-t border-(--color-border) lg:border-t-0">
+            <p className="text-sm" style={muted}>
+              {rows.length === 0 ? 'Aucune offre. Créez votre première offre pour commencer.' : 'Aucune offre ne correspond à ces filtres.'}
             </p>
-            {jobs.length > 0 && (
-              <button type="button" onClick={() => setFilters(EMPTY_JOB_FILTERS)} className="text-sm font-semibold underline underline-offset-2"
-                style={{ color: 'var(--color-primary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+            {filtering && (
+              <button type="button" onClick={() => update(EMPTY_JOB_FILTERS)}
+                className="h-9 px-3.5 rounded-[10px] text-[13px] font-semibold cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
+                style={fieldStyle}>
                 Réinitialiser les filtres
               </button>
             )}
           </div>
         ) : (
-          <div className="divide-y" style={{ borderColor: 'var(--color-border)' }}>
-            {shown.map(job => {
-              const jobApps = appsByJob[job.$id] ?? []
-              const appCount = jobApps.length
-              const isSelected = openJobId === job.$id
-              const isFocused = focusJobId === job.$id
-              const stageCounts = sortedStages
-                .map(stage => ({ stage, count: jobApps.filter(a => a.status === stage.slug).length }))
-                .filter(s => s.count > 0)
+          <div className="border-t border-(--color-border) lg:border-t-0">
+            {shown.slice(0, visible).map((row, i) => {
+              const focused = focusJobId === row.job.$id
               return (
-                <div key={job.$id}
-                  ref={isFocused ? focusRef : undefined} tabIndex={isFocused ? -1 : undefined}
-                  onClick={() => { startNavigationProgress(); router.push(`/recruiter/pipeline/${job.$id}/matching`) }}
-                  className="group px-5 py-4 transition-colors hover:bg-[rgba(139,92,246,0.05)] cursor-pointer focus:outline-none"
-                  style={{
-                    background: isSelected ? 'rgba(11,29,81,0.05)' : isFocused ? 'rgba(232,163,61,0.1)' : 'transparent',
-                    boxShadow: isFocused ? 'inset 3px 0 0 var(--color-primary)' : undefined,
-                  }}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-medium text-sm" style={{ color: 'var(--color-text)' }}>{job.title}</p>
-                        {!job.isActive && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
-                            style={{ background: 'rgba(107,114,128,0.1)', color: '#6b7280' }}>
-                            Archivée
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 mt-0.5">
-                        <span className="text-xs flex items-center gap-1" style={{ color: 'var(--color-text-muted)' }}>
-                          <MapPin className="h-3 w-3" />{job.location}
-                        </span>
-                        {job.contractType && (
-                          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                            {CONTRACT_LABELS[job.contractType]}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div onClick={e => e.stopPropagation()}>
-                        <JobActions job={job} tenantId={tenantId} />
-                      </div>
-                      <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" style={{ color: '#8b5cf6' }} />
-                    </div>
-                  </div>
-
-                  {/* État du pipeline en direct — une pastille par étape du funnel où le
-                      recruteur a personnalisé le sien, pas des statuts figés en dur. */}
-                  {stageCounts.length > 0 && (
-                    <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
-                      {stageCounts.map(({ stage, count }) => (
-                        <span key={stage.slug} className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                          style={{ background: `${stage.color}16`, color: stage.color }}>
-                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: stage.color }} />
-                          {count} {stage.label.toLowerCase()}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {job.isActive && <SocialStatus jobId={job.$id} info={socialByJob[job.$id]} canPublish={socialEnabled} />}
-
-                  {/* Bottom row: candidatures + aperçu du Matching IA (clic sur la ligne
-                      entière pour ouvrir la liste complète et sélectionner qui ajouter). */}
-                  <div className="flex items-center justify-between mt-3">
-                    <button
-                      onClick={e => { e.stopPropagation(); setOpenJobId(job.$id) }}
-                      className="text-xs font-semibold transition-opacity hover:opacity-70"
-                      style={{ color: appCount > 0 ? 'var(--color-primary)' : 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                      {appCount} candidature{appCount !== 1 ? 's' : ''} →
-                    </button>
-
-                    {matchCountByJob[job.$id] > 0 && (
-                      <span className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: '#8b5cf6' }}>
-                        <Brain className="h-3.5 w-3.5" />
-                        {matchCountByJob[job.$id]} correspondance{matchCountByJob[job.$id] > 1 ? 's' : ''} IA
-                      </span>
-                    )}
-                  </div>
-                </div>
+                <JobRow key={row.job.$id} row={row} apps={appsByJob[row.job.$id] ?? []} stages={sortedStages} canPublish={socialEnabled}
+                  first={i === 0} focused={focused} focusRef={focused ? focusRef : undefined} onOpenApplications={() => setOpenJobId(row.job.$id)} />
               )
             })}
           </div>
         )}
-      </div>
+
+        {shown.length > 0 && (
+          <div className="px-4 sm:px-6 py-4 flex flex-col-reverse sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3" style={{ borderTop: '1px solid var(--color-border)' }}>
+            <p className="text-[13px] text-center sm:text-left" style={muted}>
+              {displayed} {plural(displayed, 'offre affichée', 'offres affichées')} sur {shown.length}
+            </p>
+            {displayed < shown.length && (
+              <button type="button" onClick={() => setVisible(v => v + PAGE_SIZE)}
+                className="h-11 sm:h-9 px-3.5 rounded-xl sm:rounded-[10px] text-sm sm:text-[13px] font-semibold cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
+                style={fieldStyle}>
+                Afficher {Math.min(PAGE_SIZE, shown.length - displayed)} offres de plus
+              </button>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* Candidatures — grand modal 3D, purement client, ouverture/fermeture instantanées */}
       {openJob && (

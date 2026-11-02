@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 import { getCurrentUser } from '@/lib/appwrite/auth'
-import { createJob, updateJobStatus, deleteJob, updateApplicationStatus, oneMonthFromNow, getJobsByTenant } from '@/lib/appwrite/jobs'
+import { createJob, updateJobStatus, deleteJob, updateApplicationStatus, oneMonthFromNow, getJobsByTenant, getJobById } from '@/lib/appwrite/jobs'
 import type { ApplicationStatus } from '@/types'
 import type { Job } from '@/types'
 
@@ -70,18 +70,42 @@ export async function listMyJobsForLibrary(): Promise<Job[]> {
   return getJobsByTenant(user.tenantId)
 }
 
-export async function toggleJobStatusAction(jobId: string, isActive: boolean): Promise<void> {
+// Archiver, remettre en ligne ou supprimer : seulement une offre de l'organisation du recruteur (les offres partagées
+// de la plateforme, tenantId '', sont gérées par l'admin). Avant, toute offre était modifiable par son identifiant.
+async function ownJobOrError(jobId: unknown): Promise<{ jobId: string } | { error: string }> {
   const user = await getCurrentUser()
-  if (!user || user.role !== 'recruiter') return
-  await updateJobStatus(jobId, isActive)
-  revalidatePath('/recruiter/dashboard')
+  if (!user || user.role !== 'recruiter' || !user.tenantId) return { error: 'Non autorisé.' }
+  if (typeof jobId !== 'string' || !jobId) return { error: 'Offre introuvable.' }
+  const job = await getJobById(jobId)
+  if (!job || job.tenantId !== user.tenantId) return { error: 'Offre introuvable.' }
+  return { jobId }
 }
 
-export async function deleteJobAction(jobId: string): Promise<void> {
-  const user = await getCurrentUser()
-  if (!user || user.role !== 'recruiter') return
-  await deleteJob(jobId)
+export async function toggleJobStatusAction(jobId: string, isActive: boolean): Promise<{ error?: string }> {
+  const own = await ownJobOrError(jobId)
+  if ('error' in own) return own
+  if (typeof isActive !== 'boolean') return { error: 'Demande invalide.' }
+  try {
+    await updateJobStatus(own.jobId, isActive)
+  } catch (e) {
+    console.error('[dashboard] statut de l’offre non modifié', own.jobId, e instanceof Error ? e.message : e)
+    return { error: 'L’offre n’a pas pu être modifiée. Réessayez.' }
+  }
   revalidatePath('/recruiter/dashboard')
+  return {}
+}
+
+export async function deleteJobAction(jobId: string): Promise<{ error?: string }> {
+  const own = await ownJobOrError(jobId)
+  if ('error' in own) return own
+  try {
+    await deleteJob(own.jobId)
+  } catch (e) {
+    console.error('[dashboard] offre non supprimée', own.jobId, e instanceof Error ? e.message : e)
+    return { error: 'L’offre n’a pas pu être supprimée. Réessayez.' }
+  }
+  revalidatePath('/recruiter/dashboard')
+  return {}
 }
 
 // Décision du recruteur sur une candidature — reflétée immédiatement sur le
@@ -102,11 +126,10 @@ export async function publishJobToSocialAction(jobId: string, again = false): Pr
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) return { ok: false, message: 'Non autorisé.' }
   try {
-    const { getJobById } = await import('@/lib/appwrite/jobs')
     const job = await getJobById(jobId)
     if (!job || job.tenantId !== user.tenantId) return { ok: false, message: 'Offre introuvable.' }
-    const { latestPostsByJob, prepareSocialPost, deliverSocialPost, deliveryDeadline } = await import('@/lib/social')
-    const last = (await latestPostsByJob(user.tenantId))[jobId]
+    const { latestSocialStateByJob, prepareSocialPost, deliverSocialPost, deliveryDeadline } = await import('@/lib/social')
+    const last = (await latestSocialStateByJob([jobId])).get(jobId)
     const finished = !last || last.stale || ['published', 'partial', 'failed'].includes(last.status)
     if (!finished) return { ok: false, message: 'La diffusion est déjà en cours.' }
     const r = await prepareSocialPost(jobId, { trigger: 'manual', requestedBy: `${user.firstName} ${user.lastName}`.trim() || user.email, force: again })
