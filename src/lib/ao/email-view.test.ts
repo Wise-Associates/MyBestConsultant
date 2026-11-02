@@ -65,6 +65,19 @@ describe('affichage de l\'e-mail d\'origine', () => {
     assert.ok(page.indexOf('<header class="mbc-meta">') < page.indexOf('<main class="mbc-body">'))
   })
 
+  it('porte sa propre CSP, avant le contenu de l\'expéditeur : le fichier .html téléchargé est ouvert sans en-têtes', () => {
+    const page = emailViewDocument({
+      subject: '<script>alert(1)</script>', from: 'a@client-fictif.fr', to: '', cc: '', date: null, attachments: [], text: '',
+      html: '<p>Offre</p><script>alert(1)</script><img src="https://suivi.test/p.gif">',
+    })
+    const csp = page.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/)?.[1] ?? ''
+    assert.match(csp, /default-src 'none'/)
+    assert.match(csp, /img-src data:/)
+    assert.doesNotMatch(csp, /script-src/, 'aucun script autorisé')
+    assert.ok(page.indexOf('Content-Security-Policy') < page.indexOf('<title>'), 'la CSP précède tout contenu de l\'e-mail')
+    assert.ok(!page.includes('<script>'), 'scripts retirés du corps et échappés dans l\'objet')
+  })
+
   it('borne un très long e-mail en texte seul et le signale', () => {
     const page = emailViewDocument({ subject: '', from: '', to: '', cc: '', date: null, attachments: [], html: false, text: 'a'.repeat(900_000) })
     assert.match(page, /Texte trop long/)

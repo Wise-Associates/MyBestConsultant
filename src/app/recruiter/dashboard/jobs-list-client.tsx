@@ -9,6 +9,7 @@ import type { CandidateApp } from './applications-panel'
 import type { SocialInfo } from './social-status'
 import type { Job, FunnelStage } from '@/types'
 import type { JobFacts } from '@/lib/recruiter-dashboard'
+import type { AssignableRecruiter } from '@/lib/recruiter-assignment'
 import {
   EMPTY_JOB_FILTERS, filterJobs, isFiltering, matchesFocus,
   type JobFilters, type JobFocus, type JobSort, type JobStatusFilter,
@@ -44,12 +45,14 @@ const fieldStyle: CSSProperties = { background: 'var(--color-surface)', border: 
 const plural = (n: number, one: string, many: string) => (n > 1 ? many : one)
 
 export function JobsListClient({
-  rows, appsByJob, funnelStages, socialEnabled, socialUnavailable, jobsWithNew, focusJobId, action,
+  rows, appsByJob, funnelStages, socialEnabled, socialUnavailable, recruiters, jobsWithNew, focusJobId, action,
 }: {
   rows: DashboardJobRow[]; appsByJob: Record<string, CandidateApp[]>; funnelStages: FunnelStage[]
   socialEnabled: boolean
   /** L'état des diffusions n'a pas pu être lu : la colonne « Diffusion » n'est pas fiable. */
   socialUnavailable: boolean
+  /** Recruteurs de l'organisation (recruteur affecté à chaque offre) ; null : équipe illisible, choix masqué. */
+  recruiters: AssignableRecruiter[] | null
   /** Offres qui ont au moins une nouvelle candidature (sous-titre de la tuile). */
   jobsWithNew: number
   /** Offre à montrer (?offre= de la page, depuis le suivi d'un appel d'offres publié). */
@@ -235,7 +238,7 @@ export function JobsListClient({
             {shown.slice(0, visible).map((row, i) => {
               const focused = focusJobId === row.job.$id
               return (
-                <JobRow key={row.job.$id} row={row} apps={appsByJob[row.job.$id] ?? []} stages={sortedStages} canPublish={socialEnabled}
+                <JobRow key={row.job.$id} row={row} apps={appsByJob[row.job.$id] ?? []} stages={sortedStages} canPublish={socialEnabled} recruiters={recruiters}
                   first={i === 0} focused={focused} focusRef={focused ? focusRef : undefined} onOpenApplications={() => setOpenJobId(row.job.$id)} />
               )
             })}

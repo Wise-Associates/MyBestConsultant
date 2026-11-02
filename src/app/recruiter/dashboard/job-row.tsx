@@ -6,9 +6,11 @@ import Link from 'next/link'
 import { MapPin, Clock, Sparkles } from 'lucide-react'
 import { JobActions } from './job-actions'
 import { SocialStatus, usePublish } from './social-status'
+import { JobAssigneeSelect } from './job-assignee-select'
 import type { CandidateApp } from './applications-panel'
 import type { DashboardJobRow } from './jobs-list-client'
 import type { FunnelStage } from '@/types'
+import type { AssignableRecruiter } from '@/lib/recruiter-assignment'
 import { startNavigationProgress } from '@/components/shared/navigation-progress'
 
 const CONTRACT_LABELS: Record<string, string> = {
@@ -22,8 +24,9 @@ const badge = 'inline-flex items-center gap-1 text-[11px] font-semibold rounded-
 const neutralBadge = { background: 'color-mix(in srgb, var(--color-text) 7%, transparent)', color: 'var(--color-text)' }
 const amberBadge = { background: '#b4530914', color: '#b45309' }
 
-export function JobRow({ row, apps, stages, canPublish, first, focused, focusRef, onOpenApplications }: {
-  row: DashboardJobRow; apps: CandidateApp[]; stages: FunnelStage[]; canPublish: boolean; first: boolean
+export function JobRow({ row, apps, stages, canPublish, recruiters, first, focused, focusRef, onOpenApplications }: {
+  row: DashboardJobRow; apps: CandidateApp[]; stages: FunnelStage[]; canPublish: boolean
+  recruiters: AssignableRecruiter[] | null; first: boolean
   focused: boolean; focusRef?: Ref<HTMLElement>; onOpenApplications: () => void
 }) {
   const router = useRouter()
@@ -39,7 +42,7 @@ export function JobRow({ row, apps, stages, canPublish, first, focused, focusRef
   // Toute la ligne ouvre le matching de l'offre (comme avant) ; le titre est le lien pour le clavier et les lecteurs
   // d'écran, les boutons et liens de la ligne gardent leur propre action.
   function openFromRow(e: MouseEvent<HTMLElement>) {
-    if ((e.target as HTMLElement).closest('a, button, [role="menu"]')) return
+    if ((e.target as HTMLElement).closest('a, button, select, label, [role="menu"]')) return
     startNavigationProgress()
     router.push(matchingHref)
   }
@@ -71,6 +74,9 @@ export function JobRow({ row, apps, stages, canPublish, first, focused, focusRef
           {job.contractType && <><span aria-hidden>·</span><span>{CONTRACT_LABELS[job.contractType]}</span></>}
           <span aria-hidden>·</span><span>Publiée {row.age}</span>
         </p>
+        {!row.shared && recruiters && (
+          <JobAssigneeSelect jobId={job.$id} jobTitle={job.title} assigneeId={job.recruiterId ?? ''} recruiters={recruiters} />
+        )}
       </div>
 
       <div className="flex flex-col gap-1 min-w-0">

@@ -11,6 +11,7 @@ import { listAllDocuments } from '@/lib/appwrite/list-all'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
 import { jobFacts, relativeAge, summarize } from '@/lib/recruiter-dashboard'
+import { listTenantRecruiters } from '@/lib/recruiter-assignment'
 import { CreateJobDialog } from './create-job-dialog'
 import type { CandidateApp } from './applications-panel'
 import { JobsListClient, type DashboardJobRow } from './jobs-list-client'
@@ -86,7 +87,7 @@ export default async function RecruiterDashboard({ searchParams }: { searchParam
   const tenantId = user.tenantId
 
   const { latestPostsByJob, isMakeConfigured } = await import('@/lib/social')
-  const [jobs, allApplications, matchCountByJob, funnelStages, socialPosts] = await Promise.all([
+  const [jobs, allApplications, matchCountByJob, funnelStages, socialPosts, recruiters] = await Promise.all([
     getJobsByTenant(tenantId),
     getApplicationsByTenant(tenantId),
     countMatchesByJob(tenantId),
@@ -94,6 +95,11 @@ export default async function RecruiterDashboard({ searchParams }: { searchParam
     // Illisible : un avertissement dans « Mes offres », plutôt que des offres affichées comme jamais diffusées.
     latestPostsByJob(tenantId).catch((e: unknown) => {
       console.error('[dashboard] diffusions non lues', e instanceof Error ? e.message : e)
+      return null
+    }),
+    // Équipe, pour le recruteur affecté à chaque offre : illisible, les offres s'affichent sans ce choix.
+    listTenantRecruiters(tenantId).catch((e: unknown) => {
+      console.error('[dashboard] recruteurs de l’organisation non lus', e instanceof Error ? e.message : e)
       return null
     }),
   ])
@@ -151,7 +157,7 @@ export default async function RecruiterDashboard({ searchParams }: { searchParam
         {/* « À traiter » puis « Mes offres » : les tuiles filtrent la liste, elles partagent son état. Les autres outils
             sont dans le sous-menu de l'espace (layout recruteur). */}
         <JobsListClient rows={rows} appsByJob={appsByJobRecord} funnelStages={funnelStages}
-          socialEnabled={isMakeConfigured()} socialUnavailable={socialPosts === null} jobsWithNew={summary.applications.jobsWithNew}
+          socialEnabled={isMakeConfigured()} socialUnavailable={socialPosts === null} recruiters={recruiters} jobsWithNew={summary.applications.jobsWithNew}
           focusJobId={typeof offre === 'string' ? offre : undefined}
           action={
             <Suspense fallback={null}>
