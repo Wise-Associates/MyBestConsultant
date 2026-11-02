@@ -112,17 +112,31 @@ function emailView(html: string, status = 200): NextResponse {
 }
 
 /**
- * E-mail d'origine d'une offre AO (.eml), une de ses pièces jointes (`attachment`), ou sa version affichable (`view` :
- * HTML nettoyé, email-view.ts), relus dans la boîte. E-mails des boîtes de l'organisation seulement (ADR 0005). Le
- * contenu vient d'un expéditeur extérieur : fichiers servis en téléchargement, jamais interprétés par le navigateur ;
- * la version affichable est nettoyée puis servie sous une CSP sandbox (EMAIL_VIEW_CSP).
+ * E-mail d'origine d'une offre AO (.eml), une de ses pièces jointes (`attachment`), sa version affichable (`view` :
+ * HTML nettoyé, email-view.ts) ou cette même version en fichier .html (`htmlFile`), relus dans la boîte. E-mails des
+ * boîtes de l'organisation seulement (ADR 0005). Le contenu vient d'un expéditeur extérieur : fichiers servis en
+ * téléchargement, jamais interprétés par le navigateur ; la version affichable est nettoyée puis servie sous une CSP
+ * sandbox (EMAIL_VIEW_CSP), et le fichier .html porte sa propre CSP (il est ouvert depuis le disque).
  */
-export async function aoOriginalResponse(tenantId: string, emailId: string, attachment: string | null, view = false): Promise<NextResponse> {
+export async function aoOriginalResponse(
+  tenantId: string, emailId: string, attachment: string | null, view = false, htmlFile = false,
+): Promise<NextResponse> {
   if (view) return emailViewResponse(tenantId, emailId)
   const found = await aoAccessFor(tenantId).email(emailId)
   if (!found) return NextResponse.json({ error: 'E-mail introuvable.' }, { status: 404 })
   const { email, source } = found
   try {
+    if (htmlFile) {
+      const raw = await fetchOriginal(email, source)
+      let html: string
+      try {
+        html = emailViewDocument(await parseOriginalView(raw))
+      } catch (err) {
+        console.error('AO: e-mail d\'origine impossible à convertir en HTML', emailId, errorText(err))
+        return NextResponse.json({ error: 'Cet e-mail ne peut pas être converti en HTML : téléchargez le fichier .eml.' }, { status: 500 })
+      }
+      return download(Buffer.from(html, 'utf-8'), `ao-${email.$id}.html`, 'text/html; charset=utf-8')
+    }
     if (attachment !== null) {
       if (!email.attachments.includes(attachment)) return NextResponse.json({ error: 'Pièce jointe introuvable.' }, { status: 404 })
       const file = await fetchOriginalAttachment(email, source, attachment)

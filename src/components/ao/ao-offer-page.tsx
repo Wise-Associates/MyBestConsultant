@@ -33,6 +33,8 @@ interface Props {
   stickyTop: number
   /** Espace admin : titre dans la barre du haut du layout (AdminPageHeader). */
   titleInAdminBar?: boolean
+  /** Bloc propre à l'espace, au-dessus du détail (recruteur affecté, côté recruteur). */
+  assignment?: ReactNode
 }
 
 const navButton: CSSProperties = { ...secondaryButton, padding: '8px 12px' }
@@ -42,7 +44,7 @@ function isTyping(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
 }
 
-export function AoOfferPage({ row, tracking, trackingError, neighbours, query, actions, paths, copy, stickyTop, titleInAdminBar }: Props) {
+export function AoOfferPage({ row, tracking, trackingError, neighbours, query, actions, paths, copy, stickyTop, titleInAdminBar, assignment }: Props) {
   const router = useRouter()
   const publications = useAoPublications()
   const { setOpenOffer } = publications
@@ -99,6 +101,7 @@ export function AoOfferPage({ row, tracking, trackingError, neighbours, query, a
       <div className="mx-auto max-w-6xl space-y-4">
         {publications.notice && <div className="pt-4"><Banner tone={publications.notice.tone} text={publications.notice.text} onClose={publications.clearNotice} /></div>}
         {trackingError && <div className="pt-4"><Banner tone="error" text={trackingError} /></div>}
+        {assignment && <div className="pt-4">{assignment}</div>}
         <AoOfferDetail row={row} actions={actions} paths={paths} publishNote={copy.publishNote}
           tracking={steps} social={copy.social}
           publication={publications.of(row.$id)}

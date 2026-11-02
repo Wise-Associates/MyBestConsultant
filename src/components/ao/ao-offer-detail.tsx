@@ -493,8 +493,11 @@ function Originals({ emailId, attachments, originalApi }: { emailId: string; att
   const [viewLoaded, setViewLoaded] = useState(false)
   const base = `${originalApi}/${encodeURIComponent(emailId)}`
   const viewUrl = `${base}?vue=html`
-  const files: { key: string; label: string; url: string; filename: string }[] = [
+  const files: { key: string; label: string; url: string; filename: string; title?: string }[] = [
     { key: 'eml', label: 'E-mail d’origine (.eml)', url: base, filename: `ao-${emailId}.eml` },
+    // Version nettoyée de « Afficher l'e-mail », lisible dans un navigateur sans logiciel de messagerie.
+    { key: 'html', label: 'E-mail d’origine (.html)', url: `${base}?format=html`, filename: `ao-${emailId}.html`,
+      title: 'Version lisible dans un navigateur : sans scripts ni images distantes' },
     ...attachments.map(name => ({ key: name, label: name, url: `${base}?attachment=${encodeURIComponent(name)}`, filename: name })),
   ]
   const download = async (file: (typeof files)[number]) => {
@@ -526,8 +529,8 @@ function Originals({ emailId, attachments, originalApi }: { emailId: string; att
           <Mail size={14} aria-hidden />{viewing ? 'Masquer l’e-mail' : 'Afficher l’e-mail'}
         </button>
         {files.map(file => (
-          <button key={file.key} type="button" onClick={() => download(file)} disabled={busy !== null} style={{ ...secondaryButton, fontSize: 13 }}>
-            {busy === file.key ? <Loader2 size={14} className="animate-spin" /> : file.key === 'eml' ? <Download size={14} /> : <Paperclip size={14} />}
+          <button key={file.key} type="button" onClick={() => download(file)} disabled={busy !== null} title={file.title} style={{ ...secondaryButton, fontSize: 13 }}>
+            {busy === file.key ? <Loader2 size={14} className="animate-spin" /> : file.key === 'eml' || file.key === 'html' ? <Download size={14} /> : <Paperclip size={14} />}
             <span className="break-all text-left">{file.label}</span>
           </button>
         ))}
