@@ -4,15 +4,17 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2, UserRound } from 'lucide-react'
 import { control, fieldLabel, optionStyle } from '@/app/admin/candidats/labels'
+import type { RecruiterOption } from '@/lib/recruiter-assignment'
 
 // Recruteur affecté à un appel d'offres (page d'une offre de l'espace recruteur ; demande de Dav du 2026-10-31, reprise
-// le 2026-11-02) : repris par l'offre publiée, gardés alignés ensuite (colonne « Recruteur » de « Mes offres »).
+// le 2026-11-02) : repris par l'offre publiée, gardés alignés ensuite (colonne « Recruteur » de « Mes offres »). Valeur =
+// profil du recruteur (users.$id, ADR 0023).
 
 interface Props {
-  recruiters: { userId: string; name: string }[]
+  recruiters: RecruiterOption[]
   assigneeId: string
   published: boolean
-  assign(userId: string): Promise<{ error?: string; warning?: string }>
+  assign(recruiterId: string): Promise<{ error?: string; warning?: string }>
 }
 
 export function AoAssignee({ recruiters, assigneeId, published, assign }: Props) {
@@ -54,7 +56,7 @@ export function AoAssignee({ recruiters, assigneeId, published, assign }: Props)
           <UserRound size={16} aria-hidden style={{ color: 'var(--admin-fg-subtle)' }} />
           <select id="ao-assignee" value={value} disabled={pending} onChange={e => change(e.target.value)} style={{ ...control, minWidth: 220 }}>
             <option value="" style={optionStyle}>Non affecté</option>
-            {recruiters.map(r => <option key={r.userId} value={r.userId} style={optionStyle}>{r.name}</option>)}
+            {recruiters.map(r => <option key={r.id} value={r.id} style={optionStyle}>{r.name}</option>)}
           </select>
           {pending && <Loader2 size={16} className="animate-spin" aria-label="Enregistrement…" style={{ color: 'var(--admin-fg-muted)' }} />}
         </div>

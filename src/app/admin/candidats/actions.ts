@@ -29,8 +29,8 @@ export async function previewAoPublication(id: string, mode?: PublicationMode) {
 }
 
 export async function publishAoOffer(id: string, input: PublicationDraft) {
-  await requireAdmin()
-  return publishAoOfferOf(PLATFORM_TENANT_ID, id, input, ADMIN_TENANT_ID, [PATH, '/admin/jobs'])
+  const user = await requireAdmin()
+  return publishAoOfferOf(PLATFORM_TENANT_ID, id, input, ADMIN_TENANT_ID, [PATH, '/admin/jobs'], user)
 }
 
 export async function setAoOfferStatus(id: string, status: 'to_review' | 'ignored') {
