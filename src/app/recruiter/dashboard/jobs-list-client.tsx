@@ -37,7 +37,11 @@ const SORT_LABELS: Record<JobSort, string> = {
 const FOCUS_CHIPS: Record<JobFocus, string> = {
   new: 'Nouvelles candidatures', noApplications: 'Sans candidature', diffusionFailed: 'Diffusion en échec', expiringSoon: 'Expire bientôt',
 }
-const PAGE_SIZE = 20
+/**
+ * Lignes affichées à la fois (demande du 2026-11-02, comme le tableau des AO). Les offres et candidatures restent toutes
+ * lues par la page : indicateurs et tuiles « À traiter » comptent sur toutes.
+ */
+const PAGE_SIZE = 50
 
 const muted: CSSProperties = { color: 'var(--color-text-muted)' }
 const field = 'h-11 sm:h-10 px-3 rounded-xl text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-text)'
@@ -62,7 +66,7 @@ export function JobsListClient({
 }) {
   const [openJobId, setOpenJobId] = useState<string | null>(null)
   const [filters, setFilters] = useState<JobFilters>(EMPTY_JOB_FILTERS)
-  // L'offre demandée par ?offre= doit être affichée, même au-delà des 20 premières.
+  // L'offre demandée par ?offre= doit être affichée, même au-delà des 50 premières.
   const [visible, setVisible] = useState(() =>
     Math.max(PAGE_SIZE, filterJobs(rows, EMPTY_JOB_FILTERS).findIndex(r => r.job.$id === focusJobId) + 1))
   const update = (patch: Partial<JobFilters>) => { setFilters(f => ({ ...f, ...patch })); setVisible(PAGE_SIZE) }
@@ -254,7 +258,7 @@ export function JobsListClient({
               <button type="button" onClick={() => setVisible(v => v + PAGE_SIZE)}
                 className="h-11 sm:h-9 px-3.5 rounded-xl sm:rounded-[10px] text-sm sm:text-[13px] font-semibold cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
                 style={fieldStyle}>
-                Afficher {Math.min(PAGE_SIZE, shown.length - displayed)} offres de plus
+                Afficher {Math.min(PAGE_SIZE, shown.length - displayed)} {shown.length - displayed > 1 ? 'offres' : 'offre'} de plus
               </button>
             )}
           </div>

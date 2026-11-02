@@ -68,3 +68,23 @@ essayée le même jour puis retirée à la demande : la liste affiche toutes les
   redéployer ce code ensuite, refaire l'étape 5 (offres créées entre-temps sans ligne).
 - Branches non fusionnées qui appellent encore `listAoOfferRows` (supprimée) : à adapter à la fusion (la vérification
   des types le signale).
+
+## Mise à jour du 2026-11-02 : chargement par 50
+
+Demande du 2026-11-02 : charger les offres 50 par 50, chaque lot lu par le serveur. Ce n'est pas la pagination par pages
+retirée le 2026-10-30 : la liste s'allonge.
+
+- La page lit les 50 premières offres filtrées (index, puis leur e-mail, leurs détails, leurs commentaires et leur
+  suivi) ; le total vient du compte d'Appwrite (`total`, 5 000 au plus).
+- « Afficher 50 offres de plus » demande **seulement les 50 suivantes** à une route GET de l'espace (`…/liste`, filtres
+  et `depuis`), par décalage dans l'index (même ordre que la liste), et les ajoute dans le navigateur. Route plutôt que
+  Server Action : le navigateur exécute les Server Actions une par une, et une préparation ou une publication en cours
+  (une minute et plus) retiendrait le chargement. Une offre arrivée entre deux lots décale la liste : les offres déjà
+  affichées ne sont pas répétées ; une offre peut manquer jusqu'à la relecture suivante.
+- Le nombre d'offres affichées est aussi dans l'adresse (`nb`, multiple de 50), mis à jour sans relire la page
+  (`history.replaceState`, suivi par le routeur de Next.js). Toute relecture complète — passage de « Synchroniser
+  maintenant », action qui relit la page, suivi en cours (15 s), retour depuis la page d'une offre, rechargement — lit
+  d'un coup les `nb` premières offres, qui remplacent les lots ajoutés : une seule source de vérité. Un lot qui arrive
+  après une relecture est écarté. Un filtre changé repart à 50.
+- Inchangés : export Excel, statistiques et offres précédente / suivante d'une page d'offre portent sur toutes les
+  offres filtrées (5 000 au plus).

@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import type { AoOfferNeighbours } from '@/lib/ao/dashboard-types'
-import { filtersFromSearchParams, filtersToSearchParams, type AoOfferRow } from '@/lib/ao/filters'
+import { filtersFromSearchParams, listSizeFromSearchParams, listToSearchParams, type AoOfferRow } from '@/lib/ao/filters'
 import { loadAoNeighbours, loadAoOfferRow, searchParamsOf } from '@/lib/ao/platform-view'
 import type { TrackingStep } from '@/lib/ao/tracking'
 import { loadAoTracking } from '@/lib/ao/tracking-store'
@@ -28,8 +28,10 @@ export default async function RecruiterAoOfferPage({ params, searchParams }: {
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) redirect('/login')
   const { offerId } = await params
-  const filters = filtersFromSearchParams(searchParamsOf(await searchParams))
-  const query = filtersToSearchParams(filters).toString()
+  const sp = searchParamsOf(await searchParams)
+  const filters = filtersFromSearchParams(sp)
+  // Filtres et offres affichées (`nb`) de la liste : « Retour à la liste », précédente et suivante les gardent.
+  const query = listToSearchParams(filters, listSizeFromSearchParams(sp)).toString()
   let row: AoOfferRow | null = null
   let neighbours: AoOfferNeighbours = { previous: null, next: null, position: null, total: 0 }
   try {

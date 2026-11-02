@@ -1,12 +1,14 @@
 import 'server-only'
 import { NextResponse, type NextRequest } from 'next/server'
 import { buildAoWorkbook } from './excel'
-import { filtersFromSearchParams } from './filters'
+import { AO_PAGE_SIZE, filtersFromSearchParams, listOffsetFromSearchParams } from './filters'
 import { emailViewDocument, emailViewError } from './email-view'
 import { OriginalUnavailable, fetchOriginal, fetchOriginalAttachment, parseOriginalView } from './originals'
 import { syncAoNow } from './offer-actions'
 import { aoAccessFor } from './platform-view'
-import { listAllAoOfferRows } from './repo'
+import { listAllAoOfferRows, listAoOfferRowsRange } from './repo'
+import { loadAoTracking } from './tracking-store'
+import type { AoListPage } from './dashboard-types'
 
 // Cœur des routes de téléchargement du tableau AO, pour /api/admin/candidats/… (plateforme) et /api/recruiter/ao/…
 // (organisation du recruteur) : chaque route vérifie l'appelant puis passe l'organisation de SA session.
@@ -41,6 +43,31 @@ export async function aoExportResponse(tenantId: string, searchParams: URLSearch
       'X-Content-Type-Options': 'nosniff',
     },
   })
+}
+
+/**
+ * « Afficher 50 offres de plus » du tableau : les 50 offres filtrées qui suivent `depuis`, avec leur suivi de
+ * publication. Une route GET plutôt qu'une Server Action : le navigateur exécute les Server Actions une par une, et
+ * « Préparer la publication » ou « Publier » (une minute et plus) retiendraient ce chargement.
+ */
+export async function aoListPageResponse(tenantId: string, searchParams: URLSearchParams): Promise<NextResponse> {
+  const headers = { 'Cache-Control': 'no-store' }
+  let page: AoListPage
+  try {
+    const { rows, total } = await listAoOfferRowsRange(tenantId, filtersFromSearchParams(searchParams), listOffsetFromSearchParams(searchParams), AO_PAGE_SIZE)
+    page = { rows, total, tracking: {} }
+  } catch (err) {
+    console.error('AO: lot suivant du tableau illisible', tenantId, errorText(err))
+    return NextResponse.json({ error: 'Chargement impossible pour le moment : réessayez dans un instant.' }, { status: 502, headers })
+  }
+  try {
+    page.tracking = await loadAoTracking(page.rows)
+  } catch (err) {
+    // Comme la page : les offres s'affichent, leur suivi est calculé sans les faits lus.
+    console.error('AO: suivi des publications du lot suivant illisible', tenantId, errorText(err))
+    page.trackingError = 'Suivi des publications indisponible pour ces offres : rechargez la page dans quelques instants.'
+  }
+  return NextResponse.json(page, { headers })
 }
 
 /**
