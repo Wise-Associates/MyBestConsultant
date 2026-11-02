@@ -68,9 +68,9 @@ export async function createJobsFromExtracted(
   jobs: ExtractedJob[],
   tenantId: string,
 ): Promise<CreateJobsResult> {
-  await requireAdmin()
+  const admin = await requireAdmin()
   try {
-    for (const job of jobs) await createAdminJob(job, tenantId)
+    for (const job of jobs) await createAdminJob(job, tenantId, admin)
     revalidatePath('/admin/jobs')
     return { ok: true, created: jobs.length }
   } catch (err) {

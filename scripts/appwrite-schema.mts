@@ -21,6 +21,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
+import { isBackupCollectionId } from '../src/lib/appwrite/collection-backup'
 import {
   configFor, describeChange, diffBuckets, diffSchema, isAddition, isBlocking, needsAttention, pushCopy, SchemaFileError,
   type AppwriteEnvironment, type SchemaBucket, type SchemaChange, type SchemaCollection, type SchemaConfig, type SchemaDatabase,
@@ -114,9 +115,22 @@ async function confirmed(question: string, expected: string): Promise<boolean> {
 
 function pull(dir: string): void {
   const { collections, buckets } = readProject(ENVIRONMENTS.dev, dir)
-  // Copié tel quel : le fichier écrit par la CLI garde les bornes 64 bits au chiffre près.
-  copyFileSync(join(dir, CONFIG_FILE), join(ROOT, CONFIG_FILE))
-  console.log(`${CONFIG_FILE} : ${collections.length} collections et ${buckets.length} buckets du projet ${ENVIRONMENTS.dev.projectId}. Relisez : git diff ${CONFIG_FILE}`)
+  const pulled = join(dir, CONFIG_FILE)
+  // Sauvegardes faites par les scripts de données (collection-backup.ts) : propres au projet DEV, jamais dans le fichier
+  // (schema:push les créerait en production). Restées sur le projet, check et push les ignorent (collection absente du
+  // fichier, diffSchema).
+  const config = readConfig(pulled)
+  const backups = (config.collections ?? []).filter(collection => isBackupCollectionId(collection.$id))
+  if (backups.length > 0) {
+    config.collections = (config.collections ?? []).filter(collection => !isBackupCollectionId(collection.$id))
+    // Réécrit comme la CLI l'écrit (indentation 4, bornes 64 bits gardées au chiffre près par readConfig).
+    writeFileSync(pulled, JSON.stringify(config, null, 4))
+    console.log(`Sauvegardes écartées du fichier : ${backups.map(collection => collection.$id).join(', ')}`)
+  }
+  // Sinon copié tel quel : le fichier écrit par la CLI garde les bornes 64 bits au chiffre près.
+  copyFileSync(pulled, join(ROOT, CONFIG_FILE))
+  const kept = collections.filter(collection => !isBackupCollectionId(collection.$id)).length
+  console.log(`${CONFIG_FILE} : ${kept} collections et ${buckets.length} buckets du projet ${ENVIRONMENTS.dev.projectId}. Relisez : git diff ${CONFIG_FILE}`)
 }
 
 const ATTENTION_HINT = '\nLignes ! : bucket existant différent du fichier, jamais modifié par schema:push — à corriger dans la console Appwrite avant de s\'en servir (variable APPWRITE_STORAGE_…).'

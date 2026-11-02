@@ -9,7 +9,7 @@ import type { CandidateApp } from './applications-panel'
 import type { SocialInfo } from './social-status'
 import type { Job, FunnelStage } from '@/types'
 import type { JobFacts } from '@/lib/recruiter-dashboard'
-import type { AssignableRecruiter } from '@/lib/recruiter-assignment'
+import type { RecruiterOption } from '@/lib/recruiter-assignment'
 import {
   EMPTY_JOB_FILTERS, filterJobs, isFiltering, matchesFocus,
   type JobFilters, type JobFocus, type JobSort, type JobStatusFilter,
@@ -56,7 +56,7 @@ export function JobsListClient({
   /** L'état des diffusions n'a pas pu être lu : la colonne « Diffusion » n'est pas fiable. */
   socialUnavailable: boolean
   /** Recruteurs de l'organisation (recruteur affecté à chaque offre) ; null : équipe illisible, choix masqué. */
-  recruiters: AssignableRecruiter[] | null
+  recruiters: RecruiterOption[] | null
   /** Offres qui ont au moins une nouvelle candidature (sous-titre de la tuile). */
   jobsWithNew: number
   /** Offre à montrer (?offre= de la page, depuis le suivi d'un appel d'offres publié). */

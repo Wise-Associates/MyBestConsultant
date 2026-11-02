@@ -2,6 +2,7 @@ import { ID } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { oneMonthFromNow } from '@/lib/appwrite/jobs'
+import { jobOwnership, type JobCreator } from '@/lib/job-ownership'
 
 // Création d'une offre publique par l'admin (import d'offres, /admin/jobs). La publication depuis la page
 // « Candidats » (appels d'offres) passe par publishAoOfferOf (src/lib/ao/offer-actions.ts).
@@ -19,7 +20,7 @@ export interface AdminJobInput {
 }
 
 /** Crée l'offre (active un mois), puis la diffusion LinkedIn et le sourcing automatiques. Renvoie son $id. */
-export async function createAdminJob(job: AdminJobInput, tenantId: string): Promise<string> {
+export async function createAdminJob(job: AdminJobInput, tenantId: string, creator: JobCreator): Promise<string> {
   const { databases } = createAdminClient()
   const { tryAutoPostJobToLinkedIn } = await import('@/lib/linkedin-publish')
   const { tryAutoSourceCandidates } = await import('@/lib/auto-source-candidates')
@@ -38,6 +39,7 @@ export async function createAdminJob(job: AdminJobInput, tenantId: string): Prom
     companyName: job.companyName || undefined,
     isActive: true,
     expiresAt: oneMonthFromNow(),
+    ...jobOwnership(creator),
   })
   await tryAutoPostJobToLinkedIn({ ...doc, $id: doc.$id } as never)
   await tryAutoSourceCandidates({ ...doc, $id: doc.$id } as never)

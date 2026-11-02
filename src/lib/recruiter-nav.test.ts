@@ -5,7 +5,7 @@ import { RECRUITER_SECTIONS, recruiterSectionOf } from './recruiter-nav'
 describe('sous-menu de l\'espace recruteur', () => {
   it('garde les rubriques dans l\'ordre demandé', () => {
     assert.deepEqual(RECRUITER_SECTIONS.map(s => s.label), [
-      'Tableau de bord', 'Appels d’offres', 'Reporting', 'Mon vivier', 'CV Thèque', 'Mon équipe', 'Entretiens IA',
+      'Tableau de bord', 'Pipelines', 'Appels d’offres', 'Reporting', 'Mon vivier', 'CV Thèque', 'Mon équipe', 'Entretiens IA',
     ])
   })
 
@@ -15,12 +15,12 @@ describe('sous-menu de l\'espace recruteur', () => {
     assert.equal(recruiterSectionOf('/recruiter/vivier/job42'), 'vivier')
     assert.equal(recruiterSectionOf('/recruiter/interviews/new'), 'interviews')
     assert.equal(recruiterSectionOf('/recruiter/reporting/'), 'reporting')
+    assert.equal(recruiterSectionOf('/recruiter/funnel'), 'funnel')
   })
 
   it('range les pages sans rubrique propre sous la rubrique d\'où elles partent', () => {
     assert.equal(recruiterSectionOf('/recruiter/pipeline/job42'), 'dashboard')
     assert.equal(recruiterSectionOf('/recruiter/candidates/app7'), 'dashboard')
-    assert.equal(recruiterSectionOf('/recruiter/funnel'), 'dashboard')
     assert.equal(recruiterSectionOf('/recruiter/annonces'), 'dashboard')
     assert.equal(recruiterSectionOf('/recruiter/screening/best'), 'interviews')
     assert.equal(recruiterSectionOf('/recruiter/marque-employeur'), 'equipe')
