@@ -6,6 +6,7 @@ import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createJob, updateJobStatus, deleteJob, updateApplicationStatus, oneMonthFromNow, getJobsByTenant, getJobById } from '@/lib/appwrite/jobs'
 import { checkAssignee, notifyAssigneeWarning, setAoAssignee, setJobRecruiter } from '@/lib/recruiter-assignment'
 import { shouldNotifyAssignee } from '@/lib/assignment-email'
+import { jobOwnership } from '@/lib/job-ownership'
 import { aoAccessFor } from '@/lib/ao/platform-view'
 import type { ApplicationStatus } from '@/types'
 import type { Job } from '@/types'
@@ -50,7 +51,7 @@ export async function createJobAction(formData: FormData): Promise<{ error?: str
       companyName: formData.get('companyName') as string || undefined,
       expiresAt,
       // Affectée à celui qui la crée (réaffectable dans « Mes offres »).
-      recruiterId: user.userId,
+      ...jobOwnership(user),
     })
 
     // Publication sur les réseaux de MyBestConsultant (Make → Buffer) en arrière-plan ; à défaut, ancien auto-post LinkedIn.
@@ -116,30 +117,31 @@ export async function deleteJobAction(jobId: string): Promise<{ error?: string }
 const ASSIGN_ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,35}$/
 
 /**
- * Affecte une offre de l'organisation à un de ses recruteurs (`userId` vide : personne). Offre publiée depuis un appel
+ * Affecte une offre de l'organisation à un de ses recruteurs (`recruiterId` = son profil, users.$id ; vide : personne).
+ * Offre publiée depuis un appel
  * d'offres (identifiant « ao<offre> ») : l'AO d'origine reçoit le même recruteur. Une offre créée au tableau de bord n'a
  * pas d'AO : seule l'offre change. Le nouveau recruteur est prévenu par e-mail, celui qui affecte en copie.
  */
-export async function assignJobAction(jobId: unknown, userId: unknown): Promise<{ error?: string; warning?: string }> {
+export async function assignJobAction(jobId: unknown, recruiterId: unknown): Promise<{ error?: string; warning?: string }> {
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) return { error: 'Session expirée : reconnectez-vous.' }
-  if (typeof jobId !== 'string' || !ASSIGN_ID.test(jobId) || typeof userId !== 'string' || (userId && !ASSIGN_ID.test(userId))) {
+  if (typeof jobId !== 'string' || !ASSIGN_ID.test(jobId) || typeof recruiterId !== 'string' || (recruiterId && !ASSIGN_ID.test(recruiterId))) {
     return { error: 'Affectation invalide.' }
   }
   const warnings: string[] = []
   try {
-    const refused = await checkAssignee(user.tenantId, userId)
+    const refused = await checkAssignee(user.tenantId, recruiterId)
     if (refused) return { error: refused }
     // Lue avant : recruteur d'avant (pas d'e-mail s'il ne change pas), intitulé et ville pour l'e-mail.
     const job = await getJobById(jobId)
     if (!job || job.tenantId !== user.tenantId) return { error: 'Offre introuvable.' }
-    if (!(await setJobRecruiter(user.tenantId, jobId, userId))) return { error: 'Offre introuvable.' }
+    if (!(await setJobRecruiter(user.tenantId, jobId, recruiterId))) return { error: 'Offre introuvable.' }
     if (jobId.startsWith('ao')) {
       const offerId = jobId.slice(2)
       try {
         // Contrôle redoublé : l'AO doit venir d'une boîte de l'organisation (l'offre l'est déjà).
         if (await aoAccessFor(user.tenantId).offer(offerId)) {
-          await setAoAssignee(offerId, userId)
+          await setAoAssignee(offerId, recruiterId)
           revalidatePath(`/recruiter/parametres/boites-ao/${offerId}`)
         }
       } catch (err) {
@@ -147,9 +149,9 @@ export async function assignJobAction(jobId: unknown, userId: unknown): Promise<
         warnings.push('Recruteur affecté à l’offre, mais pas à l’appel d’offres d’origine : réessayez dans un instant.')
       }
     }
-    if (shouldNotifyAssignee(job.recruiterId ?? '', userId, user.userId)) {
+    if (shouldNotifyAssignee(job.recruiterId ?? '', recruiterId, user.$id)) {
       const warning = await notifyAssigneeWarning({
-        tenantId: user.tenantId, assigneeId: userId, assignerId: user.userId,
+        tenantId: user.tenantId, assigneeId: recruiterId, assignerUserId: user.userId,
         assignerName: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email,
         kind: 'job', title: job.title, location: job.location, path: `/recruiter/pipeline/${encodeURIComponent(jobId)}/matching`,
       })

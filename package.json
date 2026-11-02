@@ -19,6 +19,8 @@
     "ao:poll:status": "node scripts/ao-poll.mjs status",
     "assistant:setup": "node --network-family-autoselection-attempt-timeout=2000 scripts/setup-assistant-collections.mjs",
     "cv-export:setup": "node --network-family-autoselection-attempt-timeout=2000 scripts/setup-cv-export-storage.mjs",
+    "jobs:move-tenant": "tsx --network-family-autoselection-attempt-timeout=2000 scripts/jobs-move-tenant.mts",
+    "jobs:fill-recruiter": "tsx --network-family-autoselection-attempt-timeout=2000 scripts/jobs-fill-recruiter.mts",
     "appwrite": "node --network-family-autoselection-attempt-timeout=2000 node_modules/appwrite-cli/index.js",
     "schema:pull": "tsx scripts/appwrite-schema.mts pull",
     "schema:check": "tsx scripts/appwrite-schema.mts check",

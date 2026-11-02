@@ -11,7 +11,7 @@ import { listAllDocuments } from '@/lib/appwrite/list-all'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
 import { jobFacts, relativeAge, summarize } from '@/lib/recruiter-dashboard'
-import { listTenantRecruiters } from '@/lib/recruiter-assignment'
+import { listTenantRecruiters, recruiterOptions } from '@/lib/recruiter-assignment'
 import { CreateJobDialog } from './create-job-dialog'
 import type { CandidateApp } from './applications-panel'
 import { JobsListClient, type DashboardJobRow } from './jobs-list-client'
@@ -157,7 +157,7 @@ export default async function RecruiterDashboard({ searchParams }: { searchParam
         {/* « À traiter » puis « Mes offres » : les tuiles filtrent la liste, elles partagent son état. Les autres outils
             sont dans le sous-menu de l'espace (layout recruteur). */}
         <JobsListClient rows={rows} appsByJob={appsByJobRecord} funnelStages={funnelStages}
-          socialEnabled={isMakeConfigured()} socialUnavailable={socialPosts === null} recruiters={recruiters} jobsWithNew={summary.applications.jobsWithNew}
+          socialEnabled={isMakeConfigured()} socialUnavailable={socialPosts === null} recruiters={recruiters && recruiterOptions(recruiters)} jobsWithNew={summary.applications.jobsWithNew}
           focusJobId={typeof offre === 'string' ? offre : undefined}
           action={
             <Suspense fallback={null}>

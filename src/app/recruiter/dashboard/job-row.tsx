@@ -10,7 +10,7 @@ import { JobAssigneeSelect } from './job-assignee-select'
 import type { CandidateApp } from './applications-panel'
 import type { DashboardJobRow } from './jobs-list-client'
 import type { FunnelStage } from '@/types'
-import type { AssignableRecruiter } from '@/lib/recruiter-assignment'
+import type { RecruiterOption } from '@/lib/recruiter-assignment'
 import { startNavigationProgress } from '@/components/shared/navigation-progress'
 
 const CONTRACT_LABELS: Record<string, string> = {
@@ -26,7 +26,7 @@ const amberBadge = { background: '#b4530914', color: '#b45309' }
 
 export function JobRow({ row, apps, stages, canPublish, recruiters, first, focused, focusRef, onOpenApplications }: {
   row: DashboardJobRow; apps: CandidateApp[]; stages: FunnelStage[]; canPublish: boolean
-  recruiters: AssignableRecruiter[] | null; first: boolean
+  recruiters: RecruiterOption[] | null; first: boolean
   focused: boolean; focusRef?: Ref<HTMLElement>; onOpenApplications: () => void
 }) {
   const router = useRouter()
