@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { oneMonthFromNow } from '@/lib/appwrite/jobs'
+import { jobOwnership } from '@/lib/job-ownership'
 import { ID, Query } from 'node-appwrite'
 import { revalidatePath } from 'next/cache'
 import {
@@ -418,7 +419,7 @@ export async function checkScrapeRun(
   apifyRunId: string,
   cfg: LinkedInScrapeConfig,
 ): Promise<ScrapeRun> {
-  await requireAdmin()
+  const admin = await requireAdmin()
   const token = process.env.APIFY_TOKEN!
   const startedAt = new Date().toISOString()
 
@@ -489,7 +490,7 @@ export async function checkScrapeRun(
           contractType: job.jobType === 'contract' ? 'mission' : 'cdi',
           remote: job.remote, skills: job.skills,
           description: job.description, companyName: job.company,
-          tenantId: '', isActive: true,
+          tenantId: '', isActive: true, ...jobOwnership(admin),
           expiresAt: oneMonthFromNow(),
         })
         published++
@@ -527,7 +528,7 @@ export async function checkScrapeRun(
 // ── Publier / ignorer ─────────────────────────────────────────────
 
 export async function publishLinkedInJob(jobId: string): Promise<{ error?: string }> {
-  await requireAdmin()
+  const admin = await requireAdmin()
   try {
     const { databases } = createAdminClient()
     const doc = await databases.getDocument(DB_ID, COLLECTIONS.LINKEDIN_JOBS, jobId)
@@ -539,7 +540,7 @@ export async function publishLinkedInJob(jobId: string): Promise<{ error?: strin
       skills:       doc.skills,
       description:  doc.description,
       companyName:  doc.company,
-      tenantId: '', isActive: true,
+      tenantId: '', isActive: true, ...jobOwnership(admin),
       expiresAt: oneMonthFromNow(),
     })
     await databases.updateDocument(DB_ID, COLLECTIONS.LINKEDIN_JOBS, jobId, { status: 'published' })
@@ -562,7 +563,7 @@ export async function publishLinkedInJob(jobId: string): Promise<{ error?: strin
 }
 
 export async function publishMultipleLinkedInJobs(jobIds: string[]): Promise<{ published: number; error?: string }> {
-  await requireAdmin()
+  const admin = await requireAdmin()
   try {
     const { databases } = createAdminClient()
     const liCfg = await readLinkedInPublishConfig()
@@ -581,7 +582,7 @@ export async function publishMultipleLinkedInJobs(jobIds: string[]): Promise<{ p
           skills:       doc.skills,
           description:  doc.description,
           companyName:  doc.company,
-          tenantId: '', isActive: true,
+          tenantId: '', isActive: true, ...jobOwnership(admin),
           expiresAt: oneMonthFromNow(),
         })
         await databases.updateDocument(DB_ID, COLLECTIONS.LINKEDIN_JOBS, jobId, { status: 'published' })

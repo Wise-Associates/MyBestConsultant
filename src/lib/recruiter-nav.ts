@@ -2,7 +2,7 @@
 // rubriques, dans l'ordre affiché, et la rubrique d'une page. Demande du 2026-10-30 : un sous-menu à la place des
 // cartes du tableau de bord. Règles pures, testées dans recruiter-nav.test.ts.
 
-export type RecruiterSectionKey = 'dashboard' | 'ao' | 'reporting' | 'vivier' | 'cvtheque' | 'equipe' | 'interviews'
+export type RecruiterSectionKey = 'dashboard' | 'funnel' | 'ao' | 'reporting' | 'vivier' | 'cvtheque' | 'equipe' | 'interviews'
 
 export interface RecruiterSection {
   key: RecruiterSectionKey
@@ -13,9 +13,12 @@ export interface RecruiterSection {
 }
 
 export const RECRUITER_SECTIONS: RecruiterSection[] = [
-  // Pipeline, fiche candidat, import, processus de recrutement et suivi des annonces (lien « Suivi & rapports » de
-  // « Mes offres », sans rubrique depuis le 2026-10-30) partent des offres du tableau de bord.
-  { key: 'dashboard', label: 'Tableau de bord', href: '/recruiter/dashboard', also: ['/recruiter/pipeline', '/recruiter/candidates', '/recruiter/candidate-preview', '/recruiter/import', '/recruiter/funnel', '/recruiter/annonces'] },
+  // Pipeline d'une offre, fiche candidat, import et suivi des annonces (lien « Suivi & rapports » de « Mes offres », sans
+  // rubrique depuis le 2026-10-30) partent des offres du tableau de bord.
+  { key: 'dashboard', label: 'Tableau de bord', href: '/recruiter/dashboard', also: ['/recruiter/pipeline', '/recruiter/candidates', '/recruiter/candidate-preview', '/recruiter/import', '/recruiter/annonces'] },
+  // Processus de recrutement : pipelines, phases et statuts de l'organisation (retiré du sous-menu le 2026-10-30, remis
+  // le 2026-11-02 ; libellé court pour que les onglets tiennent sur une ligne).
+  { key: 'funnel', label: 'Pipelines', href: '/recruiter/funnel', also: [] },
   { key: 'ao', label: 'Appels d’offres', href: '/recruiter/parametres/boites-ao', also: [] },
   { key: 'reporting', label: 'Reporting', href: '/recruiter/reporting', also: [] },
   { key: 'vivier', label: 'Mon vivier', href: '/recruiter/vivier', also: [] },

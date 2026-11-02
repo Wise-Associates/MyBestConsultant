@@ -4,22 +4,23 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2, UserRound } from 'lucide-react'
 import { assignJobAction } from './actions'
+import type { RecruiterOption } from '@/lib/recruiter-assignment'
 
 // Recruteur affecté à une offre, dans sa ligne de « Mes offres » (demande du 2026-11-02). Une offre publiée depuis un
-// appel d'offres garde le même recruteur que l'AO (assignJobAction).
+// appel d'offres garde le même recruteur que l'AO (assignJobAction). Valeur = profil du recruteur (users.$id, ADR 0023).
 
 export function JobAssigneeSelect({ jobId, jobTitle, assigneeId, recruiters }: {
   jobId: string
   jobTitle: string
   assigneeId: string
-  recruiters: { userId: string; name: string }[]
+  recruiters: RecruiterOption[]
 }) {
   const router = useRouter()
   const [value, setValue] = useState(assigneeId)
   const [message, setMessage] = useState<{ tone: 'error' | 'warning'; text: string } | null>(null)
   const [pending, startTransition] = useTransition()
   // Recruteur affecté qui n'est plus dans l'équipe (parti) : gardé dans la liste pour ne pas afficher « Non affectée ».
-  const known = !value || recruiters.some(r => r.userId === value)
+  const known = !value || recruiters.some(r => r.id === value)
 
   function change(next: string) {
     const previous = value
@@ -52,7 +53,7 @@ export function JobAssigneeSelect({ jobId, jobTitle, assigneeId, recruiters }: {
           style={{ color: value ? 'var(--color-text)' : 'var(--color-text-muted)' }}>
           <option value="">Non affectée</option>
           {!known && <option value={value}>Recruteur hors de l’équipe</option>}
-          {recruiters.map(r => <option key={r.userId} value={r.userId}>{r.name}</option>)}
+          {recruiters.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
         </select>
         {pending && <Loader2 className="h-3.25 w-3.25 animate-spin shrink-0" aria-label="Enregistrement…" />}
       </label>

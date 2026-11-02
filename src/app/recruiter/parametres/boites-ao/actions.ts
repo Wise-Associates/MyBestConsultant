@@ -121,7 +121,7 @@ export async function previewRecruiterAoPublication(id: string, mode?: Publicati
 export async function publishRecruiterAoOffer(id: string, input: PublicationDraft) {
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
-  return publishAoOfferOf(me.tenantId, id, input, me.tenantId, [PATH, '/recruiter/annonces', '/recruiter/dashboard'])
+  return publishAoOfferOf(me.tenantId, id, input, me.tenantId, [PATH, '/recruiter/annonces', '/recruiter/dashboard'], me.user)
 }
 
 export async function setRecruiterAoOfferStatus(id: string, status: 'to_review' | 'ignored') {
@@ -162,11 +162,11 @@ export async function deleteRecruiterAoOffer(id: string) {
 }
 
 /** Recruteur de l'organisation affecté à l'offre, repris par l'offre publiée (demande de Dav du 2026-10-31). */
-export async function assignRecruiterAoOffer(id: string, userId: string) {
+export async function assignRecruiterAoOffer(id: string, recruiterId: string) {
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
-  if (typeof id !== 'string' || typeof userId !== 'string' || userId.length > 36) return { error: 'Affectation invalide.' }
+  if (typeof id !== 'string' || typeof recruiterId !== 'string' || recruiterId.length > 36) return { error: 'Affectation invalide.' }
   const name = `${me.user.firstName ?? ''} ${me.user.lastName ?? ''}`.trim() || me.user.email
-  return assignAoOfferOf(me.tenantId, id, userId, [PATH, `${PATH}/${id}`, '/recruiter/dashboard'],
-    { userId: me.user.userId, name, offerPath: `${PATH}/${encodeURIComponent(id)}` })
+  return assignAoOfferOf(me.tenantId, id, recruiterId, [PATH, `${PATH}/${id}`, '/recruiter/dashboard'],
+    { id: me.user.$id, userId: me.user.userId, name, offerPath: `${PATH}/${encodeURIComponent(id)}` })
 }

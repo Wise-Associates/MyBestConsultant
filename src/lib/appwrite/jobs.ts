@@ -168,7 +168,9 @@ export async function createJob(data: {
   salary?: number
   companyName?: string
   expiresAt?: string
-  recruiterId?: string
+  /** Auteur et recruteur affecté, profils (users.$id) : jobOwnership (src/lib/job-ownership.ts). */
+  postedBy: string
+  recruiterId: string
 }, id?: string): Promise<Job> {
   const { databases } = createAdminClient()
   // `id` fixe (offre publiée depuis un appel d'offres) : une seconde création échoue (409) au lieu de faire un doublon.

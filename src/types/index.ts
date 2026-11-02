@@ -19,6 +19,7 @@ export interface Tenant {
   name: string
   slug: string
   logoUrl?: string
+  /** Propriétaire de l'organisation (un seul) : compte Auth (users.userId). */
   recruiterId: string
   createdAt: string
 }
@@ -38,7 +39,7 @@ export interface Job {
   salary?: number // €/month for CDI, TJM for freelance/mission
   companyName?: string // denormalized from tenant for display speed
   expiresAt?: string   // ISO date — auto-deactivation
-  /** Recruteur affecté (identifiant Auth de l'utilisateur) ; absent : non affecté. */
+  /** Recruteur affecté : profil (users.$id, ADR 0023), comme postedBy ; absent : non affecté. */
   recruiterId?: string
 }
 

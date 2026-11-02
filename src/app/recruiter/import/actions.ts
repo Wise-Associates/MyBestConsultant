@@ -4,6 +4,7 @@ import { callLLM } from '@/lib/ai/llm-router'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { oneMonthFromNow } from '@/lib/appwrite/jobs'
+import { jobOwnership } from '@/lib/job-ownership'
 import { ID } from 'node-appwrite'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { revalidatePath } from 'next/cache'
@@ -214,7 +215,7 @@ export async function confirmImport(jobs: ExtractedJob[]): Promise<{ imported: n
         description: job.description,
         companyName: job.companyName,
         tenantId,
-        postedBy: user.$id,
+        ...jobOwnership(user),
         isActive: true,
         aiScore: null,
         applicationCount: 0,
@@ -255,6 +256,7 @@ export async function importJobsChunk(
 
   const { databases } = createAdminClient()
   const tenantId = user.tenantId ?? ''
+  const ownership = jobOwnership(user)
   let created = 0
   const failed: { title: string; error: string }[] = []
 
@@ -271,7 +273,7 @@ export async function importJobsChunk(
       description: String(job.description ?? '').trim().slice(0, 60_000) || title,
       companyName: String(job.companyName ?? '').slice(0, 1000),
       tenantId,
-      postedBy: user!.$id,
+      ...ownership,
       isActive: true,
       aiScore: null,
       applicationCount: 0,
