@@ -88,5 +88,22 @@ export function indexFilterQueries(tenantId: string, f: AoFilters): string[] {
   return queries
 }
 
+/**
+ * Requêtes des indicateurs du haut de la page, qui suivent les filtres (demande du 2026-11-02) : chaque statut compte les
+ * offres qui passent tous les filtres sauf le statut (un clic sur un indicateur change le statut : les trois restent
+ * lisibles) ; les doublons, celles qui passent tous les filtres.
+ */
+export function countQueries(tenantId: string, f: AoFilters): { byStatus: Record<'to_review' | 'published' | 'ignored', string[]>; duplicates: string[] } {
+  const others = indexFilterQueries(tenantId, { ...f, status: 'all' })
+  return {
+    byStatus: {
+      to_review: [...others, Query.equal('status', 'to_review')],
+      published: [...others, Query.equal('status', 'published')],
+      ignored: [...others, Query.equal('status', 'ignored')],
+    },
+    duplicates: [...indexFilterQueries(tenantId, f), Query.greaterThan('sourceCount', 1)],
+  }
+}
+
 /** Ordre de la liste : la plus récemment reçue d'abord ; identifiant pour départager (pages stables). */
 export const INDEX_ORDER = [Query.orderDesc('receivedAt'), Query.orderDesc('$id')]

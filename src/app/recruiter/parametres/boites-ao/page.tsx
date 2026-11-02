@@ -3,7 +3,7 @@ import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import type { AoPageView } from '@/lib/ao/dashboard-types'
-import { filtersFromSearchParams, filtersToSearchParams } from '@/lib/ao/filters'
+import { filtersFromSearchParams, listSizeFromSearchParams } from '@/lib/ao/filters'
 import { emptyAoView, loadAoView, searchParamsOf } from '@/lib/ao/platform-view'
 import type { TrackingStep } from '@/lib/ao/tracking'
 import { loadAoTracking } from '@/lib/ao/tracking-store'
@@ -26,6 +26,7 @@ export default async function RecruiterAoOffersPage({ searchParams }: { searchPa
   if (!user || user.role !== 'recruiter' || !user.tenantId) redirect('/login')
   const sp = searchParamsOf(await searchParams)
   const filters = filtersFromSearchParams(sp)
+  const size = listSizeFromSearchParams(sp)
 
   let view: AoPageView = emptyAoView()
   let inboxConfigured = false
@@ -34,7 +35,7 @@ export default async function RecruiterAoOffersPage({ searchParams }: { searchPa
   let loadError = ''
   try {
     const { databases } = createAdminClient()
-    const [tenant, loaded] = await Promise.all([databases.getDocument(DB_ID, COLLECTIONS.TENANTS, user.tenantId), loadAoView(user.tenantId, filters)])
+    const [tenant, loaded] = await Promise.all([databases.getDocument(DB_ID, COLLECTIONS.TENANTS, user.tenantId), loadAoView(user.tenantId, filters, size)])
     if (!canUseAoSourcing(tenant.$id, typeof tenant.subscriptionStatus === 'string' ? tenant.subscriptionStatus : null)) {
       accessAlert = 'Votre abonnement n’est pas actif : vos boîtes ne sont pas lues. Elles le seront dès sa réactivation (page « Abonnement »).'
     }
@@ -61,7 +62,6 @@ export default async function RecruiterAoOffersPage({ searchParams }: { searchPa
     <AoOffersDashboard
       view={view}
       filters={filters}
-      query={filtersToSearchParams(filters).toString()}
       inboxConfigured={inboxConfigured}
       mailboxIssues={mailboxIssues}
       loadError={loadError}
@@ -77,6 +77,7 @@ export default async function RecruiterAoOffersPage({ searchParams }: { searchPa
         statistics: '/recruiter/parametres/boites-ao/statistiques',
         mailboxes: '/recruiter/parametres/boites-ao/boites',
         exportApi: '/api/recruiter/ao/export',
+        listApi: '/api/recruiter/ao/liste',
         originalApi: '/api/recruiter/ao/original',
         jobs: '/recruiter/annonces',
       }}

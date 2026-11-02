@@ -6,7 +6,7 @@ import { MAX_ATTEMPTS } from './attempts'
 import type { AoOfferCounts } from './dashboard-types'
 import type { AoFilters, AoOfferRow } from './filters'
 import { AO_MAX_LISTED } from './filters'
-import { INDEX_ORDER, indexDocumentOf, indexFilterQueries, senderOf, type AoIndexContext, type AoOfferIndexDoc } from './offer-index'
+import { INDEX_ORDER, countQueries, indexDocumentOf, indexFilterQueries, senderOf, type AoIndexContext, type AoOfferIndexDoc } from './offer-index'
 import { parseSender } from './origin'
 import type { AoChannel, AoContact, AoEmail, AoEmailStatus, AoOffer, AoOfferDetails, AoOfferFields, AoOfferStatus } from './types'
 import { engagementOf } from './parse'
@@ -550,29 +550,51 @@ async function aoOfferRowsOf(offers: AoOffer[], tenantId: string): Promise<AoOff
 }
 
 /**
- * Identifiants des offres de l'organisation qui passent les filtres, dans l'ordre de la liste (la plus récemment reçue
- * d'abord), AO_MAX_LISTED au plus : la liste elle-même, et les offres précédente et suivante d'une page d'offre.
+ * Identifiants de `limit` offres de l'organisation qui passent les filtres, à partir de la `offset`-ième, dans l'ordre de
+ * la liste (la plus récemment reçue d'abord), et le nombre d'offres qui les passent (Appwrite compte et décale jusqu'à
+ * AO_MAX_LISTED).
  */
-export async function listAoOfferIds(tenantId: string, filters: AoFilters): Promise<string[]> {
+async function listAoOfferIdsRange(tenantId: string, filters: AoFilters, offset: number, limit: number): Promise<{ ids: string[]; total: number }> {
   const { databases } = createAdminClient()
+  const end = Math.min(offset + limit, AO_MAX_LISTED)
   // Par décalage plutôt que par curseur : les offres d'un même e-mail ont la même date de réception, et un curseur sur
   // deux critères de tri pourrait sauter ou répéter des lignes à la jointure des lots. Le premier lot donne le total, les
   // suivants sont lus en parallèle. Doublons écartés quand même.
-  const batch = (offset: number) => databases.listDocuments(DB_ID, COLLECTIONS.AO_OFFER_INDEX, [
+  const batch = (from: number) => databases.listDocuments(DB_ID, COLLECTIONS.AO_OFFER_INDEX, [
     ...indexFilterQueries(tenantId, filters),
     ...INDEX_ORDER,
     Query.select(['$id']),
-    Query.limit(Math.min(500, AO_MAX_LISTED - offset)),
-    Query.offset(offset),
+    Query.limit(Math.max(1, Math.min(500, end - from))),
+    Query.offset(from),
   ])
-  const first = await batch(0)
-  const offsets: number[] = []
-  for (let offset = 500; offset < Math.min(first.total, AO_MAX_LISTED); offset += 500) offsets.push(offset)
-  const rest = await Promise.all(offsets.map(batch))
-  return [...new Set([first, ...rest].flatMap(res => res.documents.map(doc => doc.$id)))]
+  const first = await batch(offset)
+  const starts: number[] = []
+  for (let from = offset + 500; from < Math.min(first.total, end); from += 500) starts.push(from)
+  const rest = await Promise.all(starts.map(batch))
+  const ids = offset < end ? [first, ...rest].flatMap(res => res.documents.map(doc => doc.$id)) : []
+  return { ids: [...new Set(ids)], total: first.total }
 }
 
-/** Offres de l'organisation qui passent les filtres (tableau, export Excel, statistiques), dans l'ordre de la liste. */
+/**
+ * Identifiants de toutes les offres de l'organisation qui passent les filtres, dans l'ordre de la liste, AO_MAX_LISTED
+ * au plus : offres précédente et suivante d'une page d'offre, export et statistiques.
+ */
+export async function listAoOfferIds(tenantId: string, filters: AoFilters): Promise<string[]> {
+  return (await listAoOfferIdsRange(tenantId, filters, 0, AO_MAX_LISTED)).ids
+}
+
+/**
+ * `limit` lignes du tableau à partir de la `offset`-ième (chargé par 50, demande du 2026-11-02 : seules ces offres sont
+ * lues avec leur e-mail, leurs détails et leurs commentaires), et le nombre d'offres qui passent les filtres.
+ */
+export async function listAoOfferRowsRange(
+  tenantId: string, filters: AoFilters, offset: number, limit: number,
+): Promise<{ rows: AoOfferRow[]; total: number }> {
+  const { ids, total } = await listAoOfferIdsRange(tenantId, filters, offset, limit)
+  return { rows: await aoOfferRowsOf(await listAoOffersByIds(ids, tenantId), tenantId), total }
+}
+
+/** Toutes les offres de l'organisation qui passent les filtres (export Excel, statistiques), dans l'ordre de la liste. */
 export async function listAllAoOfferRows(tenantId: string, filters: AoFilters): Promise<AoOfferRow[]> {
   return aoOfferRowsOf(await listAoOffersByIds(await listAoOfferIds(tenantId, filters), tenantId), tenantId)
 }
@@ -583,11 +605,15 @@ export async function getAoOfferRow(offer: AoOffer, tenantId: string): Promise<A
   return row ?? null
 }
 
-/** Indicateurs du haut de la page, sur toutes les offres de l'organisation (pas seulement celles qui passent les filtres). */
-export async function aoOfferCounts(tenantId: string): Promise<AoOfferCounts> {
+/**
+ * Indicateurs du haut de la page, selon les filtres (`countQueries`, offer-index.ts), et `received` : toutes les offres de
+ * l'organisation, sans filtre (« N résultats sur M », liste encore vide).
+ */
+export async function aoOfferCounts(tenantId: string, filters: AoFilters): Promise<AoOfferCounts> {
   const { databases } = createAdminClient()
-  const count = async (status: string) => (await databases.listDocuments(DB_ID, COLLECTIONS.AO_OFFER_INDEX, [
-    Query.equal('tenantId', tenantId), Query.equal('status', status), Query.select(['$id']), Query.limit(1),
+  const queries = countQueries(tenantId, filters)
+  const count = async (q: string[]) => (await databases.listDocuments(DB_ID, COLLECTIONS.AO_OFFER_INDEX, [
+    ...q, Query.select(['$id']), Query.limit(1),
   ])).total
   // Doublons : peu d'offres en ont, on les lit toutes (nombre d'e-mails seulement).
   const duplicates = async () => {
@@ -595,7 +621,7 @@ export async function aoOfferCounts(tenantId: string): Promise<AoOfferCounts> {
     let cursor: string | undefined
     for (;;) {
       const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_OFFER_INDEX, [
-        Query.equal('tenantId', tenantId), Query.greaterThan('sourceCount', 1), Query.select(['$id', 'sourceCount']), Query.limit(500),
+        ...queries.duplicates, Query.select(['$id', 'sourceCount']), Query.limit(500),
         ...(cursor ? [Query.cursorAfter(cursor)] : []),
       ])
       sum += res.documents.reduce((n, d) => n + num((d as Models.Document & Record<string, unknown>).sourceCount) - 1, 0)
@@ -603,6 +629,9 @@ export async function aoOfferCounts(tenantId: string): Promise<AoOfferCounts> {
       cursor = res.documents[res.documents.length - 1].$id
     }
   }
-  const [toReview, published, ignored, merged] = await Promise.all([count('to_review'), count('published'), count('ignored'), duplicates()])
-  return { toReview, published, ignored, duplicates: merged }
+  const [toReview, published, ignored, merged, received] = await Promise.all([
+    count(queries.byStatus.to_review), count(queries.byStatus.published), count(queries.byStatus.ignored), duplicates(),
+    count([Query.equal('tenantId', tenantId)]),
+  ])
+  return { toReview, published, ignored, duplicates: merged, received }
 }

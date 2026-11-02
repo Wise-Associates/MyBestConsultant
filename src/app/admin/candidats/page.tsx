@@ -1,6 +1,6 @@
 import { requireAdmin } from '@/lib/appwrite/auth'
 import type { AoPageView } from '@/lib/ao/dashboard-types'
-import { filtersFromSearchParams, filtersToSearchParams } from '@/lib/ao/filters'
+import { filtersFromSearchParams, listSizeFromSearchParams } from '@/lib/ao/filters'
 import { emptyAoView, loadPlatformAoView, searchParamsOf } from '@/lib/ao/platform-view'
 import type { TrackingStep } from '@/lib/ao/tracking'
 import { loadAoTracking } from '@/lib/ao/tracking-store'
@@ -17,12 +17,13 @@ export default async function AdminAoOffersPage({ searchParams }: { searchParams
   await requireAdmin()
   const sp = searchParamsOf(await searchParams)
   const filters = filtersFromSearchParams(sp)
+  const size = listSizeFromSearchParams(sp)
   let view: AoPageView = emptyAoView()
   let inboxConfigured = false
   let mailboxIssues: MailboxIssue[] = []
   let loadError = ''
   try {
-    const { sources, ...pageView } = await loadPlatformAoView(filters)
+    const { sources, ...pageView } = await loadPlatformAoView(filters, size)
     view = pageView
     const enabled = sources.filter(s => s.enabled)
     inboxConfigured = enabled.length > 0
@@ -45,7 +46,6 @@ export default async function AdminAoOffersPage({ searchParams }: { searchParams
       titleInAdminBar
       view={view}
       filters={filters}
-      query={filtersToSearchParams(filters).toString()}
       inboxConfigured={inboxConfigured}
       mailboxIssues={mailboxIssues}
       loadError={loadError}
@@ -60,6 +60,7 @@ export default async function AdminAoOffersPage({ searchParams }: { searchParams
         statistics: '/admin/candidats/statistiques',
         mailboxes: '/admin/candidats/boites',
         exportApi: '/api/admin/candidats/export',
+        listApi: '/api/admin/candidats/liste',
         originalApi: '/api/admin/candidats/original',
         jobs: '/admin/jobs',
       }}

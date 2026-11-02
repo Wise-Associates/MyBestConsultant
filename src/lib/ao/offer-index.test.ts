@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { EMPTY_AO_FILTERS, type AoFilters } from './filters'
-import { indexDocumentOf, indexFilterQueries, senderOf } from './offer-index'
+import { countQueries, indexDocumentOf, indexFilterQueries, senderOf } from './offer-index'
 import type { AoOffer } from './types'
 
 const offer = (over: Partial<AoOffer> = {}): AoOffer => ({
@@ -68,5 +68,19 @@ describe('index de la liste des offres AO', () => {
     assert.deepEqual(senderOf({ origin: 'Claire Martin <claire@client-fictif.fr>', fromName: 'Marc', fromAddress: 'marc@wise-associates.fr' }),
       { name: 'Claire Martin', address: 'claire@client-fictif.fr' })
     assert.deepEqual(senderOf({ origin: '', fromName: 'Marc', fromAddress: 'marc@wise-associates.fr' }), { name: 'Marc', address: 'marc@wise-associates.fr' })
+  })
+
+  it('fait suivre les filtres aux indicateurs : statuts sans le filtre de statut, doublons avec tous les filtres', () => {
+    const parse = (qs: string[]) => qs.map(q => JSON.parse(q) as { method: string; attribute: string; values: unknown[] })
+    const q = countQueries('org-a', { ...EMPTY_AO_FILTERS, status: 'published', city: 'Lyon' })
+    for (const [status, queries] of Object.entries(q.byStatus)) {
+      const parsed = parse(queries)
+      assert.deepEqual(parsed[0], { method: 'equal', attribute: 'tenantId', values: ['org-a'] }, 'organisation en premier')
+      assert.ok(parsed.some(p => p.method === 'contains' && p.attribute === 'city'), 'autres filtres repris')
+      assert.deepEqual(parsed.filter(p => p.attribute === 'status'), [{ method: 'equal', attribute: 'status', values: [status] }], 'seul son statut')
+    }
+    const duplicates = parse(q.duplicates)
+    assert.ok(duplicates.some(p => p.attribute === 'status' && (p.values as string[])[0] === 'published'), 'doublons : statut filtré compris')
+    assert.ok(duplicates.some(p => p.method === 'greaterThan' && p.attribute === 'sourceCount'))
   })
 })
