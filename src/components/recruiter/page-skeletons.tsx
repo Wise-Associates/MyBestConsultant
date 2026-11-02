@@ -136,13 +136,60 @@ export function SectionPageSkeleton({ content = 'list' }: { content?: 'list' | '
 }
 
 /** Tableau de bord : chiffres, filtres et « Créer une offre », puis « Mes offres ». */
+/** Tableau de bord : indicateurs séparés par un filet, tuiles « À traiter », puis « Mes offres ». */
 export function DashboardSkeleton() {
   return (
     <SkeletonRegion label="Chargement du tableau de bord…" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
-        <StatCards count={4} />
-        <FilterBar selects={2} action />
-        <ListCard rows={5} />
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-7">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-px rounded-[20px] overflow-hidden" style={{ background: 'var(--color-border)', border: '1px solid var(--color-border)' }}>
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="px-4 py-4 sm:px-6 sm:py-5 space-y-2.5" style={{ background: 'var(--color-surface)' }}>
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-8 w-14" />
+              <Skeleton className="h-3 w-32 max-w-full" />
+            </div>
+          ))}
+        </div>
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-24" />
+          <div className="flex gap-2.5 overflow-hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:gap-3">
+            {Array.from({ length: 4 }, (_, i) => (
+              <div key={i} className="flex-none w-57.5 sm:w-auto flex items-center gap-3.5 px-4 py-3.5 rounded-2xl" style={card}>
+                <Skeleton className="w-10 h-10 rounded-xl shrink-0" />
+                <div className="space-y-2 flex-1">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-[20px] overflow-hidden" style={card}>
+          <div className="px-4 sm:px-6 pt-5 pb-4 flex flex-wrap items-center justify-between gap-3">
+            <Skeleton className="h-5 w-36" />
+            <div className="flex gap-2.5 w-full sm:w-auto">
+              <Skeleton className="h-10 w-36 rounded-[10px]" />
+              <Skeleton className="h-10 flex-1 sm:flex-none sm:w-40 rounded-xl" />
+            </div>
+          </div>
+          <div className="px-4 sm:px-6 pb-4 flex flex-col sm:flex-row gap-2.5">
+            <Skeleton className="h-11 sm:h-10 flex-1 rounded-xl" />
+            <Skeleton className="h-11 sm:h-10 sm:w-64 rounded-xl" />
+            <Skeleton className="h-11 sm:h-10 sm:w-80 rounded-xl" />
+          </div>
+          {Array.from({ length: 5 }, (_, i) => (
+            <div key={i} className="px-4 sm:px-6 py-4 grid grid-cols-2 lg:grid-cols-[minmax(0,1fr)_124px_200px_180px_88px] gap-x-5 gap-y-4 items-center" style={{ borderTop: '1px solid var(--color-border)' }}>
+              <div className="col-span-2 lg:col-span-1 space-y-2">
+                <Skeleton className="h-4 w-3/5" />
+                <Skeleton className="h-3 w-2/5" />
+              </div>
+              <Skeleton className="h-6 w-16" />
+              <Skeleton className="h-1.5 w-full rounded-full" />
+              <Skeleton className="hidden lg:block h-8 w-36" />
+              <Skeleton className="hidden lg:block h-8 w-20 justify-self-end" />
+            </div>
+          ))}
+        </div>
       </div>
     </SkeletonRegion>
   )
