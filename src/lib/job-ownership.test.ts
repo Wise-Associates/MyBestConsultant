@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { jobOwnership, planJobRecruiter, type UserRef } from './job-ownership'
+import { jobOwnership, planJobRecruiter, recruiterCanOpenJob, type UserRef } from './job-ownership'
 
 const author: UserRef = { $id: 'profil1', userId: 'auth1', tenantId: 'org1', role: 'recruiter' }
 const colleague: UserRef = { $id: 'profil2', userId: 'auth2', tenantId: 'org1', role: 'recruiter' }
@@ -38,5 +38,18 @@ describe('recruteur affecté d’une offre existante (script)', () => {
     assert.deepEqual(planJobRecruiter({ tenantId: 'org2', postedBy: 'profil1', recruiterId: '' }, find), { note: 'author-outside' }, 'offre déplacée')
     assert.deepEqual(planJobRecruiter({ tenantId: '', postedBy: 'profil1', recruiterId: '' }, find), { note: 'author-outside' }, 'offre de la plateforme')
     assert.deepEqual(planJobRecruiter({ tenantId: 'org1', postedBy: '', recruiterId: '' }, find), { note: 'unowned' })
+  })
+})
+
+describe('offre ouverte par un recruteur (pipeline, Matching IA)', () => {
+  it('offre de son organisation ou partagée par la plateforme', () => {
+    assert.equal(recruiterCanOpenJob('org1', 'org1'), true)
+    assert.equal(recruiterCanOpenJob('', 'org1'), true)
+  })
+
+  it('jamais l’offre d’une autre organisation, ni sans organisation', () => {
+    assert.equal(recruiterCanOpenJob('org2', 'org1'), false)
+    assert.equal(recruiterCanOpenJob('', ''), false)
+    assert.equal(recruiterCanOpenJob('', null), false)
   })
 })

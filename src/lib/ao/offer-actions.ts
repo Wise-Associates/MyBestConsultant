@@ -349,6 +349,8 @@ export async function stopAoPublicationTasksOf(tenantId: string, id: string, hol
  * - offre publiée : matching calculé à la publication (tryAutoSourceCandidates → runPoolMatching), lu avec
  *   getJobMatches (base candidats, vivier, candidatures) ;
  * - offre non publiée : dernier calcul à la demande, enregistré dans ao_offer_details (identifiants, scores, raisons).
+ * `vivierOwner` : profil du recruteur dont les CV de vivier sont montrés (un vivier est personnel), null pour tous ceux
+ * de l'organisation (admin de la plateforme).
  * `recompute` : recalcule d'abord (un appel d'IA, environ une minute). `beforeAi` est appelé juste avant cet appel, une
  * fois l'offre vérifiée : un message de refus l'empêche (quota du jour des recruteurs) ; sans recalcul, aucun appel.
  * Seuls les 5 meilleurs notés 65 ou plus sont renvoyés (même règle que l'e-mail automatique de la publication).
@@ -356,7 +358,7 @@ export async function stopAoPublicationTasksOf(tenantId: string, id: string, hol
 export async function aoOfferSourcingOf(
   tenantId: string,
   id: string,
-  { recompute, beforeAi }: { recompute: boolean; beforeAi?: () => Promise<string | null> },
+  { recompute, beforeAi, vivierOwner }: { recompute: boolean; beforeAi?: () => Promise<string | null>; vivierOwner: string | null },
 ): Promise<SourcingResult> {
   try {
     const offer = await aoAccessFor(tenantId).offer(id)
@@ -369,7 +371,7 @@ export async function aoOfferSourcingOf(
         const run = await runPoolMatching(offer.jobId)
         if (run.error) return { error: run.error }
       }
-      const { matches, poolComputedAt } = await getJobMatches(offer.jobId)
+      const { matches, poolComputedAt } = await getJobMatches(offer.jobId, tenantId, vivierOwner)
       const kept = bestMatches(matches).map(m => ({ id: `${m.source}:${m.id}`, name: m.name, score: m.score, reason: m.reason, origin: m.source }))
       return { candidates: kept, computedAt: poolComputedAt }
     }

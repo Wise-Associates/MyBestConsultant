@@ -4,15 +4,26 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
 import { ID, Query } from 'node-appwrite'
 import { getJobMatches, runPoolMatching, type JobMatchResult } from '@/lib/matching-core'
-import { createApplication, hasApplied } from '@/lib/appwrite/jobs'
+import { createApplication, getJobById, hasApplied } from '@/lib/appwrite/jobs'
 import { logFunnelEvent } from '@/lib/appwrite/funnel'
+import { recruiterCanOpenJob } from '@/lib/job-ownership'
 import { revalidatePath } from 'next/cache'
 import { requireRecruiter } from './actions'
 import { autoScreenApplication } from '@/app/recruiter/screening/actions'
 
+// Server Actions appelables avec n'importe quel identifiant d'offre (publics : liens /jobs/<id>) : l'offre doit être de
+// l'organisation du recruteur ou partagée par la plateforme (tenantId ''), comme pour la page. `profileId` : le
+// recruteur (users.$id), dont seuls les viviers sont montrés et ajoutés au funnel (un vivier est personnel).
+async function requireJobAccess(jobId: string): Promise<{ tenantId: string; profileId: string }> {
+  const { tenantId, $id } = await requireRecruiter()
+  const job = await getJobById(jobId)
+  if (!job || !tenantId || !recruiterCanOpenJob(job.tenantId, tenantId)) throw new Error('Non autorisé')
+  return { tenantId, profileId: $id }
+}
+
 export async function getMatchesAction(jobId: string): Promise<JobMatchResult[]> {
-  await requireRecruiter()
-  const { matches } = await getJobMatches(jobId)
+  const { tenantId, profileId } = await requireJobAccess(jobId)
+  const { matches } = await getJobMatches(jobId, tenantId, profileId)
   return matches
 }
 
@@ -20,13 +31,13 @@ export async function getMatchesAction(jobId: string): Promise<JobMatchResult[]>
 // Attend la fin de l'analyse, puis renvoie la liste à jour.
 export async function runApplicationMatchingAction(jobId: string, applicationId: string): Promise<{ matches?: JobMatchResult[]; error?: string }> {
   try {
-    const user = await requireRecruiter()
+    const { tenantId, profileId } = await requireJobAccess(jobId)
     const { databases } = createAdminClient()
     const app = await databases.getDocument(DB_ID, COLLECTIONS.APPLICATIONS, applicationId)
-    if (app.jobId !== jobId || (app.tenantId !== user.tenantId && app.tenantId !== '')) return { error: 'Non autorisé' }
+    if (app.jobId !== jobId || (app.tenantId !== tenantId && app.tenantId !== '')) return { error: 'Non autorisé' }
     await autoScreenApplication(applicationId)
     revalidatePath(`/recruiter/pipeline/${jobId}/matching`)
-    return { matches: (await getJobMatches(jobId)).matches }
+    return { matches: (await getJobMatches(jobId, tenantId, profileId)).matches }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur' }
   }
@@ -35,7 +46,7 @@ export async function runApplicationMatchingAction(jobId: string, applicationId:
 // Re-run population 1 (platform candidate pool) on demand — covers new candidates who
 // registered after the job was created, since that automatic pass only runs once.
 export async function refreshPoolMatchingAction(jobId: string): Promise<{ matched?: number; error?: string }> {
-  await requireRecruiter()
+  await requireJobAccess(jobId)
   const result = await runPoolMatching(jobId)
   revalidatePath(`/recruiter/pipeline/${jobId}/matching`)
   return result
@@ -44,9 +55,19 @@ export async function refreshPoolMatchingAction(jobId: string): Promise<{ matche
 // A vivier CV has no platform account — find-or-create one from the info the AI already
 // extracted from the CV (name/email), then copy the file into the CVS bucket so the rest
 // of the app (candidate profile pages, /api/cv) can read it like any other application.
-async function resolveCandidateFromVivier(vivierCvId: string): Promise<{ candidateId?: string; cvFileId?: string; error?: string }> {
+// Seuls les CV que la page montre : du recruteur lui-même (un vivier est personnel), au vivier de cette offre ou au
+// vivier général.
+async function resolveCandidateFromVivier(
+  vivierCvId: string, owner: { tenantId: string; profileId: string }, jobId: string,
+): Promise<{ candidateId?: string; cvFileId?: string; error?: string }> {
   const { databases, users, storage } = createAdminClient()
-  const vivierDoc = await databases.getDocument(DB_ID, COLLECTIONS.VIVIER_CVS, vivierCvId)
+  const vivierDoc = await databases.getDocument(DB_ID, COLLECTIONS.VIVIER_CVS, vivierCvId).catch(err => {
+    if ((err as { code?: unknown }).code === 404) return null
+    throw err
+  })
+  if (!vivierDoc || vivierDoc.tenantId !== owner.tenantId || vivierDoc.recruiterId !== owner.profileId || (vivierDoc.jobId && vivierDoc.jobId !== jobId)) {
+    return { error: 'CV introuvable' }
+  }
   const email = ((vivierDoc.candidateEmail as string) ?? '').trim()
   if (!email) return { error: 'CV sans email détecté sur le CV — impossible de lancer un screening' }
 
@@ -54,25 +75,27 @@ async function resolveCandidateFromVivier(vivierCvId: string): Promise<{ candida
     Query.equal('email', email), Query.limit(1),
   ])
 
-  if (existingProfile.documents[0]) {
-    const profile = existingProfile.documents[0]
-    if (profile.cvFileId) return { candidateId: profile.$id, cvFileId: profile.cvFileId as string }
-
+  // L'adresse est lue dans le CV, que celui qui l'importe écrit : elle ne doit jamais donner accès au compte d'un autre.
+  // Seul un profil de candidat est repris, sans rien y écrire ; le CV joint à la candidature est alors celui du vivier.
+  const copyVivierFile = async () => {
     const bytes = await storage.getFileDownload(BUCKETS.VIVIER_CVS, vivierDoc.cvFileId as string)
     const { InputFile } = await import('node-appwrite/file')
-    const file = await storage.createFile(BUCKETS.CVS, ID.unique(), InputFile.fromBuffer(Buffer.from(bytes), (vivierDoc.fileName as string) || 'cv.pdf'))
-    await databases.updateDocument(DB_ID, COLLECTIONS.USERS, profile.$id, { cvFileId: file.$id })
-    return { candidateId: profile.$id, cvFileId: file.$id }
+    return storage.createFile(BUCKETS.CVS, ID.unique(), InputFile.fromBuffer(Buffer.from(bytes), (vivierDoc.fileName as string) || 'cv.pdf'))
+  }
+  if (existingProfile.documents[0]) {
+    const profile = existingProfile.documents[0]
+    if (profile.role !== 'candidate') return { error: 'Cette adresse appartient à un compte qui n’est pas un candidat : ajout impossible.' }
+    return { candidateId: profile.$id, cvFileId: (await copyVivierFile()).$id }
   }
 
   const name = (vivierDoc.candidateName as string) || email
   const [firstName, ...rest] = name.split(' ')
+  // Compte de connexion sans profil (inscription inachevée, ou compte d'un autre espace) : jamais rattaché à ce CV.
   const existingAuth = await users.list([Query.equal('email', [email]), Query.limit(1)])
-  const authUser = existingAuth.users[0] ?? await users.create(ID.unique(), email, undefined, undefined, name)
+  if (existingAuth.users[0]) return { error: 'Cette adresse a déjà un compte sur la plateforme : invitez la personne à postuler.' }
+  const authUser = await users.create(ID.unique(), email, undefined, undefined, name)
 
-  const bytes = await storage.getFileDownload(BUCKETS.VIVIER_CVS, vivierDoc.cvFileId as string)
-  const { InputFile } = await import('node-appwrite/file')
-  const file = await storage.createFile(BUCKETS.CVS, ID.unique(), InputFile.fromBuffer(Buffer.from(bytes), (vivierDoc.fileName as string) || 'cv.pdf'))
+  const file = await copyVivierFile()
 
   const profile = await databases.createDocument(DB_ID, COLLECTIONS.USERS, ID.unique(), {
     userId: authUser.$id,
@@ -96,7 +119,8 @@ export async function addToFunnelAction(
   jobId: string,
   selections: { source: 'pool' | 'vivier' | 'application'; id: string; candidateId?: string }[],
 ): Promise<{ added: number; errors: string[] }> {
-  const user = await requireRecruiter()
+  const access = await requireJobAccess(jobId)
+  const { tenantId } = access
   const errors: string[] = []
   let added = 0
 
@@ -111,20 +135,28 @@ export async function addToFunnelAction(
         if (!sel.candidateId) { errors.push('Candidat introuvable'); continue }
         candidateId = sel.candidateId
         const { databases } = createAdminClient()
-        const profile = await databases.getDocument(DB_ID, COLLECTIONS.USERS, candidateId)
+        // Identifiant envoyé par le navigateur : seulement un candidat que la base candidats a proposé pour cette offre,
+        // vérifié avant tout message qui le nomme.
+        const proposed = await databases.listDocuments(DB_ID, COLLECTIONS.JOB_MATCHES, [
+          Query.equal('jobId', jobId), Query.equal('candidateId', candidateId), Query.limit(1), Query.select(['$id']),
+        ])
+        const profile = proposed.total > 0
+          ? await databases.getDocument(DB_ID, COLLECTIONS.USERS, candidateId).catch(err => { if ((err as { code?: unknown }).code === 404) return null; throw err })
+          : null
+        if (!profile || profile.role !== 'candidate') { errors.push('Candidat introuvable'); continue }
         if (!profile.cvFileId) { errors.push(`${profile.firstName ?? 'Candidat'} n'a pas de CV sur son profil`); continue }
         cvFileId = profile.cvFileId as string
 
         if (await hasApplied(jobId, candidateId)) { errors.push('Déjà candidat sur cette offre'); continue }
       } else {
-        const resolved = await resolveCandidateFromVivier(sel.id)
+        const resolved = await resolveCandidateFromVivier(sel.id, access, jobId)
         if (resolved.error || !resolved.candidateId || !resolved.cvFileId) { errors.push(resolved.error ?? 'Erreur inconnue'); continue }
         candidateId = resolved.candidateId
         cvFileId = resolved.cvFileId
         if (await hasApplied(jobId, candidateId)) { errors.push('Déjà candidat sur cette offre'); continue }
       }
 
-      const application = await createApplication({ jobId, tenantId: user.tenantId!, candidateId, cvFileId })
+      const application = await createApplication({ jobId, tenantId, candidateId, cvFileId })
       await logFunnelEvent(application.$id, application.status, 'stage_change')
       added++
     } catch (e) {

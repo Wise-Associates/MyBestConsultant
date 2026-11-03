@@ -47,7 +47,7 @@ export async function stopAoPublicationTasks(id: string) {
 /** Sourcing d'une offre de la plateforme : l'admin n'a pas de quota (aoOfferSourcingOf). */
 export async function aoOfferSourcing(id: string, recompute = false): Promise<SourcingResult> {
   await requireAdmin()
-  return aoOfferSourcingOf(PLATFORM_TENANT_ID, id, { recompute })
+  return aoOfferSourcingOf(PLATFORM_TENANT_ID, id, { recompute, vivierOwner: null })
 }
 
 export async function listAoOfferComments(offerId: string) {

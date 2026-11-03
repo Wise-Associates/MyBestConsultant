@@ -57,7 +57,7 @@ async function sourcingSlot(user: UserProfile, tenantId: string): Promise<string
 export async function recruiterAoOfferSourcing(id: string, recompute = false) {
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
-  return aoOfferSourcingOf(me.tenantId, id, { recompute, beforeAi: () => sourcingSlot(me.user, me.tenantId) })
+  return aoOfferSourcingOf(me.tenantId, id, { recompute, beforeAi: () => sourcingSlot(me.user, me.tenantId), vivierOwner: me.user.$id })
 }
 
 /**

@@ -8,6 +8,7 @@ import { callLLM } from '@/lib/ai/llm-router'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
 import { Query, ID } from 'node-appwrite'
+import { DOMAIN_FIELD, MATCH_RULES, cappedScore, offerTextForAi, parseDomainFit } from '@/lib/match-scoring'
 
 export function wrapEmailHtml(title: string, bodyHtml: string): string {
   return `
@@ -150,19 +151,21 @@ export async function matchCandidatesForOffer(offer: OfferForMatching, excludeCa
     const SYSTEM = `Tu es un expert en sourcing de candidats. On te donne une offre d'emploi et une liste de candidats (avec extrait de CV). Évalue la pertinence de chaque candidat pour ce poste.
 
 Réponds UNIQUEMENT avec un tableau JSON valide, sans markdown :
-[{"candidateId":"...","score":0-100,"reason":"une phrase expliquant pourquoi ce candidat correspond (ou pas)"}]
+[{"candidateId":"...","score":0-100,${DOMAIN_FIELD},"reason":"une phrase expliquant pourquoi ce candidat correspond (ou pas)"}]
+
+${MATCH_RULES}
 
 Inclus tous les candidats, même les moins pertinents (score bas). Sois honnête et précis sur le score.`
 
     const candidatesBlock = usable.map(p => `--- Candidat [${p.candidateId}] ${p.name} ---\n${p.cvText}`).join('\n\n')
     const details = (offer.details ?? []).map(line => `${line}\n`).join('')
-    const userMsg = `=== OFFRE ===\nPoste : ${offer.title}\nCompétences recherchées : ${offer.skills.join(', ')}\n${details}Description : ${offer.description.slice(0, 1200)}\n\n=== CANDIDATS ===\n${candidatesBlock}`
+    const userMsg = `=== OFFRE ===\nPoste : ${offer.title}\nCompétences recherchées : ${offer.skills.join(', ')}\n${details}Description : ${offerTextForAi(offer.description, 4000)}\n\n=== CANDIDATS ===\n${candidatesBlock}`
 
     const { content } = await callLLM([{ role: 'user', content: userMsg }], SYSTEM, { module: 'matching' })
     const jsonMatch = content.match(/\[[\s\S]*\]/)
     if (!jsonMatch) return { matches: [], scanned: usable.length, error: 'Réponse IA invalide' }
 
-    const parsed = JSON.parse(jsonMatch[0]) as { candidateId: string; score: number; reason: string }[]
+    const parsed = JSON.parse(jsonMatch[0]) as { candidateId: string; score: number; domaine?: unknown; reason: string }[]
     const byId = new Map(usable.map(p => [p.candidateId, p]))
 
     const matches: CandidateMatch[] = parsed
@@ -171,7 +174,7 @@ Inclus tous les candidats, même les moins pertinents (score bas). Sois honnête
         candidateId: m.candidateId,
         name: byId.get(m.candidateId)!.name,
         email: byId.get(m.candidateId)!.email,
-        score: Math.min(100, Math.max(0, Number(m.score) || 0)),
+        score: cappedScore(Math.min(100, Math.max(0, Number(m.score) || 0)), parseDomainFit(m.domaine)),
         reason: String(m.reason ?? ''),
       }))
       .sort((a, b) => b.score - a.score)
