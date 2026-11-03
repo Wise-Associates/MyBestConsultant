@@ -11,6 +11,7 @@ import {
   type AoFilters, type AoOfferRow,
 } from '@/lib/ao/filters'
 import { MAX_ATTEMPTS } from '@/lib/ao/attempts'
+import { BULK_DELETE_MAX, bulkDeleteNotice } from '@/lib/ao/bulk-delete'
 import type { AoDashboardActions, AoDashboardCopy, AoDashboardPaths, AoListPage, AoPageView } from '@/lib/ao/dashboard-types'
 import type { AoSyncReport } from '@/lib/ao/sync'
 import { AoComments } from './ao-comments'
@@ -54,7 +55,7 @@ interface Props {
   /** Suivi illisible : bandeau, les offres restent affichées. */
   trackingError?: string
   /** Actions de la liste ; celles d'une offre sont sur sa page (ao-offer-page.tsx). */
-  actions: Pick<AoDashboardActions, 'retryEmail' | 'deleteOffer' | 'listComments' | 'addComment' | 'deleteComment'>
+  actions: Pick<AoDashboardActions, 'retryEmail' | 'deleteOffer' | 'deleteOffers' | 'listComments' | 'addComment' | 'deleteComment'>
   paths: AoDashboardPaths
   copy: Pick<AoDashboardCopy, 'title' | 'scope'>
   /** Espace admin : titre et sous-titre dans la barre du haut du layout (AdminPageHeader), outils restant dans la page. */
@@ -65,10 +66,13 @@ type Notice = { tone: 'ok' | 'error'; text: string } | null
 
 /**
  * Colonnes du tableau des offres : largeur fixe (l'offre prend le reste) et écran à partir duquel la colonne s'affiche.
- * Calibrées pour la zone de contenu à côté du menu de 240 px : les colonnes visibles laissent toujours 280 px environ
- * à l'offre, sans défilement horizontal. Toute colonne masquée reste lisible dans le panneau de détail.
+ * Calibrées pour la zone de contenu à côté du menu de 240 px : les colonnes visibles laissent toujours 240 px environ
+ * à l'offre (280 avant la colonne de sélection), sans défilement horizontal. Toute colonne masquée reste lisible dans le panneau de détail.
  */
 const TABLE_COLUMNS = [
+  // Cases à cocher de la sélection (suppression groupée) : toujours visibles, 40 px pris sur l'offre.
+  // Libellé « Sélection » : la case d'en-tête est dessinée à la place (thead).
+  { key: 'select', label: 'Sélection', width: 40, show: '' },
   { key: 'received', label: 'Reçue le', width: 80, show: 'hidden sm:table-cell' },
   { key: 'offer', label: 'Offre', width: undefined, show: '' },
   { key: 'city', label: 'Ville', width: 96, show: 'hidden 2xl:table-cell' },
@@ -101,6 +105,11 @@ const ENGAGEMENT_SHORT = { assistance: 'AT', forfait: 'Forfait', '': '—' } as 
 const countLabel = (n: number) => (n >= AO_MAX_LISTED ? `${AO_MAX_LISTED.toLocaleString('fr-FR')}+` : n.toLocaleString('fr-FR'))
 /** Date courte du tableau (21/10/26) ; la date complète est en infobulle. */
 const shortDay = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+const NO_IDS: ReadonlySet<string> = new Set()
+/** Marque du pluriel (« 3 offres supprimées »). */
+const s = (n: number) => (n > 1 ? 's' : '')
+/** Case à cocher de la sélection : 16 px dans une cellule de 40 px. */
+const selectBox = 'h-4 w-4 align-middle cursor-pointer disabled:cursor-not-allowed'
 
 export interface MailboxIssue {
   label: string
@@ -188,6 +197,71 @@ export function AoOffersDashboard({ view, filters, inboxConfigured, mailboxIssue
     setDeleteFor(null)
     setNotice({ tone: 'ok', text: `Offre « ${deleteRow.title} » supprimée.` })
     router.refresh()
+  }
+
+  // Sélection pour la suppression groupée : offres affichées seulement, oubliée dès que les filtres appliqués changent
+  // (on ne supprime que ce qu'on voit). Une offre publiée, ou en cours de publication, n'est pas sélectionnable, comme
+  // pour sa corbeille : son offre publique resterait en ligne sans son appel d'offres.
+  const [selection, setSelection] = useState<{ key: string; ids: ReadonlySet<string> }>({ key: filtersKey, ids: NO_IDS })
+  // Vidée, pas seulement masquée : revenir aux mêmes filtres ne fait pas réapparaître d'anciennes cases cochées.
+  if (selection.key !== filtersKey) setSelection({ key: filtersKey, ids: NO_IDS })
+  const checkedIds = selection.key === filtersKey ? selection.ids : NO_IDS
+  const isPublished = (r: AoOfferRow) => r.status === 'published' || !!r.jobId
+  const selectable = rows.filter(r => !isPublished(r) && !publications.of(r.$id).running)
+  const selected = selectable.filter(r => checkedIds.has(r.$id))
+  const allSelected = selectable.length > 0 && selected.length === selectable.length
+  const selectOnly = (ids: Iterable<string>) => setSelection({ key: filtersKey, ids: new Set(ids) })
+  function toggleRow(id: string, on: boolean) {
+    const ids = new Set(checkedIds)
+    if (on) ids.add(id)
+    else ids.delete(id)
+    setSelection({ key: filtersKey, ids })
+  }
+
+  // Fenêtre « Supprimer la sélection » : offres retenues à son ouverture (la liste peut être relue pendant la
+  // suppression) ; `bulkDone` : offres traitées, pour la progression.
+  const [bulkRows, setBulkRows] = useState<AoOfferRow[] | null>(null)
+  const [bulkDone, setBulkDone] = useState(0)
+  const [bulkError, setBulkError] = useState('')
+  const [bulkDeleting, startBulkDelete] = useTransition()
+
+  function confirmBulkDelete() {
+    if (!bulkRows) return
+    const ids = bulkRows.map(r => r.$id)
+    const titleOf = new Map(bulkRows.map(r => [r.$id, r.title]))
+    setBulkError('')
+    setBulkDone(0)
+    startBulkDelete(async () => {
+      const deleted: string[] = []
+      const failed: { id: string; error: string }[] = []
+      let stopped = ''
+      let interrupted = false
+      // Par lots de BULK_DELETE_MAX, l'un après l'autre : chaque lot est une Server Action courte, la progression suit.
+      // Arrêt au premier envoi refusé par le serveur (`stopped`) ou resté sans réponse (`interrupted` : état inconnu).
+      for (let i = 0; i < ids.length && !stopped && !interrupted; i += BULK_DELETE_MAX) {
+        try {
+          const res = await actions.deleteOffers(ids.slice(i, i + BULK_DELETE_MAX))
+          if ('error' in res) stopped = res.error
+          else {
+            deleted.push(...res.deleted)
+            failed.push(...res.failed)
+          }
+        } catch {
+          interrupted = true
+        }
+        setBulkDone(deleted.length + failed.length)
+      }
+      // Premier envoi refusé en entier : rien n'est supprimé, la fenêtre reste ouverte avec la raison.
+      if (stopped && deleted.length + failed.length === 0) return setBulkError(stopped)
+      setBulkRows(null)
+      // Les offres non supprimées restent cochées, pour les retrouver dans la liste rechargée.
+      selectOnly(ids.filter(id => !deleted.includes(id)))
+      setNotice(bulkDeleteNotice({
+        total: ids.length, deleted: deleted.length, stopped, interrupted,
+        failed: failed.map(f => ({ title: titleOf.get(f.id) ?? f.id, error: f.error })),
+      }))
+      router.refresh()
+    })
   }
   const failedEmails = recentEmails.filter(e => e.status === 'failed')
   // Toutes les offres de l'organisation, sans filtre : les indicateurs, eux, suivent les filtres.
@@ -429,8 +503,24 @@ export function AoOffersDashboard({ view, filters, inboxConfigured, mailboxIssue
 
       {/* Tableau */}
       <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--admin-line)' }}>
-        <div className="px-6 py-4 flex items-center gap-4" style={{ background: 'var(--admin-panel)', borderBottom: '1px solid var(--admin-line)' }}>
-          <h2 className="font-semibold text-sm text-admin-fg mr-auto">Offres extraites</h2>
+        <div className="px-6 py-4 flex flex-wrap items-center gap-x-4 gap-y-2" style={{ background: 'var(--admin-panel)', borderBottom: '1px solid var(--admin-line)' }}>
+          <div className="mr-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+            <h2 className="font-semibold text-sm text-admin-fg">Offres extraites</h2>
+            {/* Actions sur les offres cochées (case de la première colonne). */}
+            {selected.length > 0 && (
+              <div role="group" aria-label="Offres sélectionnées" className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <span className="text-xs font-medium text-admin-fg tabular-nums whitespace-nowrap">{selected.length} sélectionnée{s(selected.length)}</span>
+                <button type="button" onClick={() => { setBulkError(''); setBulkRows(selected) }}
+                  style={{ ...secondaryButton, padding: '6px 10px', fontSize: 12, color: '#b91c1c' }}>
+                  <Trash2 size={13} aria-hidden />
+                  Supprimer
+                </button>
+                <button type="button" onClick={() => selectOnly([])} className="text-xs underline" style={{ color: 'var(--admin-fg-muted)' }}>
+                  Désélectionner
+                </button>
+              </div>
+            )}
+          </div>
           <TrackingLegend />
           <span role="status" aria-live="polite" className="inline-flex items-center gap-1.5 text-xs shrink-0" style={{ color: 'var(--admin-fg-muted)' }}>
             {loading && <Loader2 size={13} className="animate-spin motion-reduce:animate-none" aria-hidden />}
@@ -442,7 +532,17 @@ export function AoOffersDashboard({ view, filters, inboxConfigured, mailboxIssue
         <table className="w-full table-fixed text-sm">
           <thead>
             <tr style={{ borderBottom: '1px solid var(--admin-line)' }}>
-              {TABLE_COLUMNS.map(c => (
+              {TABLE_COLUMNS.map(c => c.key === 'select' ? (
+                <th key={c.key} className="text-left px-3 py-3" style={{ width: c.width }}>
+                  {/* Coche ou décoche les offres affichées qui peuvent être supprimées (pas les publiées). */}
+                  <input type="checkbox" className={selectBox} style={{ accentColor: '#F97316' }}
+                    checked={allSelected} disabled={selectable.length === 0}
+                    ref={el => { if (el) el.indeterminate = selected.length > 0 && !allSelected }}
+                    onChange={e => selectOnly(e.target.checked ? selectable.map(r => r.$id) : [])}
+                    aria-label={allSelected ? 'Désélectionner les offres affichées' : `Sélectionner les ${selectable.length} offres affichées supprimables`}
+                    title="Sélectionner les offres affichées (les offres publiées ne peuvent pas être supprimées)" />
+                </th>
+              ) : (
                 <th key={c.key} title={'title' in c ? c.title : undefined} className={`${c.show} text-left px-3 py-3 text-xs font-medium truncate`} style={{ color: 'var(--admin-fg-muted)', width: c.width }}>{c.label}</th>
               ))}
             </tr>
@@ -457,9 +557,17 @@ export function AoOffersDashboard({ view, filters, inboxConfigured, mailboxIssue
               </tr>
             ) : rows.map(r => {
               const work = publications.of(r.$id).running
+              const published = isPublished(r)
+              const checked = !published && !work && checkedIds.has(r.$id)
               return (
               // Seuls le titre et l'œil ouvrent le détail : un clic ailleurs dans la ligne (sélection de texte…) ne fait rien.
-              <tr key={r.$id} data-ao-row={r.$id} className="hover:bg-admin-panel" style={{ borderBottom: '1px solid var(--admin-line)' }}>
+              <tr key={r.$id} data-ao-row={r.$id} className={`hover:bg-admin-panel${checked ? ' bg-admin-panel' : ''}`} style={{ borderBottom: '1px solid var(--admin-line)' }}>
+                <td className="px-3 py-3">
+                  <input type="checkbox" className={selectBox} style={{ accentColor: '#F97316' }}
+                    checked={checked} disabled={published || !!work} onChange={e => toggleRow(r.$id, e.target.checked)}
+                    aria-label={`Sélectionner l'offre : ${r.title}`}
+                    title={published ? 'Offre publiée : retirez d’abord l’offre publique pour la supprimer' : work ? 'Publication en cours' : undefined} />
+                </td>
                 <td className={cell('received')} title={formatDay(r.receivedAt)} style={{ color: 'var(--admin-fg-muted)', fontVariantNumeric: 'tabular-nums' }}>{shortDay(r.receivedAt)}</td>
                 <td className={cell('offer')}>
                   <Link href={offerHref(r.$id)} title={r.title} className="block w-full truncate text-left font-medium text-admin-fg hover:underline">{r.title}</Link>
@@ -604,6 +712,40 @@ export function AoOffersDashboard({ view, filters, inboxConfigured, mailboxIssue
               <button type="button" onClick={confirmDelete} disabled={deleting} style={{ ...secondaryButton, background: '#b91c1c', borderColor: '#b91c1c', color: 'white' }}>
                 {deleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
                 Supprimer
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+
+      {/* Suppression des offres sélectionnées : confirmation explicite, définitive, par lots (BULK_DELETE_MAX). */}
+      <Dialog open={bulkRows !== null} onOpenChange={open => { if (!open && !bulkDeleting) setBulkRows(null) }}>
+        {bulkRows && (
+          <DialogContent className="admin-light z-10000 sm:max-w-[520px]" style={{ background: 'var(--admin-panel)' }} showCloseButton={!bulkDeleting}>
+            <DialogHeader>
+              <DialogTitle className="text-admin-fg" style={{ fontSize: '1.05rem' }}>
+                {bulkRows.length > 1 ? `Supprimer ces ${bulkRows.length} offres ?` : 'Supprimer cette offre ?'}
+              </DialogTitle>
+              <DialogDescription style={{ color: 'var(--admin-fg-muted)' }}>
+                {bulkRows.length > 1
+                  ? 'Elles seront supprimées définitivement, avec leurs détails et leurs commentaires. Les e-mails d’origine restent enregistrés : ces offres ne seront pas recréées par la synchronisation. Pour seulement les masquer, utilisez « Ignorer » dans leur détail.'
+                  : 'Elle sera supprimée définitivement, avec ses détails et ses commentaires. L’e-mail d’origine reste enregistré : l’offre ne sera pas recréée par la synchronisation. Pour seulement la masquer, utilisez « Ignorer » dans son détail.'}
+              </DialogDescription>
+            </DialogHeader>
+            {/* min-w-0 : sans lui, un long titre (sur une ligne) élargit la grille de la fenêtre au-delà de son cadre. */}
+            <ul className="min-w-0 text-sm space-y-1" style={{ color: 'var(--admin-fg)' }}>
+              {bulkRows.slice(0, 5).map(r => <li key={r.$id} className="truncate" title={r.title}>« {r.title} »</li>)}
+              {bulkRows.length > 5 && <li style={{ color: 'var(--admin-fg-muted)' }}>et {bulkRows.length - 5} autre{s(bulkRows.length - 5)}</li>}
+            </ul>
+            {bulkDeleting && bulkRows.length > BULK_DELETE_MAX && (
+              <p role="status" className="text-sm tabular-nums" style={{ color: 'var(--admin-fg-muted)' }}>{bulkDone} / {bulkRows.length} offres traitées…</p>
+            )}
+            {bulkError && <p role="alert" className="text-sm" style={{ color: '#b91c1c' }}>Suppression impossible : {bulkError}</p>}
+            <DialogFooter>
+              <button type="button" onClick={() => setBulkRows(null)} disabled={bulkDeleting} style={secondaryButton}>Annuler</button>
+              <button type="button" onClick={confirmBulkDelete} disabled={bulkDeleting} style={{ ...secondaryButton, background: '#b91c1c', borderColor: '#b91c1c', color: 'white' }}>
+                {bulkDeleting ? <Loader2 size={15} className="animate-spin motion-reduce:animate-none" aria-hidden /> : <Trash2 size={15} aria-hidden />}
+                {bulkDeleting ? 'Suppression…' : bulkRows.length > 1 ? `Supprimer les ${bulkRows.length} offres` : 'Supprimer'}
               </button>
             </DialogFooter>
           </DialogContent>

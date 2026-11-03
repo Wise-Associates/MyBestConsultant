@@ -3,7 +3,7 @@
 import { requireAdmin } from '@/lib/appwrite/auth'
 import type { PublicationDraft, PublicationMode, SourcingResult } from '@/lib/ao/dashboard-types'
 import {
-  addAoOfferCommentOf, aoOfferSourcingOf, deleteAoOfferCommentOf, deleteAoOfferOf, listAoOfferCommentsOf, previewAoPublicationOf,
+  addAoOfferCommentOf, aoOfferSourcingOf, deleteAoOfferCommentOf, deleteAoOfferOf, deleteAoOffersOf, listAoOfferCommentsOf, previewAoPublicationOf,
   publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, stopAoPublicationTasksOf,
 } from '@/lib/ao/offer-actions'
 import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
@@ -68,4 +68,10 @@ export async function deleteAoOfferComment(commentId: string) {
 export async function deleteAoOffer(id: string) {
   await requireAdmin()
   return deleteAoOfferOf(PLATFORM_TENANT_ID, id)
+}
+
+/** Offres sélectionnées dans le tableau, par lots (deleteAoOffersOf). */
+export async function deleteAoOffers(ids: string[]) {
+  await requireAdmin()
+  return deleteAoOffersOf(PLATFORM_TENANT_ID, ids)
 }
