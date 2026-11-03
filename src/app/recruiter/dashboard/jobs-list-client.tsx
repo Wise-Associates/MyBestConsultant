@@ -15,12 +15,12 @@ import {
   type JobFilters, type JobFocus, type JobSort, type JobStatusFilter,
 } from '@/lib/recruiter-job-filters'
 
-/** Une ligne de « Mes offres », préparée par la page (faits et âges calculés sur le serveur). */
+/** Une ligne de « Mes offres », préparée par la page (faits et dates calculés sur le serveur). */
 export interface DashboardJobRow {
   job: Job
   facts: JobFacts
-  /** « il y a 3 j » : publication de l'offre. */
-  age: string
+  /** « 3 nov. 2026 » : publication de l'offre. */
+  publishedOn: string
   /** Offre partagée de la plateforme (tenantId '') : listée, mais ni modifiable ni diffusable par le recruteur. */
   shared: boolean
   /** Candidats déjà notés par l'IA pour l'offre (base et vivier de l'offre). */

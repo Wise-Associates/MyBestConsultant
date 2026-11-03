@@ -81,7 +81,81 @@ export function parseExtraction(raw: string): CvExtraction {
   if (parsed.data.titre.length < 2) throw new InvalidAnswerError('Réponse IA invalide : intitulé du CV absent')
   // Un CV contient au moins le nom du candidat : une liste vide priverait le contrôle des fuites de ce que l'IA a retiré.
   if (parsed.data.termes_identifiants.length === 0) throw new InvalidAnswerError('Réponse IA invalide : termes d\'identité absents')
-  return parsed.data
+  return { ...parsed.data, competences: groupRepeatedSkills(parsed.data.competences, parsed.data.langue) }
+}
+
+// « Libellé : suite » en tête d'une ligne de compétences (libellé de 80 caractères au plus, sans « : »).
+const OWN_LABEL = /^([^:]{2,80}?)\s*:\s+(\S.*)$/
+const SKILL_SEPARATOR: Record<CvLang, string> = { fr: ' ; ', en: '; ' }
+
+/**
+ * Compétences sans libellé répété (demande du 2026-11-03 : « IT & FINANCE CERTIFICATIONS : » devant chacune de trois
+ * lignes). Des éléments qui se suivent avec la même "categorie" (le titre de leur rubrique) prennent chacun le libellé
+ * qui ouvre leur texte (« Finance & Risk: … ») s'ils en ont tous un ; sinon ils ne font qu'un élément, textes séparés
+ * par « ; ». Le texte lui-même n'est pas modifié.
+ */
+export function groupRepeatedSkills(skills: CvContent['competences'], lang: CvLang): CvContent['competences'] {
+  const key = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  const out: CvContent['competences'] = []
+  for (let i = 0; i < skills.length;) {
+    let end = i + 1
+    while (skills[i].categorie && end < skills.length && key(skills[end].categorie) === key(skills[i].categorie)) end++
+    const run = skills.slice(i, end)
+    const labelled = run.map(s => OWN_LABEL.exec(s.contenu))
+    if (run.length === 1) out.push(run[0])
+    else if (labelled.every((m): m is RegExpExecArray => m !== null)) out.push(...labelled.map(m => ({ categorie: m[1].trim(), contenu: m[2] })))
+    else out.push({ categorie: run[0].categorie, contenu: run.map(s => s.contenu).filter(Boolean).join(SKILL_SEPARATOR[lang]) })
+    i = end
+  }
+  return out
+}
+
+// Mots-outils propres à chaque langue (absents de l'autre : ni « on » ni « an ») : un texte qui en contient plusieurs
+// est écrit dans cette langue.
+const FUNCTION_WORDS: Record<CvLang, ReadonlySet<string>> = {
+  fr: new Set(['le', 'la', 'les', 'des', 'du', 'de', 'et', 'pour', 'avec', 'dans', 'sur', 'une', 'aux', 'par', 'est', 'sont', 'ces', 'leur', 'leurs']),
+  en: new Set(['the', 'and', 'of', 'with', 'for', 'to', 'in', 'by', 'from', 'is', 'are', 'its', 'their', 'this', 'that', 'across', 'through']),
+}
+// Noms, outils, dates et niveaux : gardés tels quels d'une langue à l'autre, ils ne disent rien de la langue du texte.
+const NAME_KEYS = new Set(['client', 'etablissement', 'organisme', 'intitule', 'environnement', 'dates', 'annees', 'annee', 'langue', 'niveau'])
+
+const wordsOf = (text: string) => text.toLowerCase().split(/[^\p{L}]+/u).filter(Boolean)
+
+/** Textes rédigés d'un contenu (ni noms, ni outils, ni dates), avec leur chemin (« experiences.0.realisations.2 »). */
+function proseOf(value: unknown, path = '', key = ''): [string, string][] {
+  if (typeof value === 'string') return NAME_KEYS.has(key) ? [] : [[path, value]]
+  if (Array.isArray(value)) return value.flatMap((v, i) => proseOf(v, `${path}.${i}`, key))
+  if (value !== null && typeof value === 'object') return Object.entries(value).flatMap(([k, v]) => proseOf(v, path ? `${path}.${k}` : k, k))
+  return []
+}
+
+/**
+ * Langue du CV d'après ses phrases, ou null si elles ne tranchent pas. Décide de ce qui est traduit, à la place de la
+ * langue annoncée par l'IA : un CV anglais annoncé « fr » sortait non traduit en français.
+ */
+export function dominantLang(content: CvContent): CvLang | null {
+  const prose = proseOf(content)
+  const count = (lang: CvLang) => prose.reduce((n, [, text]) => n + wordsOf(text).filter(w => FUNCTION_WORDS[lang].has(w)).length, 0)
+  const fr = count('fr')
+  const en = count('en')
+  if (fr >= 10 && fr >= 2 * en) return 'fr'
+  if (en >= 10 && en >= 2 * fr) return 'en'
+  return null
+}
+
+/** Au moins 6 mots, dont 3 mots-outils différents de cette langue : une phrase écrite dans cette langue. */
+function readsAs(text: string, lang: CvLang): boolean {
+  const words = wordsOf(text)
+  return words.length >= 6 && new Set(words.filter(w => FUNCTION_WORDS[lang].has(w))).size >= 3
+}
+
+/**
+ * Phrases que la traduction a rendues telles quelles, encore dans la langue du CV : signalées dans le compte rendu.
+ * Les noms, sigles et intitulés de certification, gardés à juste titre, ne comptent pas.
+ */
+export function untranslatedCount(source: CvContent, translated: CvContent, sourceLang: CvLang): number {
+  const after = new Map(proseOf(translated))
+  return proseOf(source).filter(([path, text]) => after.get(path) === text && readsAs(text, sourceLang)).length
 }
 
 /**
@@ -172,13 +246,19 @@ export function countToComplete(data: CvData): number {
 }
 
 /** Compte rendu pour l'admin (fenêtre d'export), en français. */
-export function exportNotes(input: { toComplete: number; omitted: string[]; certificationsMerged: boolean; cvTruncated: boolean }): string[] {
+export function exportNotes(input: {
+  toComplete: number; omitted: string[]; certificationsMerged: boolean; cvTruncated: boolean; untranslated: { lang: CvLang; count: number }[]
+}): string[] {
   const notes: string[] = []
   if (input.cvTruncated) {
     notes.push('CV très long : seul son début a été lu, les expériences les plus anciennes peuvent manquer. Comparez avec le CV d\'origine.')
   }
   if (input.toComplete > 0) {
     notes.push(`${input.toComplete} champ${input.toComplete > 1 ? 's' : ''} « [À COMPLÉTER] » : information absente du CV, à saisir dans Word.`)
+  }
+  for (const { lang, count } of input.untranslated) {
+    const s = count > 1 ? 's' : ''
+    notes.push(`Version ${lang === 'en' ? 'anglaise' : 'française'} : ${count} passage${s} resté${s} en ${lang === 'en' ? 'français' : 'anglais'}, à traduire dans Word.`)
   }
   if (input.certificationsMerged) notes.push('Certifications ajoutées à la rubrique Formation (le modèle n\'a pas de rubrique dédiée).')
   if (input.omitted.length > 0) notes.push(`Non repris faute de rubrique dans le modèle : ${input.omitted.join(' ; ')}.`)

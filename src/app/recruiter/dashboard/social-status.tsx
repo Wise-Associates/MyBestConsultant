@@ -11,8 +11,8 @@ export interface SocialInfo {
   stale?: boolean
   status: 'queued' | 'sent' | 'images_ready' | 'published' | 'partial' | 'failed'
   results: { network: Network; status: 'published' | 'scheduled' | 'failed' | 'skipped'; url?: string }[]
-  /** Âge de la dernière diffusion (« il y a 3 j »), calculé par la page. */
-  age?: string
+  /** Date de la dernière diffusion (« 3 nov. 2026 »), calculée par la page. */
+  sentOn?: string
 }
 
 const WORKING = ['queued', 'sent', 'images_ready']
@@ -76,8 +76,8 @@ export function SocialStatus({ info, state, shared, canPublish, publish }: {
       <Clock className="h-3 w-3" aria-hidden />Envoyée, sans confirmation
     </span>
   )
-  else if (info?.status === 'published') status = <span className={line} style={{ color: '#047857' }}><Check className="h-3 w-3" strokeWidth={2.6} aria-hidden />Publiée {info.age}</span>
-  else if (info?.status === 'partial') status = <span className={line} style={{ color: '#b45309' }}><AlertTriangle className="h-3 w-3" aria-hidden />En partie publiée {info.age}</span>
+  else if (info?.status === 'published') status = <span className={line} style={{ color: '#047857' }}><Check className="h-3 w-3" strokeWidth={2.6} aria-hidden />Publiée le {info.sentOn}</span>
+  else if (info?.status === 'partial') status = <span className={line} style={{ color: '#b45309' }}><AlertTriangle className="h-3 w-3" aria-hidden />En partie publiée le {info.sentOn}</span>
   else if (info?.status === 'failed') status = (
     <span className={line} style={{ color: '#b91c1c' }}>
       <AlertTriangle className="h-3 w-3" aria-hidden />Échec

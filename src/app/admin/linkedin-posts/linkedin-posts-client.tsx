@@ -11,20 +11,11 @@ import { postJobAction, saveLinkedInChannelConfig, previewPostText } from './act
 import type { LinkedInPostJob, LinkedInChannelConfig } from './actions'
 import { GroupsModal } from './groups-modal'
 import { AdminPageHeader } from '@/components/admin/admin-page-header'
+import { formatDateFr } from '@/lib/format-date'
 
 const CONTRACT: Record<string, string> = { cdi: 'CDI', cdd: 'CDD', freelance: 'Freelance', mission: 'Mission' }
 const REMOTE: Record<string, string> = { onsite: 'Présentiel', hybrid: 'Hybride', remote: 'Remote' }
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-function timeAgo(iso: string) {
-  const h = Math.floor((Date.now() - new Date(iso).getTime()) / 3600000)
-  if (h < 1) return 'à l\'instant'
-  if (h < 24) return `il y a ${h}h`
-  const d = Math.floor(h / 24)
-  return d < 7 ? `il y a ${d}j` : fmtDate(iso)
-}
 
 // ── Preview Modal ─────────────────────────────────────────────────
 
@@ -297,7 +288,7 @@ function JobCard({ job, cfg, onPosted }: {
             )}
             {alreadyPosted && (
               <p className="text-xs mt-1" style={{ color: '#16a34a' }}>
-                Publié {timeAgo(job.linkedinPostedAt!)}
+                Publié le {formatDateFr(job.linkedinPostedAt!)}
               </p>
             )}
             {status === 'error' && (

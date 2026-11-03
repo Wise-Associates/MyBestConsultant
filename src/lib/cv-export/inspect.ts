@@ -60,6 +60,11 @@ const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1
 const EMAIL = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g
 const PHONE = /(?:\+|\b00)?\d[\d .()-]{7,}\d/g
 
+/** E-mails et numéros de téléphone (9 chiffres au moins) d'un texte. */
+export function contactsIn(text: string): string[] {
+  return [...(text.match(EMAIL) ?? []), ...(text.match(PHONE) ?? []).filter(m => m.replace(/\D/g, '').length >= 9)]
+}
+
 /** Texte sans e-mail ni numéro de téléphone (marqueurs expliqués à l'IA). */
 export function maskContacts(text: string): string {
   return text
