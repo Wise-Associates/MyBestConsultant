@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { Query, type Databases } from 'node-appwrite'
-import { listAllDocuments } from './list-all'
+import { listAllByValues, listAllDocuments } from './list-all'
 
 /** Faux Appwrite : applique `limit` et `cursorAfter` à `count` documents, et compte les appels. */
 function fakeDatabases(count: number) {
@@ -40,5 +40,29 @@ describe('lecture de tous les documents (listAllDocuments)', () => {
     const { databases, calls } = fakeDatabases(0)
     assert.deepEqual(await listAllDocuments(databases, 'db', 'jobs', []), [])
     assert.equal(calls.length, 1)
+  })
+})
+
+describe('lecture par une liste de valeurs (listAllByValues)', () => {
+  it('découpe les valeurs par 100 (limite d\'Appwrite pour Query.equal) et réunit les résultats', async () => {
+    const calls: string[][] = []
+    const databases = {
+      async listDocuments(_db: string, _collection: string, queries: string[] = []) {
+        calls.push(queries)
+        const ids = (JSON.parse(queries[1]) as { values: string[] }).values
+        return { total: ids.length, documents: ids.map(id => ({ $id: id })) }
+      },
+    } as unknown as Pick<Databases, 'listDocuments'>
+    const values = Array.from({ length: 250 }, (_, i) => `cv${i}`)
+    const docs = await listAllByValues(databases, 'db', 'vivier_cvs', '$id', [...values, 'cv0', ''], [Query.equal('tenantId', 'org-fictive')])
+    assert.equal(docs.length, 250, 'doublons et valeurs vides écartés')
+    assert.equal(calls.length, 3)
+    assert.ok(calls.every(q => q[0] === Query.equal('tenantId', 'org-fictive')), 'les filtres sont repris à chaque lot')
+  })
+
+  it('ne fait aucune requête sans valeur', async () => {
+    const { databases, calls } = fakeDatabases(10)
+    assert.deepEqual(await listAllByValues(databases, 'db', 'users', '$id', [], []), [])
+    assert.equal(calls.length, 0)
   })
 })

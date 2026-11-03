@@ -9,6 +9,7 @@ import { getCurrentUser } from '@/lib/appwrite/auth'
 import { revalidatePath } from 'next/cache'
 import { generateInterviewQuestions, createInterviewSession } from '@/app/recruiter/interviews/actions'
 import { wrapEmailHtml } from '@/lib/email-template'
+import { DOMAIN_FIELD, MATCH_RULES, cappedScore, offerTextForAi, parseDomainFit, recommendationFor, withBonus } from '@/lib/match-scoring'
 
 // ── Prepare & send interview invite from a screening result ────────
 export async function prepareInterviewFromScreening(params: {
@@ -270,20 +271,16 @@ async function scoreApplicationInternal(app: ApplicationToScreen): Promise<Scree
   try {
     const SYSTEM = `Tu es un expert en recrutement RH et technique. Analyse le CV du candidat par rapport à l'offre d'emploi.
 Réponds UNIQUEMENT avec un objet JSON valide, sans markdown, sans texte avant ou après :
-{"score":0-100,"recommendation":"top"|"good"|"average"|"weak"|"reject","skills":[{"name":"compétence","match":"yes"|"partial"|"no"}],"strengths":["point fort 1","point fort 2"],"concerns":["vigilance 1"],"summary":"Résumé en 2-3 phrases concrètes du profil par rapport au poste"}
+{"score":0-100,${DOMAIN_FIELD},"recommendation":"top"|"good"|"average"|"weak"|"reject","skills":[{"name":"compétence","match":"yes"|"partial"|"no"}],"strengths":["point fort 1","point fort 2"],"concerns":["vigilance 1"],"summary":"Résumé en 2-3 phrases concrètes du profil par rapport au poste"}
 
-Règles de scoring :
-- 85-100 = profil idéal, toutes compétences clés présentes
-- 70-84 = bon profil, quelques lacunes mineures
-- 55-69 = profil moyen, lacunes notables mais potentiel
-- 40-54 = profil faible, trop de manques
-- 0-39 = à rejeter, hors sujet`
+${MATCH_RULES}
+Recommandation selon le score : top 85 et plus, good 70 à 84, average 55 à 69, weak 40 à 54, reject en dessous. Domaine exigé absent : le dire dans "concerns".`
 
     const criteriaPrompt = app.criteria ? buildCriteriaPrompt(app.criteria) : ''
     const userMsg = `=== OFFRE D'EMPLOI ===
 Poste : ${app.jobTitle}
 Compétences requises : ${app.jobSkills.join(', ')}
-Description : ${app.jobDescription.slice(0, 1500)}
+Description : ${offerTextForAi(app.jobDescription, 4000)}
 ${criteriaPrompt}
 
 === CV DU CANDIDAT : ${app.candidateName} ===
@@ -296,8 +293,13 @@ ${app.coverLetter ? `\n=== MESSAGE DE MOTIVATION ===\n${app.coverLetter.slice(0,
     if (!jsonMatch) return { error: 'Réponse LLM invalide' }
 
     const parsed = JSON.parse(jsonMatch[0])
-    const aiScore = Math.min(100, Math.max(0, Number(parsed.score) || 0))
-    const score = await blendWithRecommendationScore(aiScore, app.candidateId, `${app.jobTitle} ${app.jobSkills.join(' ')} ${app.jobDescription}`)
+    // Domaine exigé absent ou voisin : score plafonné par le code (match-scoring.ts), puis mélangé avec la note des
+    // recommandations, qui ne fait passer ni le seuil « correspond » ni ce plafond ; recommandation alors recalculée.
+    const domain = parseDomainFit(parsed.domaine)
+    const rawScore = Math.min(100, Math.max(0, Number(parsed.score) || 0))
+    const aiScore = cappedScore(rawScore, domain)
+    const blended = await blendWithRecommendationScore(aiScore, app.candidateId, `${app.jobTitle} ${app.jobSkills.join(' ')} ${app.jobDescription}`)
+    const score = Math.round(cappedScore(withBonus(aiScore, blended - aiScore), domain))
 
     return {
       applicationId: app.applicationId,
@@ -306,7 +308,7 @@ ${app.coverLetter ? `\n=== MESSAGE DE MOTIVATION ===\n${app.coverLetter.slice(0,
       jobTitle: app.jobTitle,
       cvFileId: app.cvFileId,
       score,
-      recommendation: parsed.recommendation ?? 'average',
+      recommendation: aiScore < rawScore ? recommendationFor(score) : parsed.recommendation ?? 'average',
       skills: Array.isArray(parsed.skills) ? parsed.skills.slice(0, 12) : [],
       strengths: Array.isArray(parsed.strengths) ? parsed.strengths.slice(0, 4) : [],
       concerns: Array.isArray(parsed.concerns) ? parsed.concerns.slice(0, 3) : [],

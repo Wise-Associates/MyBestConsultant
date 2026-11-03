@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { BUCKETS, DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
+import { cvFileHeaders } from '@/lib/cv-file-headers'
 
 export async function GET(
   _req: NextRequest,
@@ -26,17 +27,6 @@ export async function GET(
     storage.getFile(BUCKETS.CVS, fileId).catch(() => null),
   ])
 
-  const filename = meta?.name ?? `cv-${fileId}.pdf`
-  // Force PDF mime type so browser opens inline instead of downloading
-  const mimeType = meta?.mimeType && meta.mimeType !== 'application/octet-stream'
-    ? meta.mimeType
-    : 'application/pdf'
-
-  return new NextResponse(bytes, {
-    headers: {
-      'Content-Type': mimeType,
-      'Content-Disposition': `inline; filename="${filename}"`,
-      'Cache-Control': 'private, max-age=300',
-    },
-  })
+  // Type lu dans le fichier, jamais celui enregistré : un PDF s'affiche, le reste se télécharge (cv-file-headers.ts).
+  return new NextResponse(bytes, { headers: cvFileHeaders(new Uint8Array(bytes), meta?.name ?? `cv-${fileId}.pdf`) })
 }

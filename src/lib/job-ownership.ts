@@ -61,3 +61,11 @@ export function planJobRecruiter(job: { tenantId: string; postedBy: string; recr
   if (author.role !== 'recruiter' || !job.tenantId || author.tenantId !== job.tenantId) return { note: 'author-outside' }
   return { note: 'filled', recruiterId: author.$id }
 }
+
+/**
+ * Un recruteur de l'organisation `tenantId` ouvre le pipeline et le Matching IA d'une offre de son organisation, ou
+ * d'une offre partagée par la plateforme (tenantId ''). Jamais sans organisation.
+ */
+export function recruiterCanOpenJob(jobTenantId: string, tenantId: string | null | undefined): boolean {
+  return !!tenantId && (jobTenantId === tenantId || jobTenantId === '')
+}
