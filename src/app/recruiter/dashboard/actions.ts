@@ -7,6 +7,7 @@ import { createJob, updateJobStatus, deleteJob, updateApplicationStatus, oneMont
 import { checkAssignee, notifyAssigneeWarning, setAoAssignee, setJobRecruiter } from '@/lib/recruiter-assignment'
 import { shouldNotifyAssignee } from '@/lib/assignment-email'
 import { jobOwnership } from '@/lib/job-ownership'
+import { PAY_NEEDS_CONTRACT } from '@/lib/job-pay'
 import { aoAccessFor } from '@/lib/ao/platform-view'
 import type { ApplicationStatus } from '@/types'
 import type { Job } from '@/types'
@@ -27,6 +28,8 @@ export async function createJobAction(formData: FormData): Promise<{ error?: str
   const salary = salaryRaw ? parseInt(salaryRaw, 10) : undefined
 
   if (!title || !description || !location) return { error: 'Titre, description et localisation sont requis.' }
+  // Le contrat fixe l'unité du montant (TJM ou salaire annuel, job-pay.ts) : sans lui, elle serait devinée.
+  if (salaryRaw && Number.isFinite(salary) && !contractType) return { error: PAY_NEEDS_CONTRACT }
 
   const skills = skillsRaw
     ? skillsRaw.split(',').map(s => s.trim()).filter(Boolean)

@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import type { AoContract, AoEngagement, AoOfferStatus, AoRemote } from '@/lib/ao/types'
+import { payShort } from '@/lib/job-pay'
 
 // Libellés et styles partagés par la liste et le panneau de détail AO Offers.
 
@@ -16,10 +17,10 @@ export const CONTRACT_LABEL: Record<AoContract, string> = { cdi: 'CDI', cdd: 'CD
 export const REMOTE_LABEL: Record<AoRemote, string> = { onsite: 'Sur site', hybrid: 'Hybride', remote: 'Télétravail' }
 export const ENGAGEMENT_LABEL: Record<AoEngagement, string> = { assistance: 'Assistance technique', forfait: 'Forfait', '': '—' }
 
-/** TJM pour les missions et le freelance, salaire annuel pour les CDI/CDD (comme l'import d'offres). */
+/** TJM pour les missions et le freelance, salaire annuel pour les CDI/CDD, si le montant y ressemble (job-pay.ts). */
 export function formatAmount(salary: number | null, contract: AoContract): string {
   if (salary === null) return '—'
-  return `${salary.toLocaleString('fr-FR')} €${contract === 'cdi' || contract === 'cdd' ? '/an' : '/j'}`
+  return payShort(salary, contract)
 }
 
 /** JJ/MM/AAAA sans dépendre du fuseau du navigateur (même rendu côté serveur et client). */

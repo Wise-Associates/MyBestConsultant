@@ -7,6 +7,7 @@ import { JobSearchForm } from './job-search-form'
 import { parseKeywordRowsFromParams } from '@/lib/keyword-match'
 import { SENIORITY_MAX } from '@/lib/job-seniority'
 import { formatDateFr } from '@/lib/format-date'
+import { payShort } from '@/lib/job-pay'
 
 export const metadata: Metadata = {
   title: 'Offres IT & Consulting | MyBestConsultant',
@@ -165,7 +166,7 @@ function JobCard({ job }: { job: Job }) {
               {job.salary && (
                 <span className="flex items-center gap-1 text-sm font-bold" style={{ color: 'var(--color-primary)' }}>
                   <Briefcase className="h-3.5 w-3.5" />
-                  {job.salary.toLocaleString('fr-FR')} {job.contractType === 'cdi' || job.contractType === 'cdd' ? '€/an' : '€/j'}
+                  {payShort(job.salary, job.contractType)}
                 </span>
               )}
             </div>

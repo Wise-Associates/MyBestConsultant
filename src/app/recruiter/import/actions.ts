@@ -88,7 +88,7 @@ Réponds UNIQUEMENT avec un tableau JSON valide, sans markdown, sans explication
     "location": "string — ville ou région, '' si non précisé",
     "contractType": "cdi|cdd|freelance|mission",
     "remote": "onsite|hybrid|remote",
-    "salary": number|null — montant en € (mensuel pour CDI/CDD, TJM pour freelance/mission), null si non précisé,
+    "salary": number|null — montant en € : salaire annuel brut pour CDI/CDD (un salaire mensuel est multiplié par 12), TJM pour freelance/mission, null si non précisé ou si l'unité est inconnue,
     "skills": ["string"] — liste de compétences techniques,
     "description": "string — description complète et détaillée du poste, reprends l'intégralité du contenu pertinent du document source (contexte, missions, profil recherché, compétences) — ne jamais résumer ni tronquer",
     "companyName": "string — nom de l'entreprise, '${defaultCompany}' si non précisé",
