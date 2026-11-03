@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
 import type { Job } from '@/types'
+import { payText } from '@/lib/job-pay'
 
 const LI_AUTH_URL = 'https://www.linkedin.com/oauth/v2/authorization'
 const LI_TOKEN_URL = 'https://www.linkedin.com/oauth/v2/accessToken'
@@ -206,10 +207,7 @@ function buildPostText(job: Job & { $id: string }, appUrl?: string): string {
 
   if (job.companyName) lines.push(job.companyName)
 
-  if (job.salary) {
-    const unit = (job.contractType === 'cdi' || job.contractType === 'cdd') ? 'EUR/an' : 'EUR/j TJM'
-    lines.push(`${job.salary.toLocaleString('fr-FR')} ${unit}`)
-  }
+  if (job.salary) lines.push(payText(job.salary, job.contractType))
   lines.push('')
 
   if (job.skills.length > 0) {
