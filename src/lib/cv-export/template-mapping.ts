@@ -42,7 +42,7 @@ Réponds UNIQUEMENT avec l'objet JSON du template_map.json, sans markdown ni tex
 
 ## Données d'un dossier (noms de champs exacts)
 - Identité : {identifiant} (initiales « J.M. »), {titre} (intitulé du poste), {experience} (« 12 ans d'expérience »).
-- resume : liste de 2 ou 3 paragraphes ; chacun est {text}.
+- resume : liste de paragraphes ; chacun est {text}.
 - experiences : {dates}, {client}, role_lignes (liste ; {text} avec exp_role*, ou {role_lignes_joined} sur une ligne), {contexte}, realisations (liste ; {text} avec exp_bullet*), {environnement}.
 - formations : {annees}, {intitule}, {etablissement}, details (liste ; {details_joined}).
 - certifications : {annee}, {intitule}, {organisme}.

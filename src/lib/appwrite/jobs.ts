@@ -6,6 +6,13 @@ import type { Job, Application } from '@/types'
 import { expandLocationSearch, normalizeLocation } from '@/lib/regions'
 import { matchesKeywordRows, isExcludedByKeywordRows, type KeywordRow } from '@/lib/keyword-match'
 import { estimateJobSeniorityYears, SENIORITY_MAX } from '@/lib/job-seniority'
+import type { RecruiterSelection } from '@/lib/recruiter-job-filters'
+
+/**
+ * Offres par requête quand on lit les candidatures d'une liste d'offres : Appwrite refuse plus de 100 valeurs dans un
+ * Query.equal. Sans rapport avec les 50 lignes affichées à la fois dans « Mes offres » (jobs-list-client.tsx).
+ */
+const JOB_BATCH = 100
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -157,6 +164,24 @@ export async function getJobsByTenant(tenantId: string): Promise<Job[]> {
   return all.sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1))
 }
 
+/**
+ * Offres de l'organisation affectées aux recruteurs choisis (`selection.ids`, profils) et, avec `unassigned`, celles sans
+ * recruteur — filtre par recruteur du tableau de bord. Les offres partagées de la plateforme n'en font pas partie : elles
+ * ne sont affectées à personne de l'équipe. Une requête par cas, réunies (pas de Query.or ailleurs dans le projet).
+ */
+export async function getTenantJobsOfRecruiters(tenantId: string, selection: RecruiterSelection): Promise<Job[]> {
+  const { databases } = createAdminClient()
+  const read = (query: string) =>
+    listAllDocuments(databases, DB_ID, COLLECTIONS.JOBS, [Query.equal('tenantId', tenantId), query, Query.orderDesc('$createdAt')])
+  const lists = await Promise.all([
+    ...(selection.ids.length > 0 ? [read(Query.equal('recruiterId', selection.ids))] : []),
+    ...(selection.unassigned ? [read(Query.isNull('recruiterId'))] : []),
+  ])
+  return lists.flat()
+    .map(doc => docToJob(doc as unknown as Record<string, unknown>))
+    .sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1))
+}
+
 export async function createJob(data: {
   tenantId: string
   title: string
@@ -221,6 +246,18 @@ export async function getApplicationsByTenant(tenantId: string): Promise<Applica
     Query.orderDesc('$createdAt'),
   ])
   return docs.map(d => docToApp(d as unknown as Record<string, unknown>))
+}
+
+/** Candidatures de l'organisation aux offres `jobIds` (tableau de bord filtré par recruteur), toutes, par lots d'offres. */
+export async function getApplicationsOfJobs(tenantId: string, jobIds: string[]): Promise<Application[]> {
+  const { databases } = createAdminClient()
+  const batches: string[][] = []
+  for (let i = 0; i < jobIds.length; i += JOB_BATCH) batches.push(jobIds.slice(i, i + JOB_BATCH))
+  // Même périmètre que getApplicationsByTenant (organisation de la candidature), restreint aux offres choisies.
+  const lists = await Promise.all(batches.map(ids => listAllDocuments(databases, DB_ID, COLLECTIONS.APPLICATIONS, [
+    Query.equal('tenantId', tenantId), Query.equal('jobId', ids), Query.orderDesc('$createdAt'),
+  ])))
+  return lists.flat().map(d => docToApp(d as unknown as Record<string, unknown>))
 }
 
 export async function hasApplied(jobId: string, candidateId: string): Promise<boolean> {
