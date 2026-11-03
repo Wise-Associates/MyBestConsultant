@@ -39,7 +39,8 @@ const FOCUS_CHIPS: Record<JobFocus, string> = {
 }
 /**
  * Lignes affichées à la fois (demande du 2026-11-02, comme le tableau des AO). Les offres et candidatures restent toutes
- * lues par la page : indicateurs et tuiles « À traiter » comptent sur toutes.
+ * lues par la page (celles des recruteurs choisis avec le filtre « Recruteurs ») : indicateurs et tuiles « À traiter »
+ * comptent sur toutes.
  */
 const PAGE_SIZE = 50
 
@@ -49,7 +50,7 @@ const fieldStyle: CSSProperties = { background: 'var(--color-surface)', border: 
 const plural = (n: number, one: string, many: string) => (n > 1 ? many : one)
 
 export function JobsListClient({
-  rows, appsByJob, funnelStages, socialEnabled, socialUnavailable, recruiters, jobsWithNew, focusJobId, action,
+  rows, appsByJob, funnelStages, socialEnabled, socialUnavailable, recruiters, jobsWithNew, focusJobId, action, recruiterFilter, recruiterFiltered,
 }: {
   rows: DashboardJobRow[]; appsByJob: Record<string, CandidateApp[]>; funnelStages: FunnelStage[]
   socialEnabled: boolean
@@ -63,6 +64,9 @@ export function JobsListClient({
   focusJobId?: string
   /** Bouton « Créer une offre », dans l'en-tête de « Mes offres ». */
   action?: ReactNode
+  /** Filtre « Recruteurs » (appliqué par le serveur : `rows` ne contient que les offres choisies). */
+  recruiterFilter?: ReactNode
+  recruiterFiltered: boolean
 }) {
   const [openJobId, setOpenJobId] = useState<string | null>(null)
   const [filters, setFilters] = useState<JobFilters>(EMPTY_JOB_FILTERS)
@@ -204,6 +208,7 @@ export function JobsListClient({
               {Object.entries(SORT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </div>
+          {recruiterFilter}
           {filters.focus && (
             <button type="button" onClick={() => update({ focus: null })} aria-label={`Retirer le filtre « ${FOCUS_CHIPS[filters.focus]} »`}
               className="self-start sm:self-auto h-8 pl-3 pr-2.5 rounded-full inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
@@ -227,7 +232,8 @@ export function JobsListClient({
         {shown.length === 0 ? (
           <div className="py-14 px-6 text-center flex flex-col items-center gap-3 border-t border-(--color-border) lg:border-t-0">
             <p className="text-sm" style={muted}>
-              {rows.length === 0 ? 'Aucune offre. Créez votre première offre pour commencer.' : 'Aucune offre ne correspond à ces filtres.'}
+              {rows.length > 0 ? 'Aucune offre ne correspond à ces filtres.'
+                : recruiterFiltered ? 'Aucune offre affectée à ces recruteurs.' : 'Aucune offre. Créez votre première offre pour commencer.'}
             </p>
             {filtering && (
               <button type="button" onClick={() => update(EMPTY_JOB_FILTERS)}
