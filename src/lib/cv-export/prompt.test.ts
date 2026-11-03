@@ -20,9 +20,17 @@ describe('extractionPrompt', () => {
     }
   })
 
-  it('garde les clients en anonymisation standard, les remplace en renforcée', () => {
-    assert.match(extractionPrompt('standard'), /Conserver les noms des clients/)
+  it('garde les clients en anonymisation standard, sans les compter parmi les termes d\'identité ; les remplace en renforcée', () => {
+    const standard = extractionPrompt('standard')
+    assert.match(standard, /seule l'identité du candidat est retirée/)
+    assert.match(standard, /Conserver tels quels, partout, les noms des clients, des employeurs/)
+    assert.match(standard, /jamais un nom gardé dans le dossier/)
     assert.match(extractionPrompt('renforcee'), /Anonymisation renforcée/)
+    assert.match(extractionPrompt('renforcee'), /clients et des employeurs remplacés/)
+  })
+
+  it('« références » désigne les personnes de référence, pas les références clients', () => {
+    for (const mode of MODES) assert.match(extractionPrompt(mode), /personnes de référence et leurs coordonnées/, mode)
   })
 })
 

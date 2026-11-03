@@ -1,5 +1,6 @@
 import { strFromU8, unzipSync } from 'fflate'
 import { stripInvisible } from './cv-data'
+import type { AnonymizationMode } from './types'
 
 // Contrôle d'un CV rendu avant de le livrer : portage de la partie « fuites d'identité » de check_cv.py (skill
 // cv-esn-anonymise). La pagination de check_cv.py demande LibreOffice, absent de Vercel : non portée.
@@ -65,14 +66,31 @@ function packageText(docx: Uint8Array): PackageText {
   }
 }
 
+export interface CandidateIdentity {
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+}
+
 /** Termes d'identité du candidat : nom dans les deux ordres et collé (« camillefontaine.fr »), coordonnées, termes relevés par l'IA. */
-export function identityTerms(candidate: { firstName: string; lastName: string; email: string; phone: string }, extra: string[]): string[] {
+export function identityTerms(candidate: CandidateIdentity, extra: string[]): string[] {
   const { firstName, lastName } = candidate
   const glued = (s: string) => s.replace(/[\s'’.-]+/g, '')
   return [
     firstName, lastName, `${firstName} ${lastName}`, `${lastName} ${firstName}`, glued(firstName + lastName), glued(lastName + firstName),
     candidate.email, candidate.phone, ...extra,
   ].filter(t => t.trim())
+}
+
+/**
+ * Termes cherchés dans le document. Standard : seule l'identité du candidat est anonymisée (ADR 0024), donc seuls son
+ * nom, son e-mail et son téléphone, connus sans l'IA ; l'IA rangeait parmi ses termes des clients qu'elle gardait à
+ * juste titre dans le dossier, et l'export était bloqué. Renforcée : aussi les termes de l'IA, dont les clients et
+ * employeurs qu'elle a remplacés. Tout e-mail, téléphone ou lien absent du modèle est cherché dans les deux cas (findLeaks).
+ */
+export function leakTerms(candidate: CandidateIdentity, aiTerms: string[], mode: AnonymizationMode): string[] {
+  return identityTerms(candidate, mode === 'renforcee' ? aiTerms : [])
 }
 
 /** Un terme qui est un numéro (au moins 8 chiffres, surtout des chiffres) se compare sur ses 9 derniers chiffres. */
@@ -133,7 +151,7 @@ export function findLeaks(docx: Uint8Array, template: Uint8Array, terms: string[
 }
 
 const LEAK_LABEL: Record<LeakKind, string> = {
-  identity: 'élément d\'identité du candidat',
+  identity: 'élément à anonymiser',
   email: 'adresse e-mail',
   phone: 'numéro de téléphone',
   link: 'lien (site, profil, messagerie)',
@@ -145,5 +163,5 @@ const LEAK_LABEL: Record<LeakKind, string> = {
 /** Message pour l'admin : ce qui a bloqué l'export (l'admin voit déjà ces données dans la CV Thèque). */
 export function leakMessage(leaks: Leak[]): string {
   const list = leaks.slice(0, 5).map(l => `${LEAK_LABEL[l.kind]} « ${l.value} »`).join(', ')
-  return `Export bloqué : le document contient encore ${list}. Réessayez ; si le terme est un nom de client ou d'employeur, choisissez l'anonymisation renforcée. Si c'est un mot ordinaire du CV identique au nom du candidat (homonyme), l'export ne peut pas être fait automatiquement : préparez ce dossier dans Word.`
+  return `Export bloqué : le document contient encore ${list}. Réessayez. Si c'est un client ou un employeur qui porte le nom du candidat, choisissez l'anonymisation renforcée ; si c'est un autre mot du CV identique à son nom (homonyme), l'export ne peut pas être fait automatiquement : préparez ce dossier dans Word.`
 }
