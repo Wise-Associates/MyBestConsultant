@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { BULK_DELETE_MAX, bulkDeleteNotice, deleteEach, parseBulkDeleteIds } from './bulk-delete'
+import { BULK_DELETE_MAX, bulkDeleteNotice, deleteEach, expiredToReview, parseBulkDeleteIds, uncertainNote } from './bulk-delete'
 
 describe('suppression de plusieurs offres AO', () => {
   it('accepte une sélection d\'identifiants de documents, sans les doublons', () => {
@@ -75,5 +75,61 @@ describe('message de fin de la suppression groupée', () => {
     assert.equal(notice.tone, 'error')
     assert.match(notice.text, /^50 offres supprimées, puis suppression interrompue/)
     assert.doesNotMatch(notice.text, /non supprimée/)
+  })
+})
+
+describe('offres à valider échues (bouton « Offres échues »)', () => {
+  const now = new Date('2026-11-03T08:00:00Z')
+  // Par défaut, chaque offre vient de son propre e-mail, qui n'en apporte qu'une.
+  const row = (id: string, over: Partial<Parameters<typeof expiredToReview>[0][number]> = {}) => ({
+    $id: id, title: `Offre ${id}`, status: 'to_review' as const, jobId: null, deadline: '30/10/2026', receivedAt: '2026-10-20T09:00:00.000Z',
+    emailId: `e-${id}`, sourceCount: 1, ...over,
+  })
+  const alone = () => 1
+  const ids = (rows: ReturnType<typeof row>[]) => expiredToReview(rows, now, alone).offers.map(o => o.id)
+
+  it('propose les offres à valider dont la date limite est passée, avec leur titre et leur date, dans l\'ordre de la liste', () => {
+    assert.deepEqual(expiredToReview([row('a'), row('b', { deadline: 'lundi 2 novembre 2026' })], now, alone), {
+      offers: [{ id: 'a', title: 'Offre a', deadline: '30/10/2026' }, { id: 'b', title: 'Offre b', deadline: 'lundi 2 novembre 2026' }],
+      uncertain: 0,
+    })
+  })
+
+  it('écarte, en les comptant, les offres dont la date limite n\'est peut-être pas la leur', () => {
+    const offersOfEmail = (emailId: string) => (emailId === 'tableau' ? 16 : 1)
+    const search = expiredToReview([
+      row('ligne1', { emailId: 'tableau' }), row('ligne2', { emailId: 'tableau' }),
+      row('renvoyee', { sourceCount: 2 }),
+      row('deux-dates', { deadline: 'du 01/11 au 20/11/2026' }),
+      row('sure'),
+    ], now, offersOfEmail)
+    assert.deepEqual(search.offers.map(o => o.id), ['sure'])
+    assert.equal(search.uncertain, 4, 'e-mail à plusieurs offres (date la plus proche de toutes), offre reçue plusieurs fois, deux dates citées')
+  })
+
+  it('ne compte comme écartées que des offres dont la date limite enregistrée est passée', () => {
+    const search = expiredToReview([row('ouverte', { emailId: 'tableau', deadline: '20/11/2026' }), row('publiee', { emailId: 'tableau', status: 'published' })], now, () => 16)
+    assert.deepEqual(search, { offers: [], uncertain: 0 })
+  })
+
+  it('écarte les offres publiées ou ignorées', () => {
+    assert.deepEqual(ids([row('p', { status: 'published' }), row('j', { jobId: 'aoj1' }), row('i', { status: 'ignored' }), row('a')]), ['a'])
+  })
+
+  it('garde une offre sans date limite lisible, ou dont la date limite est aujourd\'hui ou plus tard', () => {
+    assert.deepEqual(ids(['', 'ASAP', 'fin novembre', '03/11/2026', '15/12/2026 à 12h'].map((deadline, i) => row(`o${i}`, { deadline }))), [])
+  })
+
+  it('lit l\'année d\'une date sans année à la réception de l\'e-mail', () => {
+    assert.deepEqual(ids([
+      row('ancienne', { deadline: '20/12', receivedAt: '2025-12-01T09:00:00.000Z' }),
+      row('recente', { deadline: '20/12', receivedAt: '2026-10-20T09:00:00.000Z' }),
+      row('sans-date', { deadline: '30/10/2026', receivedAt: '' }),
+    ]), ['ancienne', 'sans-date'])
+  })
+
+  it('explique les offres écartées, au singulier comme au pluriel', () => {
+    assert.match(uncertainNote(1), /^1 offre écartée : sa date limite n'est peut-être pas la sienne .* supprimez-la par la sélection\.$/)
+    assert.match(uncertainNote(16), /^16 offres écartées : leur date limite n'est peut-être pas la leur .* supprimez-les par la sélection\.$/)
   })
 })

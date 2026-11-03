@@ -43,6 +43,19 @@ export function parseOfferDate(value: string, reference: Date): Date | null {
   return null
 }
 
+/** Mois en toutes lettres, du plus long au plus court (« janvier » essayé avant « jan »). */
+const MONTH_WORDS = Object.keys(MONTHS).sort((a, b) => b.length - a.length).join('|')
+/** Une date, dans l'un des formats de parseOfferDate (« 2026-11-02 » n'en est qu'une). */
+const DATE_TOKEN = new RegExp(`\\b(?:\\d{4}-\\d{1,2}-\\d{1,2}|\\d{1,2}[/.-]\\d{1,2}(?:[/.-](?:\\d{4}|\\d{2}))?|\\d{1,2}(?:er)?\\s+(?:${MONTH_WORDS}))\\b`, 'g')
+
+/**
+ * Nombre de dates citées dans un texte (« du 01/11 au 20/11/2026 » : 2). parseOfferDate ne lit que la première : un
+ * texte qui en cite plusieurs ne dit pas sûrement laquelle est la date limite.
+ */
+export function offerDateCount(value: string): number {
+  return fold(value).match(DATE_TOKEN)?.length ?? 0
+}
+
 /**
  * Place les dates citées sans libellé (`unlabeled`) selon leur jour : lundi → démarrage, sinon (vendredi, autre jour,
  * date illisible) → date limite. Seules les places encore vides sont remplies : une date désignée par le texte reste.
@@ -67,12 +80,13 @@ export function placeUnlabeledDates(
 
 /**
  * Date limite lisible et antérieure au jour de `now` : l'offre ne peut plus recevoir de réponse. Une date illisible
- * ou absente n'est jamais « passée ». Appliqué aux offres de la veille (scraping), dont la date limite vient de la
- * source elle-même (décision du 2026-10-23).
+ * ou absente n'est jamais « passée ». `reference` donne l'année d'une date écrite sans : la réception de l'e-mail, comme
+ * à sa lecture (`now` par défaut). Appliqué aux offres de la veille (scraping), dont la date limite vient de la source
+ * elle-même (décision du 2026-10-23), et au bouton « Offres échues » du tableau (bulk-delete.ts).
  */
-export function isPastDeadline(deadline: string, now: Date): boolean {
+export function isPastDeadline(deadline: string, now: Date, reference: Date = now): boolean {
   if (!deadline.trim()) return false
-  const date = parseOfferDate(deadline, now)
+  const date = parseOfferDate(deadline, reference)
   return date !== null && date.getTime() < Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
 }
 

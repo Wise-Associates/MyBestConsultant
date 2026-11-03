@@ -1,4 +1,6 @@
 import { isDocumentId } from './access'
+import { isPastDeadline, offerDateCount } from './dates'
+import type { AoOfferRow } from './filters'
 
 // Suppression de plusieurs offres AO à la fois (sélection du tableau des appels d'offres) : règles pures, testées.
 // Le contrôle de chaque offre (organisation de la session, offre publiée refusée) reste celui de deleteAoOfferOf.
@@ -50,6 +52,52 @@ export async function deleteEach(
     else result.deleted.push(id)
   })
   return result
+}
+
+/** Offre proposée par « Offres échues » : son titre et sa date limite telle qu'écrite, montrés à la confirmation. */
+export interface ExpiredOffer {
+  id: string
+  title: string
+  deadline: string
+}
+
+export interface ExpiredSearch {
+  offers: ExpiredOffer[]
+  /**
+   * Offres à valider dont la date limite enregistrée est passée mais n'est peut-être pas la leur : écartées (décision
+   * du 2026-11-03), à vérifier dans l'e-mail et à supprimer par la sélection.
+   */
+  uncertain: number
+}
+
+/**
+ * « Offres échues » : offres à valider dont la date limite est passée, proposées à la suppression après relecture (la
+ * date limite est lue par l'IA, parfois déduite d'une date sans libellé). Une date absente ou illisible ne rend jamais
+ * une offre échue ; l'année d'une date écrite sans est celle de la réception de l'e-mail. La date limite est enregistrée
+ * sur l'e-mail, une seule (la plus proche de ses offres) : elle n'est sûrement celle de l'offre que si l'e-mail n'en
+ * apporte qu'une (`offersOfEmail` : offres créées et doublons), si l'offre n'a été reçue qu'une fois (un e-mail suivant
+ * a pu reporter la date) et si le texte ne cite qu'une date. Sinon l'offre est écartée et comptée. Ordre de `rows` gardé.
+ */
+export function expiredToReview(
+  rows: Pick<AoOfferRow, '$id' | 'title' | 'status' | 'jobId' | 'deadline' | 'receivedAt' | 'emailId' | 'sourceCount'>[],
+  now: Date, offersOfEmail: (emailId: string) => number,
+): ExpiredSearch {
+  const search: ExpiredSearch = { offers: [], uncertain: 0 }
+  for (const r of rows) {
+    const received = new Date(r.receivedAt)
+    if (r.status !== 'to_review' || r.jobId || !isPastDeadline(r.deadline, now, Number.isNaN(received.getTime()) ? now : received)) continue
+    if (offersOfEmail(r.emailId) > 1 || r.sourceCount > 1 || offerDateCount(r.deadline) > 1) search.uncertain++
+    else search.offers.push({ id: r.$id, title: r.title, deadline: r.deadline })
+  }
+  return search
+}
+
+/** Pourquoi des offres échues n'ont pas été proposées (fenêtre de confirmation, message quand aucune ne l'est). */
+export function uncertainNote(n: number): string {
+  const cause = '(e-mail à plusieurs offres, offre reçue plusieurs fois ou plusieurs dates citées)'
+  return n > 1
+    ? `${n} offres écartées : leur date limite n'est peut-être pas la leur ${cause}. Vérifiez-les dans l'e-mail, puis supprimez-les par la sélection.`
+    : `${n} offre écartée : sa date limite n'est peut-être pas la sienne ${cause}. Vérifiez-la dans l'e-mail, puis supprimez-la par la sélection.`
 }
 
 /** Fin d'une suppression groupée, telle que le navigateur l'a vue (lots envoyés l'un après l'autre). */
