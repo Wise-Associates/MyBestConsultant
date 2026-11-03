@@ -15,11 +15,11 @@ export default async function MatchingPage({ params }: { params: Promise<{ jobId
   if (!job) notFound()
   if (job.tenantId !== user.tenantId && job.tenantId !== '') redirect('/recruiter/dashboard')
 
-  const { matches } = await getJobMatches(jobId)
+  const { matches } = await getJobMatches(jobId, user.tenantId, user.$id)
 
   // Toute candidature doit avoir son matching : celles que l'analyse automatique a manquées sont relancées en tâche de fond.
   const retry = unmatchedApplicationIds(matches)
   if (retry.length > 0) after(async () => { for (const id of retry) await autoScreenApplication(id) })
 
-  return <MatchingClient jobId={jobId} jobTitle={job.title} initialMatches={matches} />
+  return <MatchingClient jobId={jobId} jobTitle={job.title} initialMatches={matches} now={new Date().toISOString()} />
 }

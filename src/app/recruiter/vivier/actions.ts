@@ -5,6 +5,7 @@ import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
 import { ID, Query } from 'node-appwrite'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { getOpenJobsOfTenant } from '@/lib/appwrite/jobs'
+import { assertVivierOfferMatchesReady, deleteVivierOfferMatchesOf, syncVivierOfferMatches } from '@/lib/appwrite/vivier-offer-matches'
 import { releaseDailySlot, takeDailySlotId } from '@/lib/ao/state'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
@@ -247,6 +248,7 @@ async function compareWithNewOffers(user: UserProfile, tenantId: string, docId: 
   const toCompare = offersToCompare(parseOfferScores(doc.offerMatchesJson as string | null), offers)
   if (toCompare.length === 0) return null
 
+  await assertVivierOfferMatchesReady()
   const refusal = await matchingSlot(user, tenantId)
   if (refusal) return refusal
   const { scoreCvAgainstOffers } = await import('@/lib/matching-core')
@@ -258,7 +260,11 @@ async function compareWithNewOffers(user: UserProfile, tenantId: string, docId: 
   const latest = await databases.getDocument(DB_ID, COLLECTIONS.VIVIER_CVS, docId)
   const openIds = new Set(offers.map(o => o.$id))
   const merged = mergeOfferScores(parseOfferScores(latest.offerMatchesJson as string | null), scores, openIds)
-  await databases.updateDocument(DB_ID, COLLECTIONS.VIVIER_CVS, docId, { offerMatchesJson: serializeOfferScores(merged) })
+  const stored = serializeOfferScores(merged)
+  // Correspondances lues par le Matching IA des offres (ADR 0026) écrites d'abord, d'après les scores tels qu'enregistrés :
+  // si elles échouent, les scores ne le sont pas non plus et la prochaine synchronisation refait la comparaison.
+  await syncVivierOfferMatches(tenantId, docId, parseOfferScores(stored))
+  await databases.updateDocument(DB_ID, COLLECTIONS.VIVIER_CVS, docId, { offerMatchesJson: stored })
   if (!failed) return null
   return matchingOffers(merged, openIds).length > 0 ? VIVIER_MATCHING_REFUSAL.partial : VIVIER_MATCHING_REFUSAL.failed
 }
@@ -340,6 +346,13 @@ export async function deleteVivierCv(jobId: string | null, docId: string): Promi
     const sharing = await databases.listDocuments(DB_ID, COLLECTIONS.VIVIER_CVS, [Query.equal('cvFileId', doc.cvFileId as string), Query.limit(2)])
     if (sharing.total <= 1) await storage.deleteFile(BUCKETS.VIVIER_CVS, doc.cvFileId as string).catch(() => {})
     await databases.deleteDocument(DB_ID, COLLECTIONS.VIVIER_CVS, docId)
+    // Correspondances aux offres (vivier général, ADR 0026) après le CV : supprimées avant, un échec de sa suppression
+    // l'aurait retiré du Matching IA sans que rien ne les recrée. Restées, elles sont écartées à la lecture (CV absent)
+    // et purgées par npm run vivier:matches.
+    if (!doc.jobId) {
+      await deleteVivierOfferMatchesOf(docId).catch(err =>
+        console.error('[vivier] correspondances aux offres du CV supprimé non supprimées, à purger par npm run vivier:matches', docId, err instanceof Error ? err.message : err))
+    }
     // Second passage, comme pour un compte supprimé : une génération qui enregistrait pendant la suppression a pu
     // écrire après le premier (saveCvExports ne revérifie le CV qu'après son écriture). Le CV est déjà supprimé : un
     // échec ici est journalisé, la version restante est à supprimer à la main.
