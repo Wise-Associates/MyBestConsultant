@@ -1,4 +1,5 @@
 import type { JobMatchResult } from '@/lib/matching-core'
+import type { BulkDeleteResult } from './bulk-delete'
 import type { AoOfferRow } from './filters'
 import type { AoSyncReport } from './sync'
 import type { TrackingStep } from './tracking'
@@ -137,6 +138,11 @@ export interface AoSyncPassResult {
 export interface AoDashboardActions {
   retryEmail(id: string): Promise<{ report?: AoSyncReport; error?: string }>
   deleteOffer(id: string): Promise<{ error?: string }>
+  /**
+   * Suppression des offres sélectionnées (BULK_DELETE_MAX par appel) : le détail par offre, ou `error` si l'envoi
+   * entier est refusé (session expirée, sélection invalide) et que rien n'a été supprimé.
+   */
+  deleteOffers(ids: string[]): Promise<BulkDeleteResult | { error: string }>
   previewPublication(id: string, mode?: PublicationMode): Promise<{ preview?: PublicationPreview; error?: string }>
   publish(id: string, input: PublicationDraft): Promise<{ jobId?: string; error?: string }>
   setStatus(id: string, status: 'to_review' | 'ignored'): Promise<{ error?: string }>

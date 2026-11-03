@@ -10,7 +10,8 @@ import { loadAoTracking } from '@/lib/ao/tracking-store'
 import { canUseAoSourcing } from '@/lib/ao/tenancy'
 import { AoOffersDashboard, type MailboxIssue } from '@/components/ao/ao-offers-dashboard'
 import {
-  addRecruiterAoOfferComment, deleteRecruiterAoOffer, deleteRecruiterAoOfferComment, listRecruiterAoOfferComments, retryRecruiterAoEmail,
+  addRecruiterAoOfferComment, deleteRecruiterAoOffer, deleteRecruiterAoOfferComment, deleteRecruiterAoOffers, listRecruiterAoOfferComments,
+  retryRecruiterAoEmail,
 } from './actions'
 
 // Appels d'offres reçus dans les boîtes de l'organisation du recruteur (ADR 0005, phase C) : même tableau que
@@ -69,7 +70,7 @@ export default async function RecruiterAoOffersPage({ searchParams }: { searchPa
       tracking={tracking}
       trackingError={trackingError}
       actions={{
-        retryEmail: retryRecruiterAoEmail, deleteOffer: deleteRecruiterAoOffer,
+        retryEmail: retryRecruiterAoEmail, deleteOffer: deleteRecruiterAoOffer, deleteOffers: deleteRecruiterAoOffers,
         listComments: listRecruiterAoOfferComments, addComment: addRecruiterAoOfferComment, deleteComment: deleteRecruiterAoOfferComment,
       }}
       paths={{
