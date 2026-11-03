@@ -11,7 +11,7 @@ import {
   InvalidAnswerError, TruncatedAnswerError, contentOf, countToComplete, cvFileKind, exportBaseName, exportNotes, fitToTemplate,
   initialsOf, parseExtraction, parseTranslation, splitFullName, zipNameOf, type CvContent,
 } from './cv-data'
-import { findLeaks, identityTerms, leakMessage } from './leak-check'
+import { findLeaks, leakMessage, leakTerms } from './leak-check'
 import { extractionPrompt, translationPrompt } from './prompt'
 import { renderCv } from './render'
 import { ownsVivierCv } from './stored'
@@ -258,7 +258,7 @@ async function exportCv(logId: string, candidate: Candidate, options: CvExportOp
     contents.set(lang, translated)
   }
 
-  const identity = identityTerms(candidate, extraction.termes_identifiants)
+  const identity = leakTerms(candidate, extraction.termes_identifiants, options.mode)
   const files = options.langs.map(lang => {
     const content = contents.get(lang)
     if (!content) throw new Error(`Contenu ${lang} absent après traduction`)

@@ -22,7 +22,9 @@ const JSON_SHAPE = `{
   "omis": ["…"]
 }`
 
-const STANDARD_RULE = '- Conserver les noms des clients et des employeurs.'
+// Standard : l'IA rangeait des clients gardés dans le dossier parmi les termes d'identité (export bloqué sur
+// « Groupe SANOFI »). Ses termes ne sont plus cherchés dans le document en standard (leakTerms, leak-check.ts).
+const STANDARD_RULE = '- Anonymisation standard : seule l\'identité du candidat est retirée. Conserver tels quels, partout, les noms des clients, des employeurs, des écoles et des organismes (rubrique « Références clients » comprise) : ce ne sont pas des éléments d\'identité.'
 const REINFORCED_RULE = `- Anonymisation renforcée : remplacer aussi chaque client et chaque employeur par une description générique (« Grande banque d'investissement française », « Assureur européen », « Éditeur de logiciels »…), partout : résumé, expériences, contextes, réalisations. Remplacer de même les noms d'outils internes qui identifieraient l'entreprise.`
 
 export function extractionPrompt(mode: AnonymizationMode): string {
@@ -53,10 +55,10 @@ Copie fidèle :
 - "omis" : les contenus du CV qui n'entrent dans aucune de ces rubriques (centres d'intérêt, publications, bénévolat…), quelques mots chacun, sans donnée personnelle. Liste vide sinon.
 
 Anonymisation (obligatoire, dans tous les champs) :
-- Retirer : prénom, nom, photo, e-mail, téléphone, adresse, URL personnelles (LinkedIn, GitHub, site), date de naissance, âge, nationalité, situation familiale, permis de conduire, numéro de sécurité sociale, références, noms des personnes citées (managers, collègues).
+- Retirer : prénom, nom, photo, e-mail, téléphone, adresse, URL personnelles (LinkedIn, GitHub, site), date de naissance, âge, nationalité, situation familiale, permis de conduire, numéro de sécurité sociale, personnes de référence et leurs coordonnées, noms des personnes citées (managers, collègues).
 - Une société créée par le candidat l'identifie : la remplacer par une description (« Société de développement (fondateur) »).
 ${mode === 'renforcee' ? REINFORCED_RULE : STANDARD_RULE}
-- "termes_identifiants" : chaque élément d'identité trouvé dans le CV et retiré, tel qu'écrit dans le CV : prénom, nom, e-mail, téléphone, rue de l'adresse, URL personnelles, nom de la société créée par le candidat${mode === 'renforcee' ? ', noms des clients et des employeurs remplacés' : ''}. Pas de ville ni de pays. Ces termes servent à vérifier qu'aucun n'apparaît dans le document final.`
+- "termes_identifiants" : chaque élément d'identité trouvé dans le CV et retiré, tel qu'écrit dans le CV : prénom, nom, e-mail, téléphone, rue de l'adresse, URL personnelles, nom de la société créée par le candidat${mode === 'renforcee' ? ', noms des clients et des employeurs remplacés' : ' ; jamais un nom gardé dans le dossier (client, employeur, école, organisme)'}. Pas de ville ni de pays. Ces termes servent à vérifier qu'aucun n'apparaît dans le document final.`
 }
 
 const LANG_NAME: Record<CvLang, string> = { fr: 'français', en: 'anglais' }
