@@ -79,6 +79,7 @@ export default async function RecruiterAoOffersPage({ searchParams }: { searchPa
         mailboxes: '/recruiter/parametres/boites-ao/boites',
         exportApi: '/api/recruiter/ao/export',
         listApi: '/api/recruiter/ao/liste',
+        expiredApi: '/api/recruiter/ao/echues',
         originalApi: '/api/recruiter/ao/original',
         jobs: '/recruiter/annonces',
       }}

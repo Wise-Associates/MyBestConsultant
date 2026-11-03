@@ -1,14 +1,15 @@
 import 'server-only'
 import { NextResponse, type NextRequest } from 'next/server'
 import { buildAoWorkbook } from './excel'
-import { AO_PAGE_SIZE, filtersFromSearchParams, listOffsetFromSearchParams } from './filters'
+import { expiredToReview } from './bulk-delete'
+import { AO_MAX_LISTED, AO_PAGE_SIZE, EMPTY_AO_FILTERS, filtersFromSearchParams, listOffsetFromSearchParams } from './filters'
 import { emailViewDocument, emailViewError } from './email-view'
 import { OriginalUnavailable, fetchOriginal, fetchOriginalAttachment, parseOriginalView } from './originals'
 import { syncAoNow } from './offer-actions'
 import { aoAccessFor } from './platform-view'
-import { listAllAoOfferRows, listAoOfferRowsRange } from './repo'
+import { listAllAoOfferRows, listAoEmailsByIds, listAoOfferRowsRange } from './repo'
 import { loadAoTracking } from './tracking-store'
-import type { AoListPage } from './dashboard-types'
+import type { AoExpiredOffers, AoListPage } from './dashboard-types'
 
 // Cœur des routes de téléchargement du tableau AO, pour /api/admin/candidats/… (plateforme) et /api/recruiter/ao/…
 // (organisation du recruteur) : chaque route vérifie l'appelant puis passe l'organisation de SA session.
@@ -68,6 +69,30 @@ export async function aoListPageResponse(tenantId: string, searchParams: URLSear
     page.trackingError = 'Suivi des publications indisponible pour ces offres : rechargez la page dans quelques instants.'
   }
   return NextResponse.json(page, { headers })
+}
+
+/**
+ * « Offres échues » du tableau : les offres à valider de l'organisation dont la date limite est passée, lues comme
+ * pour l'export (AO_MAX_LISTED au plus, les plus récentes). Une route GET, comme le lot suivant du tableau : une Server
+ * Action attendrait la fin de « Préparer la publication » ou « Publier ».
+ */
+export async function aoExpiredResponse(tenantId: string): Promise<NextResponse> {
+  const headers = { 'Cache-Control': 'no-store' }
+  try {
+    const { rows, total } = await listAoOfferRowsRange(tenantId, { ...EMPTY_AO_FILTERS, status: 'to_review' }, 0, AO_MAX_LISTED)
+    // Offres apportées par l'e-mail de chaque offre datée : sa date limite n'est sûrement celle de l'offre que s'il n'en
+    // apporte qu'une (expiredToReview).
+    const emails = await listAoEmailsByIds(rows.filter(r => r.deadline).map(r => r.emailId))
+    const offersOfEmail = (emailId: string) => {
+      const email = emails.get(emailId)
+      return email ? email.offerCount + email.duplicateCount : 0
+    }
+    const body: AoExpiredOffers = { ...expiredToReview(rows, new Date(), offersOfEmail), capped: total >= AO_MAX_LISTED }
+    return NextResponse.json(body, { headers })
+  } catch (err) {
+    console.error('AO: offres échues illisibles', tenantId, errorText(err))
+    return NextResponse.json({ error: 'Recherche impossible pour le moment : réessayez dans un instant.' }, { status: 502, headers })
+  }
 }
 
 /**

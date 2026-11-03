@@ -1,5 +1,5 @@
 import type { JobMatchResult } from '@/lib/matching-core'
-import type { BulkDeleteResult } from './bulk-delete'
+import type { BulkDeleteResult, ExpiredSearch } from './bulk-delete'
 import type { AoOfferRow } from './filters'
 import type { AoSyncReport } from './sync'
 import type { TrackingStep } from './tracking'
@@ -126,6 +126,15 @@ export interface AoListPage {
 }
 
 /**
+ * « Offres échues » du tableau (route GET …/echues de l'espace) : offres à valider de l'organisation dont la date limite
+ * est passée (expiredToReview), à relire avant leur suppression groupée, et nombre de celles écartées.
+ */
+export interface AoExpiredOffers extends ExpiredSearch {
+  /** Plus de AO_MAX_LISTED offres à valider : seules les plus récentes ont été examinées. */
+  capped: boolean
+}
+
+/**
  * Réponse d'un passage de « Synchroniser maintenant » (route POST …/sync de l'espace, enchaînée par AoSyncProvider),
  * avec, si la page AO est affichée, son tableau à jour (`query` : ses filtres, forme canonique).
  */
@@ -168,6 +177,8 @@ export interface AoDashboardPaths {
   exportApi: string
   /** Lot suivant du tableau (GET, filtres et `depuis` en paramètres) : AoListPage. */
   listApi: string
+  /** Offres à valider dont la date limite est passée (GET) : AoExpiredOffers. */
+  expiredApi: string
   /** E-mail d'origine et pièces jointes : `${originalApi}/${emailId}`. */
   originalApi: string
   /** Liste des offres publiées, quand l'offre publique n'est pas connue. */
