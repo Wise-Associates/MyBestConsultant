@@ -38,6 +38,15 @@ dans le modèle.
 - Traduction phrase par phrase, mois traduits sous la même forme (complète ou abrégée), durées traduites.
 - La consigne de cartographie des modèles (`template-mapping.ts`) parle d'une liste de paragraphes de résumé, plus de
   « 2 ou 3 ».
+- **Anonymisation standard = identité du candidat seulement** (2026-11-03). Essai : export standard bloqué sur
+  « CNEP », « Groupe Crédit Agricole », « LOCAM », « Groupe SANOFI » : l'IA les gardait dans le dossier (à juste titre)
+  mais les rangeait aussi parmi ses `termes_identifiants`, que le contrôle des fuites cherche. Désormais :
+  - consigne standard : clients, employeurs, écoles et organismes conservés partout (rubrique « Références clients »
+    comprise) et jamais dans les termes d'identité ; « références » à retirer = personnes de référence et leurs
+    coordonnées ;
+  - contrôle des fuites (`leakTerms`, `leak-check.ts`) : en standard, nom, e-mail et téléphone du candidat connus sans
+    l'IA (fiche du candidat ou nom du CV du vivier, exigé avant l'export), plus tout e-mail, téléphone ou lien absent
+    du modèle ; les termes de l'IA ne sont cherchés qu'en renforcée (clients et employeurs remplacés).
 
 ## Conséquences
 
@@ -48,3 +57,7 @@ dans le modèle.
   les lignes, et les rubriques du modèle réordonnent le contenu). Le recruteur relit le document, comme avant.
 - Écart avec la skill `cv-esn-anonymise`, qui demande encore un résumé : à reporter si la skill doit produire la même
   copie.
+- En standard, le contrôle ne vérifie plus ce que seule l'IA connaît (rue de l'adresse, société créée par le
+  candidat sans son nom, variante du nom absente de la fiche) : ces éléments sont retirés par la consigne, sans second
+  contrôle. Acceptable pour cette anonymisation, qui laisse déjà clients, dates et intitulés visibles (le candidat
+  peut être retrouvé sur LinkedIn) ; la renforcée garde le contrôle complet.
