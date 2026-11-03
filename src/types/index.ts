@@ -36,7 +36,7 @@ export interface Job {
   // optional — add to Appwrite collection when ready
   contractType?: 'cdi' | 'cdd' | 'freelance' | 'mission'
   remote?: 'onsite' | 'hybrid' | 'remote'
-  salary?: number // €/month for CDI, TJM for freelance/mission
+  salary?: number // annual gross € for CDI/CDD, TJM (€/day) otherwise — unit set by contractType (src/lib/job-pay.ts)
   companyName?: string // denormalized from tenant for display speed
   expiresAt?: string   // ISO date — auto-deactivation
   /** Recruteur affecté : profil (users.$id, ADR 0023), comme postedBy ; absent : non affecté. */

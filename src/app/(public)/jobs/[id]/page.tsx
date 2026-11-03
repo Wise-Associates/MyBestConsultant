@@ -9,6 +9,7 @@ import { JobDescription } from '@/components/shared/job-description'
 import { MobileApplyBar } from './mobile-apply-bar'
 import { getBrandByTenantId } from '@/lib/appwrite/brand'
 import { formatDateFr } from '@/lib/format-date'
+import { payShort, payUnitOf } from '@/lib/job-pay'
 
 const EMPLOYMENT_TYPE: Record<string, string> = {
   cdi: 'FULL_TIME', cdd: 'CONTRACTOR', freelance: 'CONTRACTOR', mission: 'CONTRACTOR',
@@ -58,6 +59,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     : false
 
   const publishedOn = formatDateFr(job.createdAt)
+  // Unité vraisemblable pour le montant (job-pay.ts) : une offre sans contrat à 60 000 € s'affichait « €/j ».
+  const payUnit = job.salary ? payUnitOf(job.salary, job.contractType) : null
   const cc = job.contractType ? (CONTRACT_COLORS[job.contractType] ?? CONTRACT_COLORS.mission) : null
 
   const jsonLd = {
@@ -77,11 +80,12 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       address: { '@type': 'PostalAddress', addressLocality: job.location, addressCountry: 'FR' },
     },
     ...(job.remote === 'remote' ? { jobLocationType: 'TELECOMMUTE' } : {}),
-    ...(job.salary ? {
+    // Unité inconnue (montant entre un TJM et un salaire annuel) : pas de salaire pour Google plutôt qu'un faux.
+    ...(job.salary && payUnit ? {
       baseSalary: {
         '@type': 'MonetaryAmount',
         currency: 'EUR',
-        value: { '@type': 'QuantitativeValue', value: job.salary, unitText: job.contractType === 'cdi' || job.contractType === 'cdd' ? 'YEAR' : 'DAY' },
+        value: { '@type': 'QuantitativeValue', value: job.salary, unitText: payUnit === 'an' ? 'YEAR' : 'DAY' },
       },
     } : {}),
   }
@@ -146,7 +150,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             {job.salary && (
               <span className="flex items-center gap-2 text-sm font-bold" style={{ color: '#FB923C' }}>
                 <Briefcase className="h-4 w-4" />
-                {job.salary.toLocaleString('fr-FR')} {job.contractType === 'cdi' || job.contractType === 'cdd' ? '€/an' : '€/j TJM'}
+                {payShort(job.salary, job.contractType)}{payUnit === 'jour' ? ' TJM' : ''}
               </span>
             )}
           </div>
@@ -333,10 +337,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                     </div>
                     <div>
                       <p className="text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--color-text-muted)' }}>
-                        {job.contractType === 'cdi' || job.contractType === 'cdd' ? 'Salaire' : 'TJM'}
+                        {payUnit === 'an' ? 'Salaire' : payUnit === 'jour' ? 'TJM' : 'Rémunération'}
                       </p>
                       <p className="text-sm font-bold" style={{ color: '#E8A33D' }}>
-                        {job.salary.toLocaleString('fr-FR')} €{job.contractType === 'cdi' || job.contractType === 'cdd' ? '/an' : '/j'}
+                        {payShort(job.salary, job.contractType)}
                       </p>
                     </div>
                   </div>

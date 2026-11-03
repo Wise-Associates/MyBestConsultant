@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { importJobsChunk, parseFileWithLLM, type ExtractedJob, type ParseResult } from '../import/actions'
 import { JobCard } from '../import/import-client'
+import { payText } from '@/lib/job-pay'
 
 const ACCEPT = '.csv,.txt,.tsv,.md,.docx,.doc,.xlsx,.xls,.pdf,.pptx,.rtf,.odt,.ods,.odp'
 const MAX_FILE = 5 * 1024 * 1024
@@ -279,7 +280,7 @@ export function ImportPanel({ tenantName, onClose, onImported }: { tenantName: s
                       <span className="block text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{[j.companyName, j.location].filter(Boolean).join(' · ') || '—'}</span>
                     </span>
                     <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0" style={{ background: 'rgba(232,163,61,0.14)', color: '#b8862f' }}>{CONTRACT[j.contractType]}</span>
-                    {j.salary != null && <span className="text-xs shrink-0 hidden sm:block" style={{ color: 'var(--color-text-muted)' }}>{j.salary} €</span>}
+                    {j.salary != null && j.salary > 0 && <span className="text-xs shrink-0 hidden sm:block" style={{ color: 'var(--color-text-muted)' }}>{payText(j.salary, j.contractType)}</span>}
                   </label>
                 ))}
                 {shown.length === 0 && <p className="text-sm text-center py-6" style={{ color: 'var(--color-text-muted)' }}>Aucun résultat.</p>}
