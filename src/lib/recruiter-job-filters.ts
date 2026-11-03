@@ -69,3 +69,31 @@ export function filterJobs<T extends JobRow>(rows: T[], f: JobFilters): T[] {
 
 /** Un filtre réduit la liste ; le tri n'en est pas un. */
 export const isFiltering = (f: JobFilters) => f.q.trim() !== '' || f.status !== 'all' || f.contract !== 'all' || f.focus !== null
+
+// Filtre par recruteur affecté (demande du 2026-11-03) : appliqué par le serveur, la page ne lit que les offres choisies
+// et leurs candidatures. Dans l'adresse (`?recruteurs=<profil>,<profil>,aucun`) pour survivre à un rechargement et se
+// partager. Profils (users.$id, ADR 0023) ; « aucun » = offres sans recruteur affecté.
+
+export const RECRUITERS_PARAM = 'recruteurs'
+const UNASSIGNED = 'aucun'
+
+export interface RecruiterSelection {
+  /** Profils des recruteurs choisis, dans l'ordre de l'équipe. */
+  ids: string[]
+  /** Offres sans recruteur affecté (« Non affectées »). */
+  unassigned: boolean
+}
+
+/**
+ * Sélection lue dans l'adresse. Seuls les recruteurs de l'équipe (`team`, profils) sont gardés : un identifiant
+ * inconnu (recruteur parti, adresse modifiée) est ignoré. Rien de valable : null, toutes les offres.
+ */
+export function parseRecruiterSelection(raw: string | string[] | undefined, team: string[]): RecruiterSelection | null {
+  const values = new Set((Array.isArray(raw) ? raw.join(',') : raw ?? '').split(',').map(value => value.trim()))
+  const selection = { ids: team.filter(id => values.has(id)), unassigned: values.has(UNASSIGNED) }
+  return selection.ids.length > 0 || selection.unassigned ? selection : null
+}
+
+/** Valeur de `?recruteurs=` ('' : aucun filtre). */
+export const recruiterSelectionParam = (selection: RecruiterSelection) =>
+  [...selection.ids, ...(selection.unassigned ? [UNASSIGNED] : [])].join(',')
