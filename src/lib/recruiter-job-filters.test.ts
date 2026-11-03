@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { EMPTY_JOB_FILTERS, filterJobs, isFiltering, matchesFocus, type JobFilters } from './recruiter-job-filters'
+import {
+  EMPTY_JOB_FILTERS, filterJobs, isFiltering, matchesFocus, parseRecruiterSelection, recruiterSelectionParam, type JobFilters,
+} from './recruiter-job-filters'
 import type { JobFacts } from './recruiter-dashboard'
 
 const facts = (over: Partial<JobFacts> = {}): JobFacts => ({
@@ -57,5 +59,29 @@ describe('filtres de « Mes offres »', () => {
     assert.deepEqual(ids({ sort: 'score' }), ['d', 'a', 'b', 'c'], 'sans score en dernier')
     assert.deepEqual(ids({ sort: 'expiry' }), ['c', 'a', 'd', 'b'], 'échéance des offres en ligne d\'abord, puis les plus récentes')
     assert.equal(isFiltering({ ...EMPTY_JOB_FILTERS, sort: 'score' }), false)
+  })
+})
+
+describe('filtre par recruteur (adresse de la page)', () => {
+  const team = ['profil1', 'profil2', 'profil3']
+
+  it('garde les recruteurs de l’équipe et « Non affectées », dans l’ordre de l’équipe', () => {
+    assert.deepEqual(parseRecruiterSelection('profil3,aucun,profil1', team), { ids: ['profil1', 'profil3'], unassigned: true })
+    assert.deepEqual(parseRecruiterSelection('aucun', team), { ids: [], unassigned: true })
+    assert.deepEqual(parseRecruiterSelection(['profil2', 'profil2'], team), { ids: ['profil2'], unassigned: false }, 'paramètre répété')
+  })
+
+  it('ignore un recruteur hors de l’équipe ; sans valeur retenue, toutes les offres', () => {
+    assert.deepEqual(parseRecruiterSelection('profil1,autre-org', team), { ids: ['profil1'], unassigned: false })
+    assert.equal(parseRecruiterSelection('autre-org', team), null)
+    assert.equal(parseRecruiterSelection('', team), null)
+    assert.equal(parseRecruiterSelection(undefined, team), null)
+  })
+
+  it('écrit la sélection dans l’adresse, relue à l’identique', () => {
+    const selection = { ids: ['profil1', 'profil3'], unassigned: true }
+    assert.equal(recruiterSelectionParam(selection), 'profil1,profil3,aucun')
+    assert.deepEqual(parseRecruiterSelection(recruiterSelectionParam(selection), team), selection)
+    assert.equal(recruiterSelectionParam({ ids: [], unassigned: false }), '')
   })
 })
