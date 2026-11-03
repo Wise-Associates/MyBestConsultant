@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  InvalidAnswerError, TruncatedAnswerError, contentOf, countToComplete, cvFileKind, exportBaseName, exportNotes, fitToTemplate,
-  initialsOf, parseExtraction, parseTranslation, splitFullName, structureGap, zipNameOf,
+  InvalidAnswerError, TruncatedAnswerError, contentOf, countToComplete, cvFileKind, dominantLang, exportBaseName, exportNotes, fitToTemplate,
+  groupRepeatedSkills, initialsOf, parseExtraction, parseTranslation, splitFullName, structureGap, untranslatedCount, zipNameOf,
 } from './cv-data'
 import wiseMap from './templates/wise-associates/template_map.json'
 import type { CvData, TemplateMap } from './types'
@@ -115,13 +115,16 @@ describe('règles de l\'export', () => {
     assert.equal(countToComplete(data), 1)
     // Une traduction anglaise qui a laissé le marqueur français compte aussi.
     assert.equal(countToComplete({ ...data, titre: '[TO BE COMPLETED]', experience: '[À COMPLÉTER]' }), 2)
-    assert.deepEqual(exportNotes({ toComplete: 1, omitted: ['Projets personnels'], certificationsMerged: true, cvTruncated: true }), [
+    assert.deepEqual(exportNotes({
+      toComplete: 1, omitted: ['Projets personnels'], certificationsMerged: true, cvTruncated: true, untranslated: [{ lang: 'en', count: 2 }],
+    }), [
       'CV très long : seul son début a été lu, les expériences les plus anciennes peuvent manquer. Comparez avec le CV d\'origine.',
       '1 champ « [À COMPLÉTER] » : information absente du CV, à saisir dans Word.',
+      'Version anglaise : 2 passages restés en français, à traduire dans Word.',
       'Certifications ajoutées à la rubrique Formation (le modèle n\'a pas de rubrique dédiée).',
       'Non repris faute de rubrique dans le modèle : Projets personnels.',
     ])
-    assert.deepEqual(exportNotes({ toComplete: 0, omitted: [], certificationsMerged: false, cvTruncated: false }), [])
+    assert.deepEqual(exportNotes({ toComplete: 0, omitted: [], certificationsMerged: false, cvTruncated: false, untranslated: [] }), [])
   })
 
   it('nom de fichier ASCII sans espace ni champ à compléter', () => {
@@ -140,6 +143,62 @@ describe('règles de l\'export', () => {
     assert.equal(cvFileKind(new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0])), 'docx')
     assert.equal(cvFileKind(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])), 'doc')
     assert.equal(cvFileKind(new TextEncoder().encode('<html>')), null)
+  })
+})
+
+describe('compétences sans libellé répété', () => {
+  const skill = (categorie: string, contenu: string) => ({ categorie, contenu })
+
+  it('rubrique dont chaque ligne a son libellé : le libellé de la ligne remplace le titre répété', () => {
+    assert.deepEqual(groupRepeatedSkills([
+      skill('EXPERTISE CLÉ', 'Pilotage de projet: Analyste expérimenté, recueil du besoin.'),
+      skill('Expertise clé', 'Finance & Risque : Analyse du risque de crédit.'),
+    ], 'fr'), [
+      skill('Pilotage de projet', 'Analyste expérimenté, recueil du besoin.'),
+      skill('Finance & Risque', 'Analyse du risque de crédit.'),
+    ])
+  })
+
+  it('rubrique de lignes sans libellé : un seul élément, lignes dans l\'ordre', () => {
+    const certifications = [skill('CERTIFICATIONS', 'Certification A (niveau 3)'), skill('CERTIFICATIONS', 'Spécialisation B'), skill('CERTIFICATIONS', 'Certificat C')]
+    assert.deepEqual(groupRepeatedSkills(certifications, 'en'), [skill('CERTIFICATIONS', 'Certification A (niveau 3); Spécialisation B; Certificat C')])
+    assert.deepEqual(groupRepeatedSkills(certifications, 'fr'), [skill('CERTIFICATIONS', 'Certification A (niveau 3) ; Spécialisation B ; Certificat C')])
+  })
+
+  it('ne touche ni aux libellés distincts, ni à un libellé repris plus loin, ni aux lignes sans libellé', () => {
+    const skills = [skill('Langages', 'Java'), skill('Outils', 'Git'), skill('Langages', 'SQL'), skill('', 'Anglais'), skill('', 'Agile')]
+    assert.deepEqual(groupRepeatedSkills(skills, 'fr'), skills)
+  })
+
+  it('appliqué à la réponse de l\'extraction', () => {
+    const parsed = parseExtraction(JSON.stringify({ ...ANSWER, competences: [{ categorie: 'Outils', contenu: 'Git' }, { categorie: 'Outils', contenu: 'Jira' }] }))
+    assert.deepEqual(parsed.competences, [{ categorie: 'Outils', contenu: 'Git ; Jira' }])
+  })
+})
+
+describe('langue du CV et traduction complète', () => {
+  const content = (resume: string[], realisations: string[]) =>
+    contentOf(parseExtraction(JSON.stringify({ ...ANSWER, resume, experiences: [{ ...ANSWER.experiences[0], realisations }] })))
+  const english = content(
+    ['Experienced analyst with strong skills in the design of data platforms for the banking sector.'],
+    ['Led the migration of the reporting chain to the cloud with a team of five.', 'Built the dashboards for the risk department and the finance teams.'],
+  )
+
+  it('langue lue dans les phrases, pas dans la réponse de l\'IA', () => {
+    assert.equal(dominantLang(english), 'en')
+    const french = content(['Analyste expérimentée dans la conception des plateformes de données pour le secteur bancaire.'],
+      ['Pilotage de la migration de la chaîne de reporting avec une équipe de cinq personnes et les métiers.'])
+    assert.equal(dominantLang(french), 'fr')
+    assert.equal(dominantLang(content([], ['API REST.'])), null) // trop peu de texte : la langue de l'IA est gardée
+  })
+
+  it('compte les phrases laissées dans la langue du CV, pas les noms ni les outils gardés à juste titre', () => {
+    const translated = structuredClone(english)
+    translated.resume = ['Analyste expérimentée, forte compétence en conception de plateformes de données pour la banque.']
+    translated.experiences[0].realisations = [english.experiences[0].realisations[0], 'Création des tableaux de bord pour la direction des risques.']
+    assert.equal(untranslatedCount(english, translated, 'en'), 1)
+    const allTranslated = { ...translated, experiences: [{ ...translated.experiences[0], realisations: ['Migration vers le cloud.', 'Tableaux de bord.'] }] }
+    assert.equal(untranslatedCount(english, allTranslated, 'en'), 0) // client, environnement et certifications identiques
   })
 })
 

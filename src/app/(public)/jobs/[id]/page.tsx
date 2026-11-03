@@ -8,6 +8,7 @@ import { MapPin, Briefcase, Wifi, Clock, ArrowLeft, CheckCircle2, Send, Building
 import { JobDescription } from '@/components/shared/job-description'
 import { MobileApplyBar } from './mobile-apply-bar'
 import { getBrandByTenantId } from '@/lib/appwrite/brand'
+import { formatDateFr } from '@/lib/format-date'
 
 const EMPLOYMENT_TYPE: Record<string, string> = {
   cdi: 'FULL_TIME', cdd: 'CONTRACTOR', freelance: 'CONTRACTOR', mission: 'CONTRACTOR',
@@ -56,8 +57,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     ? await hasApplied(job.$id, user.$id)
     : false
 
-  const daysSince = Math.floor((Date.now() - new Date(job.createdAt).getTime()) / 86_400_000)
-  const postedLabel = daysSince === 0 ? "Aujourd'hui" : daysSince === 1 ? 'Hier' : `Il y a ${daysSince} jours`
+  const publishedOn = formatDateFr(job.createdAt)
   const cc = job.contractType ? (CONTRACT_COLORS[job.contractType] ?? CONTRACT_COLORS.mission) : null
 
   const jsonLd = {
@@ -121,7 +121,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             )}
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs"
               style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <Clock className="h-3 w-3" />{postedLabel}
+              <Clock className="h-3 w-3" />Publiée le {publishedOn}
             </span>
           </div>
 
@@ -347,8 +347,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                     <Calendar className="h-3.5 w-3.5" style={{ color: 'var(--color-primary)' }} />
                   </div>
                   <div>
-                    <p className="text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--color-text-muted)' }}>Publiée</p>
-                    <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>{postedLabel}</p>
+                    <p className="text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--color-text-muted)' }}>Publiée le</p>
+                    <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>{publishedOn}</p>
                   </div>
                 </div>
               </div>

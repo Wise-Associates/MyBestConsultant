@@ -6,8 +6,15 @@ import type { AnonymizationMode } from './types'
 const MODES: AnonymizationMode[] = ['standard', 'renforcee']
 
 describe('extractionPrompt', () => {
-  it('ne montre aucune valeur réaliste en exemple : l\'IA recopiait « 2012 » et « 2020 » dans un CV sans années', () => {
-    for (const mode of MODES) assert.doesNotMatch(extractionPrompt(mode), /"(annees|annee|experience|dates)": "[^…"]/, mode)
+  it('ne montre aucune valeur réaliste en exemple : l\'IA recopiait « 2012 », « 2020 » et la langue « fr »', () => {
+    for (const mode of MODES) assert.doesNotMatch(extractionPrompt(mode), /"(annees|annee|experience|dates|langue)": "[^…"]/, mode)
+  })
+
+  it('compétences : un libellé par ligne qui en a un, une rubrique sans libellés regroupée, jamais un libellé répété', () => {
+    const prompt = extractionPrompt('standard')
+    assert.match(prompt, /commence par son propre libellé/)
+    assert.match(prompt, /un seul élément, "categorie" = le titre de la rubrique/)
+    assert.match(prompt, /Jamais le même "categorie" sur deux éléments qui se suivent/)
   })
 
   it('demande la copie mot pour mot du CV, sans résumé, avec l\'identité du candidat anonymisée', () => {
@@ -35,6 +42,14 @@ describe('extractionPrompt', () => {
 })
 
 describe('translationPrompt', () => {
+  it('traduit tout le dossier : seuls les noms, outils, sigles et certifications restent tels quels', () => {
+    assert.match(translationPrompt('en'), /Tout le dossier est traduit/)
+    assert.match(translationPrompt('en'), /Aucun passage ne reste en français/)
+    assert.match(translationPrompt('fr'), /Aucun passage ne reste en anglais/)
+    assert.match(translationPrompt('fr'), /Restent tels quels seulement/)
+    assert.doesNotMatch(translationPrompt('en'), /noms d'équipes ou de programmes/)
+  })
+
   it('traduit sans résumer et garde la forme des dates', () => {
     assert.match(translationPrompt('en'), /ni résumé/)
     assert.match(translationPrompt('en'), /même forme/)

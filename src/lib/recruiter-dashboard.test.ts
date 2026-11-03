@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { expiresInDays, jobFacts, jobState, relativeAge, summarize, type DashboardApp } from './recruiter-dashboard'
+import { expiresInDays, jobFacts, jobState, summarize, type DashboardApp } from './recruiter-dashboard'
 
 const now = new Date('2026-11-02T10:00:00Z')
 const daysAgo = (n: number) => new Date(now.getTime() - n * 86_400_000).toISOString()
@@ -24,19 +24,6 @@ describe('état d\'une offre', () => {
     assert.equal(expiresInDays({ isActive: true }, now), null)
     assert.equal(expiresInDays({ isActive: true, expiresAt: daysAgo(1) }, now), null, 'déjà expirée')
     assert.equal(expiresInDays({ isActive: false, expiresAt: inDays(2) }, now), null, 'archivée')
-  })
-})
-
-describe('âge affiché', () => {
-  it('écrit l\'âge en jours, semaines, mois puis années', () => {
-    assert.equal(relativeAge(daysAgo(0.5), now), 'aujourd’hui')
-    assert.equal(relativeAge(daysAgo(1.5), now), 'hier')
-    assert.equal(relativeAge(daysAgo(3), now), 'il y a 3 j')
-    assert.equal(relativeAge(daysAgo(15), now), 'il y a 2 sem.')
-    assert.equal(relativeAge(daysAgo(65), now), 'il y a 2 mois')
-    assert.equal(relativeAge(daysAgo(400), now), 'il y a 1 an')
-    assert.equal(relativeAge(daysAgo(800), now), 'il y a 2 ans')
-    assert.equal(relativeAge(inDays(1), now), 'aujourd’hui', 'date future (horloges décalées)')
   })
 })
 

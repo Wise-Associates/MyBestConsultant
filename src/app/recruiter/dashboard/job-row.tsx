@@ -72,7 +72,7 @@ export function JobRow({ row, apps, stages, canPublish, recruiters, first, focus
           <MapPin className="h-3.25 w-3.25" aria-hidden />
           <span>{job.location}</span>
           {job.contractType && <><span aria-hidden>·</span><span>{CONTRACT_LABELS[job.contractType]}</span></>}
-          <span aria-hidden>·</span><span>Publiée {row.age}</span>
+          <span aria-hidden>·</span><span>Publiée le {row.publishedOn}</span>
         </p>
         {!row.shared && recruiters && (
           <JobAssigneeSelect jobId={job.$id} jobTitle={job.title} assigneeId={job.recruiterId ?? ''} recruiters={recruiters} />
