@@ -5,7 +5,7 @@ import { emptyAoView, loadPlatformAoView, searchParamsOf } from '@/lib/ao/platfo
 import type { TrackingStep } from '@/lib/ao/tracking'
 import { loadAoTracking } from '@/lib/ao/tracking-store'
 import { AoOffersDashboard, type MailboxIssue } from '@/components/ao/ao-offers-dashboard'
-import { addAoOfferComment, deleteAoOffer, deleteAoOfferComment, listAoOfferComments, retryAoEmail } from './actions'
+import { addAoOfferComment, deleteAoOffer, deleteAoOfferComment, deleteAoOffers, listAoOfferComments, retryAoEmail } from './actions'
 
 // « Réessayer » (Server Action de cette page) traite un e-mail tout de suite (150 s au plus). La publication se fait sur la
 // page de l'offre (./[offerId]).
@@ -52,7 +52,7 @@ export default async function AdminAoOffersPage({ searchParams }: { searchParams
       tracking={tracking}
       trackingError={trackingError}
       actions={{
-        retryEmail: retryAoEmail, deleteOffer: deleteAoOffer,
+        retryEmail: retryAoEmail, deleteOffer: deleteAoOffer, deleteOffers: deleteAoOffers,
         listComments: listAoOfferComments, addComment: addAoOfferComment, deleteComment: deleteAoOfferComment,
       }}
       paths={{

@@ -3,7 +3,7 @@
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import type { PublicationDraft, PublicationMode } from '@/lib/ao/dashboard-types'
 import {
-  addAoOfferCommentOf, aoOfferSourcingOf, assignAoOfferOf, deleteAoOfferCommentOf, deleteAoOfferOf, listAoOfferCommentsOf, previewAoPublicationOf,
+  addAoOfferCommentOf, aoOfferSourcingOf, assignAoOfferOf, deleteAoOfferCommentOf, deleteAoOfferOf, deleteAoOffersOf, listAoOfferCommentsOf, previewAoPublicationOf,
   publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, stopAoPublicationTasksOf, tenantSubscriptionStatus,
 } from '@/lib/ao/offer-actions'
 import { AO_RETRY_DAILY_LIMITS, RETRY_QUOTA_MESSAGE } from '@/lib/ao/attempts'
@@ -159,6 +159,13 @@ export async function deleteRecruiterAoOffer(id: string) {
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
   return deleteAoOfferOf(me.tenantId, id)
+}
+
+/** Offres sélectionnées dans le tableau, par lots (deleteAoOffersOf). */
+export async function deleteRecruiterAoOffers(ids: string[]) {
+  const me = await recruiter()
+  if (!me) return { error: SESSION_EXPIRED }
+  return deleteAoOffersOf(me.tenantId, ids)
 }
 
 /** Recruteur de l'organisation affecté à l'offre, repris par l'offre publiée (demande de Dav du 2026-10-31). */
