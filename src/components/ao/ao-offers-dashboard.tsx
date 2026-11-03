@@ -5,14 +5,14 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { HoverCard } from '@/components/ui/hover-card'
 import { useEffect, useEffectEvent, useRef, useState, useTransition } from 'react'
 import { summaryOf, useAoSync } from './ao-sync-provider'
-import { BarChart3, Download, Eye, Inbox, MessageSquare, Trash2, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
+import { BarChart3, CalendarX2, Download, Eye, Inbox, MessageSquare, Trash2, Loader2, RefreshCcw, RotateCcw, Search, X } from 'lucide-react'
 import {
   AO_CHANNEL_LABEL, AO_MAX_LISTED, AO_PAGE_SIZE, EMPTY_AO_FILTERS, filtersFromSearchParams, filtersToSearchParams, listSizeFromSearchParams, listToSearchParams,
   type AoFilters, type AoOfferRow,
 } from '@/lib/ao/filters'
 import { MAX_ATTEMPTS } from '@/lib/ao/attempts'
-import { BULK_DELETE_MAX, bulkDeleteNotice } from '@/lib/ao/bulk-delete'
-import type { AoDashboardActions, AoDashboardCopy, AoDashboardPaths, AoListPage, AoPageView } from '@/lib/ao/dashboard-types'
+import { BULK_DELETE_MAX, bulkDeleteNotice, uncertainNote } from '@/lib/ao/bulk-delete'
+import type { AoDashboardActions, AoDashboardCopy, AoDashboardPaths, AoExpiredOffers, AoListPage, AoPageView } from '@/lib/ao/dashboard-types'
 import type { AoSyncReport } from '@/lib/ao/sync'
 import { AoComments } from './ao-comments'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -63,6 +63,17 @@ interface Props {
 }
 
 type Notice = { tone: 'ok' | 'error'; text: string } | null
+
+/** Offres de la fenêtre de suppression groupée : la sélection, ou les offres échues trouvées par le serveur. */
+interface BulkTarget {
+  kind: 'selection' | 'expired'
+  /** Offres retenues à l'ouverture de la fenêtre (la liste peut être relue pendant la suppression). */
+  rows: { $id: string; title: string; deadline?: string }[]
+  /** Offres échues : plus de AO_MAX_LISTED offres à valider, seules les plus récentes ont été examinées. */
+  capped: boolean
+  /** Offres échues écartées : leur date limite n'est peut-être pas la leur (expiredToReview). */
+  uncertain: number
+}
 
 /**
  * Colonnes du tableau des offres : largeur fixe (l'offre prend le reste) et écran à partir duquel la colonne s'affiche.
@@ -218,17 +229,44 @@ export function AoOffersDashboard({ view, filters, inboxConfigured, mailboxIssue
     setSelection({ key: filtersKey, ids })
   }
 
-  // Fenêtre « Supprimer la sélection » : offres retenues à son ouverture (la liste peut être relue pendant la
-  // suppression) ; `bulkDone` : offres traitées, pour la progression.
-  const [bulkRows, setBulkRows] = useState<AoOfferRow[] | null>(null)
+  // Fenêtre de suppression groupée (sélection ou offres échues) ; `bulkDone` : offres traitées, pour la progression.
+  const [bulk, setBulk] = useState<BulkTarget | null>(null)
   const [bulkDone, setBulkDone] = useState(0)
   const [bulkError, setBulkError] = useState('')
   const [bulkDeleting, startBulkDelete] = useTransition()
 
+  // « Offres échues » : le serveur cherche, parmi toutes les offres à valider (pas seulement celles affichées), celles
+  // dont la date limite est passée ; elles s'ouvrent dans la fenêtre de suppression, à relire. Une route GET, comme
+  // « Afficher 50 offres de plus » : une Server Action attendrait la fin d'une publication en cours.
+  const [findingExpired, setFindingExpired] = useState(false)
+  async function findExpired() {
+    setNotice(null)
+    setFindingExpired(true)
+    try {
+      const res = await fetch(paths.expiredApi, { cache: 'no-store' })
+      const found = (await res.json().catch(() => null)) as (AoExpiredOffers & { error?: string }) | null
+      if (!res.ok || !found || found.error) return setNotice({ tone: 'error', text: found?.error ?? `Recherche impossible (${res.status}).` })
+      // Offres en cours de publication dans ce navigateur : écartées, comme de la sélection.
+      const offers = found.offers.filter(o => !publications.of(o.id).running)
+      if (!offers.length) {
+        const none = found.capped
+          ? `Aucune offre échue sûre parmi les ${AO_MAX_LISTED.toLocaleString('fr-FR')} offres à valider les plus récentes.`
+          : 'Aucune offre à valider dont la date limite est sûrement passée.'
+        return setNotice({ tone: 'ok', text: found.uncertain ? `${none} ${uncertainNote(found.uncertain)}` : none })
+      }
+      setBulkError('')
+      setBulk({ kind: 'expired', rows: offers.map(o => ({ $id: o.id, title: o.title, deadline: o.deadline })), capped: found.capped, uncertain: found.uncertain })
+    } catch {
+      setNotice({ tone: 'error', text: 'Recherche impossible : connexion interrompue, réessayez.' })
+    } finally {
+      setFindingExpired(false)
+    }
+  }
+
   function confirmBulkDelete() {
-    if (!bulkRows) return
-    const ids = bulkRows.map(r => r.$id)
-    const titleOf = new Map(bulkRows.map(r => [r.$id, r.title]))
+    if (!bulk) return
+    const ids = bulk.rows.map(r => r.$id)
+    const titleOf = new Map(bulk.rows.map(r => [r.$id, r.title]))
     setBulkError('')
     setBulkDone(0)
     startBulkDelete(async () => {
@@ -253,7 +291,7 @@ export function AoOffersDashboard({ view, filters, inboxConfigured, mailboxIssue
       }
       // Premier envoi refusé en entier : rien n'est supprimé, la fenêtre reste ouverte avec la raison.
       if (stopped && deleted.length + failed.length === 0) return setBulkError(stopped)
-      setBulkRows(null)
+      setBulk(null)
       // Les offres non supprimées restent cochées, pour les retrouver dans la liste rechargée.
       selectOnly(ids.filter(id => !deleted.includes(id)))
       setNotice(bulkDeleteNotice({
@@ -506,11 +544,16 @@ export function AoOffersDashboard({ view, filters, inboxConfigured, mailboxIssue
         <div className="px-6 py-4 flex flex-wrap items-center gap-x-4 gap-y-2" style={{ background: 'var(--admin-panel)', borderBottom: '1px solid var(--admin-line)' }}>
           <div className="mr-auto flex flex-wrap items-center gap-x-4 gap-y-2">
             <h2 className="font-semibold text-sm text-admin-fg">Offres extraites</h2>
+            <button type="button" onClick={findExpired} disabled={findingExpired} title="Offres à valider dont la date limite est passée"
+              style={{ ...secondaryButton, padding: '6px 10px', fontSize: 12 }}>
+              {findingExpired ? <Loader2 size={13} className="animate-spin motion-reduce:animate-none" aria-hidden /> : <CalendarX2 size={13} aria-hidden />}
+              {findingExpired ? 'Recherche…' : 'Offres échues'}
+            </button>
             {/* Actions sur les offres cochées (case de la première colonne). */}
             {selected.length > 0 && (
               <div role="group" aria-label="Offres sélectionnées" className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <span className="text-xs font-medium text-admin-fg tabular-nums whitespace-nowrap">{selected.length} sélectionnée{s(selected.length)}</span>
-                <button type="button" onClick={() => { setBulkError(''); setBulkRows(selected) }}
+                <button type="button" onClick={() => { setBulkError(''); setBulk({ kind: 'selection', rows: selected, capped: false, uncertain: 0 }) }}
                   style={{ ...secondaryButton, padding: '6px 10px', fontSize: 12, color: '#b91c1c' }}>
                   <Trash2 size={13} aria-hidden />
                   Supprimer
@@ -718,34 +761,55 @@ export function AoOffersDashboard({ view, filters, inboxConfigured, mailboxIssue
         )}
       </Dialog>
 
-      {/* Suppression des offres sélectionnées : confirmation explicite, définitive, par lots (BULK_DELETE_MAX). */}
-      <Dialog open={bulkRows !== null} onOpenChange={open => { if (!open && !bulkDeleting) setBulkRows(null) }}>
-        {bulkRows && (
+      {/* Suppression groupée (sélection ou offres échues) : confirmation explicite, définitive, par lots (BULK_DELETE_MAX). */}
+      <Dialog open={bulk !== null} onOpenChange={open => { if (!open && !bulkDeleting) setBulk(null) }}>
+        {bulk && (
           <DialogContent className="admin-light z-10000 sm:max-w-[520px]" style={{ background: 'var(--admin-panel)' }} showCloseButton={!bulkDeleting}>
             <DialogHeader>
               <DialogTitle className="text-admin-fg" style={{ fontSize: '1.05rem' }}>
-                {bulkRows.length > 1 ? `Supprimer ces ${bulkRows.length} offres ?` : 'Supprimer cette offre ?'}
+                {bulk.kind === 'expired'
+                  ? (bulk.rows.length > 1 ? `Supprimer les ${bulk.rows.length} offres à valider échues ?` : 'Supprimer l’offre à valider échue ?')
+                  : (bulk.rows.length > 1 ? `Supprimer ces ${bulk.rows.length} offres ?` : 'Supprimer cette offre ?')}
               </DialogTitle>
               <DialogDescription style={{ color: 'var(--admin-fg-muted)' }}>
-                {bulkRows.length > 1
+                {bulk.kind === 'expired' && 'Date limite de réponse passée. Cette date est lue dans l’e-mail par l’IA, parfois d’après une date sans libellé : relisez la liste avant de supprimer. '}
+                {bulk.rows.length > 1
                   ? 'Elles seront supprimées définitivement, avec leurs détails et leurs commentaires. Les e-mails d’origine restent enregistrés : ces offres ne seront pas recréées par la synchronisation. Pour seulement les masquer, utilisez « Ignorer » dans leur détail.'
                   : 'Elle sera supprimée définitivement, avec ses détails et ses commentaires. L’e-mail d’origine reste enregistré : l’offre ne sera pas recréée par la synchronisation. Pour seulement la masquer, utilisez « Ignorer » dans son détail.'}
               </DialogDescription>
             </DialogHeader>
             {/* min-w-0 : sans lui, un long titre (sur une ligne) élargit la grille de la fenêtre au-delà de son cadre. */}
-            <ul className="min-w-0 text-sm space-y-1" style={{ color: 'var(--admin-fg)' }}>
-              {bulkRows.slice(0, 5).map(r => <li key={r.$id} className="truncate" title={r.title}>« {r.title} »</li>)}
-              {bulkRows.length > 5 && <li style={{ color: 'var(--admin-fg-muted)' }}>et {bulkRows.length - 5} autre{s(bulkRows.length - 5)}</li>}
-            </ul>
-            {bulkDeleting && bulkRows.length > BULK_DELETE_MAX && (
-              <p role="status" className="text-sm tabular-nums" style={{ color: 'var(--admin-fg-muted)' }}>{bulkDone} / {bulkRows.length} offres traitées…</p>
+            {bulk.kind === 'expired' ? (
+              // Offres échues : toutes listées avec leur date limite telle qu'écrite, pour repérer une date mal lue.
+              <ul aria-label="Offres échues" className="min-w-0 max-h-64 overflow-y-auto text-sm space-y-1 pr-1" style={{ color: 'var(--admin-fg)' }}>
+                {bulk.rows.map(r => (
+                  <li key={r.$id} className="flex items-baseline gap-3">
+                    <span className="min-w-0 flex-1 truncate" title={r.title}>« {r.title} »</span>
+                    <span className="shrink-0 text-xs tabular-nums" style={{ color: 'var(--admin-fg-muted)' }}>{r.deadline}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <ul className="min-w-0 text-sm space-y-1" style={{ color: 'var(--admin-fg)' }}>
+                {bulk.rows.slice(0, 5).map(r => <li key={r.$id} className="truncate" title={r.title}>« {r.title} »</li>)}
+                {bulk.rows.length > 5 && <li style={{ color: 'var(--admin-fg-muted)' }}>et {bulk.rows.length - 5} autre{s(bulk.rows.length - 5)}</li>}
+              </ul>
+            )}
+            {bulk.uncertain > 0 && <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>{uncertainNote(bulk.uncertain)}</p>}
+            {bulk.capped && (
+              <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
+                Plus de {AO_MAX_LISTED.toLocaleString('fr-FR')} offres à valider : seules les plus récentes ont été examinées. Relancez « Offres échues » après cette suppression.
+              </p>
+            )}
+            {bulkDeleting && bulk.rows.length > BULK_DELETE_MAX && (
+              <p role="status" className="text-sm tabular-nums" style={{ color: 'var(--admin-fg-muted)' }}>{bulkDone} / {bulk.rows.length} offres traitées…</p>
             )}
             {bulkError && <p role="alert" className="text-sm" style={{ color: '#b91c1c' }}>Suppression impossible : {bulkError}</p>}
             <DialogFooter>
-              <button type="button" onClick={() => setBulkRows(null)} disabled={bulkDeleting} style={secondaryButton}>Annuler</button>
+              <button type="button" onClick={() => setBulk(null)} disabled={bulkDeleting} style={secondaryButton}>Annuler</button>
               <button type="button" onClick={confirmBulkDelete} disabled={bulkDeleting} style={{ ...secondaryButton, background: '#b91c1c', borderColor: '#b91c1c', color: 'white' }}>
                 {bulkDeleting ? <Loader2 size={15} className="animate-spin motion-reduce:animate-none" aria-hidden /> : <Trash2 size={15} aria-hidden />}
-                {bulkDeleting ? 'Suppression…' : bulkRows.length > 1 ? `Supprimer les ${bulkRows.length} offres` : 'Supprimer'}
+                {bulkDeleting ? 'Suppression…' : bulk.rows.length > 1 ? `Supprimer les ${bulk.rows.length} offres` : 'Supprimer'}
               </button>
             </DialogFooter>
           </DialogContent>
