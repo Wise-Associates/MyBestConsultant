@@ -61,6 +61,7 @@ export default async function AdminAoOffersPage({ searchParams }: { searchParams
         mailboxes: '/admin/candidats/boites',
         exportApi: '/api/admin/candidats/export',
         listApi: '/api/admin/candidats/liste',
+        expiredApi: '/api/admin/candidats/echues',
         originalApi: '/api/admin/candidats/original',
         jobs: '/admin/jobs',
       }}
