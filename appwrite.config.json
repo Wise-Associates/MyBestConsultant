@@ -4098,6 +4098,174 @@
                     "orders": []
                 }
             ]
+        },
+        {
+            "$id": "consultant_journeys",
+            "$permissions": [],
+            "databaseId": "bestconsultant-dev",
+            "name": "Consultant journeys",
+            "enabled": true,
+            "documentSecurity": false,
+            "attributes": [
+                {
+                    "key": "tenantId",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "jobId",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "candidateId",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "stage",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 20,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "status",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 12,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "piecesJson",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 2000,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "historyJson",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 60000,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "version",
+                    "type": "integer",
+                    "required": false,
+                    "array": false,
+                    "min": 0,
+                    "max": 1000000000,
+                    "default": null
+                }
+            ],
+            "indexes": [
+                {
+                    "key": "tenantid",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "tenantId"
+                    ],
+                    "orders": []
+                }
+            ]
+        },
+        {
+            "$id": "vivier_offer_matches",
+            "$permissions": [],
+            "databaseId": "bestconsultant-dev",
+            "name": "Vivier offer matches",
+            "enabled": true,
+            "documentSecurity": false,
+            "attributes": [
+                {
+                    "key": "tenantId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 100,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "jobId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 100,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "vivierCvId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "score",
+                    "type": "integer",
+                    "required": true,
+                    "array": false,
+                    "min": 0,
+                    "max": 100,
+                    "default": null
+                },
+                {
+                    "key": "reason",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 300,
+                    "default": null,
+                    "encrypt": false
+                }
+            ],
+            "indexes": [
+                {
+                    "key": "jobId_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "jobId"
+                    ],
+                    "orders": []
+                },
+                {
+                    "key": "vivierCvId_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "vivierCvId"
+                    ],
+                    "orders": []
+                }
+            ]
         }
     ],
     "buckets": [
