@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition, useMemo } from 'react'
+import Link from 'next/link'
 import {
   Send, CheckCircle2, Clock, AlertCircle, Zap, User,
   RefreshCw, ExternalLink, TrendingUp, Calendar, Briefcase,
@@ -12,6 +13,7 @@ import type { LinkedInPostJob, LinkedInChannelConfig } from './actions'
 import { GroupsModal } from './groups-modal'
 import { AdminPageHeader } from '@/components/admin/admin-page-header'
 import { formatDateFr } from '@/lib/format-date'
+import { payText } from '@/lib/job-pay'
 
 const CONTRACT: Record<string, string> = { cdi: 'CDI', cdd: 'CDD', freelance: 'Freelance', mission: 'Mission' }
 const REMOTE: Record<string, string> = { onsite: 'Présentiel', hybrid: 'Hybride', remote: 'Remote' }
@@ -153,16 +155,16 @@ function ConfigPanel({ cfg }: { cfg: LinkedInChannelConfig }) {
               <AlertCircle className="w-4 h-4 shrink-0" style={{ color: '#B8860B' }} />
               <p className="text-xs" style={{ color: '#7a5c00' }}>
                 LinkedIn non connecté.{' '}
-                <a href="/admin/linkedin" className="underline font-semibold">
+                <Link href="/admin/linkedin" className="underline font-semibold">
                   Connectez votre compte
-                </a>{' '}dans Scraping LinkedIn.
+                </Link>{' '}dans Scraping LinkedIn.
               </p>
             </div>
           )}
 
           <div>
             <label className="text-xs font-semibold block mb-1.5" style={{ color: '#5a6080' }}>
-              URL PUBLIQUE DE L'APP (dans les posts)
+              URL PUBLIQUE DE L&apos;APP (dans les posts)
             </label>
             <input
               value={appUrl}
@@ -268,7 +270,7 @@ function JobCard({ job, cfg, onPosted }: {
               )}
               {job.salary && (
                 <span className="text-xs font-medium" style={{ color: '#B8860B' }}>
-                  {job.salary.toLocaleString('fr-FR')} €
+                  {payText(job.salary, job.contractType)}
                 </span>
               )}
             </div>
@@ -449,12 +451,12 @@ export function LinkedInPostsClient({ jobs: initialJobs, cfg }: {
 
         <AdminPageHeader title="LinkedIn Posts" description="Diffusez vos offres sur LinkedIn"
           actions={
-            <a href="/admin/linkedin"
+            <Link href="/admin/linkedin"
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-medium"
               style={{ color: '#5a6080', borderColor: '#d0d4e8', background: '#fff' }}>
               <ExternalLink className="w-3 h-3" />
               Scraping LinkedIn
-            </a>
+            </Link>
           } />
 
         {/* Canal actif banner */}
@@ -552,7 +554,7 @@ export function LinkedInPostsClient({ jobs: initialJobs, cfg }: {
           {posted.length === 0 ? (
             <div className="px-5 py-8 text-center" style={{ background: '#fafbfd' }}>
               <Clock className="w-8 h-8 mx-auto mb-2" style={{ color: '#d0d4e8' }} />
-              <p className="text-sm" style={{ color: '#adb5cc' }}>Aucune offre publiée pour l'instant</p>
+              <p className="text-sm" style={{ color: '#adb5cc' }}>Aucune offre publiée pour l&apos;instant</p>
             </div>
           ) : (
             <div className="p-3 space-y-2 max-h-[480px] overflow-y-auto" style={{ background: '#fafbfd' }}>

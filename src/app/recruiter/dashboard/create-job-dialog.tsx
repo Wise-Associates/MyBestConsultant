@@ -8,6 +8,7 @@ import { createJobAction, listMyJobsForLibrary } from './actions'
 import { generateJobDraft, improveJobDraft, type JobDraft } from './ai-job-draft-actions'
 import { ImportPanel } from './import-panel'
 import type { Job } from '@/types'
+import { PAY_FIELD_LABEL, payHint, payUnitFor } from '@/lib/job-pay'
 
 /**
  * button : sur fond sombre ; primary : bouton plein aux couleurs du thème, sur fond clair, à la hauteur des champs de la
@@ -105,6 +106,8 @@ export function CreateJobDialog({ tenantId, companyName, variant = 'button' }: {
       applyDraft(result.draft)
     })
   }
+
+  const hint = payHint(salary ? Number(salary) : null, contractType)
 
   function submit(formData: FormData) {
     setError('')
@@ -281,12 +284,17 @@ export function CreateJobDialog({ tenantId, companyName, variant = 'button' }: {
                 </div>
               </div>
 
+              {/* Unité fixée par le contrat (job-pay.ts) : TJM pour une mission ou un freelance, salaire annuel brut pour un
+                  CDI ou un CDD. La même unité est reprise sur la page de l'offre et dans les publications (LinkedIn…). */}
               <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-widest"
-                  style={{ color: 'var(--color-text-muted)' }}>TJM / Salaire (€)</label>
-                <input name="salary" type="number" className={inp} style={inpStyle}
-                  value={salary} onChange={e => setSalary(e.target.value)}
-                  placeholder="700 (TJM) ou 65000 (annuel)" />
+                <label htmlFor="create-job-salary" className="block text-xs font-semibold mb-1.5 uppercase tracking-widest"
+                  style={{ color: 'var(--color-text-muted)' }}>{contractType ? PAY_FIELD_LABEL[payUnitFor(contractType)] : 'TJM / Salaire annuel (€)'}</label>
+                <input id="create-job-salary" name="salary" type="number" min={0} className={inp} style={inpStyle}
+                  value={salary} onChange={e => setSalary(e.target.value)} aria-describedby="create-job-salary-hint"
+                  placeholder={contractType ? (payUnitFor(contractType) === 'an' ? 'ex. 55000' : 'ex. 650') : '650 (TJM) ou 55000 (annuel)'} />
+                <p id="create-job-salary-hint" className="mt-1.5 text-xs" style={{ color: hint.warning ? '#b45309' : 'var(--color-text-muted)' }}>
+                  {hint.text}
+                </p>
               </div>
 
               <div className="rounded-lg px-3 py-2.5 text-xs" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
