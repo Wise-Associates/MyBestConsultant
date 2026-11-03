@@ -15,6 +15,7 @@ import {
   PUBLICATION_PROMPT, descriptionFromCopy, maskNames, maskTermsOf, parsePublicationCopy, publicationRequest, type PublicationCopy,
 } from './publication-copy'
 import { manualRetryPatch } from './attempts'
+import { deleteEach, parseBulkDeleteIds } from './bulk-delete'
 import { canDeleteComment, parseCommentBody } from './comment-input'
 import { createAoComment, deleteAoComment, deleteAoCommentsOfOffer, getAoComment, listAoComments, type AoComment } from './comments'
 import { getJobMatches, runPoolMatching } from '@/lib/matching-core'
@@ -482,6 +483,17 @@ export async function deleteAoOfferOf(tenantId: string, id: string): ReturnType<
     console.error('AO: suppression d\'offre impossible', id, errorOf(err))
     return { error: `Suppression impossible : ${errorOf(err)}` }
   }
+}
+
+/**
+ * Supprime les offres sélectionnées dans le tableau (BULK_DELETE_MAX par envoi), chacune comme deleteAoOfferOf :
+ * offre de l'organisation seulement, offre publiée refusée. Une offre refusée n'arrête pas les autres ; elle est
+ * rapportée avec sa raison. `ids` vient du navigateur : validé ici (bulk-delete.ts).
+ */
+export async function deleteAoOffersOf(tenantId: string, ids: unknown): ReturnType<AoDashboardActions['deleteOffers']> {
+  const parsed = parseBulkDeleteIds(ids)
+  if (!parsed.ok) return { error: parsed.error }
+  return deleteEach(parsed.ids, id => deleteAoOfferOf(tenantId, id))
 }
 
 /**
