@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { findLeaks, identityTerms, leakMessage } from './leak-check'
+import { findLeaks, identityTerms, leakMessage, leakTerms } from './leak-check'
 import { renderCv } from './render'
 import wiseMap from './templates/wise-associates/template_map.json'
 import type { CvData, TemplateMap } from './types'
@@ -65,6 +65,15 @@ describe('findLeaks', () => {
   it('n\'alerte pas sur un prénom déjà présent dans le template (commercial), seulement s\'il apparaît en plus', () => {
     assert.deepEqual(leaksOf(base, ['David']), [])
     assert.equal(leaksOf(withBullet('Binôme avec David.'), ['David']).length, 1)
+  })
+
+  it('anonymisation standard : un client gardé dans le dossier ne bloque pas, même relevé par l\'IA ; le nom du candidat, si', () => {
+    const candidate = { firstName: 'Camille', lastName: 'Fontaine', email: 'camille.fontaine@example.com', phone: '06 11 22 33 44' }
+    const aiTerms = ['Camille Fontaine', 'Industriel Exemple']
+    assert.deepEqual(leaksOf(base, leakTerms(candidate, aiTerms, 'standard')), [])
+    assert.equal(leaksOf(withBullet('Rapport signé C. Fontaine.'), leakTerms(candidate, aiTerms, 'standard'))[0]?.kind, 'identity')
+    // Renforcée : le client que l'IA dit avoir remplacé ne doit plus apparaître.
+    assert.deepEqual(leaksOf(base, leakTerms(candidate, aiTerms, 'renforcee')).map(l => l.value), ['Industriel Exemple'])
   })
 
   it('formule un message lisible pour l\'admin', () => {
