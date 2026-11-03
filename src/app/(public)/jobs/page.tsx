@@ -6,6 +6,7 @@ import type { Job } from '@/types'
 import { JobSearchForm } from './job-search-form'
 import { parseKeywordRowsFromParams } from '@/lib/keyword-match'
 import { SENIORITY_MAX } from '@/lib/job-seniority'
+import { formatDateFr } from '@/lib/format-date'
 
 export const metadata: Metadata = {
   title: 'Offres IT & Consulting | MyBestConsultant',
@@ -126,11 +127,6 @@ export default async function JobsPage({
 // ── Job card ─────────────────────────────────────────────────────
 
 function JobCard({ job }: { job: Job }) {
-  const daysSince = Math.floor(
-    (Date.now() - new Date(job.createdAt).getTime()) / 86_400_000
-  )
-  const postedLabel = daysSince === 0 ? "Aujourd'hui" : daysSince === 1 ? 'Hier' : `Il y a ${daysSince} j`
-
   return (
     <Link href={`/jobs/${job.$id}`} className="block group">
       <div className="p-5 rounded-3xl transition-all duration-300 ease-out group-hover:-translate-y-1"
@@ -176,7 +172,7 @@ function JobCard({ job }: { job: Job }) {
           </div>
           <div className="shrink-0 text-right">
             <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-              <Clock className="h-3 w-3" />{postedLabel}
+              <Clock className="h-3 w-3" />Publiée le {formatDateFr(job.createdAt)}
             </span>
           </div>
         </div>

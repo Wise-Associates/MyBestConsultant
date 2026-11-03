@@ -47,6 +47,26 @@ dans le modèle.
   - contrôle des fuites (`leakTerms`, `leak-check.ts`) : en standard, nom, e-mail et téléphone du candidat connus sans
     l'IA (fiche du candidat ou nom du CV du vivier, exigé avant l'export), plus tout e-mail, téléphone ou lien absent
     du modèle ; les termes de l'IA ne sont cherchés qu'en renforcée (clients et employeurs remplacés).
+- **Référence de résultat** (consigne donnée jusqu'ici à la main, 2026-11-03) : « Anonymiser mais mettre le logo de
+  Wise Associates et non celui de MBC. Comme initiales tu mets M.H. Tu ne modifies rien, au format Word. N'oublie pas
+  les informations de David. » Logo et contact du commercial viennent du modèle de l'organisation, initiales du code,
+  contenu recopié. Le même jour :
+  - **Compétences** : les lignes d'une rubrique répétaient son titre (« IT & FINANCE CERTIFICATIONS : » trois fois),
+    conséquence de la consigne « titre de la rubrique s'il n'a pas de libellé ». Une ligne garde son propre libellé
+    (« Finance & Risk: … »), les lignes sans libellé d'une rubrique forment un élément (séparées par « ; »), et le code
+    le garantit quelle que soit la réponse (`groupRepeatedSkills`, appliqué à l'extraction, avant la traduction).
+  - **Traduction partielle** : l'exemple JSON portait `"langue": "fr"` (même défaut que les années), et la langue
+    annoncée par l'IA décide de ce qui est traduit ; la consigne de traduction gardait aussi tels quels les « noms
+    d'équipes ou de programmes » (lignes de contexte, libellés de compétences). Désormais exemple neutre, langue lue
+    par le code dans les phrases du CV (`dominantLang`, mots-outils propres à chaque langue ; celle de l'IA si le texte
+    ne tranche pas), tout traduit sauf noms d'entreprises, d'écoles et d'organismes, outils, sigles et intitulés de
+    certifications, et phrases restées dans la langue d'origine comptées au compte rendu (`untranslatedCount`), sans
+    nouvel appel d'IA.
+  - **Texte du modèle** : « Votre interlocuteur : » restait en français dans la version anglaise (zone conservée, hors
+    en-têtes) : libellé `contact` réécrit par `fixed` dans les cartographies de Wise Associates et de l'exemple, et
+    règle donnée à l'IA pour les modèles déposés. Au dépôt, refus d'une cartographie qui fait disparaître le téléphone
+    ou l'e-mail du contact du modèle, ou qui laisse un libellé anglais dans la version française (modèle rédigé en
+    anglais). Les cartographies déjà enregistrées ne sont pas revérifiées : redéposer le modèle pour en profiter.
 
 ## Conséquences
 
@@ -57,6 +77,9 @@ dans le modèle.
   les lignes, et les rubriques du modèle réordonnent le contenu). Le recruteur relit le document, comme avant.
 - Écart avec la skill `cv-esn-anonymise`, qui demande encore un résumé : à reporter si la skill doit produire la même
   copie.
+- Les cartographies `templates/wise-associates/` et `templates/example/` diffèrent désormais de celle de la skill
+  `cv-esn-anonymise` (libellé `contact`) : à reporter dans la skill.
+- Un intitulé de fonction du contact (« Directeur Associé ») reste tel qu'écrit dans le modèle, dans les deux langues.
 - En standard, le contrôle ne vérifie plus ce que seule l'IA connaît (rue de l'adresse, société créée par le
   candidat sans son nom, variante du nom absente de la fiche) : ces éléments sont retirés par la consigne, sans second
   contrôle. Acceptable pour cette anonymisation, qui laisse déjà clients, dates et intitulés visibles (le candidat
