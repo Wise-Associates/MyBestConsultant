@@ -10,8 +10,12 @@ import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query, ID } from 'node-appwrite'
 import type { CvProfile } from '@/lib/cv-profile-extract'
 import {
-  VIVIER_MATCHING_SYSTEM, offerBatches, parseVivierMatching, vivierMatchingPrompt, type OfferScore, type OfferToScore, type ProfileToScore,
+  VIVIER_MATCHING_SYSTEM, offerBatches, parseVivierMatching, profileForAi, vivierMatchingPrompt,
+  type OfferScore, type OfferToScore, type ProfileToScore,
 } from '@/lib/vivier-matching'
+import { DOMAIN_FIELD, MATCH_RULES, cappedScore, offerTextForAi, parseDomainFit, withBonus } from '@/lib/match-scoring'
+import { listAllByValues, listAllDocuments } from '@/lib/appwrite/list-all'
+import { listVivierOfferMatches } from '@/lib/appwrite/vivier-offer-matches'
 import type { MatchResult } from '@/lib/sourcing-core'
 
 export interface JobMatchResult {
@@ -35,6 +39,8 @@ export interface JobMatchResult {
   matchedAt?: string | null
   /** Renseigné quand la candidature est une proposition d'un chasseur de têtes. */
   hunterName?: string
+  /** Source 'vivier' : prénom et nom du recruteur qui a importé le CV (absent s'il n'a plus de profil). */
+  vivierOwner?: string
   /** Points ajoutés au score grâce aux recommandations reçues sur des expertises demandées par l'offre. */
   recommendation?: { points: number; matched: { expertise: string; count: number }[] }
 }
@@ -80,15 +86,19 @@ export async function matchVivierCvAgainstJob(jobId: string, vivierCvId: string,
     const job = await databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId)
 
     const SYSTEM = `Tu es un expert en sourcing de candidats. On te donne une offre d'emploi et le profil extrait d'un CV. Évalue la pertinence de ce candidat pour ce poste.
-Réponds UNIQUEMENT avec un JSON valide, sans markdown : {"score":0-100,"reason":"une phrase expliquant pourquoi ce candidat correspond (ou pas)"}`
-    const userMsg = `=== OFFRE ===\nPoste : ${job.title}\nCompétences recherchées : ${((job.skills as string[]) ?? []).join(', ')}\nDescription : ${(job.description as string ?? '').slice(0, 1200)}\n\n=== PROFIL CANDIDAT ===\nCompétences : ${profile.skills.join(', ')}\nExpérience : ${profile.experienceSummary}\nAnnées d'expérience : ${profile.yearsOfExperience ?? 'non précisé'}`
+Réponds UNIQUEMENT avec un JSON valide, sans markdown : {"score":0-100,${DOMAIN_FIELD},"reason":"une phrase expliquant pourquoi ce candidat correspond (ou pas)"}
+
+${MATCH_RULES}`
+    // Parcours avec employeurs et missions (pas seulement les compétences) et profil recherché d'abord : sans eux, l'IA
+    // ne pouvait pas voir qu'un domaine exigé manquait (match-scoring.ts).
+    const userMsg = `=== OFFRE ===\nPoste : ${job.title}\nCompétences recherchées : ${((job.skills as string[]) ?? []).join(', ')}\nDescription : ${offerTextForAi((job.description as string) ?? '', 4000)}\n\n=== PROFIL CANDIDAT ===\n${profileForAi(profile)}`
 
     const { content } = await callLLM([{ role: 'user', content: userMsg }], SYSTEM, { module: 'matching' })
     const jsonMatch = content.match(/\{[\s\S]*\}/)
     if (!jsonMatch) return
 
     const parsed = JSON.parse(jsonMatch[0])
-    const score = Math.min(100, Math.max(0, Number(parsed.score) || 0))
+    const score = cappedScore(Math.min(100, Math.max(0, Number(parsed.score) || 0)), parseDomainFit(parsed.domaine))
     await databases.updateDocument(DB_ID, COLLECTIONS.VIVIER_CVS, vivierCvId, {
       matchScore: score,
       matchReason: String(parsed.reason ?? '').slice(0, 500),
@@ -120,83 +130,94 @@ export async function scoreCvAgainstOffers(profile: ProfileToScore, offers: Offe
   return { scores: batches.flatMap(b => b ?? []), failed: batches.some(b => b === null) }
 }
 
+// Champs d'un CV du vivier lus par la page : ni le profil ni les scores enregistrés, jusqu'à 20 000 caractères chacun.
+const VIVIER_FIELDS = ['$id', '$createdAt', '$updatedAt', 'tenantId', 'jobId', 'recruiterId', 'candidateName', 'fileName', 'candidateEmail', 'cvFileId', 'matchScore', 'matchReason']
+
 // Combined, ranked results for the Matching page — 3 populations: job_matches (pool,
-// candidates who haven't applied), vivier_cvs (CVs the recruiter picked for this job),
-// and applications (candidates who actually applied — scored by the automatic matching that
-// runs on every new application, incl. profiles proposed by headhunters).
-export async function getJobMatches(jobId: string): Promise<{ matches: JobMatchResult[]; poolComputedAt: string | null }> {
+// candidates who haven't applied), vivier_cvs (CVs of `vivierOwner` in this job's vivier, or in their general vivier
+// when the CV corresponds to this job: rows of vivier_offer_matches, ADR 0026), and applications
+// (candidates who actually applied — scored by the automatic matching that runs on every new application, incl.
+// profiles proposed by headhunters). Every list is read in full, page by page: a capped read silently dropped people.
+// `tenantId` = the caller's organisation: a job shared by the platform has the viviers of every organisation.
+// `vivierOwner` = profile (users.$id) of the recruiter whose viviers are shown — a vivier is personal, no colleague sees
+// it (decision of 2026-11-03) — or null for all of the organisation's (platform admin, as on the vivier page).
+export async function getJobMatches(
+  jobId: string, tenantId: string, vivierOwner: string | null,
+): Promise<{ matches: JobMatchResult[]; poolComputedAt: string | null }> {
   const { databases } = createAdminClient()
+  const jobDoc = await databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId).catch(err => {
+    if ((err as { code?: unknown }).code === 404) return null
+    throw err
+  })
+  // Offre partagée par la plateforme : chaque organisation y ajoute ses candidats (« Ajouter dans le funnel ») ; seules
+  // les siennes et les candidatures directes à l'offre (tenantId '') sont montrées, jamais celles d'une autre.
+  const appQueries = [Query.equal('jobId', jobId), ...(jobDoc?.tenantId === '' ? [Query.equal('tenantId', [tenantId, ''])] : [])]
+  const ownVivier = [Query.equal('tenantId', tenantId), ...(vivierOwner ? [Query.equal('recruiterId', vivierOwner)] : [])]
 
-  const [poolRes, vivierRes, appsRes] = await Promise.all([
-    databases.listDocuments(DB_ID, COLLECTIONS.JOB_MATCHES, [
-      Query.equal('jobId', jobId), Query.orderDesc('score'), Query.limit(200),
-    ]),
-    databases.listDocuments(DB_ID, COLLECTIONS.VIVIER_CVS, [
-      Query.equal('jobId', jobId), Query.limit(200),
-    ]),
-    databases.listDocuments(DB_ID, COLLECTIONS.APPLICATIONS, [
-      Query.equal('jobId', jobId), Query.limit(200),
-    ]),
+  const [poolDocs, vivierDocs, generalRows, appDocs] = await Promise.all([
+    listAllDocuments(databases, DB_ID, COLLECTIONS.JOB_MATCHES, [Query.equal('jobId', jobId), Query.orderDesc('score')]),
+    listAllDocuments(databases, DB_ID, COLLECTIONS.VIVIER_CVS, [Query.equal('jobId', jobId), ...ownVivier, Query.select(VIVIER_FIELDS)]),
+    listVivierOfferMatches(jobId, tenantId),
+    listAllDocuments(databases, DB_ID, COLLECTIONS.APPLICATIONS, appQueries),
   ])
+  // Organisation, recruteur et vivier général vérifiés sur le CV : les lignes portent sur tous les CV de l'organisation,
+  // seuls ceux de `vivierOwner` sont gardés ; une ligne d'un CV supprimé depuis est écartée.
+  const generalCvs = new Map((await listAllByValues(databases, DB_ID, COLLECTIONS.VIVIER_CVS, '$id', generalRows.map(r => r.vivierCvId), [
+    ...ownVivier, Query.isNull('jobId'), Query.select(VIVIER_FIELDS),
+  ])).map(d => [d.$id, d]))
 
-  const candidateIds = [...new Set([
-    ...poolRes.documents.map(d => d.candidateId as string),
-    ...appsRes.documents.map(d => d.candidateId as string),
-  ])]
+  const candidateIds = [...poolDocs, ...appDocs].map(d => d.candidateId as string)
   const usersMap = new Map<string, { name: string; email: string; cvFileId?: string; hunterUserId?: string }>()
-  if (candidateIds.length > 0) {
-    const usersRes = await databases.listDocuments(DB_ID, COLLECTIONS.USERS, [
-      Query.equal('$id', candidateIds.slice(0, 100)), Query.limit(100),
-    ])
-    for (const u of usersRes.documents) {
-      usersMap.set(u.$id, {
-        name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim(),
-        email: displayEmail(u),
-        cvFileId: u.cvFileId as string | undefined,
-        hunterUserId: u.role === 'hunter_profile' ? (u.hunterUserId as string) : undefined,
-      })
-    }
+  for (const u of await listAllByValues(databases, DB_ID, COLLECTIONS.USERS, '$id', candidateIds, [])) {
+    usersMap.set(u.$id, {
+      name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim(),
+      email: displayEmail(u),
+      cvFileId: u.cvFileId as string | undefined,
+      hunterUserId: u.role === 'hunter_profile' ? (u.hunterUserId as string) : undefined,
+    })
   }
 
-  // Proposé par un chasseur : on retrouve son nom pour l'afficher dans la liste.
+  // Proposé par un chasseur : on retrouve son nom pour l'afficher dans la liste (illisible : « Chasseur »).
   const hunterNames = new Map<string, string>()
-  const hunterIds = [...new Set([...usersMap.values()].map(u => u.hunterUserId).filter((h): h is string => !!h))]
-  if (hunterIds.length > 0) {
-    const hd = await databases.listDocuments(DB_ID, COLLECTIONS.USERS, [Query.equal('userId', hunterIds.slice(0, 100)), Query.limit(100)]).catch(() => null)
-    for (const h of hd?.documents ?? []) hunterNames.set(h.userId as string, `${h.firstName ?? ''} ${h.lastName ?? ''}`.trim() || 'Chasseur')
-  }
+  const hunterIds = [...usersMap.values()].map(u => u.hunterUserId).filter((h): h is string => !!h)
+  const hunters = await listAllByValues(databases, DB_ID, COLLECTIONS.USERS, 'userId', hunterIds, []).catch(err => {
+    console.error('[matching] noms des chasseurs non lus', jobId, err instanceof Error ? err.message : err)
+    return []
+  })
+  for (const h of hunters) hunterNames.set(h.userId as string, `${h.firstName ?? ''} ${h.lastName ?? ''}`.trim() || 'Chasseur')
 
-  // Date du matching d'une candidature = date de sa dernière analyse (screening).
+  // Date du matching d'une candidature = date de sa dernière analyse (screening). Lots par candidature : toutes les
+  // analyses d'une candidature sont dans le même lot, la plus récente l'emporte. Illisible : date non affichée.
   const matchedAtByApp = new Map<string, string>()
-  const appIds = appsRes.documents.map(d => d.$id)
-  if (appIds.length > 0) {
-    const scr = await databases.listDocuments(DB_ID, COLLECTIONS.SCREENINGS, [
-      Query.equal('applicationId', appIds.slice(0, 100)), Query.orderAsc('$createdAt'), Query.limit(500),
-    ]).catch(() => null)
-    for (const d of scr?.documents ?? []) matchedAtByApp.set(d.applicationId as string, (d.scoredAt as string) || d.$createdAt)
-  }
+  const screenings = await listAllByValues(databases, DB_ID, COLLECTIONS.SCREENINGS, 'applicationId', appDocs.map(d => d.$id), [
+    Query.orderAsc('$createdAt'),
+  ]).catch(err => {
+    console.error('[matching] dates des analyses non lues', jobId, err instanceof Error ? err.message : err)
+    return []
+  })
+  for (const d of screenings) matchedAtByApp.set(d.applicationId as string, (d.scoredAt as string) || d.$createdAt)
 
-  const applicantCandidateIds = new Set(appsRes.documents.map(d => d.candidateId as string))
+  const applicantCandidateIds = new Set(appDocs.map(d => d.candidateId as string))
   const applicantEmails = new Set(
-    appsRes.documents.map(d => usersMap.get(d.candidateId as string)?.email).filter((e): e is string => !!e)
+    appDocs.map(d => usersMap.get(d.candidateId as string)?.email).filter((e): e is string => !!e)
   )
 
   // Recommandations : plus un candidat est recommandé sur une expertise demandée par l'offre, plus son score monte (plafonné).
   const [{ getSubmittedRecommendationsFor }, { expertiseBoost, formatMatched }] = await Promise.all([
     import('@/lib/appwrite/recommendations'), import('@/lib/recommendation-boost'),
   ])
-  const jobDoc = await databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId).catch(() => null)
   const jobText = jobDoc ? `${jobDoc.title ?? ''} ${((jobDoc.skills as string[]) ?? []).join(' ')} ${jobDoc.description ?? ''}` : ''
-  const recsByCandidate = await getSubmittedRecommendationsFor(poolRes.documents.map(d => d.candidateId as string))
+  const recsByCandidate = await getSubmittedRecommendationsFor(poolDocs.map(d => d.candidateId as string))
 
-  const poolMatches: JobMatchResult[] = poolRes.documents.map(d => {
+  const poolMatches: JobMatchResult[] = poolDocs.map(d => {
     const info = usersMap.get(d.candidateId as string)
     const boost = expertiseBoost(recsByCandidate.get(d.candidateId as string) ?? [], jobText)
     const base = d.score as number
     return {
       source: 'pool', id: d.$id, candidateId: d.candidateId as string,
       name: info?.name || 'Candidat', email: info?.email ?? '',
-      score: Math.min(100, base + boost.points),
+      // Les recommandations rapprochent du seuil « correspond » un candidat noté en dessous, sans le lui faire passer.
+      score: withBonus(base, boost.points),
       reason: `${(d.reason as string) ?? ''}${boost.points > 0 ? ` — Recommandé sur : ${formatMatched(boost.matched)} (+${boost.points} pts)` : ''}`,
       recommendation: boost.points > 0 ? boost : undefined,
       cvFileId: info?.cvFileId, cvBucket: 'cvs',
@@ -205,19 +226,31 @@ export async function getJobMatches(jobId: string): Promise<{ matches: JobMatchR
     }
   })
 
-  const vivierMatches: JobMatchResult[] = vivierRes.documents
-    .filter(d => d.matchScore != null)
-    .map(d => ({
-      source: 'vivier', id: d.$id,
-      name: (d.candidateName as string) || (d.fileName as string) || 'CV importé',
-      email: (d.candidateEmail as string) ?? '',
-      score: d.matchScore as number, reason: (d.matchReason as string) ?? '',
-      cvFileId: d.cvFileId as string, cvBucket: 'vivier',
-      alreadyInFunnel: d.candidateEmail ? applicantEmails.has(d.candidateEmail as string) : false,
-      receivedAt: d.$createdAt, matchedAt: d.$updatedAt,
-    }))
+  // Vivier de l'offre (score sur le CV) et vivier général (CV qui correspond à l'offre, comme sur sa carte).
+  const vivierScored = [
+    ...vivierDocs.filter(d => d.matchScore != null)
+      .map(d => ({ d, score: d.matchScore as number, reason: (d.matchReason as string) ?? '', matchedAt: d.$updatedAt })),
+    ...generalRows.flatMap(r => {
+      const d = generalCvs.get(r.vivierCvId)
+      return d ? [{ d, score: r.score, reason: r.reason, matchedAt: r.updatedAt }] : []
+    }),
+  ]
+  const owners = new Map<string, string>()
+  for (const u of await listAllByValues(databases, DB_ID, COLLECTIONS.USERS, '$id', vivierScored.map(v => v.d.recruiterId as string), [])) {
+    owners.set(u.$id, `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim())
+  }
+  const vivierMatches: JobMatchResult[] = vivierScored.map(({ d, score, reason, matchedAt }) => ({
+    source: 'vivier', id: d.$id,
+    name: (d.candidateName as string) || (d.fileName as string) || 'CV importé',
+    email: (d.candidateEmail as string) ?? '',
+    score, reason,
+    cvFileId: d.cvFileId as string, cvBucket: 'vivier',
+    alreadyInFunnel: d.candidateEmail ? applicantEmails.has(d.candidateEmail as string) : false,
+    receivedAt: d.$createdAt, matchedAt,
+    vivierOwner: owners.get(d.recruiterId as string) || undefined,
+  }))
 
-  const applicationMatches: JobMatchResult[] = appsRes.documents.map(d => {
+  const applicationMatches: JobMatchResult[] = appDocs.map(d => {
     const info = usersMap.get(d.candidateId as string)
     const score = typeof d.aiScore === 'number' ? d.aiScore : null
     return {
@@ -234,7 +267,7 @@ export async function getJobMatches(jobId: string): Promise<{ matches: JobMatchR
 
   const matches = [...poolMatches, ...vivierMatches, ...applicationMatches]
     .sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
-  const poolComputedAt = poolRes.documents[0]?.$createdAt as string | undefined ?? null
+  const poolComputedAt = poolDocs[0]?.$createdAt as string | undefined ?? null
 
   return { matches, poolComputedAt }
 }

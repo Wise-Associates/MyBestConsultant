@@ -5,6 +5,8 @@ import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Mail, Phone, FileText, Briefcase, GraduationCap } from 'lucide-react'
 import type { CvProfile } from '@/lib/cv-profile-extract'
 
+const isNotFound = (err: unknown) => (err as { code?: unknown } | null)?.code === 404
+
 // Lightweight "fiche candidat" for the two Matching populations that don't have a full
 // Application yet (pool + vivier) — /recruiter/candidates/[applicationId] needs a real
 // application to exist, so it can't be reused for someone who hasn't applied.
@@ -24,6 +26,7 @@ export default async function CandidatePreviewPage({ params }: { params: Promise
   let cvFileId = ''
   let cvHref = ''
   let profile: Partial<CvProfile> = {}
+  let vivierOwner = ''
 
   if (source === 'pool') {
     let doc
@@ -37,7 +40,14 @@ export default async function CandidatePreviewPage({ params }: { params: Promise
   } else {
     let doc
     try { doc = await databases.getDocument(DB_ID, COLLECTIONS.VIVIER_CVS, id) } catch { notFound() }
-    if (doc.recruiterId !== user.$id && user.role !== 'admin') redirect('/recruiter/dashboard')
+    // Un vivier est personnel (décision du 2026-11-03) : le recruteur qui a importé le CV, ou un admin de l'organisation,
+    // comme sur la page du vivier ; pour tout autre, introuvable.
+    if (doc.tenantId !== user.tenantId || (user.role !== 'admin' && doc.recruiterId !== user.$id)) notFound()
+    const owner = doc.recruiterId ? await databases.getDocument(DB_ID, COLLECTIONS.USERS, doc.recruiterId as string).catch(err => {
+      if (isNotFound(err)) return null
+      throw err
+    }) : null
+    vivierOwner = owner ? `${owner.firstName ?? ''} ${owner.lastName ?? ''}`.trim() : ''
     name = (doc.candidateName as string) || (doc.fileName as string) || 'CV importé'
     email = (doc.candidateEmail as string) ?? ''
     phone = (doc.candidatePhone as string) ?? ''
@@ -51,7 +61,7 @@ export default async function CandidatePreviewPage({ params }: { params: Promise
       <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="max-w-2xl mx-auto px-6 py-8">
           <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-            {source === 'pool' ? 'Base candidats' : 'Mon vivier'}
+            {source === 'pool' ? 'Base candidats' : vivierOwner ? `Vivier de ${vivierOwner}` : 'Vivier'}
           </p>
           <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>{name}</h1>
           <div className="flex items-center gap-4 mt-2 flex-wrap">

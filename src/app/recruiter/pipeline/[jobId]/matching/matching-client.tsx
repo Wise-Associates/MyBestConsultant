@@ -16,11 +16,14 @@ function scoreColor(s: number) {
   return s >= 85 ? '#10b981' : s >= 70 ? '#3b82f6' : s >= 55 ? '#f59e0b' : '#ef4444'
 }
 
+// Trois types : candidature reçue, base candidats de la plateforme, vivier du recruteur (son nom ; un vivier est personnel).
 const SOURCE_LABEL: Record<JobMatchResult['source'], { label: string; icon: typeof Users; color: string }> = {
   pool: { label: 'Base candidats', icon: Users, color: '#3b82f6' },
-  vivier: { label: 'Mon vivier', icon: FolderOpen, color: '#E8A33D' },
+  vivier: { label: 'Vivier', icon: FolderOpen, color: '#E8A33D' },
   application: { label: 'Candidature', icon: Send, color: '#10b981' },
 }
+
+const sourceLabel = (m: JobMatchResult) => m.source === 'vivier' && m.vivierOwner ? `Vivier de ${m.vivierOwner}` : SOURCE_LABEL[m.source].label
 
 function cvHref(m: JobMatchResult): string | null {
   if (!m.cvFileId) return null
@@ -33,8 +36,10 @@ function profileHref(m: JobMatchResult): string | null {
   return `/recruiter/candidate-preview/vivier/${m.id}`
 }
 
-export function MatchingClient({ jobId, jobTitle, initialMatches }: { jobId: string; jobTitle: string; initialMatches: JobMatchResult[] }) {
+/** `now` : heure du rendu par le serveur (ISO), avancée à chaque actualisation de la liste. */
+export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId: string; jobTitle: string; initialMatches: JobMatchResult[]; now: string }) {
   const [matches, setMatches] = useState(initialMatches)
+  const [nowMs, setNowMs] = useState(() => new Date(now).getTime())
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [isRefreshing, startRefreshing] = useTransition()
@@ -45,13 +50,14 @@ export function MatchingClient({ jobId, jobTitle, initialMatches }: { jobId: str
 
   // Candidature très récente non encore analysée : le matching tourne (automatiquement dès la réception).
   // On actualise la liste toutes les 8 s (2 min max) pour afficher le résultat sans recharger la page.
-  const analysing = (m: JobMatchResult) => m.source === 'application' && m.score === null && !!m.receivedAt && Date.now() - new Date(m.receivedAt).getTime() < 10 * 60_000
+  const analysing = (m: JobMatchResult) => m.source === 'application' && m.score === null && !!m.receivedAt && nowMs - new Date(m.receivedAt).getTime() < 10 * 60_000
   const anyAnalysing = matches.some(analysing)
   useEffect(() => {
     if (!anyAnalysing) return
     let tries = 0
     const t = setInterval(async () => {
       if (++tries > 15) { clearInterval(t); return }
+      setNowMs(Date.now())
       try { setMatches(await getMatchesAction(jobId)) } catch { /* on réessaie au prochain tour */ }
     }, 8000)
     return () => clearInterval(t)
@@ -140,7 +146,7 @@ export function MatchingClient({ jobId, jobTitle, initialMatches }: { jobId: str
 
       <div className="max-w-[1000px] mx-auto px-6 py-8">
         <p className="text-sm mb-6" style={{ color: 'var(--color-text-muted)' }}>
-          L&apos;IA a comparé cette offre à la base de candidats, à votre vivier et aux candidatures reçues. Sélectionnez qui vous intéresse puis lancez (ou relancez) le screening.
+          L&apos;IA a comparé cette offre aux candidatures reçues, à la base de candidats et à votre vivier (celui de l&apos;offre et votre vivier général). Sélectionnez qui vous intéresse puis lancez (ou relancez) le screening.
         </p>
 
         {flash && (
@@ -197,7 +203,7 @@ export function MatchingClient({ jobId, jobTitle, initialMatches }: { jobId: str
                           <span className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>{m.name}</span>
                         )}
                         <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${src.color}18`, color: src.color }}>
-                          <src.icon className="h-2.5 w-2.5" /> {src.label}
+                          <src.icon className="h-2.5 w-2.5" /> {sourceLabel(m)}
                         </span>
                         {m.score != null ? (
                           <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${scoreColor(m.score)}18`, color: scoreColor(m.score) }}>

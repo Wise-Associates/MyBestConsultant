@@ -2,8 +2,8 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   MAX_OFFERS_PER_RUN, OFFERS_PER_CALL, VIVIER_MATCH_MIN_SCORE, matchingOffers, mergeOfferScores, newOffersFor,
-  offerBatches, offersToCompare, parseOfferScores, parseVivierMatching, serializeOfferScores, vivierMatchingPrompt,
-  type OfferScore, type OfferToScore,
+  VIVIER_MATCHING_SYSTEM, offerBatches, offersToCompare, parseOfferScores, parseVivierMatching, serializeOfferScores,
+  vivierMatchingPrompt, type OfferScore, type OfferToScore,
 } from './vivier-matching'
 
 const offer = (id: string): OfferToScore => ({ $id: id, title: `Offre ${id}`, skills: ['Java'], location: 'Lyon', description: 'Mission fictive.' })
@@ -64,6 +64,12 @@ describe('vivier général : réponse de l\'IA', () => {
     assert.deepEqual(parseVivierMatching(answer, ['a', 'b', 'c', 'd']), [score('a', 83, 'Java'), score('b', 100, ''), score('d', 72, '')])
   })
 
+  it('plafonne le score quand l\'IA dit que le domaine exigé manque (un 95 sans expérience bancaire)', () => {
+    const answer = '[{"offerId":"a","score":95,"domaine":"non","reason":"Java, mais aucune expérience bancaire"},'
+      + '{"offerId":"b","score":92,"domaine":"partiel"},{"offerId":"c","score":90,"domaine":"oui"},{"offerId":"d","score":88}]'
+    assert.deepEqual((parseVivierMatching(answer, ['a', 'b', 'c', 'd']) ?? []).map(s => s.score), [60, 80, 90, 88])
+  })
+
   it('laisse à comparer une offre au score absent ou vide (pas un 0)', () => {
     assert.deepEqual(parseVivierMatching('[{"offerId":"a","score":null},{"offerId":"b","score":""},{"offerId":"c"}]', ['a', 'b', 'c']), [])
   })
@@ -78,6 +84,16 @@ describe('vivier général : réponse de l\'IA', () => {
     const profile = { skills: Array.from({ length: 500 }, () => 'K'.repeat(100)), experienceSummary: 'E'.repeat(50_000), experiences: Array.from({ length: 50 }, () => ({ title: 'P'.repeat(5000) })), yearsOfExperience: 3, languages: Array.from({ length: 50 }, () => ({ name: 'N'.repeat(500), level: 'C1' })) }
     const prompt = vivierMatchingPrompt(profile, Array.from({ length: OFFERS_PER_CALL }, () => hostile))
     assert.ok(prompt.length < 70_000, `${prompt.length} caractères`)
+  })
+
+  it('envoie le parcours (employeurs, périodes, missions) pour juger le domaine, et le barème commun', () => {
+    const prompt = vivierMatchingPrompt({
+      skills: ['Java'], experienceSummary: 'Développeur fictif.', yearsOfExperience: 6, languages: [],
+      experiences: [{ title: 'Développeur Java', company: 'Banque Fictive', period: '2020 - 2024', missions: ['Refonte du crédit immobilier'] }],
+    }, [offer('a')])
+    assert.match(prompt, /Développeur Java — Banque Fictive \(2020 - 2024\) : Refonte du crédit immobilier/)
+    assert.match(VIVIER_MATCHING_SYSTEM, /une compétence ou un outil ne la prouve pas/)
+    assert.match(VIVIER_MATCHING_SYSTEM, /"domaine"/)
   })
 
   it('n\'envoie à l\'IA ni le nom ni les coordonnées du candidat', () => {
