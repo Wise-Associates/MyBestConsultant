@@ -1,6 +1,6 @@
 import type { Element } from '@xmldom/xmldom'
 import { fitToTemplate } from './cv-data'
-import { inspectTemplate } from './inspect'
+import { contactsIn, inspectTemplate } from './inspect'
 import { childW, descendantsW, elements, isW, parseXml, readTemplate, renderCv, textOf } from './render'
 import { SAMPLE_CV, TemplateError, assertWordFile, parseTemplateMap } from './template-check'
 import type { CvData, CvLang, TemplateMap } from './types'
@@ -59,14 +59,14 @@ Réponds UNIQUEMENT avec l'objet JSON du template_map.json, sans markdown ni tex
 - requires : prototype → champ texte obligatoire, sinon le prototype est sauté. Pour une liste, utiliser <liste>_joined (ex. "exp_missions": "realisations_joined").
 - sections : ordre des sections du modèle parmi identity, summary, experiences, education, certifications, languages, skills ; ou un bloc libre rendu une fois {"layout": [...], "keep_with_previous": true}.
 - layouts : summary_item ; <section>_head (après le titre ; absent, le moteur y met un spacer) ; <section>_item (un bloc par élément, obligatoire pour experiences, education, certifications, languages, skills quand la section est dans sections) ; <section>_tail. Jetons : un prototype ; proto* répété pour chaque élément de la liste correspondante (exp_role, exp_bullet, edu_detail, cert_detail) ; spacer ou spacer:<proto> (paragraphe vide cloné). Un jeton sans donnée est sauté.
-- labels : {"fr": {...}, "en": {...}}, les deux obligatoires : titres de section (clés summary, experiences, education, certifications, languages, skills) et libellés intermédiaires (languages_label, environment, missions…). Reprendre les titres du modèle à l'identique (casse comprise) et les traduire en anglais. Une section sans libellé n'a pas de titre.
+- labels : {"fr": {...}, "en": {...}}, les deux obligatoires : titres de section (clés summary, experiences, education, certifications, languages, skills) et libellés intermédiaires (languages_label, environment, missions…). Reprendre les titres du modèle à l'identique (casse comprise) dans sa langue et les traduire dans l'autre : un modèle rédigé en anglais (« SKILLS ») a des labels fr en français (« COMPÉTENCES »). Une section sans libellé n'a pas de titre.
 - header_footer_replacements, header_footer_replacements_fr, header_footer_replacements_en : remplacements de texte dans les en-têtes et pieds de page ; la valeur peut contenir {identifiant}, {titre}, {experience}.
 
 ## Règles
 1. Tout le contenu du dossier doit trouver sa place : identité, résumé, chaque champ d'une expérience (dates, client, rôle, contexte, réalisations, environnement), formations, langues, compétences, certifications. Sans section de certifications dans le modèle, ne pas en créer : elles seront ajoutées à la formation. Un champ sans paragraphe dédié dans le modèle (contexte, environnement…) réutilise comme prototype un paragraphe de texte simple de la même zone (avec requires pour qu'il soit sauté quand le champ est vide). L'environnement sans exp_env est rendu avec le prototype exp_context.
 2. Aucun texte d'exemple du modèle ne doit rester : chaque « [ … ] » du corps, des en-têtes et des pieds de page est soit reconstruit, soit réécrit par fixed, soit remplacé par header_footer_replacements (par un champ, ou par "" si aucune donnée ne lui correspond, ex. zone géographique). L'identité qui figure seulement dans un en-tête se remplace ainsi ; sinon, section identity ou fixed.
 3. Une section du modèle sans équivalent dans les données (stages, projets, centres d'intérêt…) est omise de sections. Ne pas inventer de section absente du modèle.
-4. Un libellé écrit dans le modèle (« Principales missions : », « Langues : », « Environnement : ») passe par labels et {lbl_<clé>}, jamais en dur dans fields : il doit être traduit en anglais. Le texte français des en-têtes et pieds de page (« CV anonymisé », « Page 1 sur 5 ») est traduit par header_footer_replacements_en.
+4. Un libellé écrit dans le modèle (« Principales missions : », « Langues : », « Environnement : ») passe par labels et {lbl_<clé>}, jamais en dur dans fields : il doit être traduit en anglais. De même pour un libellé de la zone conservée du corps (« Votre interlocuteur : » au-dessus du contact de l'ESN) : fixed avec {lbl_<clé>}. Le texte français des en-têtes et pieds de page (« CV anonymisé », « Page 1 sur 5 ») est traduit par header_footer_replacements_en. Le contact de l'ESN (nom, fonction, adresse, téléphone, e-mail) reste dans la zone conservée, tel quel.
 5. Un modèle qui répète un même bloc (plusieurs expériences, plusieurs puces) : prendre la première instance comme prototype, les autres disparaissent avec la reconstruction.
 6. Les index et chemins sont exactement ceux de l'inspection.
 7. Espacement : un spacer (ou spacer:<proto>) est un paragraphe vide. N'en mettre que là où le modèle a lui-même un paragraphe vide (ligne à 0 segment dans l'inspection). Écrire "<section>_head": [] pour chaque section dont le titre n'est pas suivi d'un paragraphe vide dans le modèle (sinon le moteur en ajoute un). Un modèle sans paragraphe vide espace ses blocs par l'espacement des paragraphes eux-mêmes : aucun spacer.
@@ -206,6 +206,21 @@ export function mappingProblems(template: Uint8Array, map: TemplateMap): string[
     const fr = frLabel.trim()
     if (fr.length >= 4 && map.labels?.en?.[key]?.trim() !== fr && hasPhrase(text.en, fr)) {
       problems.push(`le libellé français « ${fr} » est resté dans la version anglaise`)
+    }
+  }
+  // Modèle rédigé en anglais : ses titres ne doivent pas rester dans la version française.
+  for (const [key, enLabel] of Object.entries(map.labels?.en ?? {})) {
+    const en = enLabel.trim()
+    if (en.length >= 4 && map.labels?.fr?.[key]?.trim() !== en && hasPhrase(text.fr, en)) {
+      problems.push(`le libellé anglais « ${en} » est resté dans la version française`)
+    }
+  }
+  // Le contact de l'ESN appartient au modèle (« n'oublie pas les informations de David ») : chaque export le garde.
+  // Message sans les coordonnées : il est renvoyé à l'IA, qui ne les a jamais vues (maskContacts).
+  const contacts = contactsIn(documentText(template))
+  for (const lang of ['fr', 'en'] as const) {
+    if (contacts.some(contact => !text[lang].includes(contact))) {
+      problems.push(`le téléphone ou l'e-mail du contact de l'ESN a disparu de la version ${lang === 'fr' ? 'française' : 'anglaise'} : la zone qui le contient doit être conservée`)
     }
   }
   problems.push(...addedBlankParagraphs(template, rendered.fr, map))

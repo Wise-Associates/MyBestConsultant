@@ -17,7 +17,6 @@ export interface AnnoncesData {
   generatedAt: string
 }
 
-const DAY = 86_400_000
 const CONTRACT: Record<string, string> = { cdi: 'CDI', cdd: 'CDD', freelance: 'Freelance', mission: 'Mission' }
 const REMOTE: Record<string, string> = { onsite: 'Sur site', hybrid: 'Hybride', remote: 'Télétravail' }
 const DONE_INTERVIEW = new Set(['completed', 'analysed'])
@@ -247,7 +246,6 @@ export function AnnoncesClient({ data }: { data: AnnoncesData }) {
                 archived: { l: 'Archivée', bg: 'rgba(107,114,128,0.12)', c: '#6b7280' },
                 expired: { l: 'Expirée', bg: 'rgba(245,158,11,0.14)', c: '#b45309' },
               }[r.state]
-              const ageDays = Math.max(0, Math.floor((now - new Date(r.job.createdAt).getTime()) / DAY))
               return (
                 <article key={r.job.id} className="mbc-annonce rounded-3xl overflow-hidden" style={{ display: inPage ? undefined : 'none', background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 16px 40px -18px rgba(11,29,81,0.2)' }}>
                   <div className="p-5 sm:p-6">
@@ -269,7 +267,7 @@ export function AnnoncesClient({ data }: { data: AnnoncesData }) {
                           <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{r.job.location}</span>
                           {r.job.contractType && <span>{CONTRACT[r.job.contractType] ?? r.job.contractType}</span>}
                           {r.job.remote && <span>{REMOTE[r.job.remote] ?? r.job.remote}</span>}
-                          <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />Publiée le {fmtDate(r.job.createdAt)} · {ageDays === 0 ? "aujourd'hui" : `il y a ${ageDays} j`}</span>
+                          <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />Publiée le {fmtDate(r.job.createdAt)}</span>
                         </div>
                       </div>
                       <div className="no-print flex items-center gap-2 flex-wrap">
