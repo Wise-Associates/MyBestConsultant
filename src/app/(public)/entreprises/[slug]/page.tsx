@@ -7,6 +7,7 @@ import { getActiveJobs } from '@/lib/appwrite/jobs'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { BenefitIcon } from '@/lib/brand-icons'
 import { SIZE_LABEL, videoEmbedUrl } from '@/lib/brand'
+import { formatDateFr } from '@/lib/format-date'
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://mybestconsultant.fr'
 const CONTRACT: Record<string, string> = { cdi: 'CDI', cdd: 'CDD', freelance: 'Freelance', mission: 'Mission' }
@@ -190,9 +191,7 @@ export default async function EmployerPage({ params }: { params: Promise<{ slug:
             </div>
           ) : (
             <div className="space-y-3">
-              {jobs.map(job => {
-                const days = Math.floor((Date.now() - new Date(job.createdAt).getTime()) / 86_400_000)
-                return (
+              {jobs.map(job => (
                   <Link key={job.$id} href={`/jobs/${job.$id}`} className="group flex items-center justify-between gap-4 rounded-2xl p-5 no-underline transition-colors hover:border-[var(--color-primary)]"
                     style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
                     <div className="min-w-0">
@@ -201,13 +200,12 @@ export default async function EmployerPage({ params }: { params: Promise<{ slug:
                         <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{job.location}</span>
                         {job.contractType && <span className="inline-flex items-center gap-1"><Briefcase className="h-3 w-3" />{CONTRACT[job.contractType]}</span>}
                         {job.remote && <span className="inline-flex items-center gap-1"><Wifi className="h-3 w-3" />{REMOTE[job.remote]}</span>}
-                        <span>{days === 0 ? "Aujourd'hui" : days === 1 ? 'Hier' : `Il y a ${days} jours`}</span>
+                        <span>Publiée le {formatDateFr(job.createdAt)}</span>
                       </div>
                     </div>
                     <ArrowRight className="h-5 w-5 shrink-0 transition-transform group-hover:translate-x-1" style={{ color: 'var(--color-primary)' }} />
                   </Link>
-                )
-              })}
+              ))}
             </div>
           )}
         </section>

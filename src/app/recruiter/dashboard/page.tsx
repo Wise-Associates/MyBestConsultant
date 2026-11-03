@@ -10,7 +10,8 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { listAllDocuments } from '@/lib/appwrite/list-all'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
-import { jobFacts, relativeAge, summarize } from '@/lib/recruiter-dashboard'
+import { jobFacts, summarize } from '@/lib/recruiter-dashboard'
+import { formatDateFr } from '@/lib/format-date'
 import { listTenantRecruiters, recruiterOptions } from '@/lib/recruiter-assignment'
 import { parseRecruiterSelection } from '@/lib/recruiter-job-filters'
 import { CreateJobDialog } from './create-job-dialog'
@@ -157,10 +158,10 @@ export default async function RecruiterDashboard({ searchParams }: {
     return {
       job,
       facts: jobFacts(job, appsByJobRecord[job.$id] ?? [], keys, post?.status, now),
-      age: relativeAge(job.createdAt, now),
+      publishedOn: formatDateFr(job.createdAt),
       shared: job.tenantId !== tenantId,
       matches: matchCountByJob[job.$id] ?? 0,
-      social: post && { status: post.status, results: post.results, stale: post.stale, age: relativeAge(post.sentAt ?? post.createdAt, now) },
+      social: post && { status: post.status, results: post.results, stale: post.stale, sentOn: formatDateFr(post.sentAt ?? post.createdAt) },
     }
   })
 

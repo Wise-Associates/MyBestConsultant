@@ -115,6 +115,18 @@ describe('problèmes d\'une cartographie, constatés sur le rendu', () => {
     assert.ok(problems.includes('le libellé français « Langues : » est resté dans la version anglaise'), problems.join('\n'))
   })
 
+  it('un libellé anglais resté dans la version française (modèle rédigé en anglais, libellé écrit en dur)', () => {
+    const problems = mappingProblems(TEMPLATE, { ...MAP, fields: { ...MAP.fields, lang_line: ['Languages: ', '{langues_joined}'] } })
+    assert.ok(problems.includes('le libellé anglais « Languages: » est resté dans la version française'), problems.join('\n'))
+  })
+
+  it('le contact de l\'ESN supprimé avec la zone reconstruite, sans citer ses coordonnées', () => {
+    const problems = mappingProblems(TEMPLATE, { ...MAP, body_start: 0 })
+    const lost = problems.filter(p => p.includes('contact de l\'ESN a disparu'))
+    assert.equal(lost.length, 2, problems.join('\n'))
+    assert.ok(lost.every(p => !/@|\d{2}[ .]?\d{2}[ .]?\d{2}/.test(p)), lost.join('\n'))
+  })
+
   it('un paragraphe vide ajouté sous un titre de section qui n\'en a pas dans le modèle', () => {
     const problems = mappingProblems(TEMPLATE, { ...MAP, layouts: { ...MAP.layouts, skills_head: ['spacer'] } })
     assert.ok(problems.some(p => p.includes('paragraphe vide ajouté sous le titre « COMPETENCES FONCTIONNELLES ET TECHNIQUES »')), problems.join('\n'))

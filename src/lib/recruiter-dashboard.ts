@@ -27,18 +27,6 @@ export function expiresInDays(job: Pick<Job, 'isActive' | 'expiresAt'>, now: Dat
   return days <= EXPIRING_SOON_DAYS ? days : null
 }
 
-/** « aujourd’hui », « hier », « il y a 3 j », « il y a 2 sem. », « il y a 4 mois », « il y a 1 an ». */
-export function relativeAge(iso: string, now: Date): string {
-  const days = Math.max(0, Math.floor((now.getTime() - Date.parse(iso)) / DAY_MS))
-  if (days === 0) return 'aujourd’hui'
-  if (days === 1) return 'hier'
-  if (days < 7) return `il y a ${days} j`
-  if (days < 30) return `il y a ${Math.floor(days / 7)} sem.`
-  if (days < 365) return `il y a ${Math.floor(days / 30)} mois`
-  const years = Math.floor(days / 365)
-  return `il y a ${years} an${years > 1 ? 's' : ''}`
-}
-
 /** Candidature telle que le tableau de bord la lit ; `status` déjà rattaché aux étapes du funnel (resolveStatus). */
 export interface DashboardApp {
   status: string
