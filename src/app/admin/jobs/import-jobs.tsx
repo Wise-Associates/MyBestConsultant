@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { createJobsFromExtracted, type ExtractedJob } from './actions'
+import { payText } from '@/lib/job-pay'
 
 type Provider = 'claude' | 'teckia'
 type Step = 'upload' | 'extracting' | 'review' | 'done'
@@ -77,7 +78,7 @@ function JobCard({
             </span>
             {job.salary && (
               <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 99, background: 'rgba(184,134,11,0.12)', color: '#B8860B', fontWeight: 600 }}>
-                {job.salary} €{job.contractType === 'mission' || job.contractType === 'freelance' ? '/j' : '/an'}
+                {payText(job.salary, job.contractType)}
               </span>
             )}
           </div>

@@ -6,6 +6,7 @@
 // plateforme avec le résultat. Voir /admin/social pour le guide de configuration.
 
 import { kindOf, stripInline, type SectionKind } from './description-sections'
+import { payText } from './job-pay'
 
 // YouTube Shorts viendra en phase 2 (il exige une vidéo, pas une image).
 export const NETWORKS = ['linkedin', 'instagram', 'facebook', 'x'] as const
@@ -90,7 +91,8 @@ const clip = (s: string, n: number) => (s.length <= n ? s : s.slice(0, n - 1).tr
 const plain = (s: string) => s.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
 
 export function conditionLines(job: JobLite): string[] {
-  const rate = job.salary ? (job.contractType === 'freelance' || job.contractType === 'mission' ? `TJM ${job.salary} €/jour` : `${job.salary} €/mois`) : ''
+  // Unité fixée par le contrat, comme sur la page de l'offre (job-pay.ts) : un CDI s'écrivait « €/mois ».
+  const rate = job.salary ? payText(job.salary, job.contractType) : ''
   return [
     job.contractType ? CONTRACT[job.contractType] ?? job.contractType : '',
     job.remote ? REMOTE[job.remote] ?? job.remote : '',
@@ -224,7 +226,7 @@ export function buildContent(job: JobLite, copy: CopyDraft, cfg: SocialConfig, o
 
   // ── Textes par réseau ──
   // Même trame partout (accroche, lieu et conditions, missions, profil, liens), adaptée à la longueur et aux usages de chaque réseau.
-  const rate = conditions.find(l => l.startsWith('TJM') || l.includes('€/mois')) ?? ''
+  const rate = job.salary ? payText(job.salary, job.contractType) : ''
   const meta = [job.location && `📍 ${job.location}`, job.contractType ? CONTRACT[job.contractType] ?? job.contractType : '', job.remote ? REMOTE[job.remote] ?? job.remote : '', rate].filter(Boolean).join(' · ')
   const head = `🚀 ${job.title}${job.company ? ` — ${job.company}` : ''}`
   const bullets = copy.missionBullets.map(b => `• ${b}`).join('\n')
