@@ -43,8 +43,8 @@ export async function runApplicationMatchingAction(jobId: string, applicationId:
   }
 }
 
-// Population 1 (platform candidate pool) on demand : « Rafraîchir » ('new') note seulement les candidats pas encore
-// notés pour l'offre, sans toucher aux autres scores ; « Recalculer tout » ('all') refait tous les scores.
+// Population 1 (platform candidate pool) on demand : « Rafraîchir » du Matching IA appelle 'all' (refait les scores
+// déjà calculés) puis 'new' (note seulement les candidats pas encore notés pour l'offre), une requête chacun.
 export async function refreshPoolMatchingAction(jobId: string, mode: unknown = 'new'): Promise<{ matched?: number; error?: string }> {
   await requireJobAccess(jobId)
   if (mode !== 'new' && mode !== 'all') return { error: 'Demande invalide.' }

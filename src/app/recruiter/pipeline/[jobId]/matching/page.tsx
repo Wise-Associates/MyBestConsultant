@@ -6,7 +6,7 @@ import { getJobMatches, unmatchedApplicationIds } from '@/lib/matching-core'
 import { autoScreenApplication } from '@/app/recruiter/screening/actions'
 import { MatchingClient } from './matching-client'
 
-// « Recalculer tout » : un appel d'IA par candidat de la base, 30 candidats, 5 à la fois (sourcing-core.ts).
+// « Rafraîchir » : un appel d'IA par candidat de la base, 5 à la fois (sourcing-core.ts), dans chacune de ses deux requêtes.
 export const maxDuration = 300
 
 export default async function MatchingPage({ params }: { params: Promise<{ jobId: string }> }) {
