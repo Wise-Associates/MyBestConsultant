@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   MAX_OFFERS_PER_RUN, OFFERS_PER_CALL, VIVIER_MATCH_MIN_SCORE, matchingOffers, mergeOfferScores, newOffersFor,
   VIVIER_MATCHING_SYSTEM, offerBatches, offersToCompare, parseOfferScores, parseVivierMatching, serializeOfferScores,
-  vivierMatchingPrompt, type OfferScore, type OfferToScore,
+  vivierMatchingPrompt, vivierScore, type OfferScore, type OfferToScore,
 } from './vivier-matching'
 
 const offer = (id: string): OfferToScore => ({ $id: id, title: `Offre ${id}`, skills: ['Java'], location: 'Lyon', description: 'Mission fictive.' })
@@ -58,25 +58,56 @@ describe('vivier général : scores enregistrés sur le CV', () => {
 })
 
 describe('vivier général : réponse de l\'IA', () => {
-  it('lit les scores des offres du lot, bornés et arrondis, une fois par offre', () => {
-    const answer = 'Voici : [{"offerId":"a","score":82.6,"reason":"Java"},{"offerId":"a","score":10},{"offerId":"b","score":140},'
-      + '{"offerId":"inconnue","score":99},{"offerId":"c","score":"abc"},{"score":50},{"offerId":"d","score":" 72 "}]'
-    assert.deepEqual(parseVivierMatching(answer, ['a', 'b', 'c', 'd']), [score('a', 83, 'Java'), score('b', 100, ''), score('d', 72, '')])
+  const offers = [offer('a'), offer('b'), { ...offer('c'), skills: ['Java', 'Spring', 'SQL'] }]
+  // Profil fictif tel que l'IA le lit : les citations et intitulés de ses réponses y sont vérifiés.
+  const cv = 'Parcours :\n- Développeur Java — Banque Fictive (2020-2024) : Développement Java Spring pour la banque de détail\n'
+    + '- Scrum Master — Assureur Fictif (2018-2019) : Animation des cérémonies Scrum de deux équipes'
+  const line = 'Développement Java Spring pour la banque de détail'
+  const ok = { jugement: 'oui', citation: line }
+  const item = (offre: unknown, over: Record<string, unknown> = {}) => ({
+    offre, poste: [{ metier: 'Développeur Java', exerce: 'oui', intitule: 'Développeur Java' }], exigences: ok, competences: [ok], domaine: 'oui', niveau: 'oui', ...over,
+  })
+  const parse = (items: unknown[]) => parseVivierMatching(`Voici : ${JSON.stringify(items)}`, offers, cv)?.map(vivierScore) ?? null
+
+  it('rattache chaque réponse à l\'offre de son numéro, jamais à un identifiant recopié par l\'IA', () => {
+    assert.deepEqual(parse([
+      item(2, { raison: 'Java en banque' }),
+      item('3', { competences: [ok, { jugement: 'partiel' }, { jugement: 'non' }], niveau: 'partiel', raison: 'SQL absent' }),
+    ]), [
+      score('b', 100, 'Poste : Développeur Java oui · Exigences : oui · Compétences : 1 sur 1 · Domaine : oui · Niveau : oui — Java en banque'),
+      score('c', 88, 'Poste : Développeur Java oui · Exigences : oui · Compétences : 1 sur 3, 1 partielle · Domaine : oui · Niveau : partiel — SQL absent'),
+    ])
   })
 
-  it('plafonne le score quand l\'IA dit que le domaine exigé manque (un 95 sans expérience bancaire)', () => {
-    const answer = '[{"offerId":"a","score":95,"domaine":"non","reason":"Java, mais aucune expérience bancaire"},'
-      + '{"offerId":"b","score":92,"domaine":"partiel"},{"offerId":"c","score":90,"domaine":"oui"},{"offerId":"d","score":88}]'
-    assert.deepEqual((parseVivierMatching(answer, ['a', 'b', 'c', 'd']) ?? []).map(s => s.score), [60, 80, 90, 88])
+  it('ignore un numéro hors du lot ou répété, et une réponse sans jugement (l\'offre reste à comparer)', () => {
+    const result = parse([item(9), item(1), item(1, { domaine: 'non' }), { offre: 2, score: 95 }, { offerId: 'c', score: 90 }])
+    assert.deepEqual((result ?? []).map(s => [s.jobId, s.score]), [['a', 100]])
   })
 
-  it('laisse à comparer une offre au score absent ou vide (pas un 0)', () => {
-    assert.deepEqual(parseVivierMatching('[{"offerId":"a","score":null},{"offerId":"b","score":""},{"offerId":"c"}]', ['a', 'b', 'c']), [])
+  it('un « oui » sans expérience citée ne vaut que « partiel »', () => {
+    assert.equal(parse([item(1, { competences: ['oui'] })])?.[0].score, 90)
+  })
+
+  it('juge chaque métier d\'un titre qui en réunit plusieurs : Scrum Master sans développement plafonné à 50', () => {
+    const [result] = parse([item(1, {
+      poste: [{ metier: 'Scrum Master', exerce: 'oui', intitule: 'Scrum Master' }, { metier: 'Développeur Full Stack', exerce: 'non' }],
+      domaine: 'non requis', raison: 'aucun développement',
+    })]) ?? []
+    assert.equal(result.score, 50)
+    assert.match(result.reason, /^Poste : Scrum Master oui, Développeur Full Stack non · /)
+  })
+
+  it('plafonne le score quand le poste du titre n\'a pas été exercé, quelles que soient les compétences', () => {
+    assert.equal(parse([item(1, { poste: [{ metier: 'Chef de projet', exerce: 'non' }] })])?.[0].score, 50)
+  })
+
+  it('plafonne le score quand le domaine exigé manque, quelles que soient les compétences', () => {
+    assert.equal(parse([item(1, { domaine: 'non' })])?.[0].score, 60)
   })
 
   it('refuse une réponse qui n\'est pas un tableau JSON', () => {
-    assert.equal(parseVivierMatching('Je ne peux pas répondre.', ['a']), null)
-    assert.equal(parseVivierMatching('[{"offerId": "a", score: 3]', ['a']), null)
+    assert.equal(parseVivierMatching('Je ne peux pas répondre.', offers, cv), null)
+    assert.equal(parseVivierMatching('[{"offre": 1, domaine: "oui"]', offers, cv), null)
   })
 
   it('borne la taille du message même pour des offres saisies sans limite', () => {
@@ -93,7 +124,9 @@ describe('vivier général : réponse de l\'IA', () => {
     }, [offer('a')])
     assert.match(prompt, /Développeur Java — Banque Fictive \(2020 - 2024\) : Refonte du crédit immobilier/)
     assert.match(VIVIER_MATCHING_SYSTEM, /une compétence ou un outil ne la prouve pas/)
-    assert.match(VIVIER_MATCHING_SYSTEM, /"domaine"/)
+    assert.match(VIVIER_MATCHING_SYSTEM, /"offre":1/)
+    assert.match(VIVIER_MATCHING_SYSTEM, /"intitule"/)
+    assert.doesNotMatch(VIVIER_MATCHING_SYSTEM, /"score"/)
   })
 
   it('n\'envoie à l\'IA ni le nom ni les coordonnées du candidat', () => {
@@ -102,7 +135,9 @@ describe('vivier général : réponse de l\'IA', () => {
       yearsOfExperience: 6, languages: [{ name: 'Anglais', level: 'B2' }],
     }, [offer('a')])
     assert.match(prompt, /Développeur Java/)
-    assert.match(prompt, /--- Offre \[a\] ---/)
+    assert.match(prompt, /--- Offre 1 ---/)
+    assert.match(prompt, /1\. Java/)
+    assert.doesNotMatch(prompt, /\ba\b ---/, 'pas d\'identifiant d\'offre à recopier')
     assert.doesNotMatch(prompt, /@|Nom/)
   })
 })

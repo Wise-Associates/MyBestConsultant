@@ -84,9 +84,16 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
     })
   }
 
-  function refresh() {
+  // « Rafraîchir » note seulement les nouveaux candidats de la base ; « Recalculer tout » refait tous les scores.
+  function refresh(mode: 'new' | 'all') {
+    if (mode === 'all' && !window.confirm('Recalculer tous les scores de la base candidats ? Chaque CV est relu par l’IA (quelques minutes).')) return
+    setFlash(null)
     startRefreshing(async () => {
-      await refreshPoolMatchingAction(jobId)
+      const result = await refreshPoolMatchingAction(jobId, mode)
+      const done = result.matched
+        ? `${result.matched} candidat${result.matched > 1 ? 's' : ''} de la base noté${result.matched > 1 ? 's' : ''}.`
+        : ''
+      if (result.error || done) setFlash([done, result.error].filter(Boolean).join(' '))
       setMatches(await getMatchesAction(jobId))
       setPage(1)
     })
@@ -128,11 +135,18 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
               <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.5rem' }}>{jobTitle}</h1>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <button onClick={refresh} disabled={isRefreshing}
+              <button type="button" onClick={() => refresh('new')} disabled={isRefreshing}
+                title="Note les candidats de la base pas encore notés pour cette offre ; les scores déjà calculés ne changent pas."
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-50"
                 style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.15)' }}>
                 {isRefreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                 Rafraîchir (nouveaux candidats)
+              </button>
+              <button type="button" onClick={() => refresh('all')} disabled={isRefreshing}
+                title="Recalcule tous les scores de la base candidats pour cette offre."
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-50"
+                style={{ background: 'transparent', color: 'rgba(255,255,255,0.75)', border: '1px solid rgba(255,255,255,0.15)' }}>
+                Recalculer tout
               </button>
               <Link href={`/recruiter/pipeline/${jobId}`}
                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold no-underline transition-opacity hover:opacity-85"
@@ -243,7 +257,16 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
                             <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{m.source === 'application' ? (m.hunterName ? 'Proposé le' : 'Reçue le') : 'Importé le'} <LocalTime iso={m.receivedAt} className="font-semibold" style={{ color: 'var(--color-text)' }} /></span>
                           )}
                           {m.matchedAt ? (
-                            <span className="inline-flex items-center gap-1"><Brain className="h-3 w-3" />Matching le <LocalTime iso={m.matchedAt} className="font-semibold" style={{ color: 'var(--color-text)' }} /></span>
+                            <span className="inline-flex items-center gap-1"><Brain className="h-3 w-3" />Matching le <LocalTime iso={m.matchedAt} className="font-semibold" style={{ color: 'var(--color-text)' }} />
+                              {/* Score d'une candidature calculé avant une évolution de la notation : se recalcule ici, sans
+                                  nouvel e-mail au candidat (envoyé à la première analyse seulement). */}
+                              {m.source === 'application' && m.applicationId && (
+                                <button type="button" disabled={running.has(m.applicationId)} onClick={e => { e.stopPropagation(); void runMatching(m) }}
+                                  className="ml-1 font-bold underline disabled:opacity-50" style={{ color: 'var(--color-primary)' }}>
+                                  {running.has(m.applicationId) ? 'Matching en cours…' : 'Relancer'}
+                                </button>
+                              )}
+                            </span>
                           ) : m.source === 'application' && m.score === null && !analysing(m) && m.applicationId ? (
                             <button type="button" disabled={running.has(m.applicationId)} onClick={e => { e.stopPropagation(); void runMatching(m) }}
                               className="inline-flex items-center gap-1 font-bold underline disabled:opacity-50" style={{ color: 'var(--color-primary)' }}>

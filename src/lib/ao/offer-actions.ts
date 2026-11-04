@@ -368,12 +368,13 @@ export async function aoOfferSourcingOf(
       if (recompute) {
         const refused = await beforeAi?.()
         if (refused) return { error: refused }
-        const run = await runPoolMatching(offer.jobId)
-        if (run.error) return { error: run.error }
       }
+      // Une partie des CV non notés (IA indisponible) : les notes enregistrées s'affichent, avec l'avertissement.
+      const run = recompute ? await runPoolMatching(offer.jobId, undefined, 'all') : null
+      if (run?.error && run.matched === 0) return { error: run.error }
       const { matches, poolComputedAt } = await getJobMatches(offer.jobId, tenantId, vivierOwner)
       const kept = bestMatches(matches).map(m => ({ id: `${m.source}:${m.id}`, name: m.name, score: m.score, reason: m.reason, origin: m.source }))
-      return { candidates: kept, computedAt: poolComputedAt }
+      return { candidates: kept, computedAt: poolComputedAt, error: run?.error }
     }
 
     let record = recompute ? null : await getAoOfferSourcing(offer.$id)
