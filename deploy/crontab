@@ -1,0 +1,7 @@
+# Tâches planifiées de MyBestConsultant (ADR 0027). mbc-deploy installe ce fichier comme crontab de l'utilisateur
+# deploy à chaque déploiement : modifier ce fichier, jamais la crontab sur le serveur (elle serait écrasée).
+# Heures en UTC (le serveur doit être en UTC : timedatectl), les mêmes que les « crons » de vercel.json.
+# Résultats : journalctl -t mbc-cron
+0 3 * * * /bin/bash /opt/mybestconsultant/repo/deploy/mbc-cron.sh deactivate-expired-jobs
+30 3 * * * /bin/bash /opt/mybestconsultant/repo/deploy/mbc-cron.sh assistant-purge
+0 6 * * * /bin/bash /opt/mybestconsultant/repo/deploy/mbc-cron.sh ao-inbox

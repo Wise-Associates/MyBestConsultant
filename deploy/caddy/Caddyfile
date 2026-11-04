@@ -1,0 +1,25 @@
+# Proxy de production de MyBestConsultant (ADR 0027, docs/deploiement-vps.md).
+# Caddy obtient et renouvelle seul les certificats HTTPS, dès que le DNS des deux noms pointe vers ce serveur.
+# Après une modification : elle est appliquée au déploiement suivant (mbc-deploy recharge Caddy).
+
+# Adresse canonique : www (comme sur Vercel). Le domaine nu redirige.
+mybestconsultant.fr {
+	header Strict-Transport-Security "max-age=31536000"
+	redir https://www.mybestconsultant.fr{uri} permanent
+}
+
+www.mybestconsultant.fr {
+	# Plus gros envoi qui passe par le serveur : 10 Mo (/api/upload). Les enregistrements d'entretien et les CV du
+	# vivier vont directement du navigateur à Appwrite. Vercel refusait déjà tout envoi de plus de 4,5 Mo.
+	# Une limite plus haute laisserait n'importe qui remplir la mémoire du serveur avec de gros envois.
+	request_body {
+		max_size 12MB
+	}
+
+	# Vercel ajoutait cet en-tête ; sans includeSubDomains pour ne pas engager appwrite. et les autres sous-domaines.
+	header Strict-Transport-Security "max-age=31536000"
+
+	# Version active de l'application : « reverse_proxy mbc-app-<couleur>:3000 », écrite par mbc-deploy.
+	# Pas de délai maximal ni de mise en mémoire tampon par défaut : les routes de 300 s et le streaming passent.
+	import /mbc-state/upstream.caddy
+}

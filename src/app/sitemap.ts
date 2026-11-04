@@ -5,6 +5,10 @@ import { getPublishedBrands } from '@/lib/appwrite/brand'
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://mybestconsultant.fr'
 
+// Généré à chaque requête : au build, l'image de production n'a pas les secrets d'Appwrite (ADR 0027) et le plan du
+// site sortirait sans offre ni article jusqu'au déploiement suivant. Il suit aussi les offres publiées depuis.
+export const dynamic = 'force-dynamic'
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [jobs, posts, brands] = await Promise.all([
     getActiveJobs().catch(() => []),
