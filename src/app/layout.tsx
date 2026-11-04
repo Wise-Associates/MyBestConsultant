@@ -9,6 +9,11 @@ import { NavigationProgress } from "@/components/shared/navigation-progress";
 const GOOGLE_FONTS_URL =
   "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@300;400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Geist:wght@100;200;300;400;500;600;700;800;900&family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Manrope:wght@300;400;500;600;700;800&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400&family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Sora:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap";
 
+// Rendu à chaque requête, jamais au build : la configuration du site est lue dans Appwrite, et le build de l'image de
+// production n'a pas les secrets (ADR 0027). Sans cela, la page 404, générée au build, prendrait le thème par défaut.
+// scripts/check-prerendered.mjs fait échouer le build si une page est de nouveau générée au build.
+export const dynamic = "force-dynamic";
+
 const DEFAULT_TITLE = "MyBestConsultant.fr — Recrutement AI";
 const DEFAULT_DESCRIPTION =
   "Plateforme SaaS de recrutement propulsée par l'IA — screening CV automatique, interview virtuel, backoffice multi-tenant.";

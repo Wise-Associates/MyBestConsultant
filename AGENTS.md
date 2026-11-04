@@ -136,6 +136,17 @@ Core principles for production-quality frontend decisions on this project.
 
 ---
 
+# Production sur VPS (ADR 0027, préparée le 2026-11-04)
+
+- Guide complet (installation, bascule du DNS, exploitation, dépannage) : `docs/deploiement-vps.md`. Tant que le DNS pointe vers Vercel, la production reste sur Vercel : ce qui suit est prêt mais pas en service.
+- Image `Dockerfile` (`output: "standalone"`), construite et envoyée par `.github/workflows/deploy-vps.yml` à chaque mise à jour de `prod` (rien tant que la variable de dépôt `VPS_HOST` n'existe pas). Sur le serveur, `deploy/mbc-deploy.sh` démarre la nouvelle couleur (bleue / verte), fait passer Caddy dessus, puis arrête l'ancienne une fois ses tâches `after()` finies (330 s au plus). Fichiers du serveur dans `deploy/` (compose, `caddy/Caddyfile`, `crontab`, `mbc-cron.sh`), appliqués au déploiement suivant, sauf `compose.proxy.yml` (Caddy jamais recréé pendant une bascule) : `sudo -u deploy mbc-deploy proxy` par un humain. Workflow en deux jobs : `verify` (code et dépendances, sans secret) puis `deploy` (clé SSH, aucun code du dépôt hors du build Docker) ; ne pas y ajouter d'étape qui exécute le code du dépôt.
+- **Nouvelle variable d'environnement** : aussi dans `/etc/mybestconsultant/app.env` sur le serveur, avant la mise en production du code qui la lit (un humain) ; une `NEXT_PUBLIC_*` aussi dans les variables de l'environnement GitHub `production` (écrites dans l'image au build).
+- Fichier lu sur disque à l'exécution : à déclarer dans `outputFileTracingIncludes` (`next.config.ts`), sinon absent de l'image comme des fonctions Vercel. Écriture sur disque : `/tmp` seulement (conteneur en lecture seule).
+- **Aucune page générée au build avec des données** : le build de l'image n'a que les `NEXT_PUBLIC_*`. Layout racine et `sitemap.ts` en `dynamic = 'force-dynamic'` ; `scripts/check-prerendered.mjs` (lancé par le Dockerfile) fait échouer le build sinon. Une nouvelle route de métadonnées qui lit Appwrite (opengraph, manifest…) prend la même option.
+- Après la bascule, Vercel Cron est désactivé et les tâches passent par `deploy/crontab` (mêmes heures) ; les mentions de Vercel Cron plus bas sont à remplacer à la sortie de Vercel (étape 7 du guide).
+
+---
+
 # Structure Appwrite (appwrite.config.json)
 
 - **`appwrite.config.json` = structure du projet DEV** (collections, attributs, index de la base `bestconsultant-dev`, et buckets du projet : ADR 0017), versionnée, appliquée par la CLI Appwrite épinglée (`appwrite-cli` **8.3.0**, la dernière pour le serveur 1.7.x : ne pas la monter) ; décision : `docs/adr/0011-structure-appwrite-appwrite-config.md`. Ne jamais le réécrire avec un outil qui lit les nombres en double précision (bornes ±9223372036854775807 arrondies) : `npm run schema:pull` ou une édition à la main.
