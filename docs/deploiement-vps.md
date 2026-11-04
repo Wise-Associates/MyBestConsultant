@@ -153,7 +153,9 @@ administrateur du serveur : personne ne s'y connecte avec un mot de passe, et sa
 ```bash
 sudo adduser --disabled-password --gecos "" deploy
 sudo usermod -aG docker deploy
-sudo install -d -o deploy -g deploy -m 750 /opt/mybestconsultant /opt/mybestconsultant/state
+sudo install -d -o deploy -g deploy -m 750 /opt/mybestconsultant
+# 755 : Caddy, sans privilège dans son conteneur, doit pouvoir y lire la version active (rien de secret).
+sudo install -d -o deploy -g deploy -m 755 /opt/mybestconsultant/state
 sudo install -d -o deploy -g deploy -m 700 /home/deploy/.ssh
 sudo install -d -o root -g deploy -m 750 /etc/mybestconsultant
 ```
@@ -470,6 +472,7 @@ Les sauvegardes d'Appwrite restent celles de son serveur.
 | Workflow, job verify : « … n'a jamais été mis en production » | Un retour arrière ne vise qu'un commit déjà déployé : prenez-en un dans Actions (déploiements réussis) ou dans `mbc-deploy status` |
 | Workflow : « la version … ne démarre pas » | Ses journaux sont affichés juste au-dessus. Souvent une variable absente ou fausse dans `app.env`. L'ancienne version reste en ligne |
 | Workflow : « Caddy refuse la nouvelle configuration ou ne démarre pas » | Erreur dans `deploy/caddy/Caddyfile` du commit (message au-dessus). L'ancienne version reste en ligne ; corriger par une pull request |
+| Caddy redémarre en boucle (`sudo docker ps` : « Restarting ») et `caddy adapt` signale « File to import not found: /mbc-state/upstream.caddy » | Le dossier `/opt/mybestconsultant/state` n'est pas lisible par tous (créé en 750) : `sudo chmod 755 /opt/mybestconsultant/state`. `mbc-deploy` le corrige seul depuis le 2026-11-04 (après réinstallation, partie 9) |
 | Workflow : « flux inattendu » | L'image reçue ne porte pas le nom annoncé ou en contient d'autres. Ne vient pas du workflow : vérifiez qui détient la clé SSH (3.8), changez-la |
 | Déploiement : « ATTENTION : deploy/compose.proxy.yml a changé » | Normal après une modification de ce fichier : `sudo -u deploy mbc-deploy proxy` hors des heures de travail |
 | Déploiement : « ATTENTION : deploy/mbc-deploy.sh diffère de la copie installée » | Réinstallez-la (partie 9, Mises à jour) |
