@@ -136,9 +136,11 @@ export function FunnelModal({ jobId, candidate, stages, pipelineName, onClose, o
     })
   }
 
+  // Au-dessus de la barre fixe du site (zIndex 9000, site-navbar-client.tsx) : en dessous, une étape ouverte portait la fenêtre
+  // à sa hauteur maximale et son en-tête, « Fermer » compris, passait sous la barre. dvh : la barre d'adresse mobile est déduite.
   const body = (
-    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ background: 'rgba(15,15,20,0.62)' }} onClick={onClose}>
-      <div className={`w-full ${mode === 'edit' ? 'sm:max-w-3xl' : 'sm:max-w-2xl'} max-h-[94vh] flex flex-col rounded-t-3xl sm:rounded-3xl overflow-hidden transition-[max-width] duration-200`}
+    <div className="fixed inset-0 z-[10000] flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ background: 'rgba(15,15,20,0.62)' }} onClick={onClose}>
+      <div className={`w-full ${mode === 'edit' ? 'sm:max-w-3xl' : 'sm:max-w-2xl'} max-h-[94dvh] flex flex-col rounded-t-3xl sm:rounded-3xl overflow-hidden transition-[max-width] duration-200`}
         style={{ background: 'var(--page-bg, var(--color-background))', boxShadow: '0 30px 90px rgba(0,0,0,0.45)' }} onClick={e => e.stopPropagation()}>
 
         {/* En-tête */}
