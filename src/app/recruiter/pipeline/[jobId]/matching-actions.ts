@@ -43,11 +43,12 @@ export async function runApplicationMatchingAction(jobId: string, applicationId:
   }
 }
 
-// Re-run population 1 (platform candidate pool) on demand — covers new candidates who
-// registered after the job was created, since that automatic pass only runs once.
-export async function refreshPoolMatchingAction(jobId: string): Promise<{ matched?: number; error?: string }> {
+// Population 1 (platform candidate pool) on demand : « Rafraîchir » ('new') note seulement les candidats pas encore
+// notés pour l'offre, sans toucher aux autres scores ; « Recalculer tout » ('all') refait tous les scores.
+export async function refreshPoolMatchingAction(jobId: string, mode: unknown = 'new'): Promise<{ matched?: number; error?: string }> {
   await requireJobAccess(jobId)
-  const result = await runPoolMatching(jobId)
+  if (mode !== 'new' && mode !== 'all') return { error: 'Demande invalide.' }
+  const result = await runPoolMatching(jobId, undefined, mode)
   revalidatePath(`/recruiter/pipeline/${jobId}/matching`)
   return result
 }
