@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  EMPTY_JOB_FILTERS, filterJobs, isFiltering, matchesFocus, parseRecruiterSelection, recruiterSelectionParam, type JobFilters,
+  EMPTY_JOB_FILTERS, filterJobs, isFiltering, jobFiltersFromSearchParams, matchesFocus, parseRecruiterSelection, recruiterSelectionParam,
+  withJobFilters, type JobFilters,
 } from './recruiter-job-filters'
 import type { JobFacts } from './recruiter-dashboard'
 
@@ -83,5 +84,28 @@ describe('filtre par recruteur (adresse de la page)', () => {
     assert.equal(recruiterSelectionParam(selection), 'profil1,profil3,aucun')
     assert.deepEqual(parseRecruiterSelection(recruiterSelectionParam(selection), team), selection)
     assert.equal(recruiterSelectionParam({ ids: [], unassigned: false }), '')
+  })
+})
+
+describe('filtres de « Mes offres » dans l’adresse', () => {
+  it('relit à l’identique les filtres écrits', () => {
+    const f: JobFilters = { q: 'développeur java', status: 'archived', contract: 'mission', focus: 'expiringSoon', sort: 'score' }
+    const params = withJobFilters(new URLSearchParams(), f)
+    assert.equal(params.toString(), 'q=d%C3%A9veloppeur+java&status=archived&contract=mission&focus=expiringSoon&sort=score')
+    assert.deepEqual(jobFiltersFromSearchParams(params), f)
+  })
+
+  it('n’écrit pas les valeurs par défaut et garde les autres paramètres de la page', () => {
+    const params = withJobFilters(new URLSearchParams('recruteurs=aucun&q=ancienne&sort=score'), EMPTY_JOB_FILTERS)
+    assert.equal(params.toString(), 'recruteurs=aucun')
+  })
+
+  it('ignore une valeur inconnue (adresse modifiée, ancien lien)', () => {
+    const f = jobFiltersFromSearchParams(new URLSearchParams('status=supprimees&contract=stage&focus=tout&sort=hasard'))
+    assert.deepEqual(f, EMPTY_JOB_FILTERS)
+  })
+
+  it('borne la recherche relue', () => {
+    assert.equal(jobFiltersFromSearchParams(new URLSearchParams({ q: 'x'.repeat(500) })).q.length, 200)
   })
 })

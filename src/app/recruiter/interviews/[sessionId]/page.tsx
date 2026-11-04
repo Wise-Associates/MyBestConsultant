@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { getInterviewSessions } from '../actions'
 import Link from 'next/link'
+import { BackLink } from '@/components/recruiter/back-link'
 import { Brain, ExternalLink, Download, CheckCircle2, XCircle, TrendingUp, AlertTriangle, ChevronRight, Target, Award, Video, ClipboardList } from 'lucide-react'
 import { ResendInviteButton } from './resend-invite-button'
 import { RetryAnalysisButton } from './retry-analysis-button'
@@ -37,6 +38,9 @@ export default async function InterviewDetailPage({ params }: { params: Promise<
     }}>
             <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
         <div className="max-w-3xl mx-auto px-6 py-10">
+        <BackLink fallbackHref="/recruiter/interviews"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80"
+          style={{ color: '#c4b5fd' }} />
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>Entretien IA</p>

@@ -1,10 +1,11 @@
 'use client'
 
-import { useMemo, useRef, useState, useTransition, useEffect } from 'react'
+import { useMemo, useState, useTransition, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
+import { BackLink } from '@/components/recruiter/back-link'
 import {
-  ArrowLeft, FileText, ArrowDownWideNarrow, ArrowUpWideNarrow, Settings2, Plus, X,
+  FileText, ArrowDownWideNarrow, ArrowUpWideNarrow, Settings2, Plus, X,
   Brain, Video, Pencil, Trash2, History, Loader2, GripVertical, Tag as TagIcon,
   StickyNote, CheckCircle2, ChevronDown, ChevronUp, Sparkles, AlertCircle,
   Archive, ThumbsUp, ThumbsDown, Mail, Copy, ExternalLink, Edit3, Send, ChevronRight, GitBranch,
@@ -244,11 +245,15 @@ function CandidateCard({
   // Dropping the card into a stage configured with "Suggérer : Entretien" opens the module
   // straight away instead of leaving a suggestion pill to notice — still requires an
   // explicit click inside the modal to actually send anything to the candidate.
+  // Opened while rendering when the request arrives (React's "adjust state when a prop changes"), then the parent is
+  // told so that it clears the request.
+  const [autoOpenSeen, setAutoOpenSeen] = useState(false)
+  if (!!autoOpenInterview !== autoOpenSeen) {
+    setAutoOpenSeen(!!autoOpenInterview)
+    if (autoOpenInterview) setInterviewModalOpen(true)
+  }
   useEffect(() => {
-    if (autoOpenInterview) {
-      setInterviewModalOpen(true)
-      onAutoOpened()
-    }
+    if (autoOpenInterview) onAutoOpened()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOpenInterview])
 
@@ -273,7 +278,12 @@ function CandidateCard({
   const phaseStatuses = currentStage?.statuses ?? []
   const [subStatus, setSubStatus] = useState(candidate.stageStatus ?? '')
   const [statusSaving, startStatusSave] = useTransition()
-  useEffect(() => { setSubStatus(candidate.stageStatus ?? '') }, [candidate.stageStatus, candidate.status])
+  // Statut repris de la candidature quand elle change (déplacée, relue) : ajusté pendant le rendu, sans effet.
+  const [syncedStatus, setSyncedStatus] = useState({ status: candidate.status, stageStatus: candidate.stageStatus })
+  if (syncedStatus.status !== candidate.status || syncedStatus.stageStatus !== candidate.stageStatus) {
+    setSyncedStatus({ status: candidate.status, stageStatus: candidate.stageStatus })
+    setSubStatus(candidate.stageStatus ?? '')
+  }
   function changeSubStatus(value: string) {
     const previous = subStatus
     setSubStatus(value)
@@ -614,8 +624,8 @@ function InterviewModal({ jobId, candidate, targetStage, onClose, onSent }: {
   const validQuestions = questions.filter(q => q.text.trim().length > 0)
 
   useEffect(() => {
+    // Fenêtre montée pour une candidature (elle part avec la carte) : l'étape commence déjà à « generating ».
     let ignore = false
-    setStep('generating')
     prepareInterviewAction(candidate.appId, jobId).then(res => {
       if (ignore) return
       if ('error' in res) { setError(res.error); setStep('error'); return }
@@ -625,7 +635,6 @@ function InterviewModal({ jobId, candidate, targetStage, onClose, onSent }: {
       setStep('review')
     })
     return () => { ignore = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidate.appId, jobId])
 
   // Closing before sending discards the prepared session — nothing should linger as a
@@ -1128,11 +1137,9 @@ export function PipelineClient({
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="max-w-[1400px] mx-auto px-6 py-6">
-          <Link href="/recruiter/dashboard"
+          <BackLink fallbackHref="/recruiter/dashboard"
             className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 no-underline transition-opacity hover:opacity-80"
-            style={{ color: '#c4b5fd' }}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Retour au dashboard
-          </Link>
+            style={{ color: '#c4b5fd' }} />
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
               <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
@@ -1442,11 +1449,11 @@ function EditCardModal({ jobId, candidate, onClose, onSaved }: {
 
 function HistoryModal({ applicationId, stages, onClose }: { applicationId: string; stages: FunnelStage[]; onClose: () => void }) {
   const [events, setEvents] = useState<FunnelEvent[] | null>(null)
-  const loaded = useRef(false)
-  if (!loaded.current) {
-    loaded.current = true
-    getEventsAction(applicationId).then(setEvents)
-  }
+  useEffect(() => {
+    let ignore = false
+    getEventsAction(applicationId).then(result => { if (!ignore) setEvents(result) })
+    return () => { ignore = true }
+  }, [applicationId])
   const stageLabel = (slug: string) => stages.find(s => s.slug === slug)?.label ?? slug
 
   return (

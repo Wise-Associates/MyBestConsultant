@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import Link from 'next/link'
-import { Brain, Loader2, ChevronRight, Plus, Trash2, Edit3, Sparkles, Mail, Copy, Check, ArrowLeft } from 'lucide-react'
+import { BackLink } from '@/components/recruiter/back-link'
+import { Brain, Loader2, ChevronRight, Plus, Trash2, Edit3, Sparkles, Mail, Copy, Check } from 'lucide-react'
 import { generateInterviewQuestions, createInterviewSession, type InterviewQuestion, type InterviewPrefill } from '../actions'
 import { sendInterviewInvitationEmail } from '@/app/recruiter/screening/actions'
 
@@ -105,11 +105,9 @@ export function NewInterviewClient({ initialForm, prefilled, appId, jobId }: { i
           </button>
         </div>
 
-        <Link href="/recruiter/dashboard"
+        <BackLink fallbackHref="/recruiter/interviews" iconClassName="h-4 w-4"
           className="inline-flex items-center gap-2 text-sm transition-all no-underline"
-          style={{ color: '#7c3aed' }}>
-          <ArrowLeft className="h-4 w-4" />Retour au tableau de bord
-        </Link>
+          style={{ color: '#7c3aed' }} />
       </div>
     </div>
   )

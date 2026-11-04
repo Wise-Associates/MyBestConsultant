@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Mail, Phone, FileText, Briefcase, GraduationCap } from 'lucide-react'
 import type { CvProfile } from '@/lib/cv-profile-extract'
+import { BackLink } from '@/components/recruiter/back-link'
 
 const isNotFound = (err: unknown) => (err as { code?: unknown } | null)?.code === 404
 
@@ -27,6 +28,8 @@ export default async function CandidatePreviewPage({ params }: { params: Promise
   let cvHref = ''
   let profile: Partial<CvProfile> = {}
   let vivierOwner = ''
+  // Page parente quand l'onglet n'a pas de page précédente (profil ouvert depuis le Matching IA, dans un nouvel onglet).
+  let parentHref = '/recruiter/dashboard'
 
   if (source === 'pool') {
     let doc
@@ -53,6 +56,7 @@ export default async function CandidatePreviewPage({ params }: { params: Promise
     phone = (doc.candidatePhone as string) ?? ''
     cvFileId = (doc.cvFileId as string) ?? ''
     cvHref = `/api/vivier-cv/${cvFileId}`
+    parentHref = doc.jobId ? `/recruiter/vivier/${doc.jobId as string}` : '/recruiter/vivier?vue=general'
     profile = doc.cvProfileJson ? JSON.parse(doc.cvProfileJson as string) : {}
   }
 
@@ -60,6 +64,9 @@ export default async function CandidatePreviewPage({ params }: { params: Promise
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="max-w-2xl mx-auto px-6 py-8">
+          <BackLink fallbackHref={parentHref}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80"
+            style={{ color: '#c4b5fd' }} />
           <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
             {source === 'pool' ? 'Base candidats' : vivierOwner ? `Vivier de ${vivierOwner}` : 'Vivier'}
           </p>

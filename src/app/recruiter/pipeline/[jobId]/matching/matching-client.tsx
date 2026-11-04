@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import Link from 'next/link'
+import { BackLink } from '@/components/recruiter/back-link'
 import {
-  ArrowLeft, RefreshCw, Loader2, Brain, Users, FolderOpen, Send, Check, FileText,
+  RefreshCw, Loader2, Brain, Users, FolderOpen, Send, Check, FileText,
   ExternalLink, UserPlus, CheckCircle2, Kanban, Clock, Target,
 } from 'lucide-react'
 import { LocalTime } from '@/components/shared/local-time'
@@ -122,11 +123,9 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: selected.size > 0 ? 88 : 0 }}>
       <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="max-w-[1000px] mx-auto px-6 py-6">
-          <Link href={`/recruiter/pipeline/${jobId}`}
+          <BackLink fallbackHref={`/recruiter/pipeline/${jobId}`}
             className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 no-underline transition-opacity hover:opacity-80"
-            style={{ color: '#c4b5fd' }}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Retour au pipeline
-          </Link>
+            style={{ color: '#c4b5fd' }} />
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
               <p className="text-xs font-semibold uppercase tracking-widest mb-1 flex items-center gap-1.5" style={{ color: 'rgba(255,255,255,0.4)' }}>

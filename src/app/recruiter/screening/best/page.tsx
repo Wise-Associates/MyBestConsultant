@@ -1,12 +1,13 @@
 import { displayEmail } from '@/lib/candidate-identity'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { BackLink } from '@/components/recruiter/back-link'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { getJobsByTenant, getApplicationsByTenant } from '@/lib/appwrite/jobs'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
-import { ArrowLeft, Trophy, FileText, Video, Mail, Users } from 'lucide-react'
+import { Trophy, FileText, Video, Mail, Users } from 'lucide-react'
 
 const RECO: Record<string, { label: string; color: string; darkBg: string }> = {
   top:     { label: 'Top profil',    color: '#10b981', darkBg: '#065f46' },
@@ -79,11 +80,9 @@ export default async function BestCandidatesPage({
     }}>
             <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
         <div className="max-w-4xl mx-auto px-6 py-10">
-          <Link href="/recruiter/screening"
+          <BackLink fallbackHref="/recruiter/screening"
             className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80"
-            style={{ color: '#c4b5fd' }}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Retour au screening
-          </Link>
+            style={{ color: '#c4b5fd' }} />
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(184,134,11,0.2)' }}>
               <Trophy className="h-6 w-6" style={{ color: '#f0c95a' }} />

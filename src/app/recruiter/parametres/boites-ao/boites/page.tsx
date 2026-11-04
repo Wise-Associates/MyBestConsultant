@@ -1,6 +1,7 @@
 import Link from 'next/link'
+import { BackLink } from '@/components/recruiter/back-link'
 import { redirect } from 'next/navigation'
-import { ArrowLeft, Inbox } from 'lucide-react'
+import { Inbox } from 'lucide-react'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
@@ -25,9 +26,7 @@ export default async function MailboxesPage() {
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <div style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
-          <Link href="/recruiter/parametres/boites-ao" className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Appels d&apos;offres
-          </Link>
+          <BackLink fallbackHref="/recruiter/parametres/boites-ao" className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }} />
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(232,163,61,0.15)' }}>
               <Inbox className="h-6 w-6" style={{ color: 'var(--color-primary)' }} />

@@ -2,11 +2,14 @@
 
 import { useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import {
   Layers, Search, Download, FileText, MapPin, Users, Video, Brain, Star, TrendingUp, Briefcase,
   ChevronDown, ChevronLeft, ChevronRight, Kanban, ExternalLink, Clock, CheckCircle2, Printer,
 } from 'lucide-react'
 import { withOrphanStages, resolveStatus } from '@/lib/funnel-stage-utils'
+import { annoncesViewFromSearchParams, withAnnoncesView, type AnnoncesSort, type AnnoncesStatus, type AnnoncesView } from '@/lib/annonces-filters'
+import { initialUrlListSync, noteListWrite, syncFromUrl } from '@/lib/url-list-state'
 
 export interface AnnoncesData {
   jobs: { id: string; title: string; location: string; contractType: string | null; remote: string | null; isActive: boolean; createdAt: string; expiresAt: string | null }[]
@@ -21,9 +24,6 @@ const CONTRACT: Record<string, string> = { cdi: 'CDI', cdd: 'CDD', freelance: 'F
 const REMOTE: Record<string, string> = { onsite: 'Sur site', hybrid: 'Hybride', remote: 'Télétravail' }
 const DONE_INTERVIEW = new Set(['completed', 'analysed'])
 const PAGE_SIZE = 5
-
-type Filter = 'all' | 'active' | 'archived'
-type Sort = 'recent' | 'candidates' | 'score' | 'todo'
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0)
@@ -64,11 +64,30 @@ function pageNumbers(current: number, total: number): (number | '…')[] {
 }
 
 export function AnnoncesClient({ data }: { data: AnnoncesData }) {
-  const [filter, setFilter] = useState<Filter>('all')
-  const [sort, setSort] = useState<Sort>('recent')
-  const [query, setQuery] = useState('')
+  // Recherche, statut, tri et page repris de l'adresse : « Retour » depuis le rapport d'une annonce, Précédent du
+  // navigateur et rechargement retrouvent la liste (annonces-filters.ts).
+  const searchParams = useSearchParams()
+  const urlView = annoncesViewFromSearchParams(searchParams)
+  const urlQuery = withAnnoncesView(new URLSearchParams(), urlView).toString()
+  const [view, setView] = useState<AnnoncesView>(urlView)
+  const [urlSync, setUrlSync] = useState(() => initialUrlListSync(urlQuery))
+  // Adresse changée sans la liste (lien vers cette page) : sa vue remplace celle affichée (url-list-state.ts).
+  if (urlQuery !== urlSync.seen) {
+    const step = syncFromUrl(urlSync, urlQuery)
+    setUrlSync(step.sync)
+    if (step.adopt) setView(urlView)
+  }
+  const { q: query, status: filter, sort, page } = view
+  /** Toute modification revient à la première page, sauf un changement de page. */
+  const change = (patch: Partial<AnnoncesView>) => {
+    const next = { ...view, page: 1, ...patch }
+    setView(next)
+    setUrlSync(sync => noteListWrite(sync, withAnnoncesView(new URLSearchParams(), next).toString()))
+    // Adresse mise à jour sans relire la page ni ajouter d'étape à l'historique.
+    const qs = withAnnoncesView(new URLSearchParams(window.location.search), next).toString()
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname)
+  }
   const [open, setOpen] = useState<Set<string>>(new Set())
-  const [page, setPage] = useState(1)
   const listRef = useRef<HTMLDivElement>(null)
 
   const now = useMemo(() => new Date(data.generatedAt).getTime(), [data.generatedAt])
@@ -108,7 +127,7 @@ export function AnnoncesClient({ data }: { data: AnnoncesData }) {
       (filter === 'all' || (filter === 'active' ? r.state === 'active' : r.state !== 'active')) &&
       (!q || r.job.title.toLowerCase().includes(q) || r.job.location.toLowerCase().includes(q) || r.apps.some(a => a.name.toLowerCase().includes(q))),
     )
-    const by: Record<Sort, (a: typeof rows[number], b: typeof rows[number]) => number> = {
+    const by: Record<AnnoncesSort, (a: typeof rows[number], b: typeof rows[number]) => number> = {
       recent: (a, b) => b.job.createdAt.localeCompare(a.job.createdAt),
       candidates: (a, b) => b.total - a.total,
       score: (a, b) => (b.avgScore ?? -1) - (a.avgScore ?? -1),
@@ -122,7 +141,7 @@ export function AnnoncesClient({ data }: { data: AnnoncesData }) {
   const pageStart = (currentPage - 1) * PAGE_SIZE
   const pageIds = useMemo(() => new Set(visible.slice(pageStart, pageStart + PAGE_SIZE).map(r => r.job.id)), [visible, pageStart])
   const goTo = (p: number) => {
-    setPage(Math.min(Math.max(1, p), totalPages))
+    change({ page: Math.min(Math.max(1, p), totalPages) })
     listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
@@ -206,16 +225,16 @@ export function AnnoncesClient({ data }: { data: AnnoncesData }) {
           <div className="no-print flex items-center gap-2 sm:gap-3 flex-wrap">
             <div className="flex items-center gap-2 px-3.5 rounded-xl flex-1 min-w-[200px]" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
               <Search className="h-4 w-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
-              <input value={query} onChange={e => { setQuery(e.target.value); setPage(1) }} placeholder="Rechercher une annonce, un lieu, un candidat…"
+              <input value={query} onChange={e => change({ q: e.target.value })} placeholder="Rechercher une annonce, un lieu, un candidat…"
                 className="w-full py-2 text-sm outline-none bg-transparent" style={{ color: 'var(--color-text)' }} />
             </div>
             <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
-              {([['all', 'Toutes'], ['active', 'Actives'], ['archived', 'Archivées']] as [Filter, string][]).map(([v, l]) => (
-                <button key={v} onClick={() => { setFilter(v); setPage(1) }} className="px-3.5 py-2 text-xs font-semibold transition-colors"
+              {([['all', 'Toutes'], ['active', 'Actives'], ['archived', 'Archivées']] as [AnnoncesStatus, string][]).map(([v, l]) => (
+                <button key={v} onClick={() => change({ status: v })} className="px-3.5 py-2 text-xs font-semibold transition-colors"
                   style={{ background: filter === v ? 'var(--hero-bg)' : 'transparent', color: filter === v ? 'white' : 'var(--color-text-muted)' }}>{l}</button>
               ))}
             </div>
-            <select value={sort} onChange={e => { setSort(e.target.value as Sort); setPage(1) }} className="px-3 py-2 rounded-xl text-xs font-semibold outline-none"
+            <select value={sort} onChange={e => change({ sort: e.target.value as AnnoncesSort })} className="px-3 py-2 rounded-xl text-xs font-semibold outline-none"
               style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
               <option value="recent">Plus récentes</option>
               <option value="todo">Le plus à trier</option>

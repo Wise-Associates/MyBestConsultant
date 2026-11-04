@@ -1,10 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { BackLink } from '@/components/recruiter/back-link'
+import { useMemo, useState, useTransition } from 'react'
 import {
   Brain, Loader2, Check, X, ChevronDown, ChevronUp,
-  Download, ArrowLeft, Star, AlertTriangle, TrendingUp, TrendingDown,
+  Download, Star, AlertTriangle, TrendingUp, TrendingDown,
   CheckCircle2, XCircle, MinusCircle, Users, Target, SlidersHorizontal,
   Briefcase, Clock, Globe, Zap, Search, FileText,
 } from 'lucide-react'
@@ -392,7 +393,6 @@ export function ScreeningClient({
   }, [applications, appSearch])
   const appTotalPages = Math.max(1, Math.ceil(filteredApps.length / PAGE_SIZE))
   const pagedApps = filteredApps.slice((appPage - 1) * PAGE_SIZE, appPage * PAGE_SIZE)
-  useEffect(() => { setAppPage(1) }, [appSearch])
 
   const filteredResults = useMemo(() => {
     const q = resultSearch.trim().toLowerCase()
@@ -404,7 +404,6 @@ export function ScreeningClient({
   }, [sorted, resultSearch, recoFilter])
   const resultTotalPages = Math.max(1, Math.ceil(filteredResults.length / PAGE_SIZE))
   const pagedResults = filteredResults.slice((resultPage - 1) * PAGE_SIZE, resultPage * PAGE_SIZE)
-  useEffect(() => { setResultPage(1) }, [resultSearch, recoFilter])
 
   function toggleApp(id: string) {
     setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
@@ -441,11 +440,9 @@ export function ScreeningClient({
             {/* Header */}
       <div className="sticky top-0 z-10" style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)', boxShadow: '0 8px 24px rgba(11,29,81,0.06)' }}>
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
-          <Link href="/recruiter/dashboard"
+          <BackLink fallbackHref="/recruiter/screening" iconOnly iconClassName="h-4 w-4"
             className="p-2 rounded-xl no-underline transition-all shrink-0"
-            style={{ color: '#7c3aed', background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.25)' }}>
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+            style={{ color: '#7c3aed', background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.25)' }} />
           <div className="flex-1 min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>
               Screening IA
@@ -497,7 +494,7 @@ export function ScreeningClient({
                   <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
                     style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
                     <Search className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
-                    <input value={appSearch} onChange={e => setAppSearch(e.target.value)}
+                    <input value={appSearch} onChange={e => { setAppSearch(e.target.value); setAppPage(1) }}
                       placeholder="Rechercher un candidat…"
                       className="text-xs w-40 focus:outline-none"
                       style={{ background: 'transparent', border: 'none', color: 'var(--color-text)' }} />
@@ -615,7 +612,7 @@ export function ScreeningClient({
                 const info = RECO[r]
                 const active = recoFilter === r
                 return (
-                  <button key={r} onClick={() => setRecoFilter(active ? null : r)}
+                  <button key={r} onClick={() => { setRecoFilter(active ? null : r); setResultPage(1) }}
                     className="text-center p-3 rounded-2xl transition-all duration-300 hover:-translate-y-0.5"
                     style={{
                       background: info.darkBg,
@@ -645,13 +642,13 @@ export function ScreeningClient({
               <div className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
                 style={{ background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.25)' }}>
                 <Search className="h-3.5 w-3.5 shrink-0" style={{ color: '#7c3aed' }} />
-                <input value={resultSearch} onChange={e => setResultSearch(e.target.value)}
+                <input value={resultSearch} onChange={e => { setResultSearch(e.target.value); setResultPage(1) }}
                   placeholder="Rechercher un résultat…"
                   className="text-xs w-44 focus:outline-none"
                   style={{ background: 'transparent', border: 'none', color: 'var(--color-text)' }} />
               </div>
               {recoFilter && (
-                <button onClick={() => setRecoFilter(null)}
+                <button onClick={() => { setRecoFilter(null); setResultPage(1) }}
                   className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all"
                   style={{ background: RECO[recoFilter].bg, color: RECO[recoFilter].color }}>
                   <X className="h-3 w-3 inline mr-1" />{RECO[recoFilter].label}

@@ -3,7 +3,8 @@ import type { JobFacts } from './recruiter-dashboard'
 
 // Filtres de « Mes offres » sur le tableau de bord recruteur (demande du 2026-10-30, tuiles « À traiter » et tri ajoutés
 // le 2026-11-02) : appliqués dans le navigateur, toutes les offres de l'organisation étant déjà chargées par la page,
-// avec leurs faits (recruiter-dashboard.ts). Règles pures, testées dans recruiter-job-filters.test.ts.
+// avec leurs faits (recruiter-dashboard.ts), et gardés dans l'adresse. Règles pures, testées dans
+// recruiter-job-filters.test.ts.
 
 /** « En ligne » = en ligne et non expirée ; « Archivées » = toutes les autres (archivées et expirées). */
 export type JobStatusFilter = 'all' | 'active' | 'archived'
@@ -69,6 +70,41 @@ export function filterJobs<T extends JobRow>(rows: T[], f: JobFilters): T[] {
 
 /** Un filtre réduit la liste ; le tri n'en est pas un. */
 export const isFiltering = (f: JobFilters) => f.q.trim() !== '' || f.status !== 'all' || f.contract !== 'all' || f.focus !== null
+
+// Filtres gardés dans l'adresse (demande du 2026-11-04 : « Retour » depuis une offre retrouve la liste filtrée, comme un
+// rechargement) : mêmes noms que les filtres des appels d'offres (src/lib/ao/filters.ts), valeurs par défaut omises.
+const STATUSES: JobStatusFilter[] = ['all', 'active', 'archived']
+const CONTRACTS: JobContractFilter[] = ['all', 'cdi', 'cdd', 'freelance', 'mission']
+const FOCUSES: JobFocus[] = ['new', 'noApplications', 'diffusionFailed', 'expiringSoon']
+const SORTS: JobSort[] = ['recent', 'applications', 'score', 'expiry']
+/** Recherche relue bornée : une adresse modifiée ne fait pas filtrer sur un texte démesuré. */
+const MAX_QUERY = 200
+
+const pick = <T extends string>(value: string | null, allowed: readonly T[]): T | null =>
+  allowed.find(v => v === value) ?? null
+
+/** Filtres lus dans l'adresse ; une valeur inconnue (ancien lien, adresse modifiée) reprend sa valeur par défaut. */
+export function jobFiltersFromSearchParams(sp: URLSearchParams): JobFilters {
+  return {
+    q: (sp.get('q') ?? '').slice(0, MAX_QUERY),
+    status: pick(sp.get('status'), STATUSES) ?? EMPTY_JOB_FILTERS.status,
+    contract: pick(sp.get('contract'), CONTRACTS) ?? EMPTY_JOB_FILTERS.contract,
+    focus: pick(sp.get('focus'), FOCUSES),
+    sort: pick(sp.get('sort'), SORTS) ?? EMPTY_JOB_FILTERS.sort,
+  }
+}
+
+/** Copie de `sp` (autres paramètres de la page gardés : `recruteurs`, `offre`) avec les filtres `f`. */
+export function withJobFilters(sp: URLSearchParams, f: JobFilters): URLSearchParams {
+  const next = new URLSearchParams(sp)
+  for (const key of ['q', 'status', 'contract', 'focus', 'sort']) next.delete(key)
+  if (f.q) next.set('q', f.q)
+  if (f.status !== EMPTY_JOB_FILTERS.status) next.set('status', f.status)
+  if (f.contract !== EMPTY_JOB_FILTERS.contract) next.set('contract', f.contract)
+  if (f.focus) next.set('focus', f.focus)
+  if (f.sort !== EMPTY_JOB_FILTERS.sort) next.set('sort', f.sort)
+  return next
+}
 
 // Filtre par recruteur affecté (demande du 2026-11-03) : appliqué par le serveur, la page ne lit que les offres choisies
 // et leurs candidatures. Dans l'adresse (`?recruteurs=<profil>,<profil>,aucun`) pour survivre à un rechargement et se
