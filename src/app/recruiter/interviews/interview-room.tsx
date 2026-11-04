@@ -1,13 +1,12 @@
 'use client'
 
 import { useState, useTransition, useRef, useEffect, useCallback } from 'react'
-import Link from 'next/link'
+import { BackLink } from '@/components/recruiter/back-link'
 import {
   Mic, MicOff, Play, Square, SkipForward, Brain,
   CheckCircle2, XCircle, ChevronRight, Volume2, Loader2,
   TrendingUp, AlertTriangle, Target, Award, MessageSquare,
-  Download, RotateCcw, ArrowLeft,
-} from 'lucide-react'
+  Download, RotateCcw, } from 'lucide-react'
 import {
   getAIFollowUp, analyseInterview,
   type InterviewQuestion, type TranscriptEntry, type InterviewAnalysis,
@@ -350,11 +349,9 @@ export function InterviewRoom({
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4" style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)', boxShadow: '0 8px 24px rgba(11,29,81,0.06)' }}>
         <div className="flex items-center gap-3">
-          <Link href="/recruiter/dashboard"
+          <BackLink fallbackHref={`/recruiter/interviews/${sessionId}`} iconOnly iconClassName="h-4 w-4"
             className="p-2 rounded-xl no-underline transition-all shrink-0"
-            style={{ color: '#7c3aed', background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.25)' }}>
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+            style={{ color: '#7c3aed', background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.25)' }} />
           <div>
             <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Entretien IA · {jobTitle}</p>
             <h1 className="text-base font-semibold" style={{ color: 'var(--color-text)' }}>{candidateName}</h1>

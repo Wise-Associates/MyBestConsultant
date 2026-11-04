@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import Link from 'next/link'
-import { ArrowLeft, Brain, Plus, Trash2, Check, Loader2, Info, ListChecks } from 'lucide-react'
+import { BackLink } from '@/components/recruiter/back-link'
+import { Brain, Plus, Trash2, Check, Loader2, Info, ListChecks } from 'lucide-react'
 import { saveGenericQuestions, type GenericQuestion } from '../generic-questions-actions'
 
 const CAT_LABELS: Record<GenericQuestion['category'], string> = {
@@ -53,11 +53,9 @@ export function GenericQuestionsClient({ initialQuestions }: { initialQuestions:
     }}>
       <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
         <div className="max-w-3xl mx-auto px-6 py-10">
-          <Link href="/recruiter/interviews"
+          <BackLink fallbackHref="/recruiter/interviews"
             className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80"
-            style={{ color: '#c4b5fd' }}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Retour aux entretiens
-          </Link>
+            style={{ color: '#c4b5fd' }} />
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(124,58,237,0.18)' }}>
               <ListChecks className="h-6 w-6" style={{ color: '#a78bfa' }} />

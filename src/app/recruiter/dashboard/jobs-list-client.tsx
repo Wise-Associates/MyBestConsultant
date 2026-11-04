@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { Inbox, Users, AlertTriangle, Clock, ArrowRight, Layers, Search, X } from 'lucide-react'
 import { JobRow, ROW_GRID } from './job-row'
 import { JobApplicationsModal } from './job-applications-modal'
@@ -11,9 +12,10 @@ import type { Job, FunnelStage } from '@/types'
 import type { JobFacts } from '@/lib/recruiter-dashboard'
 import type { RecruiterOption } from '@/lib/recruiter-assignment'
 import {
-  EMPTY_JOB_FILTERS, filterJobs, isFiltering, matchesFocus,
+  EMPTY_JOB_FILTERS, filterJobs, isFiltering, jobFiltersFromSearchParams, matchesFocus, withJobFilters,
   type JobFilters, type JobFocus, type JobSort, type JobStatusFilter,
 } from '@/lib/recruiter-job-filters'
+import { initialUrlListSync, noteListWrite, syncFromUrl } from '@/lib/url-list-state'
 
 /** Une ligne de « Mes offres », préparée par la page (faits et dates calculés sur le serveur). */
 export interface DashboardJobRow {
@@ -69,11 +71,33 @@ export function JobsListClient({
   recruiterFiltered: boolean
 }) {
   const [openJobId, setOpenJobId] = useState<string | null>(null)
-  const [filters, setFilters] = useState<JobFilters>(EMPTY_JOB_FILTERS)
+  // Filtres repris de l'adresse : « Retour » depuis une offre, Précédent du navigateur et rechargement retrouvent la liste.
+  const searchParams = useSearchParams()
+  const urlFilters = jobFiltersFromSearchParams(searchParams)
+  const urlQuery = withJobFilters(new URLSearchParams(), urlFilters).toString()
+  const [filters, setFilters] = useState<JobFilters>(urlFilters)
+  const [urlSync, setUrlSync] = useState(() => initialUrlListSync(urlQuery))
   // L'offre demandée par ?offre= doit être affichée, même au-delà des 50 premières.
   const [visible, setVisible] = useState(() =>
-    Math.max(PAGE_SIZE, filterJobs(rows, EMPTY_JOB_FILTERS).findIndex(r => r.job.$id === focusJobId) + 1))
-  const update = (patch: Partial<JobFilters>) => { setFilters(f => ({ ...f, ...patch })); setVisible(PAGE_SIZE) }
+    Math.max(PAGE_SIZE, filterJobs(rows, filters).findIndex(r => r.job.$id === focusJobId) + 1))
+  // Adresse changée sans la liste (onglet « Tableau de bord » du sous-menu) : ses filtres remplacent ceux affichés.
+  if (urlQuery !== urlSync.seen) {
+    const step = syncFromUrl(urlSync, urlQuery)
+    setUrlSync(step.sync)
+    if (step.adopt) {
+      setFilters(urlFilters)
+      setVisible(PAGE_SIZE)
+    }
+  }
+  const update = (patch: Partial<JobFilters>) => {
+    const next = { ...filters, ...patch }
+    setFilters(next)
+    setVisible(PAGE_SIZE)
+    setUrlSync(sync => noteListWrite(sync, withJobFilters(new URLSearchParams(), next).toString()))
+    // Adresse mise à jour sans relire la page (filtres appliqués dans le navigateur) ni ajouter d'étape à l'historique.
+    const query = withJobFilters(new URLSearchParams(window.location.search), next).toString()
+    window.history.replaceState(null, '', query ? `?${query}` : window.location.pathname)
+  }
   const filtering = isFiltering(filters)
   const shown = filterJobs(rows, filters)
   const openJob = openJobId ? rows.find(r => r.job.$id === openJobId)?.job : null
