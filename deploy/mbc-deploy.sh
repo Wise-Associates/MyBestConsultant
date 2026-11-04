@@ -27,6 +27,10 @@ STOP_TIMEOUT=330
 log() { printf '[mbc-deploy] %s\n' "$*" >&2; }
 die() { log "ÉCHEC : $*"; exit 1; }
 
+# `sudo -u deploy mbc-deploy …` garde le dossier courant de l'administrateur (son dossier personnel), où deploy n'a
+# pas le droit d'entrer : docker compose échoue alors (« stat .: permission denied »). Toujours partir d'ici.
+cd "$ROOT" || die "dossier $ROOT introuvable ou inaccessible pour $(id -un)"
+
 app_compose() { # couleur commit arguments…
   APP_COLOR=$1 IMAGE_TAG=$2 docker compose -p "mbc-app-$1" -f "$REPO/deploy/compose.app.yml" "${@:3}"
 }
@@ -70,6 +74,9 @@ case $action in
 esac
 
 mkdir -p "$STATE"
+# Caddy lit upstream.caddy dans ce dossier en root, mais sans aucun privilège (cap_drop) : sans droit de lecture pour
+# tous, il ne le voit pas (« File to import not found ») et redémarre en boucle. Rien de secret ici.
+chmod 755 "$STATE"
 exec 9> "$STATE/deploy.lock"
 flock -n 9 || die "un autre déploiement est en cours"
 
