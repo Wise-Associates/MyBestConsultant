@@ -102,8 +102,8 @@ export const CV_CHARS_FOR_SCORING = 12_000
 export type MatchResult = { matches: CandidateMatch[]; scanned: number; considered?: string[]; error?: string }
 
 /**
- * `exclude` : candidats à ne pas noter en plus de ceux qui ont déjà postulé (déjà notés, « Rafraîchir ») ; `only` : les
- * seuls candidats à noter (« Recalculer tout » : ceux déjà notés pour l'offre).
+ * `exclude` : candidats à ne pas noter en plus de ceux qui ont déjà postulé (déjà notés, mode 'new') ; `only` : les
+ * seuls candidats à noter (mode 'all' : ceux déjà notés pour l'offre).
  */
 export async function matchCandidatesForJob(jobId: string, { exclude: alsoExclude = new Set<string>(), only }: { exclude?: Set<string>; only?: string[] } = {}): Promise<MatchResult> {
   try {
@@ -276,7 +276,7 @@ export async function matchCandidatesForOffer(
     if (only) await scoreBatch(await scorableCandidates(only, excludeCandidateIds))
     else {
       // Un CV illisible (PDF scanné…) ne compte pas : le passage continue avec les candidats suivants, sinon les mêmes
-      // CV illisibles bloqueraient « Rafraîchir » à chaque clic. 3 tours au plus.
+      // CV illisibles bloqueraient la notation des nouveaux candidats à chaque clic. 3 tours au plus.
       const tried = new Set(excludeCandidateIds)
       for (let round = 0; round < 3 && scanned < MAX_CANDIDATES; round++) {
         const batch = await candidatesToScore(tried, MAX_CANDIDATES - scanned)
