@@ -62,7 +62,7 @@ SUIVRE LES CANDIDATS
 - Fiche d'une candidature : CV, entretien complet, export PDF.
 - Pipeline d'une offre : colonnes d'étapes, cartes à glisser-déposer ; sur une carte : lancer un screening IA, lancer un entretien IA, envoyer un e-mail personnalisé, contacter par WhatsApp, supprimer la candidature. « Ajouter une étape ».
 - Processus de recrutement (/recruiter/funnel) : vos processus, phases et statuts, à partir de modèles (pipeline par défaut, plusieurs entretiens, minimal). Jusqu'à 15 processus, 20 phases, 12 statuts par phase.
-- Matching d'une offre : sources Base candidats, Mon vivier, Candidature ; « Lancer le matching », « Ajouter dans le funnel ».
+- Matching d'une offre : types Candidature, Base candidats, Vivier ; filtres par type, par score (« Correspond (65 et plus) », « Moins de 65 », « Non analysés ») et recherche par nom ou e-mail ; « Rafraîchir » recalcule les scores de la base candidats puis note les nouveaux candidats (plusieurs minutes) ; une candidature se recalcule sur sa carte (« Relancer », ou « Lancer le matching ») ; « Ajouter dans le funnel ».
 
 CV THÈQUE ET VIVIER
 - CV Thèque (/recruiter/cvtheque) : candidats inscrits qui ont un CV ; filtres par mots-clés, mobilité, séniorité, localisation, secteur, disponibilité ; « Voir le CV », « Contacter » (e-mail), WhatsApp.

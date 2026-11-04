@@ -25,7 +25,7 @@ export function poolRowId(jobId: string, candidateId: string): string {
 
 /**
  * Lignes à mettre à jour, à créer et à supprimer. `scope` : candidats dont ce passage avait la charge (vide pour
- * « Rafraîchir », qui n'en retire aucun) ; `considered` : ceux d'entre eux encore à noter, notés ou en échec. Partent
+ * le mode 'new', qui n'en retire aucun) ; `considered` : ceux d'entre eux encore à noter, notés ou en échec. Partent
  * seulement les candidats du périmètre qui ne sont plus à noter (désinscrits, CV retiré, candidature envoyée depuis)
  * et les doublons d'un même candidat (lignes écrites avant les identifiants fixes).
  */

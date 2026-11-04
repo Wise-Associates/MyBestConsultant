@@ -1,17 +1,31 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useState, useTransition, type CSSProperties } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { BackLink } from '@/components/recruiter/back-link'
 import {
   RefreshCw, Loader2, Brain, Users, FolderOpen, Send, Check, FileText,
-  ExternalLink, UserPlus, CheckCircle2, Kanban, Clock, Target,
+  ExternalLink, UserPlus, CheckCircle2, Kanban, Clock, Target, Search,
 } from 'lucide-react'
 import { LocalTime } from '@/components/shared/local-time'
 import { getMatchesAction, refreshPoolMatchingAction, addToFunnelAction, runApplicationMatchingAction } from '../matching-actions'
 import type { JobMatchResult } from '@/lib/matching-core'
+import {
+  EMPTY_MATCHING_FILTERS, filterMatches, isFilteringMatches, matchingFiltersFromSearchParams, withMatchingFilters,
+  type MatchingFilters, type MatchScoreFilter, type MatchSourceFilter,
+} from '@/lib/matching-filters'
+import { initialUrlListSync, noteListWrite, syncFromUrl } from '@/lib/url-list-state'
 
 const PAGE_SIZE = 25
+
+// Barre de filtres : mêmes champs que « Mes offres » du tableau de bord (jobs-list-client.tsx).
+const muted: CSSProperties = { color: 'var(--color-text-muted)' }
+const field = 'h-11 sm:h-10 px-3 rounded-xl text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-text)'
+const fieldStyle: CSSProperties = { background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }
+const SCORE_OPTIONS: Record<MatchScoreFilter, string> = {
+  all: 'Tous les scores', match: 'Correspond (65 et plus)', below: 'Moins de 65', pending: 'Non analysés',
+}
 
 function scoreColor(s: number) {
   return s >= 85 ? '#10b981' : s >= 70 ? '#3b82f6' : s >= 55 ? '#f59e0b' : '#ef4444'
@@ -42,6 +56,29 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
   const [matches, setMatches] = useState(initialMatches)
   const [nowMs, setNowMs] = useState(() => new Date(now).getTime())
   const [page, setPage] = useState(1)
+  // Filtres repris de l'adresse (« Retour » depuis un profil les retrouve) ; adresse changée sans la liste : reprise.
+  const searchParams = useSearchParams()
+  const urlFilters = matchingFiltersFromSearchParams(searchParams)
+  const urlQuery = withMatchingFilters(new URLSearchParams(), urlFilters).toString()
+  const [filters, setFilters] = useState<MatchingFilters>(urlFilters)
+  const [urlSync, setUrlSync] = useState(() => initialUrlListSync(urlQuery))
+  if (urlQuery !== urlSync.seen) {
+    const step = syncFromUrl(urlSync, urlQuery)
+    setUrlSync(step.sync)
+    if (step.adopt) {
+      setFilters(urlFilters)
+      setPage(1)
+    }
+  }
+  const update = (patch: Partial<MatchingFilters>) => {
+    const next = { ...filters, ...patch }
+    setFilters(next)
+    setPage(1)
+    setUrlSync(sync => noteListWrite(sync, withMatchingFilters(new URLSearchParams(), next).toString()))
+    // Adresse mise à jour sans relire la page ni ajouter d'étape à l'historique.
+    const query = withMatchingFilters(new URLSearchParams(window.location.search), next).toString()
+    window.history.replaceState(null, '', query ? `?${query}` : window.location.pathname)
+  }
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [isRefreshing, startRefreshing] = useTransition()
   const [isAdding, startAdding] = useTransition()
@@ -73,8 +110,17 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
     setRunning(prev => { const n = new Set(prev); n.delete(m.applicationId!); return n })
   }
 
-  const pageCount = Math.max(1, Math.ceil(matches.length / PAGE_SIZE))
-  const pageItems = matches.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const shown = filterMatches(matches, filters)
+  const filtering = isFilteringMatches(filters)
+  const pageCount = Math.max(1, Math.ceil(shown.length / PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount)
+  const pageItems = shown.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  const types: { source: MatchSourceFilter; label: string; n: number }[] = [
+    { source: 'all', label: 'Tous', n: matches.length },
+    { source: 'application', label: 'Candidatures', n: matches.filter(m => m.source === 'application').length },
+    { source: 'pool', label: 'Base candidats', n: matches.filter(m => m.source === 'pool').length },
+    { source: 'vivier', label: 'Vivier', n: matches.filter(m => m.source === 'vivier').length },
+  ]
 
   function toggle(m: JobMatchResult) {
     if (m.alreadyInFunnel) return
@@ -85,18 +131,29 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
     })
   }
 
-  // « Rafraîchir » note seulement les nouveaux candidats de la base ; « Recalculer tout » refait tous les scores.
-  function refresh(mode: 'new' | 'all') {
-    if (mode === 'all' && !window.confirm('Recalculer tous les scores de la base candidats ? Chaque CV est relu par l’IA (quelques minutes).')) return
+  // « Rafraîchir » recalcule tout (demande du 2026-11-04 ; plus de bouton « Recalculer tout » ni de confirmation) : les
+  // scores déjà calculés de la base candidats, puis les candidats pas encore notés. Deux requêtes, chacune dans les 300 s
+  // de la page (page.tsx) : réunies, jusqu'à 150 notations n'y tiendraient pas. Une candidature se recalcule sur sa
+  // carte (« Relancer »).
+  function refresh() {
     setFlash(null)
     startRefreshing(async () => {
-      const result = await refreshPoolMatchingAction(jobId, mode)
-      const done = result.matched
-        ? `${result.matched} candidat${result.matched > 1 ? 's' : ''} de la base noté${result.matched > 1 ? 's' : ''}.`
-        : ''
-      if (result.error || done) setFlash([done, result.error].filter(Boolean).join(' '))
-      setMatches(await getMatchesAction(jobId))
-      setPage(1)
+      try {
+        const rescored = await refreshPoolMatchingAction(jobId, 'all')
+        // Premier passage en échec complet (IA indisponible, aucun CV) : le second échouerait de même.
+        let added: { matched?: number; error?: string } = {}
+        if (rescored.matched || !rescored.error) added = await refreshPoolMatchingAction(jobId, 'new')
+        const s = (n: number) => (n > 1 ? 's' : '')
+        const done = [
+          rescored.matched ? `${rescored.matched} score${s(rescored.matched)} recalculé${s(rescored.matched)}` : '',
+          added.matched ? `${added.matched} nouveau${added.matched > 1 ? 'x' : ''} candidat${s(added.matched)} noté${s(added.matched)}` : '',
+        ].filter(Boolean).join(', ')
+        setFlash([done && `${done}.`, rescored.error, added.error].filter(Boolean).join(' ') || null)
+        setMatches(await getMatchesAction(jobId))
+        setPage(1)
+      } catch (e) {
+        setFlash(`Le recalcul n’a pas abouti (${e instanceof Error ? e.message : 'erreur inconnue'}). Réessayez dans quelques minutes.`)
+      }
     })
   }
 
@@ -134,18 +191,12 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
               <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.5rem' }}>{jobTitle}</h1>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <button type="button" onClick={() => refresh('new')} disabled={isRefreshing}
-                title="Note les candidats de la base pas encore notés pour cette offre ; les scores déjà calculés ne changent pas."
+              <button type="button" onClick={refresh} disabled={isRefreshing}
+                title="Recalcule les scores de la base candidats pour cette offre, puis note les nouveaux candidats. Une candidature se recalcule sur sa carte (« Relancer »)."
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-50"
                 style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.15)' }}>
-                {isRefreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                Rafraîchir (nouveaux candidats)
-              </button>
-              <button type="button" onClick={() => refresh('all')} disabled={isRefreshing}
-                title="Recalcule tous les scores de la base candidats pour cette offre."
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-50"
-                style={{ background: 'transparent', color: 'rgba(255,255,255,0.75)', border: '1px solid rgba(255,255,255,0.15)' }}>
-                Recalculer tout
+                {isRefreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
+                Rafraîchir
               </button>
               <Link href={`/recruiter/pipeline/${jobId}`}
                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold no-underline transition-opacity hover:opacity-85"
@@ -163,7 +214,7 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
         </p>
 
         {flash && (
-          <div className="mb-4 px-4 py-2.5 rounded-lg text-sm font-semibold" style={{ background: 'rgba(232,163,61,0.1)', color: '#b8862f' }}>
+          <div role="status" className="mb-4 px-4 py-2.5 rounded-lg text-sm font-semibold" style={{ background: 'rgba(232,163,61,0.1)', color: '#b8862f' }}>
             {flash}
           </div>
         )}
@@ -172,10 +223,52 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
           <div className="text-center py-16 rounded-2xl" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
             <Brain className="h-10 w-10 mx-auto mb-3 opacity-30" style={{ color: 'var(--color-text-muted)' }} />
             <p style={{ color: 'var(--color-text-muted)' }}>Aucune correspondance pour l&apos;instant.</p>
-            <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>Ajoutez des CV à votre vivier ou cliquez sur &quot;Rafraîchir&quot;.</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>Ajoutez des CV à votre vivier ou cliquez sur « Rafraîchir ».</p>
           </div>
         ) : (
           <>
+            <div role="search" aria-label="Filtrer les correspondances" className="mb-3 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2.5">
+              <label className="relative block flex-1 min-w-0 sm:min-w-56">
+                <span className="sr-only">Rechercher un candidat</span>
+                <Search aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={muted} />
+                <input type="search" value={filters.q} onChange={e => update({ q: e.target.value })}
+                  placeholder="Rechercher un nom, un e-mail…" className={`${field} w-full pl-9 font-normal text-sm`} style={fieldStyle} />
+              </label>
+              <div role="group" aria-label="Type de candidat" className="grid grid-cols-2 sm:flex gap-0.5 p-0.75 rounded-xl"
+                style={{ background: 'color-mix(in srgb, var(--color-text) 6%, transparent)' }}>
+                {types.map(t => {
+                  const on = filters.source === t.source
+                  return (
+                    <button key={t.source} type="button" aria-pressed={on} onClick={() => update({ source: t.source })}
+                      className="h-9.5 sm:h-8.5 px-3 rounded-lg border-0 inline-flex items-center justify-center gap-1.5 text-[13px] whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-(--color-text)"
+                      style={{
+                        background: on ? 'var(--color-surface)' : 'transparent', color: 'var(--color-text)', fontWeight: on ? 600 : 500,
+                        boxShadow: on ? '0 1px 2px rgba(28,28,30,0.08), 0 0 0 1px rgba(28,28,30,0.04)' : undefined,
+                      }}>
+                      {t.label} <span className="text-xs tabular-nums" style={muted}>{t.n}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <select aria-label="Score" value={filters.score} onChange={e => update({ score: e.target.value as MatchScoreFilter })} className={field} style={fieldStyle}>
+                {Object.entries(SCORE_OPTIONS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </div>
+            {filtering && (
+              <p className="mb-3 text-[13px] flex items-center gap-2 flex-wrap" style={muted}>
+                {shown.length} correspondance{shown.length > 1 ? 's' : ''} sur {matches.length}
+                <button type="button" onClick={() => update(EMPTY_MATCHING_FILTERS)}
+                  className="font-semibold underline cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
+                  style={{ color: 'var(--color-text)' }}>
+                  Réinitialiser les filtres
+                </button>
+              </p>
+            )}
+            {shown.length === 0 ? (
+              <div className="text-center py-12 rounded-2xl" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+                <p className="text-sm" style={muted}>Aucune correspondance pour ces filtres.</p>
+              </div>
+            ) : (
             <div className="max-h-[65vh] overflow-y-auto pr-1 space-y-2.5">
               {pageItems.map(m => {
                 const src = SOURCE_LABEL[m.source]
@@ -280,16 +373,17 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
                 )
               })}
             </div>
+            )}
 
             {pageCount > 1 && (
               <div className="flex items-center justify-center gap-2 mt-5">
-                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                <button onClick={() => setPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1}
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity disabled:opacity-30"
                   style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
                   Précédent
                 </button>
-                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Page {page} / {pageCount}</span>
-                <button onClick={() => setPage(p => Math.min(pageCount, p + 1))} disabled={page === pageCount}
+                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Page {currentPage} / {pageCount}</span>
+                <button onClick={() => setPage(Math.min(pageCount, currentPage + 1))} disabled={currentPage === pageCount}
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity disabled:opacity-30"
                   style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
                   Suivant

@@ -18,14 +18,14 @@ describe('notes de la base candidats d\'une offre (job_matches)', () => {
     assert.deepEqual(plan.remove, [])
   })
 
-  it('« Recalculer tout » garde la note d\'un candidat dont le nouveau calcul a échoué', () => {
+  it('le recalcul des candidats déjà notés garde la note d\'un candidat dont le nouveau calcul a échoué', () => {
     // c1 noté de nouveau, c2 en échec (IA indisponible) : sa note d'avant reste.
     const plan = planPoolRows([row('r1', 'c1'), row('r2', 'c2')], [score('c1')], new Set(['c1', 'c2']), new Set(['c1', 'c2']))
     assert.deepEqual(plan.remove, [])
     assert.deepEqual(plan.update.map(([id]) => id), ['r1'])
   })
 
-  it('« Recalculer tout » retire seulement les candidats qui ne sont plus à noter (désinscrits, CV retiré, candidature envoyée)', () => {
+  it('le recalcul des candidats déjà notés retire seulement les candidats qui ne sont plus à noter (désinscrits, CV retiré, candidature envoyée)', () => {
     const plan = planPoolRows([row('r1', 'c1'), row('r2', 'c2'), row('r3', 'c9')], [score('c1')], new Set(['c1', 'c2']), new Set(['c1']))
     assert.deepEqual(plan.remove, ['r2'], 'c9, hors du périmètre de ce passage, garde sa note')
   })

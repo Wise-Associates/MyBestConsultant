@@ -51,14 +51,14 @@ export interface JobMatchResult {
 }
 
 /**
- * « Rafraîchir » du Matching IA : 'new' note seulement les candidats de la base pas encore notés pour l'offre et les
- * ajoute aux autres, dont les scores ne bougent plus (2026-11-04 : chaque clic recalculait tout, et tous les scores
- * changeaient) ; 'all' recalcule les candidats déjà notés (« Recalculer tout », « Recalculer » d'un AO publié), ou
- * note les plus récents s'il n'y en a aucun.
+ * 'new' note seulement les candidats de la base pas encore notés pour l'offre et les ajoute aux autres, dont les scores
+ * ne bougent pas (2026-11-04 : chaque clic recalculait tout, et tous les scores changeaient) ; 'all' recalcule les
+ * candidats déjà notés (« Recalculer » d'un AO publié), ou note les plus récents s'il n'y en a aucun. « Rafraîchir »
+ * du Matching IA fait 'all' puis 'new' (matching-client.tsx).
  */
 export type PoolMatchingMode = 'new' | 'all'
 
-/** Candidats renotés au plus par « Recalculer tout » : un appel d'IA chacun, 5 à la fois, dans les 300 s de la page. */
+/** Candidats renotés au plus par le mode 'all' : un appel d'IA chacun, 5 à la fois, dans les 300 s de la page. */
 const RESCORE_MAX = 120
 
 // Population 1 — scores the platform candidate pool against this job and stores the results (job_matches). Runs
