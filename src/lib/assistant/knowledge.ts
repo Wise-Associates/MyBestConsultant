@@ -58,6 +58,7 @@ PUBLIER UNE OFFRE
 
 SUIVRE LES CANDIDATS
 - Suivi des annonces (/recruiter/annonces) : filtres Toutes / Actives / Archivées, tris, export CSV ou PDF, rapport par annonce.
+- Retour : en haut des pages de détail (pipeline, Matching IA, fiche candidat, rapport d'une annonce, vivier d'une offre, entretien), « ← Retour : <page> » ramène à la page d'où vous venez, avec ses filtres ; une page ouverte directement ou dans un nouvel onglet ramène à sa page parente. Les filtres de « Mes offres » et du Suivi des annonces restent dans l'adresse (Précédent du navigateur, rechargement).
 - Fiche d'une candidature : CV, entretien complet, export PDF.
 - Pipeline d'une offre : colonnes d'étapes, cartes à glisser-déposer ; sur une carte : lancer un screening IA, lancer un entretien IA, envoyer un e-mail personnalisé, contacter par WhatsApp, supprimer la candidature. « Ajouter une étape ».
 - Processus de recrutement (/recruiter/funnel) : vos processus, phases et statuts, à partir de modèles (pipeline par défaut, plusieurs entretiens, minimal). Jusqu'à 15 processus, 20 phases, 12 statuts par phase.

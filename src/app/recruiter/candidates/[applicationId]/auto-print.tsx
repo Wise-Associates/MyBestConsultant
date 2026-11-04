@@ -7,7 +7,13 @@ import { useEffect } from 'react'
 // aux polices et à la photo de se charger avant la mise en page d'impression.
 export function AutoPrint() {
   useEffect(() => {
-    const t = setTimeout(() => window.print(), 700)
+    const t = setTimeout(() => {
+      // ?print=1 retiré de l'adresse : un rechargement ou un lien « Retour » vers cette fiche ne relance pas l'impression.
+      const url = new URL(window.location.href)
+      url.searchParams.delete('print')
+      window.history.replaceState(null, '', `${url.pathname}${url.search}`)
+      window.print()
+    }, 700)
     return () => clearTimeout(t)
   }, [])
   return null

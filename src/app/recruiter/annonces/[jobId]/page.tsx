@@ -1,11 +1,12 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
+import { BackLink } from '@/components/recruiter/back-link'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { getJobById } from '@/lib/appwrite/jobs'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
-import { ArrowLeft, FileText, MapPin, Clock } from 'lucide-react'
+import { FileText, MapPin, Clock } from 'lucide-react'
 import { loadTenantOverview } from '../data'
 import { PrintButton } from './print-button'
 import { withOrphanStages, resolveStatus } from '@/lib/funnel-stage-utils'
@@ -69,8 +70,9 @@ export default async function JobReportPage({ params }: { params: Promise<{ jobI
   const accepted = apps.filter(a => a.status === 'accepted').length
   const ivDone = ivStatuses.filter(s => DONE.has(s)).length
   const maxStage = Math.max(1, ...stages.map(s => apps.filter(a => a.status === s.slug).length))
-  const generated = new Date().toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' })
-  const state = !job.isActive ? 'Archivée' : job.expiresAt && new Date(job.expiresAt).getTime() < Date.now() ? 'Expirée' : 'Active'
+  const now = new Date()
+  const generated = now.toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' })
+  const state = !job.isActive ? 'Archivée' : job.expiresAt && new Date(job.expiresAt).getTime() < now.getTime() ? 'Expirée' : 'Active'
 
   const kpis = [
     { l: 'Candidatures', v: String(apps.length), c: '#0ea5e9' },
@@ -84,9 +86,7 @@ export default async function JobReportPage({ params }: { params: Promise<{ jobI
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <div className="no-print" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="max-w-4xl mx-auto px-6 py-7">
-          <Link href="/recruiter/annonces" className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Retour au suivi des annonces
-          </Link>
+          <BackLink fallbackHref="/recruiter/annonces" className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }} />
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(232,163,61,0.15)' }}>

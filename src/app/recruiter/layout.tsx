@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
@@ -10,6 +11,7 @@ import { RecruiterIdentityProvider } from '@/components/recruiter/identity-conte
 import { MbcAssistant } from '@/components/assistant/mbc-assistant'
 import { AoSyncProvider } from '@/components/ao/ao-sync-provider'
 import { RecruiterSubnav } from '@/components/recruiter/recruiter-subnav'
+import { RecruiterTrailRecorder } from '@/components/recruiter/back-link'
 
 export default async function RecruiterLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser()
@@ -34,6 +36,10 @@ export default async function RecruiterLayout({ children }: { children: React.Re
       <VerifyEmailBanner verified={user.emailVerification} />
       <RecruiterIdentityProvider value={{ name: `${user.firstName} ${user.lastName}`.trim(), company }}>
         <main className="mbc-app">
+          {/* Pages visitées dans l'onglet, pour les liens « Retour : <page d'origine> » (back-link.tsx). */}
+          <Suspense fallback={null}>
+            <RecruiterTrailRecorder />
+          </Suspense>
           {/* Rubriques de l'espace recruteur, sur toutes ses pages (demande du 2026-10-30 : à la place des cartes du tableau de bord). */}
           <RecruiterSubnav />
           {/* « Synchroniser maintenant » des appels d'offres continue d'une page de l'espace recruteur à l'autre. */}

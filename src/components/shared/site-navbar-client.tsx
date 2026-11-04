@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useState, useRef, useEffect } from 'react'
 import { LogOut, Menu, X, ChevronDown, Briefcase, LayoutDashboard, Settings, Plus, CalendarDays, LifeBuoy, GitBranch } from 'lucide-react'
 import { logoutAction } from '@/app/(auth)/actions'
+import { clearRecruiterTrail } from '@/components/recruiter/back-link'
 import { CALENDLY_URL } from '@/lib/site-links'
 import type { UserRole } from '@/types'
 
@@ -137,7 +138,7 @@ function UserDropdown({ user }: { user: NonNullable<Props['user']> }) {
 
           {/* Logout */}
           <div style={{ padding: '6px 0', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-            <form action={logoutAction}>
+            <form action={logoutAction} onSubmit={clearRecruiterTrail}>
               <button type="submit"
                 style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 18px', fontSize: 13, color: '#f87171', background: 'none', border: 'none', cursor: 'pointer', transition: 'background 0.15s' }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.07)')}
@@ -306,7 +307,7 @@ export function SiteNavbarClient({ siteName, logoUrl, navLinks, user, supportUnr
                       <span style={{ color: 'rgba(255,255,255,0.3)' }}>{icon}</span>{label}
                     </Link>
                   ))}
-                  <form action={logoutAction}>
+                  <form action={logoutAction} onSubmit={clearRecruiterTrail}>
                     <button type="submit" style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '12px 16px', borderRadius: 10, fontSize: 14, color: '#f87171', background: 'none', border: 'none', cursor: 'pointer', marginTop: 4 }}>
                       <LogOut style={{ width: 15, height: 15 }} />Déconnexion
                     </button>

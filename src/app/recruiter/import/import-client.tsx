@@ -2,11 +2,11 @@
 
 import { useState, useTransition, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { BackLink } from '@/components/recruiter/back-link'
 import {
   Upload, FileText, Clipboard, Loader2, Check, AlertCircle,
   ChevronDown, ChevronUp, Trash2, Plus, X, Sparkles,
-  ArrowRight, ArrowLeft, RotateCcw, CheckCircle2, Info,
+  ArrowRight, RotateCcw, CheckCircle2, Info,
 } from 'lucide-react'
 import { parseFileWithLLM, confirmImport, improveExtractedJob, type ExtractedJob } from './actions'
 
@@ -422,11 +422,9 @@ export function ImportClient({ tenantName }: { tenantName: string }) {
         <div className="sticky top-0 z-10" style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)', boxShadow: '0 8px 24px rgba(11,29,81,0.06)' }}>
           <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <Link href="/recruiter/dashboard"
+              <BackLink fallbackHref="/recruiter/dashboard" iconOnly iconClassName="h-4 w-4"
                 className="p-2 rounded-xl no-underline transition-all shrink-0"
-                style={{ color: '#7c3aed', background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.25)' }}>
-                <ArrowLeft className="h-4 w-4" />
-              </Link>
+                style={{ color: '#7c3aed', background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.25)' }} />
               <button onClick={reset} className="transition-colors" style={{ color: 'var(--color-text-muted)' }}>
                 <RotateCcw className="h-4 w-4" />
               </button>

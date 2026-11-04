@@ -1,5 +1,6 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
+import { BackLink } from '@/components/recruiter/back-link'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
@@ -120,6 +121,10 @@ export default async function CandidateProfilePage({ params, searchParams }: {
     <div id="candidate-report" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <div className="sticky top-0 z-20 no-print" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="max-w-3xl mx-auto px-6 py-6">
+          {/* Sans page précédente dans l'onglet (fiche ouverte directement) : le pipeline de l'offre. */}
+          <BackLink fallbackHref={job ? `/recruiter/pipeline/${job.$id}` : '/recruiter/dashboard'}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 no-underline transition-opacity hover:opacity-80"
+            style={{ color: '#c4b5fd' }} />
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-4">
               <CandidateAvatar photoUrl={candidate.photoUrl as string} initials={name[0]?.toUpperCase() ?? '?'} size={56}
