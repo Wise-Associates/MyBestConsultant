@@ -29,8 +29,10 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Deploy on Vercel
+## Déploiement
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Previews** : Vercel déploie `pre-dev` et `dev`, branchées sur le projet Appwrite DEV.
+- **Production** : un VPS (Docker, Caddy, bascule sans coupure), déployé par `.github/workflows/deploy-vps.yml` à
+  chaque mise à jour de `prod`. Installation, bascule du DNS et exploitation : [docs/deploiement-vps.md](docs/deploiement-vps.md)
+  (décision : [ADR 0027](docs/adr/0027-production-sur-vps.md)). Tant que le serveur n'est pas en service, la
+  production reste sur Vercel.

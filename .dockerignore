@@ -1,0 +1,18 @@
+# Contexte de build de l'image (Dockerfile). Les fichiers .env* ne doivent jamais entrer dans l'image :
+# les secrets de la production sont fournis au démarrage par /etc/mybestconsultant/app.env (docs/deploiement-vps.md).
+.env*
+.git
+.github
+.claude
+.vercel
+.next
+node_modules
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*
+deploy
+docs
+graphify-out
+Dockerfile
+.dockerignore
+docker-compose.yml

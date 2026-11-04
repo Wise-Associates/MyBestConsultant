@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Production sur un VPS (ADR 0027) : le build produit .next/standalone (serveur Node et seulement les modules
+  // utilisés), que le Dockerfile copie dans l'image avec public/ et .next/static/.
+  output: "standalone",
   experimental: {
     // Server Actions default to a 1MB request body limit — uploadFullInterviewRecording
     // (the interview's merged audio/video recording, sent as one multipart blob) blows

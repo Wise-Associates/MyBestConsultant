@@ -1,0 +1,43 @@
+# Une version de l'application sur le VPS : « bleue » ou « verte » (ADR 0027, docs/deploiement-vps.md).
+# Lancée par mbc-deploy, jamais à la main : il démarre la nouvelle couleur à côté de l'ancienne, attend qu'elle
+# soit en bonne santé, fait passer Caddy dessus, puis arrête l'ancienne. Le site ne s'interrompt pas.
+services:
+  app:
+    image: mybestconsultant:${IMAGE_TAG:?IMAGE_TAG manquant}
+    container_name: mbc-app-${APP_COLOR:?APP_COLOR manquant}
+    # Secrets et réglages de la production (mêmes variables que la portée Production de Vercel).
+    env_file: ${MBC_ENV_FILE:-/etc/mybestconsultant/app.env}
+    environment:
+      # Node ferme une connexion inactive après 5 s, Caddy la garde 2 min pour la réutiliser : une requête envoyée
+      # sur une connexion que Node vient de fermer reviendrait en erreur 502. Node doit attendre plus que Caddy.
+      KEEP_ALIVE_TIMEOUT: "130000"
+    restart: unless-stopped
+    init: true
+    # Next.js finit les requêtes en cours et les tâches after() (diffusion sur les réseaux, sourcing) avant de
+    # s'arrêter ; elles durent jusqu'à 300 s (maxDuration des pages). Docker le tuerait au bout de 10 s.
+    stop_grace_period: 330s
+    # Le serveur ne peut rien écrire sur son disque hors des deux dossiers temporaires ci-dessous : une faille
+    # dans la lecture d'un fichier reçu (PDF, Word, Excel) ne peut pas modifier l'application.
+    read_only: true
+    tmpfs:
+      # Synthèse vocale des entretiens, fichiers en cours de lecture.
+      - /tmp:size=512m
+      # Cache de Next.js (images optimisées, données) : perdu à chaque déploiement, c'est voulu.
+      - /app/.next/cache:size=256m,uid=1000,gid=1000
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # Une version qui s'emballe (envois en rafale, fichier piégé) est arrêtée et relancée seule, sans faire tomber
+    # Caddy ni l'autre couleur. Deux versions tournent pendant une bascule : le serveur doit avoir 4 Go au moins.
+    mem_limit: 2g
+    pids_limit: 512
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
+    # Aucun port publié : seul Caddy, sur le même réseau, joint l'application.
+    networks: [mbc]
+
+networks:
+  mbc:
+    external: true
