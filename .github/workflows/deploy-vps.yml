@@ -1,0 +1,144 @@
+# Mise en production sur le VPS (ADR 0027, docs/deploiement-vps.md).
+#
+# Automatique à chaque arrivée de commits sur prod (pull request dev → prod fusionnée) : vérification du code,
+# construction de l'image, envoi au serveur, bascule sans coupure (deploy/mbc-deploy.sh).
+# À la main (onglet Actions → « Déploiement production (VPS) » → Run workflow, branche prod) : redéployer le dernier
+# commit de prod (champ vide, par exemple après un changement de app.env) ou revenir à une version de prod déjà
+# déployée.
+#
+# Ne fait rien tant que la variable de dépôt VPS_HOST n'est pas définie (serveur pas encore installé).
+#
+# Deux jobs : « verify » exécute le code du dépôt et de ses dépendances (npm ci, tests) sans aucun secret ;
+# « deploy » détient la clé SSH et n'exécute aucun code du dépôt sur la machine de GitHub (le build a lieu dans un
+# conteneur Docker, qui n'a accès ni aux fichiers ni aux variables du job).
+name: Déploiement production (VPS)
+
+on:
+  push:
+    branches: [prod]
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: "Commit de prod déjà déployé auparavant (vide : le dernier commit de prod)"
+        required: false
+        default: ""
+
+# Un déploiement à la fois, sans jamais en annuler un en cours (il serait coupé au milieu de la bascule).
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  verify:
+    if: vars.VPS_HOST != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      deployments: read
+    outputs:
+      commit: ${{ steps.commit.outputs.sha }}
+    steps:
+      - name: Commit demandé
+        env:
+          REQUESTED: ${{ inputs.commit }}
+        run: |
+          if [[ -n $REQUESTED && ! $REQUESTED =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Indiquez un commit complet (40 caractères hexadécimaux), ou laissez le champ vide."
+            exit 1
+          fi
+
+      - name: Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+          # Historique complet : le commit demandé doit être dans prod.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Commit à déployer
+        id: commit
+        env:
+          REQUESTED: ${{ inputs.commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          commit=$(git rev-parse HEAD)
+          if ! git merge-base --is-ancestor "$commit" origin/prod; then
+            echo "::error::Le commit $commit n'est pas dans la branche prod : refusé."
+            exit 1
+          fi
+          # Un retour arrière ne vise qu'une version déjà mise en production (un commit intermédiaire d'une pull
+          # request, jamais relu seul, est refusé). GitHub enregistre chaque déploiement de l'environnement production.
+          if [[ -n $REQUESTED ]]; then
+            count=$(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=production&sha=$commit" --jq length)
+            if [[ $count -eq 0 ]]; then
+              echo "::error::Le commit $commit n'a jamais été mis en production : refusé."
+              exit 1
+            fi
+          fi
+          echo "sha=$commit" >> "$GITHUB_OUTPUT"
+
+      - name: Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          # Même version majeure que l'image (Dockerfile).
+          node-version: "24"
+          cache: npm
+
+      - name: Dépendances
+        run: npm ci --no-audit --no-fund
+
+      # ESLint n'en fait pas partie : erreurs déjà présentes sur la branche (à corriger à part).
+      - name: Vérification (types et tests)
+        run: |
+          npm run typecheck
+          npm test
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-24.04
+    # Clé SSH et valeurs publiques du build : environnement « production », limité à la branche prod.
+    environment: production
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.verify.outputs.commit }}
+          persist-credentials: false
+
+      - name: Image
+        env:
+          COMMIT: ${{ needs.verify.outputs.commit }}
+          NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+          NEXT_PUBLIC_APPWRITE_ENDPOINT: ${{ vars.NEXT_PUBLIC_APPWRITE_ENDPOINT }}
+          NEXT_PUBLIC_APPWRITE_PROJECT_ID: ${{ vars.NEXT_PUBLIC_APPWRITE_PROJECT_ID }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+        # --build-arg sans valeur : reprise de la variable d'environnement du même nom.
+        run: |
+          docker build --tag "mybestconsultant:$COMMIT" \
+            --build-arg NEXT_PUBLIC_APP_URL \
+            --build-arg NEXT_PUBLIC_APPWRITE_ENDPOINT \
+            --build-arg NEXT_PUBLIC_APPWRITE_PROJECT_ID \
+            --build-arg NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY \
+            .
+
+      - name: Envoi au serveur et bascule
+        env:
+          COMMIT: ${{ needs.verify.outputs.commit }}
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_SSH_KNOWN_HOSTS: ${{ secrets.VPS_SSH_KNOWN_HOSTS }}
+        # La clé ne peut lancer que mbc-deploy sur le serveur (command= dans authorized_keys). L'empreinte du serveur
+        # est vérifiée (known_hosts) : pas de connexion à un serveur qui se ferait passer pour lui.
+        run: |
+          install -m 700 -d ~/.ssh
+          (umask 077 && printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key)
+          printf '%s\n' "$VPS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          docker save "mybestconsultant:$COMMIT" | gzip -1 |
+            ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 \
+              "deploy@$VPS_HOST" deploy "$COMMIT"
