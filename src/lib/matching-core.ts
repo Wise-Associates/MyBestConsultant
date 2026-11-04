@@ -7,15 +7,20 @@ import { displayEmail } from '@/lib/candidate-identity'
 import { callLLM } from '@/lib/ai/llm-router'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
-import { Query, ID } from 'node-appwrite'
+import { Query } from 'node-appwrite'
 import type { CvProfile } from '@/lib/cv-profile-extract'
 import {
-  VIVIER_MATCHING_SYSTEM, offerBatches, parseVivierMatching, profileForAi, vivierMatchingPrompt,
+  VIVIER_MATCHING_SYSTEM, offerBatches, parseVivierMatching, profileForAi, vivierMatchingPrompt, vivierScore,
   type OfferScore, type OfferToScore, type ProfileToScore,
 } from '@/lib/vivier-matching'
-import { DOMAIN_FIELD, MATCH_RULES, cappedScore, offerTextForAi, parseDomainFit, withBonus } from '@/lib/match-scoring'
+import {
+  MATCH_RULES, criteriaBlock, criteriaCounts, judgedScore, judgementFields, judgementSummary, offerCriteria, offerTextForAi, parseJudgements,
+  withBonus,
+} from '@/lib/match-scoring'
 import { listAllByValues, listAllDocuments } from '@/lib/appwrite/list-all'
 import { listVivierOfferMatches } from '@/lib/appwrite/vivier-offer-matches'
+import { planPoolRows, poolRowId } from '@/lib/pool-matching'
+import { withCheckedTitles } from '@/lib/title-check'
 import type { MatchResult } from '@/lib/sourcing-core'
 
 export interface JobMatchResult {
@@ -45,34 +50,77 @@ export interface JobMatchResult {
   recommendation?: { points: number; matched: { expertise: string; count: number }[] }
 }
 
-// Population 1 — recompute the whole platform candidate pool against this job and replace
-// the stored results. Runs automatically right after a job is created; the recruiter can
-// also trigger it again later (e.g. once new candidates have registered) from the Matching page.
+/**
+ * « Rafraîchir » du Matching IA : 'new' note seulement les candidats de la base pas encore notés pour l'offre et les
+ * ajoute aux autres, dont les scores ne bougent plus (2026-11-04 : chaque clic recalculait tout, et tous les scores
+ * changeaient) ; 'all' recalcule les candidats déjà notés (« Recalculer tout », « Recalculer » d'un AO publié), ou
+ * note les plus récents s'il n'y en a aucun.
+ */
+export type PoolMatchingMode = 'new' | 'all'
+
+/** Candidats renotés au plus par « Recalculer tout » : un appel d'IA chacun, 5 à la fois, dans les 300 s de la page. */
+const RESCORE_MAX = 120
+
+// Population 1 — scores the platform candidate pool against this job and stores the results (job_matches). Runs
+// automatically right after a job is created; the recruiter can also trigger it again later from the Matching page.
 // `computed`: a ranking already made for this job by matchCandidatesForJob (automatic sourcing at
 // creation), stored as is instead of paying a second AI call on the same CVs.
-export async function runPoolMatching(jobId: string, computed?: MatchResult): Promise<{ matched: number; error?: string }> {
+export async function runPoolMatching(
+  jobId: string, computed?: MatchResult, mode: PoolMatchingMode = 'all',
+): Promise<{ matched: number; error?: string }> {
   try {
     const { databases } = createAdminClient()
     const job = await databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId)
+    const existing = await listAllDocuments(databases, DB_ID, COLLECTIONS.JOB_MATCHES, [
+      Query.equal('jobId', jobId), Query.select(['$id', 'candidateId']),
+    ])
 
     const { matchCandidatesForJob } = await import('@/lib/sourcing-core')
-    const { matches, error } = computed ?? await matchCandidatesForJob(jobId)
-    if (error && matches.length === 0) return { matched: 0, error }
+    const scored = [...new Set(existing.map(d => d.candidateId as string))]
+    // Périmètre : candidats dont ce passage a la charge, les seuls dont une note peut être retirée (planPoolRows).
+    let result: MatchResult
+    let scope: Set<string>
+    if (computed) {
+      result = computed
+      scope = new Set(scored)
+    } else if (mode === 'new') {
+      result = await matchCandidatesForJob(jobId, { exclude: new Set(scored) })
+      scope = new Set()
+    } else if (scored.length > 0) {
+      const only = scored.slice(0, RESCORE_MAX)
+      result = await matchCandidatesForJob(jobId, { only })
+      scope = new Set(only)
+    } else {
+      result = await matchCandidatesForJob(jobId)
+      scope = new Set()
+    }
+    const { matches, error } = result
+    // Aucun CV noté (IA indisponible…) : les notes d'avant restent telles quelles.
+    if (matches.length === 0) return { matched: 0, error }
 
-    const existing = await databases.listDocuments(DB_ID, COLLECTIONS.JOB_MATCHES, [
-      Query.equal('jobId', jobId), Query.limit(200),
+    const considered = new Set(result.considered ?? matches.map(m => m.candidateId))
+    const plan = planPoolRows(existing.map(d => ({ id: d.$id, candidateId: d.candidateId as string })), matches, scope, considered)
+    const fields = (m: { score: number; reason: string }) => ({ score: m.score, reason: m.reason.slice(0, 1000) })
+    await Promise.all([
+      ...plan.update.map(([id, m]) => databases.updateDocument(DB_ID, COLLECTIONS.JOB_MATCHES, id, fields(m))),
+      ...plan.create.map(async m => {
+        const id = poolRowId(jobId, m.candidateId)
+        const data = { tenantId: job.tenantId as string, jobId, candidateId: m.candidateId, ...fields(m) }
+        try {
+          await databases.createDocument(DB_ID, COLLECTIONS.JOB_MATCHES, id, data)
+        } catch (err) {
+          // Écrite entre-temps par un autre passage (même identifiant) : la note de celui-ci, plus récente, l'emporte.
+          if ((err as { code?: unknown }).code !== 409) throw err
+          await databases.updateDocument(DB_ID, COLLECTIONS.JOB_MATCHES, id, fields(m))
+        }
+      }),
+      ...plan.remove.map(id => databases.deleteDocument(DB_ID, COLLECTIONS.JOB_MATCHES, id).catch(err => {
+        if ((err as { code?: unknown }).code !== 404) throw err
+      })),
     ])
-    await Promise.all(existing.documents.map(d => databases.deleteDocument(DB_ID, COLLECTIONS.JOB_MATCHES, d.$id)))
 
-    await Promise.all(matches.map(m => databases.createDocument(DB_ID, COLLECTIONS.JOB_MATCHES, ID.unique(), {
-      tenantId: job.tenantId as string,
-      jobId,
-      candidateId: m.candidateId,
-      score: m.score,
-      reason: m.reason.slice(0, 1000),
-    })))
-
-    return { matched: matches.length }
+    // Une partie des CV non notés (IA indisponible, réponse illisible) : dit, les autres sont enregistrés.
+    return { matched: matches.length, error }
   } catch (e) {
     return { matched: 0, error: e instanceof Error ? e.message : 'Erreur inconnue' }
   }
@@ -85,26 +133,40 @@ export async function matchVivierCvAgainstJob(jobId: string, vivierCvId: string,
     const { databases } = createAdminClient()
     const job = await databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId)
 
-    const SYSTEM = `Tu es un expert en sourcing de candidats. On te donne une offre d'emploi et le profil extrait d'un CV. Évalue la pertinence de ce candidat pour ce poste.
-Réponds UNIQUEMENT avec un JSON valide, sans markdown : {"score":0-100,${DOMAIN_FIELD},"reason":"une phrase expliquant pourquoi ce candidat correspond (ou pas)"}
+    const criteria = offerCriteria((job.skills as string[]) ?? [], (job.description as string) ?? '')
+    const SYSTEM = `Tu es un expert en sourcing de candidats. On te donne une offre d'emploi et le profil extrait d'un CV. Évalue ce candidat pour ce poste.
+Réponds UNIQUEMENT avec un JSON valide, sans markdown : {${judgementFields(criteriaCounts(criteria))},"raison":"une phrase"}
 
 ${MATCH_RULES}`
     // Parcours avec employeurs et missions (pas seulement les compétences) et profil recherché d'abord : sans eux, l'IA
     // ne pouvait pas voir qu'un domaine exigé manquait (match-scoring.ts).
-    const userMsg = `=== OFFRE ===\nPoste : ${job.title}\nCompétences recherchées : ${((job.skills as string[]) ?? []).join(', ')}\nDescription : ${offerTextForAi((job.description as string) ?? '', 4000)}\n\n=== PROFIL CANDIDAT ===\n${profileForAi(profile)}`
+    const userMsg = `=== OFFRE ===\nPoste : ${job.title}\n${criteriaBlock(criteria)}\nDescription : ${offerTextForAi((job.description as string) ?? '', 4000)}\n\n=== PROFIL CANDIDAT ===\n${profileForAi(profile)}`
 
-    const { content } = await callLLM([{ role: 'user', content: userMsg }], SYSTEM, { module: 'matching' })
+    // Une preuve par élément jugé : réponse plus longue qu'une note (et la réflexion du modèle compte dans la limite).
+    const { content } = await callLLM([{ role: 'user', content: userMsg }], SYSTEM, { module: 'matching', maxTokens: 8000 })
     const jsonMatch = content.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return
+    if (!jsonMatch) {
+      console.error('[matching] réponse de l\'IA illisible pour un CV du vivier de l\'offre', jobId, vivierCvId)
+      return
+    }
 
     const parsed = JSON.parse(jsonMatch[0])
-    const score = cappedScore(Math.min(100, Math.max(0, Number(parsed.score) || 0)), parseDomainFit(parsed.domaine))
+    // Score calculé par le code à partir des jugements de l'IA (match-scoring.ts) ; réponse sans jugement : CV non noté.
+    // Jugements vérifiés dans le profil que l'IA a lu (citations, intitulés), métiers du titre confirmés (title-check.ts).
+    const parsedJudgements = parseJudgements(parsed, criteria, profileForAi(profile))
+    const [judgements] = parsedJudgements ? await withCheckedTitles([parsedJudgements]) : [null]
+    if (!judgements) {
+      console.error('[matching] réponse de l\'IA sans jugement lisible pour un CV du vivier de l\'offre', jobId, vivierCvId)
+      return
+    }
+    const said = typeof parsed.raison === 'string' && parsed.raison.trim() ? ` — ${parsed.raison.trim()}` : ''
     await databases.updateDocument(DB_ID, COLLECTIONS.VIVIER_CVS, vivierCvId, {
-      matchScore: score,
-      matchReason: String(parsed.reason ?? '').slice(0, 500),
+      matchScore: judgedScore(judgements),
+      matchReason: `${judgementSummary(judgements)}${said}`.slice(0, 500),
     })
-  } catch {
+  } catch (e) {
     // best-effort — a vivier CV stays usable (unscored) even if matching fails
+    console.error('[matching] CV du vivier de l\'offre non noté', jobId, vivierCvId, e instanceof Error ? e.message : e)
   }
 }
 
@@ -117,11 +179,17 @@ export async function scoreCvAgainstOffers(profile: ProfileToScore, offers: Offe
   const batches = await Promise.all(offerBatches(offers).map(async batch => {
     try {
       const { content } = await callLLM([{ role: 'user', content: vivierMatchingPrompt(profile, batch) }], VIVIER_MATCHING_SYSTEM, {
-        module: 'matching', moduleDefault: 'claude', maxTokens: 3000, timeoutMs: 60_000,
+        // 5 offres, une preuve par élément jugé de chacune : réponse plus longue qu'une note par offre.
+        module: 'matching', moduleDefault: 'claude', maxTokens: 8000, timeoutMs: 120_000,
       })
-      const scores = parseVivierMatching(content, batch.map(o => o.$id))
-      if (!scores) console.error('Vivier : réponse de l\'IA illisible pour la comparaison CV / offres')
-      return scores
+      const judged = parseVivierMatching(content, batch, profileForAi(profile))
+      if (!judged) {
+        console.error('Vivier : réponse de l\'IA illisible pour la comparaison CV / offres')
+        return null
+      }
+      // Métiers du titre de chaque offre confirmés par une seule comparaison des intitulés (title-check.ts).
+      const checked = await withCheckedTitles(judged.map(j => j.judgements))
+      return judged.map((item, i) => vivierScore({ ...item, judgements: checked[i] }))
     } catch (e) {
       console.error('Vivier : comparaison CV / offres en échec :', e instanceof Error ? e.message : e)
       return null
