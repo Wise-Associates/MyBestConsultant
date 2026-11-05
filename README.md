@@ -32,7 +32,12 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 ## Déploiement
 
 - **Previews** : Vercel déploie `pre-dev` et `dev`, branchées sur le projet Appwrite DEV.
-- **Production** : un VPS (Docker, Caddy, bascule sans coupure), déployé par `.github/workflows/deploy-vps.yml` à
-  chaque mise à jour de `prod`. Installation, bascule du DNS et exploitation : [docs/deploiement-vps.md](docs/deploiement-vps.md)
-  (décision : [ADR 0027](docs/adr/0027-production-sur-vps.md)). Tant que le serveur n'est pas en service, la
-  production reste sur Vercel.
+- **Pull requests** : toutes vers `main`, fusionnées par « Rebase and merge ». Une fusion dans `main` ne déploie rien.
+- **Mise en production** : à la main, GitHub → Actions → **Déployer en production** → Run workflow, branche `main`,
+  champ vide. Le workflow (`.github/workflows/deploy-vps.yml`) vérifie `main` (types, tests), place `prod` sur `main`
+  (avance rapide, ou remplacement seulement si rien de `prod` ne manque à `main`), puis déploie le VPS (Docker, Caddy,
+  bascule sans coupure).
+  Personne ne pousse sur `prod` à la main. Décisions : [ADR 0025](docs/adr/0025-mise-en-production-manuelle.md)
+  (procédure) et [ADR 0027](docs/adr/0027-production-sur-vps.md) (VPS) ; installation, bascule du DNS et
+  exploitation : [docs/deploiement-vps.md](docs/deploiement-vps.md). Tant que le DNS pointe vers Vercel, la production
+  reste sur Vercel, qui redéploie aussi `prod` à chaque mise en production.

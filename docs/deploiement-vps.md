@@ -35,8 +35,11 @@ Internet ──► Caddy (ports 80 et 443, HTTPS) ──► mbc-app-blue  ou  mb
   l'envoie au serveur par SSH.
 - **Le serveur ne garde aucune donnée** : tout est dans Appwrite. Il ne contient que des fichiers reproductibles depuis
   le dépôt, et les secrets (`app.env`).
-- **Ce qui ne change pas** : les previews Vercel de `pre-dev` / `dev` (projet Appwrite DEV), le serveur Appwrite, la
-  mise en production par une pull request `dev` → `prod` fusionnée par un humain.
+- **Mise en production à la main** ([ADR 0025](adr/0025-mise-en-production-manuelle.md)) : les pull requests vont
+  vers `main` (« Rebase and merge »), et une fusion ne déploie rien. GitHub → Actions → « Déployer en production »
+  vérifie `main`, place `prod` sur `main` (avance rapide, ou remplacement seulement si rien de `prod` ne manque à
+  `main`), puis déploie.
+- **Ce qui ne change pas** : les previews Vercel de `pre-dev` / `dev` (projet Appwrite DEV), le serveur Appwrite.
 
 | Dans le dépôt | Rôle |
 |---|---|
@@ -45,7 +48,7 @@ Internet ──► Caddy (ports 80 et 443, HTTPS) ──► mbc-app-blue  ou  mb
 | `deploy/compose.proxy.yml`, `deploy/caddy/Caddyfile` | Caddy : HTTPS, redirection du domaine nu, en-têtes, limites |
 | `deploy/mbc-deploy.sh` | Déploiement sans coupure, retour arrière, état |
 | `deploy/crontab`, `deploy/mbc-cron.sh` | Tâches planifiées (remplacent les `crons` de `vercel.json`) |
-| `.github/workflows/deploy-vps.yml` | Vérification, image, envoi et bascule à chaque mise à jour de `prod` |
+| `.github/workflows/deploy-vps.yml` | « Déployer en production », lancé à la main : vérification, image, `prod` placée sur `main`, envoi et bascule |
 
 | Sur le serveur | Contenu |
 |---|---|
@@ -221,8 +224,8 @@ effacez ensuite les deux fichiers de votre poste. Perdue ou exposée : générez
 
 **Cette clé vaut un accès à la production.** Elle ne lance que `mbc-deploy`, mais elle peut lui envoyer n'importe
 quelle image, qui démarrerait avec les secrets de `app.env` : le serveur ne peut pas vérifier qu'une image vient bien
-du workflow. Elle n'est donc donnée qu'au job de déploiement, sur la branche `prod` (4.1), et ne doit exister nulle part
-ailleurs.
+du workflow. Elle n'est donc donnée qu'au job de déploiement, lancé depuis la branche `main` (4.1), et ne doit exister
+nulle part ailleurs.
 
 Empreinte du serveur pour GitHub, à relever depuis votre poste, **avec l'adresse IP** que vous mettrez dans
 `VPS_HOST` (4.2) :
@@ -264,17 +267,24 @@ Dépôt `Wise-Associates/MyBestConsultant` → Settings.
 
 Environments → New environment → `production` :
 
-- **Deployment branches and tags** → Selected branches and tags → ajoutez `prod`. Les secrets ci-dessous ne sont
-  donnés qu'aux workflows lancés sur `prod`.
+- **Deployment branches and tags** → Selected branches and tags → `main` seulement (avant le 2026-11-05 : `prod`, à
+  remplacer). Les secrets ci-dessous ne sont donnés qu'aux workflows lancés sur `main`.
 - **Required reviewers** (fortement conseillé), avec **Prevent self-review** : une seconde personne valide chaque
-  déploiement dans l'onglet Actions. Sans cela, toute personne qui peut écrire dans le dépôt peut lancer un
-  déploiement ou un retour arrière seule.
+  mise en production dans l'onglet Actions. Sans cela, toute personne qui peut écrire dans le dépôt peut lancer une
+  mise en production ou un retour arrière seule.
 
-### 4.1 bis Protection de la branche `prod`
+### 4.1 bis Protection des branches `main` et `prod`
 
-Settings → Rules → Rulesets → New branch ruleset, cible `prod`, actif, sans contournement : **Require a pull request
-before merging** (avec au moins une approbation), **Block force pushes**, **Restrict deletions**. La restriction de
-l'environnement à `prod` (4.1) ne vaut que ce que vaut la protection de `prod`.
+Settings → Rules → Rulesets → New branch ruleset, deux règles actives :
+
+- Cible `main`, sans contournement : **Require a pull request before merging** (au moins une approbation ; méthode
+  autorisée : **Rebase**), **Block force pushes**, **Restrict deletions**. La restriction de l'environnement à `main`
+  (4.1) ne vaut que ce que vaut la protection de `main`.
+- Cible `prod` : **Restrict updates**, **Block force pushes**, **Restrict deletions** ; Bypass list → **Repository
+  admin**, « Always allow » : le jeton de 4.2 agit au nom d'un administrateur, et le remplacement contrôlé de `prod`
+  (ADR 0025) est une poussée forcée. Pas de « Require a pull request » : `prod` n'est modifiée que par le workflow,
+  sans pull request. Une ancienne règle de `prod` qui l'exige est à remplacer, sinon l'étape « Mise à jour de prod »
+  est refusée.
 
 ### 4.2 Secrets et variables
 
@@ -284,6 +294,7 @@ Dans l'environnement `production` :
 |---|---|---|
 | Secret | `VPS_SSH_KEY` | Contenu de `mbc-deploy-key` (clé privée, 3.8) |
 | Secret | `VPS_SSH_KNOWN_HOSTS` | Contenu de `mbc-known-hosts` (3.8) |
+| Secret | `PROD_BRANCH_TOKEN` | Jeton qui fait avancer `prod` (ci-dessous) |
 | Variable | `NEXT_PUBLIC_APP_URL` | `https://www.mybestconsultant.fr` |
 | Variable | `NEXT_PUBLIC_APPWRITE_ENDPOINT` | `https://appwrite.mybestconsultant.fr/v1` |
 | Variable | `NEXT_PUBLIC_APPWRITE_PROJECT_ID` | Identifiant du projet Appwrite de production (comme sur Vercel) |
@@ -295,14 +306,31 @@ Puis, dans Secrets and variables → Actions → onglet Variables → **Reposito
 |---|---|
 | `VPS_HOST` | Adresse IP du serveur, celle utilisée pour `ssh-keyscan` (3.8) |
 
-Tant que `VPS_HOST` n'existe pas, le workflow ne fait rien : c'est l'interrupteur du déploiement sur le VPS.
+Sans `VPS_HOST`, le workflow s'arrête tout de suite avec un message, sans toucher à `prod`.
+
+**Jeton `PROD_BRANCH_TOKEN`**, créé par un administrateur du dépôt : photo de profil → Settings → Developer settings →
+Personal access tokens → **Fine-grained tokens** → Generate new token :
+
+- Resource owner : `Wise-Associates` ; Repository access : Only select repositories → `MyBestConsultant` ;
+- Repository permissions : **Contents** Read and write, **Workflows** Read and write (Metadata en lecture s'ajoute
+  seul), rien d'autre ;
+- Expiration : un an au plus ; notez la date dans l'agenda de l'équipe pour le renouveler avant.
+
+Si l'organisation fait approuver les jetons, un propriétaire l'approuve (Organization settings → Personal access
+tokens → Pending requests). Collez-le dans le secret `PROD_BRANCH_TOKEN` de l'environnement `production`, et nulle
+part ailleurs. Il écrit dans tout le dépôt au nom de son propriétaire : seule l'étape « Mise à jour de prod » le reçoit.
+Pourquoi pas le jeton automatique de GitHub Actions : il ne peut jamais faire avancer une branche sur un commit qui
+modifie un fichier de `.github/workflows/` (ADR 0025).
 
 ## 5. Premier déploiement (avant le DNS)
 
 Le DNS pointe encore vers Vercel : les visiteurs n'arrivent pas sur le serveur, vous pouvez tester sans risque.
 
-1. GitHub → Actions → **Déploiement production (VPS)** → Run workflow → branche `prod`, champ vide → Run.
-   Comptez une dizaine de minutes : dépendances, types, tests, image, envoi, démarrage.
+1. GitHub → Actions → **Déployer en production** → Run workflow → branche `main`, champ vide → Run.
+   Comptez une dizaine de minutes : dépendances, types, tests, image, mise à jour de `prod`, envoi, démarrage. Le
+   rattrapage de `main` (ADR 0025, « Mise en place ») doit avoir été fait, sinon le job verify refuse ; la première
+   fois, il annonce le remplacement de `prod` (attendu, une seule fois). Tant que la branche de production de Vercel
+   est `prod`, Vercel redéploie aussi sa production (même code) : c'est attendu.
 2. Sur le serveur :
 
    ```bash
@@ -375,8 +403,8 @@ Après 7 jours sans problème :
    `STRIPE_WEBHOOK_SECRET`, `CRON_SECRET`, `SOCIAL_WEBHOOK_SECRET` (à changer aussi dans le scénario Make), clés d'IA.
    Nouvelles valeurs dans `app.env`, puis redéploiement (partie 8). Pas `AO_CREDENTIALS_KEY` : la changer rend
    illisibles les mots de passe des boîtes AO.
-5. Pull request `dev` → `prod` qui remplace `vercel.json` par ce qui suit (plus de `crons`, plus de build de
-   production sur Vercel ; les previews continuent) :
+5. Pull request vers `main`, puis mise en production (partie 8), qui remplace `vercel.json` par ce qui suit (plus
+   de `crons`, plus de build de production sur Vercel ; les previews continuent) :
 
    ```json
    {
@@ -394,12 +422,13 @@ Après 7 jours sans problème :
 
 | Je veux… | Je fais… |
 |---|---|
-| Développer, tester | Comme avant : branche, `pre-dev` / `dev`, preview Vercel sur le projet Appwrite DEV |
-| Mettre en production | Pull request `dev` → `prod`, fusionnée par un humain. Le workflow déploie ; suivez-le dans Actions |
-| Changer la structure Appwrite | Comme avant (`schema:check -- prod`, `schema:push -- prod` par un humain), **avant** la pull request |
+| Développer, tester | Comme avant : branche, `pre-dev` / `dev`, preview Vercel sur le projet Appwrite DEV, puis pull request vers `main` (une fusion ne déploie rien) |
+| Mettre en production | Actions → **Déployer en production** → Run workflow, branche `main`, champ vide → Run. Met en production **tout** `main` ; suivez-le dans Actions (environ 10 min, plus la validation si Required reviewers) |
+| Corriger en urgence | Pull request vers `main`, puis mise en production. Jamais de commit poussé directement sur `prod` : il bloque la mise en production suivante jusqu'à ce que la même modification entre dans `main` |
+| Changer la structure Appwrite | Comme avant (`schema:check -- prod`, `schema:push -- prod` par un humain), **avant** la mise en production |
 | Ajouter une variable d'environnement | L'ajouter dans `app.env` sur le serveur **avant** la mise en production du code qui la lit. Pour une `NEXT_PUBLIC_*` : aussi dans les variables de l'environnement GitHub `production` |
-| Changer un secret sans nouveau code | Modifier `app.env`, puis `sudo -u deploy mbc-deploy rollback <commit en ligne>` (relance la même image avec le nouveau fichier, sans coupure) ou Run workflow avec le champ vide |
-| Revenir à la version précédente | `sudo -u deploy mbc-deploy status` (images présentes), puis `sudo -u deploy mbc-deploy rollback <commit>`. Plus ancien que les 5 dernières : Actions → Run workflow → un commit déjà mis en production (les autres sont refusés) |
+| Changer un secret sans nouveau code | Modifier `app.env`, puis `sudo -u deploy mbc-deploy rollback <commit en ligne>` (relance la même image avec le nouveau fichier, sans coupure), ou Run workflow avec le commit en ligne dans le champ (champ vide : met aussi en production ce que `main` a reçu depuis) |
+| Revenir à la version précédente | `sudo -u deploy mbc-deploy status` (images présentes), puis `sudo -u deploy mbc-deploy rollback <commit>`. Plus ancien que les 5 dernières : Actions → Déployer en production → Run workflow → un commit déjà mis en production (les autres sont refusés ; `prod` n'est pas modifiée) |
 | Changer le Caddyfile, les tâches planifiées, le conteneur de l'application | Modifier `deploy/…` dans une pull request : appliqué au déploiement suivant |
 | Changer `deploy/compose.proxy.yml` (version de Caddy…) | Pull request, puis après le déploiement (qui affiche « ATTENTION : deploy/compose.proxy.yml a changé ») : `sudo -u deploy mbc-deploy proxy`, hors des heures de travail (coupure de quelques secondes) |
 
@@ -458,9 +487,13 @@ Les sauvegardes d'Appwrite restent celles de son serveur.
 - L'application et Caddy tournent sans privilège, sur un système de fichiers en lecture seule ; l'application n'a
   aucun port publié et ne peut pas prendre plus de 2 Go ; un envoi de plus de 12 Mo est refusé par Caddy.
 - La clé SSH de GitHub Actions ne lance que `mbc-deploy`, mais elle vaut un accès à la production (3.8). Elle n'est
-  donnée qu'au job « deploy », sur la branche `prod`, qui n'exécute aucun code du dépôt sur la machine de GitHub
-  (le code et ses dépendances tournent dans le job « verify », sans secret, et dans le build Docker, isolé).
-  L'empreinte du serveur est vérifiée. Protégez `prod` et l'environnement `production` (4.1, 4.1 bis).
+  donnée, avec le jeton `PROD_BRANCH_TOKEN`, qu'au job « deploy », lancé depuis `main`, qui n'exécute aucun code du
+  dépôt sur la machine de GitHub (le code et ses dépendances tournent dans le job « verify », sans secret ni droit
+  d'écriture, et dans le build Docker, isolé). L'empreinte du serveur est vérifiée. Protégez `main`, `prod` et
+  l'environnement `production` (4.1, 4.1 bis).
+- `prod` n'est modifiée que par le workflow : avance rapide, ou remplacement seulement si chacun de ses commits a son
+  équivalent dans `main`, et jamais si `prod` a changé pendant le run (`--force-with-lease`). Aucune modification de
+  `prod` n'est perdue.
 - Le serveur ne lit le dépôt qu'en lecture seule ; aucun secret dans l'image ni dans le dépôt ; images de Node et de
   Caddy désignées par leur empreinte.
 
@@ -470,6 +503,13 @@ Les sauvegardes d'Appwrite restent celles de son serveur.
 |---|---|
 | Workflow, étape Image : « Pages générées au build, sans les secrets de production » | Une page ou une route lit des données au build (le build n'a pas les secrets). Ajoutez `export const dynamic = 'force-dynamic'` aux pages citées (`scripts/check-prerendered.mjs`) |
 | Workflow, job verify : « … n'a jamais été mis en production » | Un retour arrière ne vise qu'un commit déjà déployé : prenez-en un dans Actions (déploiements réussis) ou dans `mbc-deploy status` |
+| Workflow, job verify : « Lancez ce workflow depuis la branche main » | Run workflow sur une autre branche : relancez en choisissant `main` |
+| Workflow, job verify : « prod contient des modifications absentes de main » | Les commits cités sont sur `prod` et pas dans `main` : poussés directement sur `prod`, ou rattrapage de l'ADR 0025 pas fait. Faites-les entrer dans `main` par une pull request (« Rebase and merge »), puis relancez. Toujours refusé après (modification changée en résolvant un conflit) : ADR 0025, Conséquences |
+| Job deploy : « Branch "main" is not allowed to deploy to production » | L'environnement `production` est encore limité à `prod` : 4.1 |
+| Job deploy en attente (« Waiting for review ») | Normal avec Required reviewers (4.1) : une autre personne approuve dans Actions |
+| Étape « Mise à jour de prod » : secret absent ou `Bad credentials` | `PROD_BRANCH_TOKEN` absent, expiré ou révoqué : nouveau jeton (4.2). Rien n'a été déployé |
+| Étape « Mise à jour de prod » : `Repository rule violations`, `Permission denied`, `403` ou « refusing to allow … workflow » | Protection de `prod` qui exige une pull request ou ne laisse pas passer les administrateurs (4.1 bis), ou jeton sans Contents / Workflows en écriture (4.2). Rien n'a été déployé |
+| Étape « Mise à jour de prod » : `rejected … (stale info)` | `prod` a reçu un commit pendant la mise en production : rien n'a été écrasé ni déployé. Relancez ; le job verify dira si ce commit manque à `main` |
 | Workflow : « la version … ne démarre pas » | Ses journaux sont affichés juste au-dessus. Souvent une variable absente ou fausse dans `app.env`. L'ancienne version reste en ligne |
 | Workflow : « Caddy refuse la nouvelle configuration ou ne démarre pas » | Erreur dans `deploy/caddy/Caddyfile` du commit (message au-dessus). L'ancienne version reste en ligne ; corriger par une pull request |
 | Caddy redémarre en boucle (`sudo docker ps` : « Restarting ») et `caddy adapt` signale « File to import not found: /mbc-state/upstream.caddy » | Le dossier `/opt/mybestconsultant/state` n'est pas lisible par tous (créé en 750) : `sudo chmod 755 /opt/mybestconsultant/state`. `mbc-deploy` le corrige seul depuis le 2026-11-04 (après réinstallation, partie 9) |

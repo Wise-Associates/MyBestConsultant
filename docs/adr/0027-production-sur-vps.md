@@ -3,6 +3,8 @@
 - Statut : accepté (installation du serveur et bascule du DNS à faire par un humain : docs/deploiement-vps.md)
 - Date : 2026-11-04
 - Note : le numéro 0025 est pris par une décision non fusionnée (procédure de mise en production).
+- Mise à jour du 2026-11-05 : le déclenchement est remplacé par l'ADR 0025 (lancement à la main depuis `main`, `prod`
+  avancée par le workflow, environnement `production` limité à `main`). Le reste de cet ADR est inchangé.
 
 ## Contexte
 
