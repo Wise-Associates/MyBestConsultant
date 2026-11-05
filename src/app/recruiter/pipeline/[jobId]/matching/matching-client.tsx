@@ -16,6 +16,8 @@ import {
   type MatchingFilters, type MatchScoreFilter, type MatchSourceFilter,
 } from '@/lib/matching-filters'
 import { initialUrlListSync, noteListWrite, syncFromUrl } from '@/lib/url-list-state'
+import { scoreBreakdown } from '@/lib/score-breakdown'
+import { ScoreDetail, ScoringGuide } from './score-detail'
 
 const PAGE_SIZE = 25
 
@@ -209,9 +211,10 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
       </div>
 
       <div className="max-w-[1000px] mx-auto px-6 py-8">
-        <p className="text-sm mb-6" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="text-sm mb-3" style={{ color: 'var(--color-text-muted)' }}>
           L&apos;IA a comparé cette offre aux candidatures reçues, à la base de candidats et à votre vivier (celui de l&apos;offre et votre vivier général). Sélectionnez qui vous intéresse puis lancez (ou relancez) le screening.
         </p>
+        <ScoringGuide />
 
         {flash && (
           <div role="status" className="mb-4 px-4 py-2.5 rounded-lg text-sm font-semibold" style={{ background: 'rgba(232,163,61,0.1)', color: '#b8862f' }}>
@@ -275,6 +278,8 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
                 const isSelected = selected.has(m.id)
                 const cv = cvHref(m)
                 const profile = profileHref(m)
+                const breakdown = m.score != null ? scoreBreakdown(m.reason) : null
+                const reasonText = breakdown ? breakdown.rest : m.reason
                 const disabled = m.alreadyInFunnel
                 return (
                   <div key={`${m.source}-${m.id}`} onClick={() => toggle(m)}
@@ -367,7 +372,13 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
                           ) : null}
                         </p>
                       )}
-                      {m.reason && <p className="text-xs mt-1.5 leading-snug" style={{ color: 'var(--color-text-muted)' }}>{m.reason}</p>}
+                      {m.score != null && breakdown && <ScoreDetail breakdown={breakdown} match={{ ...m, score: m.score }} />}
+                      {m.score != null && !breakdown && (
+                        <p className="text-[11px] mt-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                          Détail du score indisponible : score calculé avant la notation par critères{m.source === 'pool' ? ' ; « Rafraîchir » le recalcule' : m.source === 'application' ? ' ; « Relancer » le recalcule' : ''}.
+                        </p>
+                      )}
+                      {reasonText && <p className="text-xs mt-1.5 leading-snug" style={{ color: 'var(--color-text-muted)' }}>{reasonText}</p>}
                     </div>
                   </div>
                 )
