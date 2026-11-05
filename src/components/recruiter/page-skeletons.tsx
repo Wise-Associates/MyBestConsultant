@@ -2,7 +2,8 @@ import { Skeleton, SkeletonRegion } from '@/components/shared/skeleton'
 
 // Formes de chargement des pages de l'espace recruteur (loading.tsx des routes) : la page en gris, à la place du voile
 // plein écran d'avant. Même structure que les pages (en-tête sombre, cartes, listes, tableaux) pour que rien ne saute à
-// l'arrivée du contenu. Le sous-menu de l'espace, dans le layout, reste affiché.
+// l'arrivée du contenu. Le sous-menu de l'espace, dans le layout, reste affiché. `SectionPageSkeleton` sert aussi aux
+// pages d'aide de l'espace candidat (src/app/candidate/loading.tsx), qui sont les mêmes que celles du recruteur.
 
 const card = { background: 'var(--color-surface)', border: '1px solid var(--color-border)' }
 
