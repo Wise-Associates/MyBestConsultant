@@ -1,25 +1,25 @@
-# Mise en production sur le VPS (ADR 0027, docs/deploiement-vps.md).
+# Mise en production sur le VPS (ADR 0025 et 0027, docs/deploiement-vps.md).
 #
-# Automatique à chaque arrivée de commits sur prod (pull request dev → prod fusionnée) : vérification du code,
-# construction de l'image, envoi au serveur, bascule sans coupure (deploy/mbc-deploy.sh).
-# À la main (onglet Actions → « Déploiement production (VPS) » → Run workflow, branche prod) : redéployer le dernier
-# commit de prod (champ vide, par exemple après un changement de app.env) ou revenir à une version de prod déjà
-# déployée.
+# Lancée à la main seulement : onglet Actions → « Déployer en production » → Run workflow, branche main.
+# - Champ vide : met en production le dernier commit de main. Vérification du code, construction de l'image, prod
+#   placée sur ce commit (avance rapide, ou remplacement contrôlé : voir « Commit à déployer »), envoi au serveur,
+#   bascule sans coupure (deploy/mbc-deploy.sh). Si main n'a pas changé depuis la dernière fois, redéploie la même
+#   version.
+# - Un commit : retour arrière vers une version de prod déjà mise en production ; prod n'est pas modifiée.
 #
-# Ne fait rien tant que la variable de dépôt VPS_HOST n'est pas définie (serveur pas encore installé).
+# Les pull requests vont vers main (« Rebase and merge »), et une fusion ne déploie rien. prod n'est modifiée que par
+# ce workflow : elle pointe sur la dernière version mise en production.
 #
-# Deux jobs : « verify » exécute le code du dépôt et de ses dépendances (npm ci, tests) sans aucun secret ;
-# « deploy » détient la clé SSH et n'exécute aucun code du dépôt sur la machine de GitHub (le build a lieu dans un
-# conteneur Docker, qui n'a accès ni aux fichiers ni aux variables du job).
-name: Déploiement production (VPS)
+# Deux jobs : « verify » exécute le code du dépôt et de ses dépendances (npm ci, tests) sans aucun secret ni droit
+# d'écriture ; « deploy » détient la clé SSH et le jeton qui fait avancer prod, et n'exécute aucun code du dépôt sur la
+# machine de GitHub (le build a lieu dans un conteneur Docker, qui n'a accès ni aux fichiers ni aux variables du job).
+name: Déployer en production
 
 on:
-  push:
-    branches: [prod]
   workflow_dispatch:
     inputs:
       commit:
-        description: "Commit de prod déjà déployé auparavant (vide : le dernier commit de prod)"
+        description: "Retour arrière : commit de prod déjà mis en production (vide : mettre en production le dernier commit de main)"
         required: false
         default: ""
 
@@ -32,7 +32,6 @@ permissions: {}
 
 jobs:
   verify:
-    if: vars.VPS_HOST != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -40,11 +39,22 @@ jobs:
       deployments: read
     outputs:
       commit: ${{ steps.commit.outputs.sha }}
+      prod: ${{ steps.commit.outputs.prod }}
     steps:
-      - name: Commit demandé
+      - name: Contrôles
         env:
           REQUESTED: ${{ inputs.commit }}
+          VPS_HOST: ${{ vars.VPS_HOST }}
         run: |
+          # Lancé depuis une autre branche, le workflow mettrait cette branche en production.
+          if [[ $GITHUB_REF != refs/heads/main ]]; then
+            echo "::error::Lancez ce workflow depuis la branche main (branche choisie : $GITHUB_REF_NAME)."
+            exit 1
+          fi
+          if [[ -z $VPS_HOST ]]; then
+            echo "::error::Variable de dépôt VPS_HOST absente : serveur pas encore configuré (docs/deploiement-vps.md, 4.2). Rien n'a été modifié."
+            exit 1
+          fi
           if [[ -n $REQUESTED && ! $REQUESTED =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::Indiquez un commit complet (40 caractères hexadécimaux), ou laissez le champ vide."
             exit 1
@@ -54,7 +64,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.commit || github.sha }}
-          # Historique complet : le commit demandé doit être dans prod.
+          # Historique complet : comparaison avec prod.
           fetch-depth: 0
           persist-credentials: false
 
@@ -65,13 +75,31 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           commit=$(git rev-parse HEAD)
-          if ! git merge-base --is-ancestor "$commit" origin/prod; then
-            echo "::error::Le commit $commit n'est pas dans la branche prod : refusé."
-            exit 1
-          fi
-          # Un retour arrière ne vise qu'une version déjà mise en production (un commit intermédiaire d'une pull
-          # request, jamais relu seul, est refusé). GitHub enregistre chaque déploiement de l'environnement production.
-          if [[ -n $REQUESTED ]]; then
+          prod=$(git rev-parse origin/prod)
+          if [[ -z $REQUESTED ]]; then
+            # Cas normal : prod est un ancêtre du commit, elle avance. Sinon, prod a des commits que l'historique de
+            # main n'a pas : un commit passé par prod puis entré dans main par « Rebase and merge » y a un autre
+            # identifiant (rattrapage de l'ADR 0025, correction poussée sur prod). prod est alors remplacée, à la
+            # seule condition que chacun de ces commits ait son équivalent dans main (même modification : git cherry) ;
+            # sinon une modification de prod serait perdue. Le job deploy ne modifie prod que si elle est encore sur
+            # le commit contrôlé ici.
+            if ! git merge-base --is-ancestor "$prod" "$commit"; then
+              cherry=$(git cherry -v "$commit" "$prod")
+              missing=$(awk '/^\+/' <<<"$cherry")
+              if [[ -n $missing ]]; then
+                echo "::error::prod contient des modifications absentes de main : rien n'a été modifié. Faites-les entrer dans main par une pull request, puis relancez. Commits concernés (ci-dessous)."
+                echo "$missing"
+                exit 1
+              fi
+              echo "prod sera remplacée par $commit : ses $(wc -l <<<"$cherry") commits absents de l'historique de main y ont tous leur équivalent."
+            fi
+          else
+            if ! git merge-base --is-ancestor "$commit" origin/prod; then
+              echo "::error::Le commit $commit n'est pas dans la branche prod : refusé."
+              exit 1
+            fi
+            # Un retour arrière ne vise qu'une version déjà mise en production (un commit intermédiaire d'une pull
+            # request, jamais relu seul, est refusé). GitHub enregistre chaque déploiement de l'environnement production.
             count=$(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=production&sha=$commit" --jq length)
             if [[ $count -eq 0 ]]; then
               echo "::error::Le commit $commit n'a jamais été mis en production : refusé."
@@ -79,6 +107,7 @@ jobs:
             fi
           fi
           echo "sha=$commit" >> "$GITHUB_OUTPUT"
+          echo "prod=$prod" >> "$GITHUB_OUTPUT"
 
       - name: Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -99,7 +128,7 @@ jobs:
   deploy:
     needs: verify
     runs-on: ubuntu-24.04
-    # Clé SSH et valeurs publiques du build : environnement « production », limité à la branche prod.
+    # Clé SSH, jeton de prod et valeurs publiques du build : environnement « production », limité à la branche main.
     environment: production
     timeout-minutes: 30
     permissions:
@@ -126,6 +155,29 @@ jobs:
             --build-arg NEXT_PUBLIC_APPWRITE_PROJECT_ID \
             --build-arg NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY \
             .
+
+      # Après l'image (une image qui ne se construit pas ne touche pas prod), avant l'envoi (le serveur n'accepte qu'un
+      # commit de prod). --force-with-lease : GitHub ne modifie prod que si elle est encore sur le commit contrôlé par
+      # verify ; un commit arrivé sur prod entre-temps n'est jamais écrasé. Jeton dédié : GITHUB_TOKEN ne peut jamais
+      # faire avancer une branche sur un commit qui modifie .github/workflows (ADR 0025).
+      - name: Mise à jour de prod
+        if: inputs.commit == ''
+        env:
+          COMMIT: ${{ needs.verify.outputs.commit }}
+          PROD_BEFORE: ${{ needs.verify.outputs.prod }}
+          GH_TOKEN: ${{ secrets.PROD_BRANCH_TOKEN }}
+        run: |
+          if [[ -z $GH_TOKEN ]]; then
+            echo "::error::Secret PROD_BRANCH_TOKEN absent de l'environnement production (docs/deploiement-vps.md, 4.2). Rien n'a été déployé."
+            exit 1
+          fi
+          # git demande le jeton à gh, qui le lit dans GH_TOKEN : il n'est écrit ni sur le disque ni dans la commande.
+          gh auth setup-git
+          if ! git push --force-with-lease="refs/heads/prod:$PROD_BEFORE" origin "$COMMIT:refs/heads/prod"; then
+            echo "::error::prod n'a pas pu être placée sur $COMMIT (réponse de GitHub juste au-dessus ; docs/deploiement-vps.md, Dépannage). Rien n'a été déployé."
+            exit 1
+          fi
+          echo "prod est sur $COMMIT."
 
       - name: Envoi au serveur et bascule
         env:
