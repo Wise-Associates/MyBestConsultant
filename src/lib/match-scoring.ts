@@ -344,7 +344,8 @@ Réponds UNIQUEMENT par un tableau JSON, une valeur par paire, dans l'ordre : ["
   }
 }
 
-const POINTS: Record<Judgement | 'non requis' | 'non précisé', number> = { oui: 1, partiel: 0.5, non: 0, 'non requis': 1, 'non précisé': 1 }
+/** Part d'un critère selon son jugement (aussi lue par le détail affiché d'un score, score-breakdown.ts). */
+export const POINTS: Record<Judgement | 'non requis' | 'non précisé', number> = { oui: 1, partiel: 0.5, non: 0, 'non requis': 1, 'non précisé': 1 }
 
 const ROLE_CAPS: Record<Judgement, number> = { oui: 100, ...ROLE_CAP }
 
