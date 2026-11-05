@@ -261,8 +261,9 @@ export function SiteNavbarClient({ siteName, logoUrl, navLinks, user, supportUnr
 
           {/* "Demander une présentation" — kept outside .nav-desktop so it stays visible on
               mobile too, at the far right of the bar, instead of being hidden inside the
-              menu until opened. Not shown to admins and recruiters: they already use the platform. */}
-          {user?.role !== 'admin' && user?.role !== 'recruiter' && (
+              menu until opened. Shown to visitors and candidates only: admins, recruiters and hunters (chasseurs,
+              removed 2026-11-05) already use the platform. */}
+          {(!user || user.role === 'candidate') && (
             <Link href={CALENDLY_URL} target="_blank" rel="noreferrer" className="mbc-nav-cta"
               style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', borderRadius: 10, fontSize: 13, fontWeight: 700, color: '#1a1305', textDecoration: 'none', background: 'linear-gradient(135deg,#E8A33D,#F0B860)', boxShadow: '0 4px 16px rgba(232,163,61,0.25)', transition: 'transform 0.15s, box-shadow 0.2s', flexShrink: 0 }}
               onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(-1px)'; el.style.boxShadow = '0 6px 20px rgba(232,163,61,0.4)' }}

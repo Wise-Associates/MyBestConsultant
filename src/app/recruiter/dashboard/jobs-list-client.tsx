@@ -123,7 +123,7 @@ export function JobsListClient({
   const failed = count('diffusionFailed')
   const expiring = count('expiringSoon')
   const tiles: { focus: JobFocus; n: number; label: string; sub: string; icon: ReactNode; ink: string }[] = [
-    { focus: 'new', n: newApplications, label: plural(newApplications, 'nouvelle candidature', 'nouvelles candidatures'),
+    { focus: 'new', n: newApplications, label: plural(newApplications, 'nouvelle candidature en attente', 'nouvelles candidatures en attente'),
       sub: newApplications > 0 ? `Réparties sur ${jobsWithNew} ${plural(jobsWithNew, 'offre', 'offres')}` : 'Toutes ont été traitées',
       icon: <Inbox className="h-4.5 w-4.5" />, ink: 'var(--color-primary)' },
     { focus: 'noApplications', n: noApplications, label: plural(noApplications, 'offre sans candidature', 'offres sans candidature'),
