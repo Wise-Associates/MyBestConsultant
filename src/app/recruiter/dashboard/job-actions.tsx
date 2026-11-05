@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState, useTransition, type KeyboardEvent } from 'react'
 import Link from 'next/link'
-import { Loader2, Pencil, MoreHorizontal, RefreshCw, Sparkles, Archive, ArchiveRestore, Trash2 } from 'lucide-react'
+import { Loader2, Pencil, MoreHorizontal, RefreshCw, Sparkles, Archive, ArchiveRestore, Trash2, ExternalLink } from 'lucide-react'
 import { toggleJobStatusAction, deleteJobAction } from './actions'
 import { JobEditModal } from '@/app/admin/jobs/job-edit-modal'
 import type { JobState } from '@/lib/recruiter-dashboard'
@@ -12,7 +12,9 @@ const iconButton = 'w-10 h-10 rounded-[10px] flex items-center justify-center tr
 const item = 'w-full h-[38px] px-2.5 rounded-[9px] flex items-center gap-2.5 text-left text-[13px] font-medium no-underline transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_5%,transparent)] focus-visible:outline-none focus-visible:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)]'
 
 // Actions d'une ligne de « Mes offres » : « Modifier » et le menu « Autres actions ». Une offre partagée de la plateforme
-// (tenantId '') n'a que « Voir le matching IA » : le serveur refuse de la modifier pour un recruteur.
+// (tenantId '') n'a que « Voir l'offre » et « Voir le matching IA » : le serveur refuse de la modifier pour un recruteur.
+// « Voir l'offre » ouvre la page publique de l'offre (/jobs/<id>, affichée même archivée) dans un nouvel onglet, pour
+// garder la liste filtrée (demande du 2026-11-05).
 export function JobActions({ job, state, shared, matchingHref, canRepublish, onRepublish }: {
   job: Job; state: JobState; shared: boolean; matchingHref: string
   /** Offre en ligne déjà diffusée, aucune diffusion en cours : « Republier sur les réseaux ». */
@@ -93,6 +95,10 @@ export function JobActions({ job, state, shared, matchingHref, canRepublish, onR
             <div ref={menuRef} id={menuId} role="menu" aria-label="Actions de l’offre" onKeyDown={onMenuKey}
               className="absolute right-0 top-full mt-1 z-20 w-[240px] p-1.5 rounded-[14px] flex flex-col gap-0.5"
               style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 16px 40px rgba(28,28,30,0.12)' }}>
+              <a href={`/jobs/${job.$id}`} target="_blank" rel="noopener noreferrer" role="menuitem" className={item}
+                style={{ color: 'var(--color-text)' }} onClick={() => setOpen(false)}>
+                <ExternalLink className="h-3.75 w-3.75" aria-hidden />Voir l’offre<span className="sr-only"> (nouvel onglet)</span>
+              </a>
               {canRepublish && (
                 <button type="button" role="menuitem" className={item} style={{ color: 'var(--color-text)' }} onClick={() => { setOpen(false); onRepublish() }}>
                   <RefreshCw className="h-3.75 w-3.75" aria-hidden />Republier sur les réseaux
