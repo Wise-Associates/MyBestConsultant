@@ -10,6 +10,7 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
 import { PipelineClient, type PipelineCandidate } from './pipeline-client'
+import { jobMetaLine } from '@/components/recruiter/job-tabs'
 import type { InterviewAnalysis } from '@/app/recruiter/interviews/actions'
 import { getEmailsForApplications } from '@/lib/appwrite/application-emails'
 import type { FunnelStage } from '@/types'
@@ -115,5 +116,5 @@ export default async function PipelinePage({ params }: { params: Promise<{ jobId
   const boardStages: FunnelStage[] = withOrphanStages(stages, candidates.map(c => c.status)).map(s =>
     stages.find(x => x.slug === s.slug) ?? { $id: `orphan-${s.slug}`, tenantId: user.tenantId!, slug: s.slug, label: s.label, color: s.color, order: s.order })
 
-  return <PipelineClient jobId={jobId} tenantId={user.tenantId} jobTitle={job.title} initialCandidates={candidates} initialStages={boardStages} initialEmails={emails} pipeline={pipeline} />
+  return <PipelineClient jobId={jobId} tenantId={user.tenantId} jobTitle={job.title} jobMeta={jobMetaLine(job)} initialCandidates={candidates} initialStages={boardStages} initialEmails={emails} pipeline={pipeline} />
 }

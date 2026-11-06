@@ -52,10 +52,47 @@ export function ScoreDetail({ breakdown, match }: { breakdown: ScoreBreakdown; m
   )
 }
 
-/** Mode de calcul des scores, replié au-dessus de la liste : critères, preuves, plafonds, recommandations, seuils. */
-export function ScoringGuide() {
+/**
+ * Même détail en colonne, pour le panneau du candidat sur grand écran (dès 1440 px) : un critère par ligne, sa barre, ses
+ * points ; jugements résumés au survol de la ligne.
+ */
+export function ScoreCriteriaList({ breakdown, match }: { breakdown: ScoreBreakdown; match: JobMatchResult & { score: number } }) {
+  const adjustment = scoreAdjustment(match.source, match.score, breakdown.score, !!match.recommendation)
   return (
-    <details className="group mb-6 rounded-2xl" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+    <div>
+      <ul aria-label="Détail du score" className="flex flex-col gap-2">
+        {breakdown.parts.map(p => (
+          <li key={p.key} className="grid grid-cols-[96px_minmax(0,1fr)_52px] items-center gap-2.5 text-[12.5px]" title={`${p.label} : ${p.detail}`}>
+            <HoverCard bare ariaLabel={`${p.label} : ce que mesure ce critère`}
+              label={<span className="inline-flex items-center gap-1 font-medium" style={strong}>{p.label}<Info className="h-3 w-3" style={muted} aria-hidden /></span>}>
+              <span className="block font-semibold mb-1">{p.label} · {p.max} points</span>
+              {CRITERION_HELP[p.key]}
+            </HoverCard>
+            <span aria-hidden className="h-1.5 rounded-full overflow-hidden" style={{ background: 'color-mix(in srgb, var(--color-text) 8%, transparent)' }}>
+              <span className="block h-full rounded-full" style={{ width: `${p.percent}%`, background: barColor(p.percent) }} />
+            </span>
+            <span className="text-right font-semibold tabular-nums" style={strong}>{pts(p.points)}/{p.max}</span>
+          </li>
+        ))}
+      </ul>
+      {(breakdown.cap || adjustment) && (
+        <p className="mt-2.5 text-[11.5px] leading-snug" style={muted}>
+          Total des critères <b className="tabular-nums" style={strong}>{breakdown.total}</b>
+          {breakdown.cap && <> · plafonné à <b className="tabular-nums" style={strong}>{breakdown.cap.value}</b> : {breakdown.cap.reason}</>}
+          {adjustment && <> · {adjustment.label} <b className="tabular-nums" style={strong}>{adjustment.value > 0 ? '+' : '−'}{Math.abs(adjustment.value)}</b></>}
+        </p>
+      )}
+    </div>
+  )
+}
+
+/** Couleur d'un critère en pastille dans le tableau : oui (vert), partiel (orange), non (rouge). */
+export const criterionTone = (percent: number) => (percent >= 85 ? '#10b981' : percent >= 35 ? '#f59e0b' : '#ef4444')
+
+/** Mode de calcul des scores, replié au-dessus de la liste : critères, preuves, plafonds, recommandations, seuils. */
+export function ScoringGuide({ className = 'mb-6' }: { className?: string }) {
+  return (
+    <details className={`group ${className} rounded-2xl`} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
       <summary className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer list-none rounded-2xl text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text) [&::-webkit-details-marker]:hidden"
         style={strong}>
         <span className="inline-flex items-center gap-2"><Info className="h-4 w-4" style={muted} aria-hidden />Comment le score est calculé</span>

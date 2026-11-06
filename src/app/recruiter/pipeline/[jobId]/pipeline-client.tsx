@@ -1,14 +1,15 @@
 'use client'
 
-import { useMemo, useState, useTransition, useEffect } from 'react'
+import { Fragment, useMemo, useState, useTransition, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { BackLink } from '@/components/recruiter/back-link'
+import { JobTabs } from '@/components/recruiter/job-tabs'
 import {
   FileText, ArrowDownWideNarrow, ArrowUpWideNarrow, Settings2, Plus, X,
   Brain, Video, Pencil, Trash2, History, Loader2, GripVertical, Tag as TagIcon,
   StickyNote, CheckCircle2, ChevronDown, ChevronUp, Sparkles, AlertCircle,
-  Archive, ThumbsUp, ThumbsDown, Mail, Copy, ExternalLink, Edit3, Send, ChevronRight, GitBranch,
+  Archive, ThumbsUp, ThumbsDown, Mail, Copy, ExternalLink, Edit3, Send, ChevronRight, GitBranch, Search,
 } from 'lucide-react'
 import {
   moveApplicationStage, saveFunnelStagesAction, updateApplicationCardAction,
@@ -839,8 +840,8 @@ const DELIVERY_UI: Record<PipelineEmail['delivery'], { label: string; color: str
 // Side column (not a funnel stage): one card per candidate who received a personalised
 // email, showing delivery state and whether they answered — via the "Répondre" button in
 // the email (tracked automatically) or marked by hand by the recruiter.
-function EmailsColumn({ candidates, emails, onReplied }: {
-  candidates: PipelineCandidate[]; emails: PipelineEmail[]; onReplied: (emailId: string, repliedAt: string | undefined) => void
+function EmailsColumn({ candidates, emails, onReplied, className = '' }: {
+  candidates: PipelineCandidate[]; emails: PipelineEmail[]; onReplied: (emailId: string, repliedAt: string | undefined) => void; className?: string
 }) {
   const byApp = new Map<string, PipelineEmail[]>()
   for (const e of emails) { if (!byApp.has(e.applicationId)) byApp.set(e.applicationId, []); byApp.get(e.applicationId)!.push(e) }
@@ -848,7 +849,7 @@ function EmailsColumn({ candidates, emails, onReplied }: {
   const awaiting = emails.filter(e => !e.repliedAt).length
 
   return (
-    <div className="shrink-0 snap-start rounded-2xl flex flex-col w-[86vw] sm:w-[300px] max-h-[calc(100vh-220px)]"
+    <div className={`shrink-0 snap-start rounded-2xl flex flex-col w-[86vw] sm:w-[300px] max-h-[calc(100vh-220px)] ${className}`}
       style={{ background: '#F5F3EE', border: '1px solid rgba(0,0,0,0.05)' }}>
       <div className="flex items-center justify-between px-3.5 py-3 shrink-0">
         <span className="text-[13px] font-bold flex items-center gap-2" style={{ color: 'var(--color-text)' }}>
@@ -864,6 +865,29 @@ function EmailsColumn({ candidates, emails, onReplied }: {
         ) : cards.map(c => <EmailCard key={c.appId} candidate={c} emails={byApp.get(c.appId)!} onReplied={onReplied} />)}
       </div>
     </div>
+  )
+}
+
+// Grand écran (dès 1440 px) : les e-mails quittent le tableau pour le rail de gauche, mêmes cartes (échanges, « Marquer
+// comme répondu »), celles qui attendent une réponse en tête. Le tableau gagne une colonne.
+function EmailsRail({ candidates, emails, onReplied }: {
+  candidates: PipelineCandidate[]; emails: PipelineEmail[]; onReplied: (emailId: string, repliedAt: string | undefined) => void
+}) {
+  const byApp = new Map<string, PipelineEmail[]>()
+  for (const e of emails) { if (!byApp.has(e.applicationId)) byApp.set(e.applicationId, []); byApp.get(e.applicationId)!.push(e) }
+  const waiting = (c: PipelineCandidate) => byApp.get(c.appId)!.some(e => !e.repliedAt)
+  const cards = candidates.filter(c => byApp.has(c.appId)).sort((a, b) => Number(waiting(b)) - Number(waiting(a)))
+  const awaiting = emails.filter(e => !e.repliedAt).length
+  return (
+    <section aria-label="E-mails envoyés" className="rounded-2xl p-3.5" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+      <h2 className="flex items-center justify-between gap-2 mb-2.5 font-semibold uppercase" style={{ color: 'var(--color-text-muted)', fontSize: 11, letterSpacing: '0.06em', lineHeight: 1.4 }}>
+        <span className="inline-flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" aria-hidden />E-mails envoyés</span>
+        {awaiting > 0 && <span className="normal-case tracking-normal text-[11px]" style={{ color: '#b45309' }}>{awaiting} sans réponse</span>}
+      </h2>
+      {cards.length === 0
+        ? <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Aucun e-mail envoyé.</p>
+        : <div className="max-h-[42vh] overflow-y-auto -mx-1 px-1">{cards.map(c => <EmailCard key={c.appId} candidate={c} emails={byApp.get(c.appId)!} onReplied={onReplied} />)}</div>}
+    </section>
   )
 }
 
@@ -945,8 +969,13 @@ function EmailCard({ candidate, emails, onReplied }: {
 }
 
 export function PipelineClient({
-  jobId, jobTitle, initialCandidates, initialStages, initialEmails, pipeline = null,
-}: { jobId: string; tenantId: string; jobTitle: string; initialCandidates: PipelineCandidate[]; initialStages: FunnelStage[]; initialEmails: PipelineEmail[]; pipeline?: { id: string; name: string } | null }) {
+  jobId, jobTitle, jobMeta, initialCandidates, initialStages, initialEmails, pipeline = null,
+}: {
+  jobId: string; tenantId: string; jobTitle: string
+  /** « Paris · CDI · Publiée le 3 nov. 2026 » : rappel de l'offre dans le bandeau, sur grand écran. */
+  jobMeta: string
+  initialCandidates: PipelineCandidate[]; initialStages: FunnelStage[]; initialEmails: PipelineEmail[]; pipeline?: { id: string; name: string } | null
+}) {
   const [candidates, setCandidates] = useState(initialCandidates)
   const [emails, setEmails] = useState(initialEmails)
   const [stages, setStages] = useState(initialStages)
@@ -958,6 +987,12 @@ export function PipelineClient({
   const [processFor, setProcessFor] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [historyId, setHistoryId] = useState<string | null>(null)
+  // Grand écran (demande du 2026-11-06) : recherche du rail, phases vides réduites à une bande (dépliées une à une au
+  // clic), candidat affiché dans le panneau de droite (dès 1800 px).
+  const [query, setQuery] = useState('')
+  const [collapseEmpty, setCollapseEmpty] = useState(true)
+  const [openedEmpty, setOpenedEmpty] = useState<Set<string>>(new Set())
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const [globalError, setGlobalError] = useState<string | null>(null)
   const [autoOpenInterviewFor, setAutoOpenInterviewFor] = useState<string | null>(null)
@@ -1109,8 +1144,10 @@ export function PipelineClient({
   const byStage = useMemo(() => {
     const map = new Map<string, PipelineCandidate[]>()
     for (const stage of stages) map.set(stage.slug, [])
+    const q = query.trim().toLocaleLowerCase('fr')
     for (const c of candidates) {
       if (c.aiScore !== undefined && c.aiScore < minScore) continue
+      if (q && !`${c.candidateName} ${c.candidateEmail}`.toLocaleLowerCase('fr').includes(q)) continue
       if (!map.has(c.status)) map.set(c.status, []) // unknown/legacy status → its own column
       map.get(c.status)!.push(c)
     }
@@ -1122,7 +1159,7 @@ export function PipelineClient({
       })
     }
     return map
-  }, [candidates, minScore, sortDir, stages])
+  }, [candidates, minScore, sortDir, stages, query])
 
   // Stats bar — total counts per stage, always unfiltered (independent of the score slider
   // above, which only affects which cards are visible in the columns).
@@ -1132,39 +1169,103 @@ export function PipelineClient({
   }))
 
   const editingCandidate = candidates.find(c => c.appId === editingId)
+  const selected = candidates.find(c => c.appId === selectedId) ?? null
+
+  // Déplacement depuis le panneau : même règle que le glisser-déposer (pas de retour avant une étape déjà faite).
+  function moveFromPanel(appId: string, stageSlug: string) {
+    const candidate = candidates.find(c => c.appId === appId)
+    const target = stages.find(s => s.slug === stageSlug)
+    if (busy[appId] || !candidate || !target) return
+    if (target.order < minAllowedOrder(candidate, stages)) {
+      setGlobalError('Cette candidature a déjà dépassé cette étape — impossible de revenir en arrière.')
+      setTimeout(() => setGlobalError(null), 4000)
+      return
+    }
+    moveCard(appId, stageSlug)
+  }
+
+  // ── Grand écran (dès 1440 px, demande du 2026-11-06) : recherche, score minimum, tri, phases vides réduites, e-mails
+  // et raccourcis dans un rail à gauche ; le tableau gagne la colonne des e-mails.
+  const railCard = 'rounded-2xl p-3.5'
+  const railCardStyle = { background: 'var(--color-surface)', border: '1px solid var(--color-border)' }
+  const railHeadingStyle = { color: 'var(--color-text-muted)', fontSize: 11, letterSpacing: '0.06em', lineHeight: 1.4 }
+  const railRow = 'w-full flex items-center justify-between gap-2 py-1.5 text-[13px] bg-transparent border-0 p-0 cursor-pointer rounded-sm no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)'
+  const rail = (
+    <aside aria-label="Filtres et e-mails" className="hidden min-[90rem]:flex flex-col gap-3 sticky top-[84px]">
+      <label className="relative block">
+        <span className="sr-only">Rechercher un candidat</span>
+        <Search aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={{ color: 'var(--color-text-muted)' }} />
+        <input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Rechercher un candidat…"
+          className="h-10 w-full pl-9 pr-3 rounded-xl text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-text)"
+          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
+      </label>
+      <div className={railCard} style={railCardStyle}>
+        <h2 className="font-semibold uppercase mb-2" style={railHeadingStyle}>Affichage</h2>
+        <label className="block text-[13px]" style={{ color: 'var(--color-text)' }}>
+          <span className="flex items-center justify-between mb-1.5">Score min. <b className="tabular-nums">{minScore}</b></span>
+          <input type="range" min={0} max={100} step={5} value={minScore} onChange={e => setMinScore(Number(e.target.value))} className="w-full accent-(--color-primary)" />
+        </label>
+        <button type="button" onClick={() => setSortDir(d => (d === 'desc' ? 'asc' : 'desc'))} className={`${railRow} mt-1.5`} style={{ color: 'var(--color-text)' }}>
+          Tri par score
+          <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+            {sortDir === 'desc' ? <><ArrowDownWideNarrow className="h-3.5 w-3.5" aria-hidden />décroissant</> : <><ArrowUpWideNarrow className="h-3.5 w-3.5" aria-hidden />croissant</>}
+          </span>
+        </button>
+        <button type="button" aria-pressed={collapseEmpty} onClick={() => { setCollapseEmpty(v => !v); setOpenedEmpty(new Set()) }} className={railRow} style={{ color: 'var(--color-text)' }}>
+          Phases vides
+          <span className="text-xs font-semibold" style={{ color: collapseEmpty ? 'var(--color-primary)' : 'var(--color-text-muted)' }}>{collapseEmpty ? 'réduites' : 'affichées'}</span>
+        </button>
+      </div>
+      <EmailsRail candidates={candidates} emails={emails} onReplied={handleEmailReplied} />
+      <div className={railCard} style={railCardStyle}>
+        <h2 className="font-semibold uppercase mb-1" style={railHeadingStyle}>Raccourcis</h2>
+        <Link href={`/recruiter/pipeline/${jobId}/matching`} className={railRow} style={{ color: 'var(--color-text)' }}>
+          <span className="inline-flex items-center gap-2"><Brain className="h-3.5 w-3.5" aria-hidden />Matching IA</span><ChevronRight className="h-3.5 w-3.5" aria-hidden />
+        </Link>
+        <a href={`/jobs/${jobId}`} target="_blank" rel="noopener noreferrer" className={railRow} style={{ color: 'var(--color-text)' }}>
+          <span className="inline-flex items-center gap-2"><ExternalLink className="h-3.5 w-3.5" aria-hidden />Voir l’offre publiée</span>
+        </a>
+        <button type="button" onClick={() => setConfigOpen(true)} className={railRow} style={{ color: 'var(--color-text)' }}>
+          <span className="inline-flex items-center gap-2"><Settings2 className="h-3.5 w-3.5" aria-hidden />Étapes de cette offre</span>
+        </button>
+      </div>
+    </aside>
+  )
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-        <div className="max-w-[1400px] mx-auto px-6 py-6">
+      <div className="sticky top-0 z-20 min-[90rem]:static" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-6 min-[90rem]:py-4">
           <BackLink fallbackHref="/recruiter/dashboard"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 no-underline transition-opacity hover:opacity-80"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 min-[90rem]:mb-1.5 no-underline transition-opacity hover:opacity-80"
             style={{ color: '#c4b5fd' }} />
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div>
+          <div className="flex items-center justify-between gap-4 flex-wrap min-[90rem]:flex-nowrap">
+            <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
                 Pipeline de recrutement
               </p>
               <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.5rem' }}>{jobTitle}</h1>
+              <p className="hidden min-[90rem]:block text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>{jobMeta}</p>
               <Link href={`/recruiter/funnel?tab=phases${pipeline ? `&pipeline=${pipeline.id}` : ''}`} className="inline-flex items-center gap-1.5 mt-1.5 text-[11px] font-semibold no-underline transition-opacity hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }}>
                 Colonnes : <span style={{ color: '#E8A33D' }}>{pipeline?.name ?? 'Pipeline par défaut'}</span> · gérer
               </Link>
             </div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <label className="flex items-center gap-2 text-xs font-medium" style={{ color: 'rgba(255,255,255,0.6)' }}>
+            <JobTabs jobId={jobId} current="pipeline" />
+            <div className="flex items-center gap-3 flex-wrap min-[90rem]:shrink-0">
+              <label className="flex min-[90rem]:hidden items-center gap-2 text-xs font-medium" style={{ color: 'rgba(255,255,255,0.6)' }}>
                 Score min.
                 <input type="range" min={0} max={100} step={5} value={minScore}
                   onChange={e => setMinScore(Number(e.target.value))} />
                 <span style={{ color: 'white', fontWeight: 700, minWidth: 26, display: 'inline-block' }}>{minScore}</span>
               </label>
               <button onClick={() => setSortDir(d => (d === 'desc' ? 'asc' : 'desc'))}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80"
+                className="inline-flex min-[90rem]:hidden items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80"
                 style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.15)' }}>
                 {sortDir === 'desc' ? <ArrowDownWideNarrow className="h-3.5 w-3.5" /> : <ArrowUpWideNarrow className="h-3.5 w-3.5" />}
                 Score
               </button>
               <Link href={`/recruiter/pipeline/${jobId}/matching`}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold no-underline transition-opacity hover:opacity-80"
+                className="inline-flex min-[90rem]:hidden items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold no-underline transition-opacity hover:opacity-80"
                 style={{ background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.3)' }}>
                 <Brain className="h-3.5 w-3.5" /> Matching IA
               </Link>
@@ -1179,7 +1280,7 @@ export function PipelineClient({
           {/* Stats du funnel — vue d'ensemble de l'avancement de tous les candidats sur
               cette offre, un chiffre par étape configurée. */}
           {stageStats.some(s => s.count > 0) && (
-            <div className="flex items-center gap-2 flex-wrap mt-4 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="flex items-center gap-2 flex-wrap mt-4 pt-4 min-[90rem]:mt-3 min-[90rem]:pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
               {stageStats.map(({ stage, count }) => (
                 <div key={stage.slug} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
                   style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${stage.color}40` }}>
@@ -1193,13 +1294,15 @@ export function PipelineClient({
         </div>
       </div>
 
-      <div className="max-w-[1400px] mx-auto px-6 py-8">
+      <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-8 min-[90rem]:py-5 min-[90rem]:grid min-[90rem]:grid-cols-[256px_minmax(0,1fr)] min-[112.5rem]:grid-cols-[256px_minmax(0,1fr)_340px] min-[90rem]:gap-5 min-[90rem]:items-start">
+        {rail}
+        <div className="min-w-0">
         {globalError && (
           <div className="flex items-center gap-2 mb-4 px-4 py-2.5 rounded-lg text-sm font-semibold" style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
             <AlertCircle className="h-4 w-4 shrink-0" /> {globalError}
           </div>
         )}
-        <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory mbc-board">
+        <div className="flex gap-4 min-[90rem]:gap-2.5 overflow-x-auto pb-4 snap-x snap-mandatory mbc-board">
           {stages.map((stage, stageIndex) => {
             const isFirstStage = stageIndex === 0
             const list = byStage.get(stage.slug) ?? []
@@ -1208,9 +1311,25 @@ export function PipelineClient({
               ? Math.round(scored.reduce((s, c) => s + (c.aiScore ?? 0), 0) / scored.length)
               : null
             const isOver = dragOverStage === stage.slug
+            // Grand écran : une phase vide devient une bande étroite, qui reste une zone de dépôt et se déplie au clic.
+            const slim = collapseEmpty && list.length === 0 && !openedEmpty.has(stage.slug)
             return (
-              <div key={stage.slug}
-                className="shrink-0 snap-start rounded-2xl flex flex-col w-[86vw] sm:w-[300px] max-h-[calc(100vh-220px)]"
+              <Fragment key={stage.slug}>
+              {slim && (
+                <button type="button" title={`${stage.label} : aucun candidat. Cliquez pour déplier la colonne.`}
+                  onClick={() => setOpenedEmpty(prev => new Set(prev).add(stage.slug))}
+                  onDragOver={e => { e.preventDefault(); setDragOverStage(stage.slug) }}
+                  onDragLeave={() => setDragOverStage(prev => (prev === stage.slug ? null : prev))}
+                  onDrop={() => handleDrop(stage.slug)}
+                  className="hidden min-[90rem]:flex shrink-0 w-9 flex-col items-center gap-2.5 py-3 rounded-2xl cursor-pointer max-h-[calc(100vh-220px)] focus-visible:outline-2 focus-visible:outline-(--color-text)"
+                  style={{ background: isOver ? `${stage.color}14` : '#F5F3EE', border: `1px dashed ${isOver ? stage.color : 'rgba(0,0,0,0.14)'}`, color: 'var(--color-text-muted)', minHeight: 320 }}>
+                  <span aria-hidden className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: stage.color }} />
+                  <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(0,0,0,0.06)' }}>0</span>
+                  <span className="text-xs font-semibold whitespace-nowrap [writing-mode:vertical-rl] rotate-180">{stage.label}</span>
+                </button>
+              )}
+              <div
+                className={`shrink-0 snap-start rounded-2xl flex flex-col w-[86vw] sm:w-[300px] min-[90rem]:w-[232px] max-h-[calc(100vh-220px)] ${slim ? 'min-[90rem]:hidden' : ''}`}
                 style={{ background: '#F5F3EE', border: '1px solid rgba(0,0,0,0.05)' }}
                 onDragOver={e => { e.preventDefault(); setDragOverStage(stage.slug) }}
                 onDragLeave={() => setDragOverStage(prev => (prev === stage.slug ? null : prev))}
@@ -1245,7 +1364,11 @@ export function PipelineClient({
                   {list.length === 0 ? (
                     <p className="text-xs text-center py-8" style={{ color: 'var(--color-text-muted)', opacity: 0.6 }}>Aucun candidat</p>
                   ) : list.map(c => (
-                    <CandidateCard key={c.appId} candidate={c} jobId={jobId} jobTitle={jobTitle} stages={stages} stageColor={stage.color}
+                    // Clic sur la carte (hors boutons et liens) : le candidat s'affiche dans le panneau de droite (dès 1800 px).
+                    <div key={c.appId} data-selected={selectedId === c.appId || undefined}
+                      onClick={e => { if (!(e.target as HTMLElement).closest('a, button, select, input, textarea, label')) setSelectedId(c.appId) }}
+                      className="rounded-2xl min-[112.5rem]:data-selected:[&>div]:outline-2 min-[112.5rem]:data-selected:[&>div]:outline-(--color-primary)">
+                    <CandidateCard candidate={c} jobId={jobId} jobTitle={jobTitle} stages={stages} stageColor={stage.color}
                       suggestedAction={getStageAutoAction(stage)}
                       autoOpenInterview={autoOpenInterviewFor === c.appId}
                       onAutoOpened={() => setAutoOpenInterviewFor(null)}
@@ -1255,13 +1378,25 @@ export function PipelineClient({
                       onOpenEdit={() => setEditingId(c.appId)} onOpenHistory={() => setHistoryId(c.appId)}
                       onOpenProcess={() => setProcessFor(c.appId)}
                       onDelete={() => handleDelete(c.appId)} />
+                    </div>
                   ))}
                 </div>
               </div>
+              </Fragment>
             )
           })}
-          <EmailsColumn candidates={candidates} emails={emails} onReplied={handleEmailReplied} />
+          <EmailsColumn candidates={candidates} emails={emails} onReplied={handleEmailReplied} className="min-[90rem]:hidden" />
         </div>
+        </div>
+        {selected ? (
+          <CandidatePanel key={selected.appId} candidate={selected} stages={stages} busyLabel={busy[selected.appId]}
+            onMove={slug => moveFromPanel(selected.appId, slug)}
+            onOpenProcess={() => setProcessFor(selected.appId)} onOpenEdit={() => setEditingId(selected.appId)} onClose={() => setSelectedId(null)} />
+        ) : (
+          <aside className="hidden min-[112.5rem]:block sticky top-[84px] rounded-[20px] p-4 text-[13px]" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
+            Cliquez sur une carte pour afficher le candidat ici : sa phase, son score, les déplacements possibles et son historique.
+          </aside>
+        )}
       </div>
 
       {configOpen && (
@@ -1444,6 +1579,112 @@ function EditCardModal({ jobId, candidate, onClose, onSaved }: {
         </div>
       </div>
     </div>
+  )
+}
+
+// Panneau du candidat choisi, à droite du tableau dès 1800 px (demande du 2026-11-06) : phase, score, résumé de l'IA,
+// déplacements possibles, historique, CV et fiche. Les actions de la carte (screening, entretien, e-mail…) restent sur
+// la carte ; « Processus » et « Modifier » ouvrent les mêmes fenêtres qu'elle.
+function CandidatePanel({ candidate, stages, busyLabel, onMove, onOpenProcess, onOpenEdit, onClose }: {
+  candidate: PipelineCandidate; stages: FunnelStage[]; busyLabel?: string
+  onMove: (stageSlug: string) => void; onOpenProcess: () => void; onOpenEdit: () => void; onClose: () => void
+}) {
+  const [events, setEvents] = useState<FunnelEvent[] | null>(null)
+  useEffect(() => {
+    let ignore = false
+    getEventsAction(candidate.appId).then(list => { if (!ignore) setEvents(list) })
+    return () => { ignore = true }
+  }, [candidate.appId, candidate.status])
+  const sorted = [...stages].sort((a, b) => a.order - b.order)
+  const current = stages.find(s => s.slug === candidate.status)
+  const minOrder = minAllowedOrder(candidate, stages)
+  const reco = candidate.aiRecommendation ? RECO_LABEL[candidate.aiRecommendation] : undefined
+  const stageLabel = (slug: string) => stages.find(s => s.slug === slug)?.label ?? slug
+  const muted = { color: 'var(--color-text-muted)' }
+  const heading = 'font-semibold uppercase mt-4 mb-2'
+  const headingStyle = { ...muted, fontSize: 11, letterSpacing: '0.06em', lineHeight: 1.4 }
+  const button = 'h-10 px-3 rounded-[10px] inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold no-underline cursor-pointer transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)'
+  const name = candidate.candidateName || candidate.candidateEmail
+
+  return (
+    <aside aria-label={`Candidat : ${name}`} className="hidden min-[112.5rem]:block sticky top-[84px] max-h-[calc(100vh-100px)] overflow-y-auto rounded-[20px] p-4"
+      style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+      <div className="flex items-start gap-2.5">
+        <Initials name={name} />
+        <div className="min-w-0 flex-1">
+          <h2 className="font-bold truncate" style={{ color: 'var(--color-text)', fontSize: 17, lineHeight: 1.35 }}>{name}</h2>
+          {candidate.candidateEmail && <p className="text-xs truncate" style={muted}>{candidate.candidateEmail}</p>}
+        </div>
+        {candidate.aiScore !== undefined && (
+          <span className="shrink-0 text-[13px] font-bold px-2 py-0.5 rounded-full tabular-nums" style={{ background: `${scoreColor(candidate.aiScore)}18`, color: scoreColor(candidate.aiScore) }}>{candidate.aiScore}/100</span>
+        )}
+        <button type="button" onClick={onClose} aria-label="Fermer le panneau" className="shrink-0 -mr-1 p-1 rounded-md bg-transparent border-0 cursor-pointer hover:opacity-70" style={muted}><X className="h-4 w-4" /></button>
+      </div>
+
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12.5px] mt-3">
+        <dt style={muted}>Phase</dt>
+        <dd className="font-medium inline-flex items-center gap-1.5" style={{ color: 'var(--color-text)' }}>
+          <span aria-hidden className="w-2 h-2 rounded-full" style={{ background: current?.color ?? '#9ca3af' }} />{current?.label ?? candidate.status}
+        </dd>
+        {candidate.stageStatus && <><dt style={muted}>Statut</dt><dd className="font-medium" style={{ color: 'var(--color-text)' }}>{candidate.stageStatus}</dd></>}
+        {reco && <><dt style={muted}>Avis IA</dt><dd className="font-semibold" style={{ color: reco.color }}>{reco.label}</dd></>}
+        {candidate.hunterName && <><dt style={muted}>Proposé par</dt><dd style={{ color: 'var(--color-text)' }}>{candidate.hunterName}</dd></>}
+        <dt style={muted}>Candidature</dt><dd style={{ color: 'var(--color-text)' }}>{new Date(candidate.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}</dd>
+      </dl>
+      {busyLabel && <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--color-primary)' }}><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />{busyLabel}</p>}
+
+      {candidate.aiSummary && (
+        <p className="mt-3 text-[12.5px] leading-relaxed rounded-xl px-3 py-2.5" style={{ color: 'var(--color-text)', background: 'color-mix(in srgb, var(--color-text) 3%, transparent)' }}>{candidate.aiSummary}</p>
+      )}
+      {(candidate.tags.length > 0 || candidate.note) && (
+        <div className="mt-3">
+          {candidate.tags.length > 0 && <div className="flex flex-wrap gap-1.5">{candidate.tags.map(t => <span key={t} className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--color-text)' }}>{t}</span>)}</div>}
+          {candidate.note && <p className="mt-2 text-xs whitespace-pre-line" style={muted}>{candidate.note}</p>}
+        </div>
+      )}
+
+      <h3 className={heading} style={headingStyle}>Déplacer vers</h3>
+      <div className="flex flex-wrap gap-1.5">
+        {sorted.filter(s => s.slug !== candidate.status).map(s => {
+          const blocked = s.order < minOrder
+          return (
+            <button key={s.slug} type="button" disabled={blocked || !!busyLabel} onClick={() => onMove(s.slug)}
+              title={blocked ? 'Étape déjà dépassée' : undefined}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer bg-transparent disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[color-mix(in_srgb,var(--color-text)_4%,transparent)] focus-visible:outline-2 focus-visible:outline-(--color-text)"
+              style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
+              <span aria-hidden className="w-1.5 h-1.5 rounded-full" style={{ background: s.color }} />{s.label}
+            </button>
+          )
+        })}
+      </div>
+
+      <h3 className={heading} style={headingStyle}>Historique</h3>
+      {events === null ? (
+        <p className="text-xs inline-flex items-center gap-1.5" style={muted}><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />Chargement…</p>
+      ) : events.length === 0 ? (
+        <p className="text-xs" style={muted}>Aucun évènement pour l’instant.</p>
+      ) : (
+        <ol className="flex flex-col gap-2">
+          {events.slice(0, 8).map(ev => (
+            <li key={ev.$id} className="flex items-start gap-2.5 text-[12.5px]">
+              <span aria-hidden className="w-1.75 h-1.75 rounded-full mt-1.5 shrink-0" style={{ background: 'var(--color-primary)' }} />
+              <span className="min-w-0 flex-1" style={{ color: 'var(--color-text)' }}>
+                {EVENT_LABEL[ev.kind] ?? ev.kind}{ev.kind === 'stage_change' ? ` → ${stageLabel(ev.stageSlug)}` : ''}
+                {ev.note && <span className="block text-[11.5px]" style={muted}>{ev.note}</span>}
+              </span>
+              <span className="shrink-0 text-[11px]" style={muted}>{new Date(ev.$createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      <div className="grid grid-cols-2 gap-2 mt-4">
+        <button type="button" onClick={onOpenProcess} className={`${button} bg-transparent`} style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}><GitBranch className="h-3.5 w-3.5" aria-hidden />Processus</button>
+        <button type="button" onClick={onOpenEdit} className={`${button} bg-transparent`} style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}><Pencil className="h-3.5 w-3.5" aria-hidden />Tags et note</button>
+        {candidate.cvFileId && <a href={`/api/cv/${candidate.cvFileId}`} target="_blank" rel="noopener noreferrer" className={button} style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}><FileText className="h-3.5 w-3.5" aria-hidden />Voir le CV</a>}
+        <Link href={`/recruiter/candidates/${candidate.appId}`} className={button} style={{ background: 'var(--color-primary)', color: 'var(--color-primary-fg)' }}>Fiche candidat</Link>
+      </div>
+    </aside>
   )
 }
 
