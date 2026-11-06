@@ -17,7 +17,9 @@ import {
 } from '@/lib/matching-filters'
 import { initialUrlListSync, noteListWrite, syncFromUrl } from '@/lib/url-list-state'
 import { scoreBreakdown } from '@/lib/score-breakdown'
-import { ScoreDetail, ScoringGuide } from './score-detail'
+import { ScoreDetail, ScoringGuide, ScoreCriteriaList, criterionTone } from './score-detail'
+import { JobTabs } from '@/components/recruiter/job-tabs'
+import { SOURCING_MIN_SCORE } from '@/lib/sourcing-rules'
 
 const PAGE_SIZE = 25
 
@@ -54,7 +56,12 @@ function profileHref(m: JobMatchResult): string | null {
 }
 
 /** `now` : heure du rendu par le serveur (ISO), avancée à chaque actualisation de la liste. */
-export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId: string; jobTitle: string; initialMatches: JobMatchResult[]; now: string }) {
+export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMatches, now }: {
+  jobId: string; jobTitle: string
+  /** « Paris · CDI · Publiée le 3 nov. 2026 », et compétences de l'offre : rappel de l'offre sur grand écran. */
+  jobMeta: string; jobSkills: string[]
+  initialMatches: JobMatchResult[]; now: string
+}) {
   const [matches, setMatches] = useState(initialMatches)
   const [nowMs, setNowMs] = useState(() => new Date(now).getTime())
   const [page, setPage] = useState(1)
@@ -87,6 +94,8 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
   const [flash, setFlash] = useState<string | null>(null)
   const [justAdded, setJustAdded] = useState(false)
   const [running, setRunning] = useState<Set<string>>(new Set())
+  // Grand écran : candidat affiché dans le panneau de droite (clic sur sa ligne) ; par défaut, le premier de la page.
+  const [focusKey, setFocusKey] = useState<string | null>(null)
 
   // Candidature très récente non encore analysée : le matching tourne (automatiquement dès la réception).
   // On actualise la liste toutes les 8 s (2 min max) pour afficher le résultat sans recharger la page.
@@ -178,20 +187,284 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
     })
   }
 
+  const keyOf = (m: JobMatchResult) => `${m.source}-${m.id}`
+  const focused = pageItems.find(m => keyOf(m) === focusKey) ?? pageItems[0] ?? null
+  const scoreCounts = (['match', 'below', 'pending'] as const).map(score => ({ score, n: filterMatches(matches, { ...filters, score }).length }))
+  // Histogramme des scores (tranches de 10) du rail : où se situe le seuil de 65 pour cette offre.
+  const histogram = Array.from({ length: 10 }, (_, i) => matches.filter(m => m.score !== null && Math.min(9, Math.floor(m.score / 10)) === i).length)
+  const histogramPeak = Math.max(1, ...histogram)
+  const selectedMatches = matches.filter(m => selected.has(m.id))
+
+  // ── Grand écran (dès 1440 px, demande du 2026-11-06) : rail de filtres à gauche, tableau au centre, panneau du
+  // candidat et sélection à droite (colonne « Pourquoi » dès 1800 px ; avant, la raison est dans le panneau). En dessous,
+  // les cartes et la barre du bas d'avant.
+  const railCard = 'rounded-2xl p-3.5'
+  const railCardStyle: CSSProperties = { background: 'var(--color-surface)', border: '1px solid var(--color-border)' }
+  const railHeading = 'font-semibold uppercase mb-2'
+  const railHeadingStyle: CSSProperties = { ...muted, fontSize: 11, letterSpacing: '0.06em', lineHeight: 1.4 }
+  const railItem = (on: boolean) => `w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border-0 text-left text-[13px] cursor-pointer focus-visible:outline-2 focus-visible:outline-(--color-text) ${on ? 'font-semibold' : 'bg-transparent hover:bg-[color-mix(in_srgb,var(--color-text)_4%,transparent)]'}`
+  const railItemStyle = (on: boolean): CSSProperties => on ? { background: 'color-mix(in srgb, var(--color-primary) 12%, transparent)', color: 'var(--color-text)' } : { color: 'var(--color-text)' }
+
+  const rail = (
+    <aside aria-label="Filtres" className="hidden min-[90rem]:flex flex-col gap-3 sticky top-[84px]">
+      <label className="relative block">
+        <span className="sr-only">Rechercher un candidat</span>
+        <Search aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={muted} />
+        <input type="search" value={filters.q} onChange={e => update({ q: e.target.value })}
+          placeholder="Rechercher un nom, un e-mail…" className={`${field} w-full pl-9 font-normal text-sm`} style={fieldStyle} />
+      </label>
+      <div className={railCard} style={railCardStyle}>
+        <h2 className={railHeading} style={railHeadingStyle}>Type</h2>
+        <div role="group" aria-label="Type de candidat" className="flex flex-col gap-0.5">
+          {types.map(t => {
+            const on = filters.source === t.source
+            return (
+              <button key={t.source} type="button" aria-pressed={on} onClick={() => update({ source: t.source })} className={railItem(on)} style={railItemStyle(on)}>
+                <span>{t.source === 'vivier' ? 'Votre vivier' : t.label}</span><span className="text-xs tabular-nums" style={muted}>{t.n}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      <div className={railCard} style={railCardStyle}>
+        <h2 className={railHeading} style={railHeadingStyle}>Score</h2>
+        <div aria-hidden className="flex items-end gap-0.75 h-11 mt-1">
+          {histogram.map((n, i) => (
+            <span key={i} className="flex-1 rounded-[2px]" style={{
+              height: `${Math.max(4, (n / histogramPeak) * 100)}%`,
+              background: i * 10 >= SOURCING_MIN_SCORE - 5 ? 'var(--color-primary)' : 'color-mix(in srgb, var(--color-text) 12%, transparent)',
+            }} />
+          ))}
+        </div>
+        <div aria-hidden className="flex justify-between text-[10.5px] mt-1 mb-2" style={muted}><span>0</span><span>{SOURCING_MIN_SCORE}</span><span>100</span></div>
+        <div role="group" aria-label="Score" className="flex flex-col gap-0.5">
+          {scoreCounts.map(({ score, n }) => {
+            const on = filters.score === score
+            return (
+              <button key={score} type="button" aria-pressed={on} onClick={() => update({ score: on ? 'all' : score })} className={railItem(on)} style={railItemStyle(on)}>
+                <span>{SCORE_OPTIONS[score]}</span><span className="text-xs tabular-nums" style={muted}>{n}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      {jobSkills.length > 0 && (
+        <div className={railCard} style={railCardStyle}>
+          <h2 className={railHeading} style={railHeadingStyle}>L’offre en bref</h2>
+          <ul className="flex flex-wrap gap-1.5">
+            {jobSkills.slice(0, 8).map(skill => (
+              <li key={skill} className="text-[11.5px] rounded-md px-2 py-0.5" style={{ background: 'color-mix(in srgb, var(--color-text) 5%, transparent)', color: 'var(--color-text)' }}>{skill}</li>
+            ))}
+            {jobSkills.length > 8 && <li className="text-[11.5px] px-1 py-0.5" style={muted}>+{jobSkills.length - 8}</li>}
+          </ul>
+          <a href={`/jobs/${jobId}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-2.5 text-xs font-semibold no-underline hover:underline" style={{ color: 'var(--color-primary)' }}>
+            Voir l’offre <ExternalLink className="h-3 w-3" aria-hidden />
+          </a>
+        </div>
+      )}
+      <ScoringGuide className="" />
+    </aside>
+  )
+
+  const table = (
+    <div className="hidden min-[90rem]:block rounded-2xl overflow-hidden" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+      <table className="w-full border-collapse table-fixed">
+        <caption className="sr-only">Correspondances : cliquez une ligne pour afficher le détail du candidat</caption>
+        <thead>
+          <tr className="text-left text-[11.5px]" style={{ ...muted, background: 'color-mix(in srgb, var(--color-text) 2%, transparent)', borderBottom: '1px solid var(--color-border)' }}>
+            <th scope="col" className="w-[52px] py-2 pl-4 font-semibold"><span className="sr-only">Sélection</span></th>
+            <th scope="col" className="py-2 px-3 font-semibold">Candidat</th>
+            <th scope="col" className="w-[140px] min-[112.5rem]:w-[150px] py-2 px-3 font-semibold">Type</th>
+            <th scope="col" className="w-[124px] py-2 px-3 font-semibold">Score</th>
+            <th scope="col" className="w-[118px] py-2 px-3 font-semibold" title="Poste · Exigences · Compétences · Domaine · Niveau">Critères</th>
+            <th scope="col" className="hidden min-[112.5rem]:table-cell py-2 px-3 font-semibold">Pourquoi</th>
+            <th scope="col" className="w-[64px] py-2 pr-4 font-semibold"><span className="sr-only">CV</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {pageItems.map(m => {
+            const src = SOURCE_LABEL[m.source]
+            const isSelected = selected.has(m.id)
+            const isFocused = focused !== null && keyOf(focused) === keyOf(m)
+            const cv = cvHref(m)
+            const breakdown = m.score != null ? scoreBreakdown(m.reason) : null
+            const reasonText = breakdown ? breakdown.rest : m.reason
+            return (
+              <tr key={keyOf(m)} onClick={() => setFocusKey(keyOf(m))} aria-selected={isFocused}
+                className="cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_2.5%,transparent)]"
+                style={{
+                  borderTop: '1px solid var(--color-border)',
+                  background: isFocused ? 'color-mix(in srgb, var(--color-primary) 7%, transparent)' : undefined,
+                  boxShadow: isFocused ? 'inset 3px 0 0 var(--color-primary)' : undefined,
+                }}>
+                <td className="py-2.5 pl-4">
+                  {m.alreadyInFunnel ? (
+                    <span title="Déjà dans le funnel" className="inline-flex"><CheckCircle2 className="h-4 w-4" style={{ color: '#10b981' }} aria-label="Déjà dans le funnel" /></span>
+                  ) : (
+                    <button type="button" role="checkbox" aria-checked={isSelected} aria-label={`Sélectionner ${m.name}`}
+                      onClick={e => { e.stopPropagation(); toggle(m) }}
+                      className="w-5 h-5 rounded-md flex items-center justify-center cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
+                      style={{ background: isSelected ? 'var(--color-primary)' : 'transparent', border: `1.5px solid ${isSelected ? 'var(--color-primary)' : 'var(--color-border)'}` }}>
+                      {isSelected && <Check className="h-3 w-3 text-white" aria-hidden />}
+                    </button>
+                  )}
+                </td>
+                <td className="py-2.5 px-3 min-w-0" style={{ opacity: m.alreadyInFunnel ? 0.6 : 1 }}>
+                  <button type="button" onClick={e => { e.stopPropagation(); setFocusKey(keyOf(m)) }}
+                    className="block max-w-full truncate text-left text-[13.5px] font-semibold bg-transparent border-0 p-0 cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
+                    style={{ color: 'var(--color-text)' }}>{m.name}</button>
+                  {m.email && <p className="text-[11.5px] truncate" style={muted}>{m.email}</p>}
+                </td>
+                <td className="py-2.5 px-3">
+                  <span className="inline-flex items-center gap-1 max-w-full text-[10.5px] font-bold px-2 py-0.5 rounded-full truncate" style={{ background: `${src.color}18`, color: src.color }} title={sourceLabel(m)}>
+                    <src.icon className="h-2.5 w-2.5 shrink-0" aria-hidden /><span className="truncate">{sourceLabel(m)}</span>
+                  </span>
+                </td>
+                <td className="py-2.5 px-3">
+                  {m.score != null ? (
+                    <span className="inline-flex items-center gap-2">
+                      <b className="w-6 text-[15px] tabular-nums" style={{ color: 'var(--color-text)' }}>{m.score}</b>
+                      <span aria-hidden className="w-14 h-1.5 rounded-full overflow-hidden" style={{ background: 'color-mix(in srgb, var(--color-text) 8%, transparent)' }}>
+                        <span className="block h-full rounded-full" style={{ width: `${m.score}%`, background: scoreColor(m.score) }} />
+                      </span>
+                    </span>
+                  ) : analysing(m) || (m.applicationId && running.has(m.applicationId)) ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: '#3b82f6' }}><Loader2 className="h-3 w-3 animate-spin" aria-hidden />En cours…</span>
+                  ) : (
+                    <span className="text-[11px] font-semibold" style={muted}>Non analysé</span>
+                  )}
+                </td>
+                <td className="py-2.5 px-3">
+                  {breakdown ? (
+                    <span className="flex gap-0.75" title={breakdown.parts.map(p => `${p.label} : ${p.percent} %`).join(' · ')}>
+                      {breakdown.parts.map(p => <span key={p.key} aria-hidden className="w-4 h-2 rounded-[2px]" style={{ background: criterionTone(p.percent) }} />)}
+                      <span className="sr-only">{breakdown.parts.map(p => `${p.label} ${p.percent} %`).join(', ')}</span>
+                    </span>
+                  ) : <span className="text-[11px]" style={muted}>—</span>}
+                </td>
+                <td className="hidden min-[112.5rem]:table-cell py-2.5 px-3">
+                  <p className="text-xs truncate" style={{ color: 'var(--color-text)' }} title={reasonText}>{reasonText || '—'}</p>
+                </td>
+                <td className="py-2.5 pr-4 text-right">
+                  {cv && (
+                    <a href={cv} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                      className="inline-flex items-center gap-1 text-xs font-semibold no-underline hover:underline" style={{ color: 'var(--color-primary)' }}>
+                      CV <ExternalLink className="h-3 w-3" aria-hidden /><span className="sr-only"> de {m.name}</span>
+                    </a>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+
+  const focusedBreakdown = focused && focused.score != null ? scoreBreakdown(focused.reason) : null
+  const focusedProfile = focused ? profileHref(focused) : null
+  const focusedCv = focused ? cvHref(focused) : null
+  const panelButton = 'h-10 px-3 rounded-[10px] inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold no-underline transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)'
+  const panel = (
+    <aside aria-label="Candidat et sélection" className="hidden min-[90rem]:flex flex-col gap-3 sticky top-[84px]">
+      {focused && (
+        <section aria-label={`Détail de ${focused.name}`} className="rounded-[20px] p-4" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="font-bold truncate" style={{ color: 'var(--color-text)', fontSize: 17, lineHeight: 1.35 }}>{focused.name}</h2>
+              {focused.email && <p className="text-xs truncate" style={muted}>{focused.email}</p>}
+            </div>
+            <span className="shrink-0 inline-flex items-center gap-1 text-[10.5px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${SOURCE_LABEL[focused.source].color}18`, color: SOURCE_LABEL[focused.source].color }}>
+              {sourceLabel(focused)}
+            </span>
+          </div>
+          {focused.score != null ? (
+            <p className="flex items-baseline gap-2 mt-3 mb-3">
+              <span className="font-bold tabular-nums" style={{ color: 'var(--color-text)', fontSize: 32, lineHeight: 1, letterSpacing: '-0.02em' }}>{focused.score}</span>
+              <span className="text-sm" style={muted}>/100</span>
+              <span className="text-xs font-semibold" style={{ color: focused.score >= SOURCING_MIN_SCORE ? '#047857' : '#b45309' }}>
+                {focused.score >= SOURCING_MIN_SCORE ? 'Correspond' : `Sous le seuil de ${SOURCING_MIN_SCORE}`}
+              </span>
+            </p>
+          ) : (
+            <p className="text-[13px] mt-3 mb-3" style={muted}>{analysing(focused) ? 'Matching en cours…' : 'Pas encore analysé.'}</p>
+          )}
+          {focused.score != null && focusedBreakdown && <ScoreCriteriaList breakdown={focusedBreakdown} match={{ ...focused, score: focused.score }} />}
+          {focused.score != null && !focusedBreakdown && (
+            <p className="text-[11.5px]" style={muted}>Détail du score indisponible : score calculé avant la notation par critères.</p>
+          )}
+          {(focusedBreakdown ? focusedBreakdown.rest : focused.reason) && (
+            <p className="text-[12.5px] leading-relaxed mt-3 pt-3" style={{ color: 'var(--color-text)', borderTop: '1px solid var(--color-border)' }}>
+              {focusedBreakdown ? focusedBreakdown.rest : focused.reason}
+            </p>
+          )}
+          {(focused.recommendation || focused.hunterName) && (
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {focused.recommendation && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(232,163,61,0.16)', color: '#8a6a1f' }}>★ Recommandé +{focused.recommendation.points}</span>}
+              {focused.hunterName && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(20,184,166,0.14)', color: '#0d9488' }}>Proposé par {focused.hunterName}</span>}
+            </div>
+          )}
+          <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11.5px] mt-3" style={muted}>
+            {focused.receivedAt && <span>{focused.source === 'application' ? 'Reçue le' : 'Importé le'} <LocalTime iso={focused.receivedAt} /></span>}
+            {focused.matchedAt && <span>Matching le <LocalTime iso={focused.matchedAt} /></span>}
+          </p>
+          {focused.source === 'application' && focused.applicationId && !analysing(focused) && (
+            <button type="button" disabled={running.has(focused.applicationId)} onClick={() => void runMatching(focused)}
+              className="mt-2 inline-flex items-center gap-1 text-xs font-bold underline bg-transparent border-0 p-0 cursor-pointer disabled:opacity-50" style={{ color: 'var(--color-primary)' }}>
+              <Brain className="h-3 w-3" aria-hidden />{running.has(focused.applicationId) ? 'Matching en cours…' : focused.matchedAt ? 'Relancer le matching' : 'Lancer le matching'}
+            </button>
+          )}
+          {(focusedCv || focusedProfile) && (
+            <div className="grid grid-cols-2 gap-2 mt-4">
+              {focusedCv && <a href={focusedCv} target="_blank" rel="noopener noreferrer" className={panelButton} style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}><FileText className="h-3.5 w-3.5" aria-hidden />Voir le CV</a>}
+              {focusedProfile && <a href={focusedProfile} target="_blank" rel="noopener noreferrer" className={panelButton} style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>Fiche candidat <ExternalLink className="h-3 w-3" aria-hidden /></a>}
+            </div>
+          )}
+        </section>
+      )}
+      {/* Sélection : à la place de la barre fixe du bas, qui masquait les dernières lignes. */}
+      <section aria-label="Sélection" className="rounded-[20px] p-4" style={{ background: 'var(--hero-bg)', color: 'white' }}>
+        {selected.size > 0 ? (
+          <>
+            <p className="text-sm"><b className="text-xl tabular-nums" style={{ color: '#E8A33D' }}>{selected.size}</b> candidat{selected.size > 1 ? 's' : ''} sélectionné{selected.size > 1 ? 's' : ''}</p>
+            <p className="text-xs mt-1 truncate" style={{ color: 'rgba(255,255,255,0.6)' }}>{selectedMatches.map(m => m.name).join(', ')}</p>
+            <div className="flex gap-2 mt-3">
+              <button type="button" onClick={addToFunnel} disabled={isAdding}
+                className={`${panelButton} flex-1 border-0 cursor-pointer disabled:opacity-50`} style={{ background: 'var(--color-primary)', color: 'var(--color-primary-fg)' }}>
+                {isAdding ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Ajout…</> : <><UserPlus className="h-4 w-4" aria-hidden /> Ajouter dans le funnel</>}
+              </button>
+              <button type="button" onClick={() => setSelected(new Set())} className={`${panelButton} bg-transparent cursor-pointer`} style={{ border: '1px solid rgba(255,255,255,0.2)', color: 'white' }}>Vider</button>
+            </div>
+          </>
+        ) : justAdded ? (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm">Ajout terminé.</p>
+            <Link href={`/recruiter/pipeline/${jobId}`} className={panelButton} style={{ background: '#10b981', color: 'white' }}><Kanban className="h-4 w-4" aria-hidden /> Passer au pipeline</Link>
+          </div>
+        ) : (
+          <p className="text-[13px]" style={{ color: 'rgba(255,255,255,0.7)' }}>Cochez des candidats dans la liste pour les ajouter au funnel de l’offre.</p>
+        )}
+      </section>
+    </aside>
+  )
+
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: selected.size > 0 ? 88 : 0 }}>
-      <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-        <div className="max-w-[1000px] mx-auto px-6 py-6">
+    <div className={selected.size > 0 || justAdded ? 'pb-[88px] min-[90rem]:pb-0' : undefined} style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
+      <div className="sticky top-0 z-20 min-[90rem]:static" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div className="max-w-[1000px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-6 min-[90rem]:py-4">
           <BackLink fallbackHref={`/recruiter/pipeline/${jobId}`}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 no-underline transition-opacity hover:opacity-80"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 min-[90rem]:mb-1.5 no-underline transition-opacity hover:opacity-80"
             style={{ color: '#c4b5fd' }} />
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div>
+          <div className="flex items-center justify-between gap-4 flex-wrap min-[90rem]:flex-nowrap">
+            <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-widest mb-1 flex items-center gap-1.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
                 <Brain className="h-3.5 w-3.5" /> Matching IA
               </p>
               <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.5rem' }}>{jobTitle}</h1>
+              <p className="hidden min-[90rem]:block text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>{jobMeta}</p>
             </div>
+            <JobTabs jobId={jobId} current="matching" />
+            <span aria-hidden className="hidden min-[90rem]:block flex-1" />
             <div className="flex items-center gap-2 flex-wrap">
               <button type="button" onClick={refresh} disabled={isRefreshing}
                 title="Recalcule les scores de la base candidats pour cette offre, puis note les nouveaux candidats. Une candidature se recalcule sur sa carte (« Relancer »)."
@@ -210,11 +483,15 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
         </div>
       </div>
 
-      <div className="max-w-[1000px] mx-auto px-6 py-8">
-        <p className="text-sm mb-3" style={{ color: 'var(--color-text-muted)' }}>
-          L&apos;IA a comparé cette offre aux candidatures reçues, à la base de candidats et à votre vivier (celui de l&apos;offre et votre vivier général). Sélectionnez qui vous intéresse puis lancez (ou relancez) le screening.
-        </p>
-        <ScoringGuide />
+      <div className="max-w-[1000px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-8 min-[90rem]:py-5 min-[90rem]:grid min-[90rem]:grid-cols-[240px_minmax(0,1fr)_320px] min-[112.5rem]:grid-cols-[264px_minmax(0,1fr)_360px] min-[90rem]:gap-5 min-[90rem]:items-start">
+        {rail}
+        <div className="min-w-0">
+        <div className="min-[90rem]:hidden">
+          <p className="text-sm mb-3" style={{ color: 'var(--color-text-muted)' }}>
+            L&apos;IA a comparé cette offre aux candidatures reçues, à la base de candidats et à votre vivier (celui de l&apos;offre et votre vivier général). Sélectionnez qui vous intéresse puis lancez (ou relancez) le screening.
+          </p>
+          <ScoringGuide />
+        </div>
 
         {flash && (
           <div role="status" className="mb-4 px-4 py-2.5 rounded-lg text-sm font-semibold" style={{ background: 'rgba(232,163,61,0.1)', color: '#b8862f' }}>
@@ -230,7 +507,7 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
           </div>
         ) : (
           <>
-            <div role="search" aria-label="Filtrer les correspondances" className="mb-3 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2.5">
+            <div role="search" aria-label="Filtrer les correspondances" className="mb-3 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2.5 min-[90rem]:hidden">
               <label className="relative block flex-1 min-w-0 sm:min-w-56">
                 <span className="sr-only">Rechercher un candidat</span>
                 <Search aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={muted} />
@@ -272,7 +549,8 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
                 <p className="text-sm" style={muted}>Aucune correspondance pour ces filtres.</p>
               </div>
             ) : (
-            <div className="max-h-[65vh] overflow-y-auto pr-1 space-y-2.5">
+            <>
+            <div className="max-h-[65vh] overflow-y-auto pr-1 space-y-2.5 min-[90rem]:hidden">
               {pageItems.map(m => {
                 const src = SOURCE_LABEL[m.source]
                 const isSelected = selected.has(m.id)
@@ -384,6 +662,8 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
                 )
               })}
             </div>
+            {table}
+            </>
             )}
 
             {pageCount > 1 && (
@@ -403,10 +683,12 @@ export function MatchingClient({ jobId, jobTitle, initialMatches, now }: { jobId
             )}
           </>
         )}
+        </div>
+        {panel}
       </div>
 
       {(selected.size > 0 || justAdded) && (
-        <div className="fixed bottom-0 left-0 right-0 px-6 py-4 z-30" style={{ background: 'var(--color-surface)', borderTop: '1px solid var(--color-border)', boxShadow: '0 -8px 24px rgba(11,29,81,0.1)' }}>
+        <div className="fixed bottom-0 left-0 right-0 px-6 py-4 z-30 min-[90rem]:hidden" style={{ background: 'var(--color-surface)', borderTop: '1px solid var(--color-border)', boxShadow: '0 -8px 24px rgba(11,29,81,0.1)' }}>
           <div className="max-w-[1000px] mx-auto flex items-center justify-between gap-3 flex-wrap">
             <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
               {selected.size > 0
