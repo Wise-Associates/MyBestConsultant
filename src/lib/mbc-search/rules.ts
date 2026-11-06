@@ -115,9 +115,20 @@ const words = (s: string) => normalize(s).split(/[^a-z0-9+#.]+/).filter(w => w.l
 export const SCORE_WEIGHTS = { title: 55, skills: 25, reachable: 10, fresh: 10 } as const
 const FRESH_DAYS = 180
 
+/** Ce que le profil remplit de chaque critère : la grille de la liste de résultats (une colonne par critère). */
+export interface CriteriaMatch {
+  /** 'any' : aucun intitulé demandé, le critère ne départage personne. */
+  title: 'full' | 'partial' | 'none' | 'any'
+  /** Compétences demandées visibles dans l'intitulé ou l'employeur. */
+  skills: string[]
+  reachable: boolean
+  fresh: boolean
+}
+
 export interface ScoredProfile extends MbcProfile {
   score: number
   reasons: string[]
+  match: CriteriaMatch
 }
 
 /**
@@ -161,12 +172,19 @@ export function scoreProfile(profile: MbcProfile, criteria: MbcCriteria, now: Da
   }
 
   const refreshed = Date.parse(profile.refreshedAt)
-  if (Number.isFinite(refreshed) && now.getTime() - refreshed <= FRESH_DAYS * 86_400_000) {
+  const fresh = Number.isFinite(refreshed) && now.getTime() - refreshed <= FRESH_DAYS * 86_400_000
+  if (fresh) {
     score += SCORE_WEIGHTS.fresh
     reasons.push('Profil mis à jour il y a moins de 6 mois')
   }
 
-  return { ...profile, score: Math.min(100, score), reasons }
+  const match: CriteriaMatch = {
+    title: criteria.titles.length === 0 ? 'any' : bestTitle === 1 ? 'full' : bestTitle > 0 ? 'partial' : 'none',
+    skills: found,
+    reachable: profile.hasEmail || profile.hasPhone,
+    fresh,
+  }
+  return { ...profile, score: Math.min(100, score), reasons, match }
 }
 
 /** Profils du meilleur au moins bon score ; à score égal, l'ordre d'Apollo est gardé. */
