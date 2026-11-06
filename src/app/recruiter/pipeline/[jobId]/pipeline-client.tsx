@@ -239,6 +239,9 @@ function CandidateCard({
   onOpenProcess: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
+  // Carte repliée par défaut (demande du 2026-11-06) : nom, score, étape et poignée ; le reste (parcours, contacts,
+  // statut, étiquettes, résultats, actions) se déplie avec le chevron.
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const [interviewModalOpen, setInterviewModalOpen] = useState(false)
   const [emailModalOpen, setEmailModalOpen] = useState(false)
   const [viewingInterviewId, setViewingInterviewId] = useState<string | null>(null)
@@ -259,6 +262,7 @@ function CandidateCard({
   }, [autoOpenInterview])
 
   const hasResults = candidate.aiSummary || candidate.interviews.length > 0
+  const stepLabel = candidate.funnel && candidate.funnel.length > 0 ? (funnelProgress(candidate.funnel).current ? `Étape ${funnelCurrent(candidate.funnel) + 1}/${candidate.funnel.length} · ${funnelProgress(candidate.funnel).current!.label}` : 'Parcours terminé') : null
   const screeningDone = candidate.aiScore !== undefined
   const latestInterview = candidate.interviews[0]
   const interviewInProgress = candidate.interviews.some(i => i.status === 'pending' || i.status === 'in_progress' || i.status === 'completed')
@@ -316,9 +320,41 @@ function CandidateCard({
             ? <p className="text-[11px] truncate font-semibold" style={{ color: '#7c3aed' }} title="Profil proposé par un chasseur de têtes">🎯 Chasseur · {candidate.hunterName}</p>
             : <p className="text-[11px] truncate" style={{ color: 'var(--color-text-muted)' }}>{candidate.candidateEmail}</p>}
         </div>
-        <GripVertical className="h-3.5 w-3.5 mt-0.5 shrink-0" style={{ color: 'var(--color-text-muted)', opacity: 0.3 }} />
+        <button type="button" onClick={() => setDetailsOpen(o => !o)} aria-expanded={detailsOpen}
+          title={detailsOpen ? 'Masquer les détails' : 'Afficher les détails'}
+          className="p-1 -m-0.5 rounded-md shrink-0 transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] focus-visible:outline-2 focus-visible:outline-(--color-text)"
+          style={{ color: 'var(--color-text-muted)' }}>
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${detailsOpen ? 'rotate-180' : ''}`} aria-hidden />
+          <span className="sr-only">{detailsOpen ? 'Masquer' : 'Afficher'} les détails de {candidate.candidateName || candidate.candidateEmail}</span>
+        </button>
+        <GripVertical aria-hidden className="h-3.5 w-3.5 mt-0.5 shrink-0" style={{ color: 'var(--color-text-muted)', opacity: 0.45 }} />
       </div>
 
+      <div className="flex items-center gap-1.5 mt-2 min-w-0">
+        {candidate.aiScore !== undefined ? (
+          <span className="shrink-0 flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full"
+            style={{ background: `${scoreColor(candidate.aiScore)}16`, color: scoreColor(candidate.aiScore) }}>
+            <Brain className="h-2.5 w-2.5" /> {candidate.aiScore}/100
+          </span>
+        ) : (
+          <span className="shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'rgba(0,0,0,0.04)', color: 'var(--color-text-muted)' }}>
+            Pas encore screené
+          </span>
+        )}
+        {stepLabel && <span className="text-[10.5px] font-semibold truncate" style={{ color: 'var(--color-text-muted)' }}>{stepLabel}</span>}
+      </div>
+
+      {suggestedAction && !(suggestedAction === 'screening' && screeningDone) && (
+        <button
+          onClick={suggestedAction === 'screening' ? runScreening : () => setInterviewModalOpen(true)}
+          disabled={suggestedAction === 'screening' && !!busyLabel}
+          className="flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-opacity hover:opacity-80 disabled:opacity-50"
+          style={{ background: 'rgba(232,163,61,0.12)', color: '#b8862f', border: '1px dashed rgba(232,163,61,0.4)' }}>
+          <Sparkles className="h-3 w-3" /> Action suggérée : {AUTO_ACTION_LABEL[suggestedAction]}
+        </button>
+      )}
+
+      {detailsOpen && (<>
       {/* Progression sur le funnel — une barre segmentée, un segment par étape, colorée
           jusqu'à l'étape actuelle de la carte. */}
       {candidate.funnel && candidate.funnel.length > 0 ? (
@@ -331,7 +367,6 @@ function CandidateCard({
               return <div key={st.id} title={st.label} className="h-1.5 flex-1 rounded-full transition-colors" style={{ background: done ? c : isCur ? `${c}88` : 'rgba(0,0,0,0.08)' }} />
             })}
           </div>
-          <p className="text-[10.5px] font-semibold mt-1 truncate" style={{ color: 'var(--color-text-muted)' }}>{funnelProgress(candidate.funnel).current ? `Étape ${funnelCurrent(candidate.funnel) + 1}/${candidate.funnel.length} · ${funnelProgress(candidate.funnel).current!.label}` : 'Parcours terminé'}</p>
         </div>
       ) : sortedStages.length > 1 && (
         <div className="flex items-center gap-1 mt-2.5" title={`Étape : ${sortedStages.find(s => s.order === currentStageOrder)?.label ?? ''}`}>
@@ -343,16 +378,6 @@ function CandidateCard({
 
       {/* Status chips — every launched functionality is a colored pill, visible at a glance */}
       <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-        {candidate.aiScore !== undefined ? (
-          <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-full"
-            style={{ background: `${scoreColor(candidate.aiScore)}16`, color: scoreColor(candidate.aiScore) }}>
-            <Brain className="h-2.5 w-2.5" /> {candidate.aiScore}/100
-          </span>
-        ) : (
-          <span className="text-[10px] font-medium px-2 py-1 rounded-full" style={{ background: 'rgba(0,0,0,0.04)', color: 'var(--color-text-muted)' }}>
-            Pas encore screené
-          </span>
-        )}
         {candidate.interviews.length > 0 && (
           <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-full" style={{ background: `${interviewBadgeColor}16`, color: interviewBadgeColor }}>
             <Video className="h-2.5 w-2.5" />
@@ -411,15 +436,6 @@ function CandidateCard({
         </p>
       )}
 
-      {suggestedAction && !(suggestedAction === 'screening' && screeningDone) && (
-        <button
-          onClick={suggestedAction === 'screening' ? runScreening : () => setInterviewModalOpen(true)}
-          disabled={suggestedAction === 'screening' && !!busyLabel}
-          className="flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-opacity hover:opacity-80 disabled:opacity-50"
-          style={{ background: 'rgba(232,163,61,0.12)', color: '#b8862f', border: '1px dashed rgba(232,163,61,0.4)' }}>
-          <Sparkles className="h-3 w-3" /> Action suggérée : {AUTO_ACTION_LABEL[suggestedAction]}
-        </button>
-      )}
 
       {hasResults && (
         <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
@@ -565,6 +581,7 @@ function CandidateCard({
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
+      </>)}
 
       {interviewModalOpen && createPortal(
         <InterviewModal jobId={jobId} candidate={candidate} targetStage={interviewTargetStage}
