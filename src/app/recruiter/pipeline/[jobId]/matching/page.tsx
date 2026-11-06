@@ -5,6 +5,7 @@ import { getJobById } from '@/lib/appwrite/jobs'
 import { getJobMatches, unmatchedApplicationIds } from '@/lib/matching-core'
 import { autoScreenApplication } from '@/app/recruiter/screening/actions'
 import { MatchingClient } from './matching-client'
+import { jobMetaLine } from '@/components/recruiter/job-tabs'
 
 // « Rafraîchir » : un appel d'IA par candidat de la base, 5 à la fois (sourcing-core.ts), dans chacune de ses deux requêtes.
 export const maxDuration = 300
@@ -24,5 +25,6 @@ export default async function MatchingPage({ params }: { params: Promise<{ jobId
   const retry = unmatchedApplicationIds(matches)
   if (retry.length > 0) after(async () => { for (const id of retry) await autoScreenApplication(id) })
 
-  return <MatchingClient jobId={jobId} jobTitle={job.title} initialMatches={matches} now={new Date().toISOString()} />
+  return <MatchingClient jobId={jobId} jobTitle={job.title} jobMeta={jobMetaLine(job)} jobSkills={job.skills ?? []}
+    initialMatches={matches} now={new Date().toISOString()} />
 }
