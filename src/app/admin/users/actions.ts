@@ -5,6 +5,7 @@ import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
 import { getCurrentUser, createUserAccountAndProfile } from '@/lib/appwrite/auth'
 import { deleteAssistantTurnsForUser, isAssistantStorageConfigured } from '@/lib/assistant/host'
+import { deleteMbcSearchesForUser } from '@/lib/mbc-search/history-store'
 import { cvExportErrorName, deleteCvExportsForCandidate, isCvExportStorageConfigured, isCvExportStorageMissing } from '@/lib/cv-export/store'
 import { revalidatePath } from 'next/cache'
 import type { UserRole } from '@/types'
@@ -122,6 +123,13 @@ export async function deleteUserAccount(authId: string, listedProfileId: string 
         console.error('[assistant] suppression des conversations en échec', e instanceof Error ? e.message : String(e))
         return { error: 'Compte non supprimé : la suppression de ses conversations avec l’assistant IA a échoué. Réessayez.' }
       }
+    }
+    // Historique des recherches MBC Search d'un recruteur (RGPD), même règle : avant le compte.
+    try {
+      await deleteMbcSearchesForUser(authId)
+    } catch (e) {
+      console.error('[mbc-search] suppression de l\'historique en échec', e instanceof Error ? e.message : String(e))
+      return { error: 'Compte non supprimé : la suppression de son historique de recherches MBC Search a échoué. Réessayez.' }
     }
     // CV au format ESN enregistrés pour ce candidat (RGPD), même règle : avant le compte.
     const hasCvExports = isCvExportStorageConfigured()

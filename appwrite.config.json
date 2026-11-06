@@ -4266,6 +4266,96 @@
                     "orders": []
                 }
             ]
+        },
+        {
+            "$id": "mbc_searches",
+            "$permissions": [],
+            "databaseId": "bestconsultant-dev",
+            "name": "MBC searches",
+            "enabled": true,
+            "documentSecurity": false,
+            "attributes": [
+                {
+                    "key": "userId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "tenantId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 100,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "name",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 80,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "brief",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 4000,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "criteriaJson",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 8000,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "pinned",
+                    "type": "boolean",
+                    "required": false,
+                    "array": false,
+                    "default": false
+                },
+                {
+                    "key": "total",
+                    "type": "integer",
+                    "required": false,
+                    "array": false,
+                    "min": 0,
+                    "max": 2000000000,
+                    "default": null
+                },
+                {
+                    "key": "lastRunAt",
+                    "type": "datetime",
+                    "required": true,
+                    "array": false,
+                    "format": "",
+                    "default": null
+                }
+            ],
+            "indexes": [
+                {
+                    "key": "userId_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "userId"
+                    ],
+                    "orders": []
+                }
+            ]
         }
     ],
     "buckets": [
