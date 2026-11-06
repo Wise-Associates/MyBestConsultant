@@ -154,7 +154,7 @@ export function JobsListClient({
   const previewRow = shown.find(r => r.job.$id === previewJobId) ?? shown[0]
 
   const searchInput = (placeholder: string) => (
-    <label className="relative block flex-1 min-w-0 sm:min-w-60 min-[1440px]:min-w-0">
+    <label className="relative block flex-1 min-w-0 sm:min-w-60 min-[90rem]:min-w-0">
       <span className="sr-only">Rechercher une offre</span>
       <Search aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={muted} />
       <input type="search" value={filters.q} onChange={e => update({ q: e.target.value })}
@@ -182,10 +182,10 @@ export function JobsListClient({
   )
 
   return (
-    <div className="flex flex-col gap-6 sm:gap-7 min-[1440px]:grid min-[1440px]:grid-cols-[248px_minmax(0,1fr)] min-[1800px]:grid-cols-[248px_minmax(0,1fr)_340px] min-[1440px]:gap-6 min-[1440px]:items-start">
+    <div className="flex flex-col gap-6 sm:gap-7 min-[90rem]:grid min-[90rem]:grid-cols-[248px_minmax(0,1fr)] min-[112.5rem]:grid-cols-[248px_minmax(0,1fr)_340px] min-[90rem]:gap-6 min-[90rem]:items-start">
       {/* Grand écran : recherche, « À traiter » et filtres dans un rail collant (sous la barre fixe de 68 px). Les mêmes
           réglages restent dans « Mes offres » en dessous de 1440 px ; un seul des deux est affiché. */}
-      <aside aria-label="Filtrer mes offres" className="hidden min-[1440px]:flex flex-col gap-3.5 sticky top-[84px]">
+      <aside aria-label="Filtrer mes offres" className="hidden min-[90rem]:flex flex-col gap-3.5 sticky top-[84px]">
         <div role="search" aria-label="Rechercher une offre" className="flex">{searchInput('Intitulé, ville…')}</div>
         <section aria-labelledby="a-traiter-rail" className={railCard} style={railCardStyle}>
           <h2 id="a-traiter-rail" className={railHeading} style={railHeadingStyle}>À traiter</h2>
@@ -239,9 +239,9 @@ export function JobsListClient({
         </div>
       </aside>
 
-      <div className="min-w-0 flex flex-col gap-6 sm:gap-7 min-[1440px]:gap-4">
+      <div className="min-w-0 flex flex-col gap-6 sm:gap-7 min-[90rem]:gap-4">
         {header}
-        <section aria-labelledby="a-traiter" className="flex flex-col gap-3 min-[1440px]:hidden">
+        <section aria-labelledby="a-traiter" className="flex flex-col gap-3 min-[90rem]:hidden">
           <div className="flex items-baseline gap-2.5 flex-wrap">
             <h2 id="a-traiter" className="text-base font-bold tracking-[-0.01em]" style={{ color: 'var(--color-text)' }}>À traiter</h2>
             <p className="text-[13px]" style={muted}>Un clic filtre la liste de vos offres.</p>
@@ -275,18 +275,18 @@ export function JobsListClient({
         </section>
 
         <section aria-labelledby="mes-offres" className="rounded-[20px]" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-          <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 min-[90rem]:px-5 min-[90rem]:py-3.5 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <h2 id="mes-offres" className="text-lg sm:text-xl font-bold tracking-[-0.015em]" style={{ color: 'var(--color-text)' }}>Mes offres</h2>
+              <h2 id="mes-offres" className="text-lg sm:text-xl min-[90rem]:text-[22px]! font-bold tracking-[-0.015em]" style={{ color: 'var(--color-text)' }}>Mes offres</h2>
               <span className="text-xs font-semibold rounded-full px-2.5 py-0.5 tabular-nums"
                 style={{ background: 'color-mix(in srgb, var(--color-text) 7%, transparent)', color: 'var(--color-text)' }}>
                 {rows.length}
               </span>
               {sharedCount > 0 && <span className="text-xs" style={muted}>dont {sharedCount} de la plateforme</span>}
-              <span className="hidden min-[1440px]:contents">{focusChip}</span>
+              <span className="hidden min-[90rem]:contents">{focusChip}</span>
             </div>
             <div className="flex items-center gap-2.5 flex-wrap w-full sm:w-auto">
-              <span className="hidden min-[1440px]:contents">{sortSelect}</span>
+              <span className="hidden min-[90rem]:contents">{sortSelect}</span>
               {rows.length > 0 && (
                 <Link href="/recruiter/annonces"
                   className="inline-flex items-center gap-2 h-11 sm:h-10 px-3.5 rounded-[10px] text-[13px] font-semibold no-underline transition-opacity hover:opacity-80"
@@ -298,7 +298,7 @@ export function JobsListClient({
             </div>
           </div>
 
-          <div role="search" aria-label="Filtrer mes offres" className="px-4 sm:px-6 pb-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2.5 min-[1440px]:hidden">
+          <div role="search" aria-label="Filtrer mes offres" className="px-4 sm:px-6 pb-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2.5 min-[90rem]:hidden">
             {searchInput('Rechercher un intitulé, une ville…')}
             <div role="group" aria-label="Statut de l’offre" className="grid grid-cols-3 sm:flex gap-0.5 p-[3px] rounded-xl"
               style={{ background: 'color-mix(in srgb, var(--color-text) 6%, transparent)' }}>
@@ -330,7 +330,7 @@ export function JobsListClient({
             </p>
           )}
 
-          <div aria-hidden className={`hidden lg:grid ${ROW_GRID} px-6 py-2.5 text-xs font-semibold`}
+          <div aria-hidden className={`hidden lg:grid ${ROW_GRID} px-6 py-2.5 min-[90rem]:px-5 min-[90rem]:py-2 text-xs font-semibold`}
             style={{ ...muted, background: 'color-mix(in srgb, var(--color-text) 2.5%, transparent)', borderTop: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }}>
             <span>Offre</span><span>Candidatures</span><span>Pipeline</span><span>Diffusion</span><span className="text-right">Actions</span>
           </div>
@@ -380,7 +380,7 @@ export function JobsListClient({
       </div>
 
       {previewRow && (
-        <aside aria-label="Aperçu de l’offre" className="hidden min-[1800px]:block sticky top-[84px]">
+        <aside aria-label="Aperçu de l’offre" className="hidden min-[112.5rem]:block sticky top-[84px]">
           <JobPreviewPanel row={previewRow} apps={appsByJob[previewRow.job.$id] ?? []} stages={sortedStages}
             onOpenApplications={() => setOpenJobId(previewRow.job.$id)} />
         </aside>

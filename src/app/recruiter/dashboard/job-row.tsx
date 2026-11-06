@@ -23,7 +23,7 @@ const CONTRACT_LABELS: Record<string, string> = {
  * 1440 px (rail de filtres, dashboard-layout.ts) la colonne « Candidatures » s'élargit pour que « 30 correspondances IA »
  * tienne sur une ligne ; à partir de 1800 px (panneau d'aperçu) les actions gagnent le bouton « Aperçu ».
  */
-export const ROW_GRID = 'grid grid-cols-2 lg:grid-cols-[minmax(0,1fr)_124px_200px_180px_88px] min-[1440px]:grid-cols-[minmax(0,1fr)_172px_190px_180px_88px] min-[1800px]:grid-cols-[minmax(0,1fr)_172px_180px_176px_132px] gap-x-5'
+export const ROW_GRID = 'grid grid-cols-2 lg:grid-cols-[minmax(0,1fr)_124px_200px_180px_88px] min-[90rem]:grid-cols-[minmax(0,1fr)_156px_176px_200px_88px] min-[112.5rem]:grid-cols-[minmax(0,1fr)_156px_176px_200px_132px] gap-x-5'
 
 const badge = 'inline-flex items-center gap-1 text-[11px] font-semibold rounded-md px-[7px] py-0.5'
 const neutralBadge = { background: 'color-mix(in srgb, var(--color-text) 7%, transparent)', color: 'var(--color-text)' }
@@ -61,15 +61,15 @@ export function JobRow({ row, apps, stages, canPublish, recruiters, first, focus
 
   return (
     <article ref={focusRef} tabIndex={focused ? -1 : undefined} onClick={openFromRow} data-previewed={previewed || undefined}
-      className={`group ${ROW_GRID} gap-y-4 items-center px-4 sm:px-6 py-4 lg:py-4.5 min-[1440px]:py-3 cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_2.5%,transparent)] min-[1800px]:data-previewed:bg-[color-mix(in_srgb,var(--color-primary)_6%,transparent)] min-[1800px]:data-previewed:shadow-[inset_3px_0_0_var(--color-primary)] focus:outline-none`}
+      className={`group ${ROW_GRID} gap-y-4 items-center px-4 sm:px-6 py-4 lg:py-4.5 min-[90rem]:px-5 min-[90rem]:py-2.5 cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_2.5%,transparent)] min-[112.5rem]:data-previewed:bg-[color-mix(in_srgb,var(--color-primary)_6%,transparent)] min-[112.5rem]:data-previewed:shadow-[inset_3px_0_0_var(--color-primary)] focus:outline-none`}
       style={{
         borderTop: first ? undefined : '1px solid var(--color-border)',
         background: focused ? 'color-mix(in srgb, var(--color-primary) 7%, transparent)' : undefined,
         boxShadow: focused ? 'inset 3px 0 0 var(--color-primary)' : undefined,
       }}>
-      <div className="col-span-2 lg:col-span-1 min-w-0 flex flex-col gap-1.5">
+      <div className="col-span-2 lg:col-span-1 min-w-0 flex flex-col gap-1.5 min-[90rem]:gap-0.5">
         <div className="flex items-center gap-2 flex-wrap">
-          <Link href={matchingHref} className="text-[15px] font-semibold leading-snug no-underline group-hover:underline underline-offset-[3px] rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
+          <Link href={matchingHref} className="text-[15px] min-[90rem]:text-sm font-semibold leading-snug no-underline group-hover:underline underline-offset-[3px] rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
             style={{ color: 'var(--color-text)' }}>
             {job.title}
           </Link>
@@ -81,8 +81,8 @@ export function JobRow({ row, apps, stages, canPublish, recruiters, first, focus
           {row.shared && <span className={badge} style={neutralBadge}>Offre de la plateforme</span>}
         </div>
         {/* Écran large : lieu, contrat, date et recruteur sur une seule ligne, pour des lignes moins hautes. */}
-        <div className="flex flex-col gap-1.5 min-[1440px]:flex-row min-[1440px]:flex-wrap min-[1440px]:items-center min-[1440px]:gap-x-4 min-[1440px]:gap-y-1">
-          <p className="flex items-center gap-1.5 flex-wrap text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
+        <div className="flex flex-col gap-1.5 min-[90rem]:flex-row min-[90rem]:flex-wrap min-[90rem]:items-center min-[90rem]:gap-x-3 min-[90rem]:gap-y-0.5">
+          <p className="flex items-center gap-1.5 flex-wrap text-[13px] min-[90rem]:text-xs" style={{ color: 'var(--color-text-muted)' }}>
             <MapPin className="h-3.25 w-3.25" aria-hidden />
             <span>{job.location}</span>
             {job.contractType && <><span aria-hidden>·</span><span>{CONTRACT_LABELS[job.contractType]}</span></>}
@@ -97,7 +97,7 @@ export function JobRow({ row, apps, stages, canPublish, recruiters, first, focus
       <div className="flex flex-col gap-1 min-w-0">
         <button type="button" onClick={onOpenApplications} title="Voir les candidatures"
           className="self-start inline-flex items-baseline gap-1.5 bg-transparent border-0 p-0 cursor-pointer rounded-sm hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)">
-          <span className="text-xl font-semibold tabular-nums" style={{ color: facts.applications > 0 ? 'var(--color-text)' : 'var(--color-text-muted)' }}>{facts.applications}</span>
+          <span className="text-xl min-[90rem]:text-base font-semibold tabular-nums" style={{ color: facts.applications > 0 ? 'var(--color-text)' : 'var(--color-text-muted)' }}>{facts.applications}</span>
           <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{facts.applications > 1 ? 'candidatures' : 'candidature'}</span>
         </button>
         {facts.newApplications > 0 && (
@@ -107,7 +107,7 @@ export function JobRow({ row, apps, stages, canPublish, recruiters, first, focus
           </span>
         )}
         {facts.applications === 0 && row.matches > 0 && (
-          <Link href={matchingHref} className="inline-flex items-center gap-1 text-xs font-semibold no-underline hover:underline min-[1440px]:whitespace-nowrap" style={{ color: 'var(--color-primary)' }}>
+          <Link href={matchingHref} className="inline-flex items-center gap-1 text-xs font-semibold no-underline hover:underline min-[90rem]:whitespace-nowrap" style={{ color: 'var(--color-primary)' }}>
             <Sparkles className="h-3 w-3" aria-hidden />{row.matches} correspondance{row.matches > 1 ? 's' : ''} IA
           </Link>
         )}
@@ -142,7 +142,7 @@ export function JobRow({ row, apps, stages, canPublish, recruiters, first, focus
 
       <div className="flex justify-end">
         <button type="button" onClick={onPreview} aria-pressed={previewed} title="Afficher dans l’aperçu"
-          className="hidden min-[1800px]:flex w-10 h-10 rounded-[10px] items-center justify-center cursor-pointer bg-transparent border-0 transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
+          className="hidden min-[112.5rem]:flex w-10 h-10 rounded-[10px] items-center justify-center cursor-pointer bg-transparent border-0 transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
           style={{ color: previewed ? 'var(--color-primary)' : 'var(--color-text-muted)' }}>
           <PanelRight className="h-4 w-4" aria-hidden /><span className="sr-only">Aperçu de {job.title}</span>
         </button>

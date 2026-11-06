@@ -143,8 +143,8 @@ export function DashboardSkeleton() {
   // (src/app/recruiter/dashboard/dashboard-layout.ts).
   return (
     <SkeletonRegion label="Chargement du tableau de bord…" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <div className="max-w-6xl min-[1440px]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[1440px]:px-8 py-6 sm:py-8 flex flex-col gap-6 sm:gap-7 min-[1440px]:grid min-[1440px]:grid-cols-[248px_minmax(0,1fr)] min-[1800px]:grid-cols-[248px_minmax(0,1fr)_340px] min-[1440px]:gap-6 min-[1440px]:items-start">
-        <div className="hidden min-[1440px]:flex flex-col gap-3.5">
+      <div className="max-w-6xl min-[90rem]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[90rem]:px-8 py-6 sm:py-8 min-[90rem]:py-6 flex flex-col gap-6 sm:gap-7 min-[90rem]:grid min-[90rem]:grid-cols-[248px_minmax(0,1fr)] min-[112.5rem]:grid-cols-[248px_minmax(0,1fr)_340px] min-[90rem]:gap-6 min-[90rem]:items-start">
+        <div className="hidden min-[90rem]:flex flex-col gap-3.5">
           <Skeleton className="h-10 w-full rounded-xl" />
           <div className="rounded-[20px] p-3.5 space-y-2" style={card}>
             <Skeleton className="h-3 w-20" />
@@ -157,17 +157,17 @@ export function DashboardSkeleton() {
             <Skeleton className="h-10 w-full rounded-xl" />
           </div>
         </div>
-        <div className="min-w-0 flex flex-col gap-6 sm:gap-7 min-[1440px]:gap-4">
+        <div className="min-w-0 flex flex-col gap-6 sm:gap-7 min-[90rem]:gap-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-px rounded-[20px] overflow-hidden" style={{ background: 'var(--color-border)', border: '1px solid var(--color-border)' }}>
             {Array.from({ length: 4 }, (_, i) => (
-              <div key={i} className="px-4 py-4 sm:px-6 sm:py-5 min-[1440px]:py-4 space-y-2.5" style={{ background: 'var(--color-surface)' }}>
+              <div key={i} className="px-4 py-4 sm:px-6 sm:py-5 min-[90rem]:px-5 min-[90rem]:py-3.5 space-y-2.5" style={{ background: 'var(--color-surface)' }}>
                 <Skeleton className="h-3 w-24" />
                 <Skeleton className="h-8 w-14" />
                 <Skeleton className="h-3 w-32 max-w-full" />
               </div>
             ))}
           </div>
-          <div className="space-y-3 min-[1440px]:hidden">
+          <div className="space-y-3 min-[90rem]:hidden">
             <Skeleton className="h-4 w-24" />
             <div className="flex gap-2.5 overflow-hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:gap-3">
               {Array.from({ length: 4 }, (_, i) => (
@@ -189,13 +189,13 @@ export function DashboardSkeleton() {
                 <Skeleton className="h-10 flex-1 sm:flex-none sm:w-40 rounded-xl" />
               </div>
             </div>
-            <div className="px-4 sm:px-6 pb-4 flex flex-col sm:flex-row gap-2.5 min-[1440px]:hidden">
+            <div className="px-4 sm:px-6 pb-4 flex flex-col sm:flex-row gap-2.5 min-[90rem]:hidden">
               <Skeleton className="h-11 sm:h-10 flex-1 rounded-xl" />
               <Skeleton className="h-11 sm:h-10 sm:w-64 rounded-xl" />
               <Skeleton className="h-11 sm:h-10 sm:w-80 rounded-xl" />
             </div>
             {Array.from({ length: 5 }, (_, i) => (
-              <div key={i} className="px-4 sm:px-6 py-4 min-[1440px]:py-3 grid grid-cols-2 lg:grid-cols-[minmax(0,1fr)_124px_200px_180px_88px] min-[1440px]:grid-cols-[minmax(0,1fr)_172px_190px_180px_88px] min-[1800px]:grid-cols-[minmax(0,1fr)_172px_180px_176px_132px] gap-x-5 gap-y-4 items-center" style={{ borderTop: '1px solid var(--color-border)' }}>
+              <div key={i} className="px-4 sm:px-6 py-4 min-[90rem]:px-5 min-[90rem]:py-2.5 grid grid-cols-2 lg:grid-cols-[minmax(0,1fr)_124px_200px_180px_88px] min-[90rem]:grid-cols-[minmax(0,1fr)_156px_176px_200px_88px] min-[112.5rem]:grid-cols-[minmax(0,1fr)_156px_176px_200px_132px] gap-x-5 gap-y-4 items-center" style={{ borderTop: '1px solid var(--color-border)' }}>
                 <div className="col-span-2 lg:col-span-1 space-y-2">
                   <Skeleton className="h-4 w-3/5" />
                   <Skeleton className="h-3 w-2/5" />
@@ -208,7 +208,7 @@ export function DashboardSkeleton() {
             ))}
           </div>
         </div>
-        <div className="hidden min-[1800px]:flex flex-col gap-3.5">
+        <div className="hidden min-[112.5rem]:flex flex-col gap-3.5">
           <div className="rounded-[20px] p-5 space-y-3" style={card}>
             <Skeleton className="h-5 w-4/5" />
             <Skeleton className="h-3 w-3/5" />

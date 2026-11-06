@@ -180,7 +180,7 @@ export default async function RecruiterDashboard({ searchParams }: {
         </p>
       )}
       {selectionNames.length > 0 && (
-        <p className="text-[13px] -mb-2 sm:-mb-3 min-[1440px]:mb-0" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="text-[13px] -mb-2 sm:-mb-3 min-[90rem]:mb-0" style={{ color: 'var(--color-text-muted)' }}>
           Indicateurs et offres de : <span className="font-semibold" style={{ color: 'var(--color-text)' }}>{selectionNames.join(', ')}</span>
           {' · '}
           <Link href="/recruiter/dashboard" className="font-semibold no-underline hover:underline" style={{ color: 'var(--color-primary)' }}>Tous les recruteurs</Link>
@@ -194,7 +194,7 @@ export default async function RecruiterDashboard({ searchParams }: {
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       {/* Grand écran (1440 px et plus) : toute la largeur, jusqu'à 1920 px, avec le rail de filtres et le panneau
           d'aperçu de « Mes offres » (dashboard-layout.ts). */}
-      <div className="max-w-6xl min-[1440px]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[1440px]:px-8 py-6 sm:py-8 space-y-6 sm:space-y-7">
+      <div className="max-w-6xl min-[90rem]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[90rem]:px-8 py-6 sm:py-8 min-[90rem]:py-6 space-y-6 sm:space-y-7">
         {/* Indicateurs, « À traiter » puis « Mes offres » : les tuiles filtrent la liste, elles partagent son état. Les
             autres outils sont dans le sous-menu de l'espace (layout recruteur). */}
         <JobsListClient rows={rows} appsByJob={appsByJobRecord} funnelStages={funnelStages} header={header}
