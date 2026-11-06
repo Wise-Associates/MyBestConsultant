@@ -8,7 +8,9 @@ import type { JobFacts } from './recruiter-dashboard'
 
 /** « En ligne » = en ligne et non expirée ; « Archivées » = toutes les autres (archivées et expirées). */
 export type JobStatusFilter = 'all' | 'active' | 'archived'
-export type JobContractFilter = 'all' | NonNullable<Job['contractType']>
+export type JobContract = NonNullable<Job['contractType']>
+/** Ordre d'affichage des contrats, et ordre dans lequel une sélection est écrite. */
+export const JOB_CONTRACTS: readonly JobContract[] = ['cdi', 'cdd', 'freelance', 'mission']
 /** Tuiles « À traiter » : un clic garde les offres concernées. */
 export type JobFocus = 'new' | 'noApplications' | 'diffusionFailed' | 'expiringSoon'
 export type JobSort = 'recent' | 'applications' | 'score' | 'expiry'
@@ -17,12 +19,13 @@ export interface JobFilters {
   /** Intitulé, ville ou entreprise affichée ; sans tenir compte de la casse ni des accents. */
   q: string
   status: JobStatusFilter
-  contract: JobContractFilter
+  /** Contrats choisis (choix multiple, demande du 2026-11-06) ; vide = tous les contrats. */
+  contract: JobContract[]
   focus: JobFocus | null
   sort: JobSort
 }
 
-export const EMPTY_JOB_FILTERS: JobFilters = { q: '', status: 'all', contract: 'all', focus: null, sort: 'recent' }
+export const EMPTY_JOB_FILTERS: JobFilters = { q: '', status: 'all', contract: [], focus: null, sort: 'recent' }
 
 export interface JobRow {
   job: Pick<Job, 'title' | 'location' | 'contractType' | 'companyName' | 'createdAt' | 'expiresAt'>
@@ -62,19 +65,18 @@ export function filterJobs<T extends JobRow>(rows: T[], f: JobFilters): T[] {
   return rows.filter(({ job, facts }) => {
     if (f.status === 'active' && facts.state !== 'online') return false
     if (f.status === 'archived' && facts.state === 'online') return false
-    if (f.contract !== 'all' && job.contractType !== f.contract) return false
+    if (f.contract.length > 0 && !(job.contractType && f.contract.includes(job.contractType))) return false
     if (f.focus && !matchesFocus(facts, f.focus)) return false
     return !q || fold([job.title, job.location, job.companyName ?? ''].join(' ')).includes(q)
   }).sort(COMPARE[f.sort])
 }
 
 /** Un filtre réduit la liste ; le tri n'en est pas un. */
-export const isFiltering = (f: JobFilters) => f.q.trim() !== '' || f.status !== 'all' || f.contract !== 'all' || f.focus !== null
+export const isFiltering = (f: JobFilters) => f.q.trim() !== '' || f.status !== 'all' || f.contract.length > 0 || f.focus !== null
 
 // Filtres gardés dans l'adresse (demande du 2026-11-04 : « Retour » depuis une offre retrouve la liste filtrée, comme un
 // rechargement) : mêmes noms que les filtres des appels d'offres (src/lib/ao/filters.ts), valeurs par défaut omises.
 const STATUSES: JobStatusFilter[] = ['all', 'active', 'archived']
-const CONTRACTS: JobContractFilter[] = ['all', 'cdi', 'cdd', 'freelance', 'mission']
 const FOCUSES: JobFocus[] = ['new', 'noApplications', 'diffusionFailed', 'expiringSoon']
 const SORTS: JobSort[] = ['recent', 'applications', 'score', 'expiry']
 /** Recherche relue bornée : une adresse modifiée ne fait pas filtrer sur un texte démesuré. */
@@ -83,12 +85,18 @@ const MAX_QUERY = 200
 const pick = <T extends string>(value: string | null, allowed: readonly T[]): T | null =>
   allowed.find(v => v === value) ?? null
 
+/** Sélection sans doublon, dans l'ordre de `JOB_CONTRACTS` : une même sélection donne toujours la même adresse. */
+export const normalizeContracts = (list: readonly string[]): JobContract[] => JOB_CONTRACTS.filter(c => list.includes(c))
+
+/** `contract=cdi,mission` (un seul contrat dans les anciens liens : `contract=cdi`) ; valeurs inconnues ignorées. */
+const contractsFromParam = (value: string | null): JobContract[] => normalizeContracts((value ?? '').split(','))
+
 /** Filtres lus dans l'adresse ; une valeur inconnue (ancien lien, adresse modifiée) reprend sa valeur par défaut. */
 export function jobFiltersFromSearchParams(sp: URLSearchParams): JobFilters {
   return {
     q: (sp.get('q') ?? '').slice(0, MAX_QUERY),
     status: pick(sp.get('status'), STATUSES) ?? EMPTY_JOB_FILTERS.status,
-    contract: pick(sp.get('contract'), CONTRACTS) ?? EMPTY_JOB_FILTERS.contract,
+    contract: contractsFromParam(sp.get('contract')),
     focus: pick(sp.get('focus'), FOCUSES),
     sort: pick(sp.get('sort'), SORTS) ?? EMPTY_JOB_FILTERS.sort,
   }
@@ -100,7 +108,7 @@ export function withJobFilters(sp: URLSearchParams, f: JobFilters): URLSearchPar
   for (const key of ['q', 'status', 'contract', 'focus', 'sort']) next.delete(key)
   if (f.q) next.set('q', f.q)
   if (f.status !== EMPTY_JOB_FILTERS.status) next.set('status', f.status)
-  if (f.contract !== EMPTY_JOB_FILTERS.contract) next.set('contract', f.contract)
+  if (f.contract.length > 0) next.set('contract', normalizeContracts(f.contract).join(','))
   if (f.focus) next.set('focus', f.focus)
   if (f.sort !== EMPTY_JOB_FILTERS.sort) next.set('sort', f.sort)
   return next

@@ -7,6 +7,7 @@ import { Inbox, Users, AlertTriangle, Clock, ArrowRight, Layers, Search, X } fro
 import { JobRow, ROW_GRID } from './job-row'
 import { JobApplicationsModal } from './job-applications-modal'
 import { JobPreviewPanel } from './job-preview-panel'
+import { ContractFilter } from './contract-filter'
 import type { CandidateApp } from './applications-panel'
 import type { SocialInfo } from './social-status'
 import type { Job, FunnelStage } from '@/types'
@@ -31,9 +32,6 @@ export interface DashboardJobRow {
   social?: SocialInfo
 }
 
-const CONTRACT_LABELS: Record<string, string> = {
-  cdi: 'CDI', cdd: 'CDD', freelance: 'Freelance', mission: 'Mission',
-}
 const SORT_LABELS: Record<JobSort, string> = {
   recent: 'Plus récentes', applications: 'Plus de candidatures', score: 'Meilleur score IA', expiry: 'Expiration proche',
 }
@@ -162,12 +160,7 @@ export function JobsListClient({
         style={{ ...fieldStyle, background: 'color-mix(in srgb, var(--color-text) 3%, var(--color-surface))' }} />
     </label>
   )
-  const contractSelect = (
-    <select aria-label="Type de contrat" value={filters.contract} onChange={e => update({ contract: e.target.value as JobFilters['contract'] })} className={field} style={fieldStyle}>
-      <option value="all">Tous les contrats</option>
-      {Object.entries(CONTRACT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-    </select>
-  )
+  const contractSelect = <ContractFilter value={filters.contract} onChange={contract => update({ contract })} />
   const sortSelect = (
     <select aria-label="Trier les offres" value={filters.sort} onChange={e => update({ sort: e.target.value as JobSort })} className={field} style={fieldStyle}>
       {Object.entries(SORT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
