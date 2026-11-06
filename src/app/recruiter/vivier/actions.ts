@@ -16,6 +16,7 @@ import {
 } from '@/lib/cv-export/store'
 import { vivierExportKey } from '@/lib/cv-export/stored'
 import { getEsnTemplateInfo } from '@/lib/cv-export/templates'
+import { PLAIN_EMAIL as MBC_PLAIN_EMAIL } from '@/lib/mbc-search/rules'
 import type { UserProfile } from '@/types'
 import {
   VIVIER_MATCHING_DAILY_LIMITS, VIVIER_MATCHING_REFUSAL, matchingOffers, mergeOfferScores, offersToCompare, parseOfferScores,
@@ -201,6 +202,82 @@ export async function attachVivierCv(jobIdInput: string | null, fileIdInput: str
   }
 }
 
+const mbcProfileInput = z.object({
+  jobId: z.string().min(1).max(36).nullable(),
+  profile: z.object({
+    name: z.string().trim().min(1).max(200),
+    title: z.string().trim().max(200),
+    headline: z.string().trim().max(300),
+    company: z.string().trim().max(200),
+    location: z.string().trim().max(200),
+    linkedinUrl: z.string().trim().max(300).refine(u => u === '' || u.startsWith('https://'), 'Lien invalide'),
+    email: z.string().trim().max(254).refine(e => e === '' || MBC_PLAIN_EMAIL.test(e), 'Adresse invalide'),
+    experiences: z.array(z.object({
+      title: z.string().max(200), company: z.string().max(200), start: z.string().max(10), end: z.string().max(10), current: z.boolean(),
+    })).max(8),
+  }),
+})
+
+/**
+ * « Ajouter au vivier » de MBC Search : un profil révélé devient un CV du vivier (général, ou d'une offre avec
+ * « Associer à une offre ») sans fichier, puis passe au Matching IA comme un CV importé. Le profil vient du navigateur
+ * (rien n'est gardé côté serveur après la recherche) : il ne vaut que pour le vivier de celui qui l'ajoute, comme un
+ * CV qu'il importerait. C'est le seul moment où un profil de MBC Search est enregistré.
+ */
+export async function addMbcProfileToVivier(input: unknown): Promise<{ id?: string; notice?: string; error?: string }> {
+  try {
+    const parsed = mbcProfileInput.safeParse(input)
+    if (!parsed.success) throw new Refusal('Profil invalide : rechargez la page.')
+    const { jobId, profile: p } = parsed.data
+    const { user, tenantId } = await requireVivierAccess(jobId)
+    const { databases } = createAdminClient()
+    const same = await databases.listDocuments(DB_ID, COLLECTIONS.VIVIER_CVS, [
+      Query.equal('tenantId', tenantId), Query.equal('recruiterId', user.$id),
+      jobId === null ? Query.isNull('jobId') : Query.equal('jobId', jobId),
+      p.email ? Query.equal('candidateEmail', p.email) : Query.equal('candidateName', p.name), Query.limit(1),
+    ])
+    if (same.total > 0) throw new Refusal(jobId === null ? 'Ce profil est déjà dans votre vivier.' : 'Ce profil est déjà dans le vivier de cette offre.')
+
+    const cvProfile: CvProfile = {
+      skills: [],
+      experienceSummary: [p.headline, p.location, p.linkedinUrl && `LinkedIn : ${p.linkedinUrl}`, 'Profil trouvé avec MBC Search (sans CV).']
+        .filter(Boolean).join(' · ').slice(0, 1000),
+      experiences: p.experiences.map(e => ({
+        title: e.title, company: e.company, missions: [],
+        period: [e.start, e.current ? 'aujourd’hui' : e.end].filter(Boolean).join(' – '),
+      })),
+      education: [],
+      languages: [],
+      yearsOfExperience: null,
+      candidateName: p.name,
+      candidateEmail: p.email || null,
+      candidatePhone: null,
+      extractedAt: new Date().toISOString(),
+    }
+    if (cvProfile.experiences.length === 0 && (p.title || p.company)) {
+      cvProfile.experiences.push({ title: p.title, company: p.company, period: 'aujourd’hui', missions: [] })
+    }
+    const doc = await databases.createDocument(DB_ID, COLLECTIONS.VIVIER_CVS, ID.unique(), {
+      tenantId,
+      recruiterId: user.$id,
+      jobId,
+      cvFileId: '',
+      fileName: 'Profil MBC Search (sans CV)',
+      candidateName: p.name,
+      candidateEmail: p.email,
+      candidatePhone: '',
+      cvProfileJson: JSON.stringify(cvProfile),
+    })
+    const notice = await matchProfile(user, tenantId, jobId, doc.$id, cvProfile)
+    revalidateVivier(jobId)
+    return { id: doc.$id, notice: notice ?? undefined }
+  } catch (e) {
+    if (e instanceof Refusal) return { error: e.message }
+    console.error('[vivier] ajout d\'un profil MBC Search impossible', e instanceof Error ? e.message : 'inconnu')
+    return { error: 'Ajout au vivier impossible pour le moment : réessayez dans quelques instants.' }
+  }
+}
+
 /** Extraction du profil, best-effort : un CV reste importé et consultable même si l'analyse échoue (null). */
 async function buildProfile(docId: string, fileId: string): Promise<CvProfile | null> {
   try {
@@ -343,8 +420,11 @@ export async function deleteVivierCv(jobId: string | null, docId: string): Promi
     }
 
     // Fichier rattaché à un autre CV (possible avant la vérification d'assertFreshUpload) : gardé pour celui-ci.
-    const sharing = await databases.listDocuments(DB_ID, COLLECTIONS.VIVIER_CVS, [Query.equal('cvFileId', doc.cvFileId as string), Query.limit(2)])
-    if (sharing.total <= 1) await storage.deleteFile(BUCKETS.VIVIER_CVS, doc.cvFileId as string).catch(() => {})
+    // Profil ajouté depuis MBC Search : pas de fichier.
+    if (doc.cvFileId) {
+      const sharing = await databases.listDocuments(DB_ID, COLLECTIONS.VIVIER_CVS, [Query.equal('cvFileId', doc.cvFileId as string), Query.limit(2)])
+      if (sharing.total <= 1) await storage.deleteFile(BUCKETS.VIVIER_CVS, doc.cvFileId as string).catch(() => {})
+    }
     await databases.deleteDocument(DB_ID, COLLECTIONS.VIVIER_CVS, docId)
     // Correspondances aux offres (vivier général, ADR 0026) après le CV : supprimées avant, un échec de sa suppression
     // l'aurait retiré du Matching IA sans que rien ne les recrée. Restées, elles sont écartées à la lecture (CV absent)

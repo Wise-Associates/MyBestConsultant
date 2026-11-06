@@ -203,6 +203,12 @@ export async function takeDailySlotId(counter: DailyCounter, key: string, now: D
   return null
 }
 
+/** Places du jour déjà prises sur ce compteur (affichage d'une jauge ; une place rendue n'y est plus comptée). */
+export async function countDailySlots(counter: DailyCounter, key: string, now: Date): Promise<number> {
+  const { databases } = createAdminClient()
+  return (await databases.listDocuments(DB_ID, COLLECTIONS.AO_STATE, [Query.equal('holder', counterIdFor(counter, key, now)), Query.limit(1)])).total
+}
+
 /** Rend une place prise par takeDailySlotId (demande abandonnée sans frais). */
 export async function releaseDailySlot(slotId: string): Promise<void> {
   const { databases } = createAdminClient()

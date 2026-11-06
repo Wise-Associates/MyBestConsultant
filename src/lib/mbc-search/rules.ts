@@ -23,10 +23,36 @@ export const criteriaSchema = z.object({
   locations: z.array(item).max(CRITERIA_LIMITS.items),
   seniorities: z.array(z.enum(SENIORITY_IDS)).max(SENIORITY_IDS.length),
   skills: z.array(item).max(CRITERIA_LIMITS.items),
+  /** Compétences marquées obligatoires (★) : seules celles-ci filtrent chez Apollo, les autres ne font que noter. */
+  requiredSkills: z.array(item).max(CRITERIA_LIMITS.items).optional(),
+  /** Secteurs de l'employeur actuel (« Banque », « Assurance »), mots-clés d'organisation d'Apollo. */
+  sectors: z.array(item).max(CRITERIA_LIMITS.items).optional(),
+  /** Seulement les personnes dont Apollo connaît une adresse e-mail. */
+  emailOnly: z.boolean().optional(),
+  /** Seulement les profils mis à jour depuis moins de 6 mois (filtre de la page de résultats, Apollo ne le propose pas). */
+  recentOnly: z.boolean().optional(),
 })
 export type MbcCriteria = z.infer<typeof criteriaSchema>
 
-export const EMPTY_CRITERIA: MbcCriteria = { titles: [], locations: [], seniorities: [], skills: [] }
+export const EMPTY_CRITERIA: MbcCriteria = { titles: [], locations: [], seniorities: [], skills: [], requiredSkills: [], sectors: [] }
+
+const same = (a: string, b: string) => normalize(a) === normalize(b)
+
+/** Compétences obligatoires encore présentes dans la liste (une compétence retirée cesse d'être obligatoire). */
+export function requiredSkillsOf(criteria: MbcCriteria): string[] {
+  return (criteria.requiredSkills ?? []).filter(r => criteria.skills.some(s => same(s, r)))
+}
+
+/**
+ * Mots-clés envoyés à Apollo (cherchés dans l'intitulé, l'employeur et le nom) : les compétences obligatoires, ou,
+ * sans intitulé demandé, toutes les compétences (sinon rien ne filtrerait la recherche). Les autres ne font que noter :
+ * les ajouter toutes à la recherche écartait presque tous les profils.
+ */
+export function apolloKeywords(criteria: MbcCriteria): string {
+  const required = requiredSkillsOf(criteria)
+  const keywords = required.length > 0 ? required : criteria.titles.length === 0 ? criteria.skills : []
+  return keywords.join(' ').slice(0, CRITERIA_LIMITS.keywords)
+}
 
 export const PAGE_SIZE = 25
 /** Apollo n'affiche pas plus de 500 pages ; au-delà de 40 pages de 25, un recruteur affine plutôt sa recherche. */
@@ -44,8 +70,9 @@ export function toApolloQuery(criteria: MbcCriteria, page: number) {
     person_titles: criteria.titles,
     person_locations: criteria.locations,
     person_seniorities: criteria.seniorities,
-    // Apollo cherche ces mots dans le nom, l'intitulé et l'employeur : les compétences y sont un filtre large.
-    q_keywords: criteria.skills.join(' ').slice(0, CRITERIA_LIMITS.keywords),
+    q_keywords: apolloKeywords(criteria),
+    ...(criteria.sectors?.length ? { q_organization_keyword_tags: criteria.sectors } : {}),
+    ...(criteria.emailOnly ? { contact_email_status: ['verified', 'likely to engage', 'unverified'] } : {}),
     include_similar_titles: true,
     page,
     per_page: PAGE_SIZE,
@@ -115,6 +142,12 @@ const words = (s: string) => normalize(s).split(/[^a-z0-9+#.]+/).filter(w => w.l
 export const SCORE_WEIGHTS = { title: 55, skills: 25, reachable: 10, fresh: 10 } as const
 const FRESH_DAYS = 180
 
+/** Profil mis à jour chez Apollo depuis moins de 6 mois (critère « récent »). */
+export function isFresh(refreshedAt: string, now: Date): boolean {
+  const refreshed = Date.parse(refreshedAt)
+  return Number.isFinite(refreshed) && now.getTime() - refreshed <= FRESH_DAYS * 86_400_000
+}
+
 /** Ce que le profil remplit de chaque critère : la grille de la liste de résultats (une colonne par critère). */
 export interface CriteriaMatch {
   /** 'any' : aucun intitulé demandé, le critère ne départage personne. */
@@ -129,6 +162,8 @@ export interface ScoredProfile extends MbcProfile {
   score: number
   reasons: string[]
   match: CriteriaMatch
+  /** Points obtenus pour chaque critère (sur SCORE_WEIGHTS), pour le détail « Pourquoi ce score ». */
+  points: Record<keyof typeof SCORE_WEIGHTS, number>
 }
 
 /**
@@ -138,7 +173,7 @@ export interface ScoredProfile extends MbcProfile {
 export function scoreProfile(profile: MbcProfile, criteria: MbcCriteria, now: Date): ScoredProfile {
   const reasons: string[] = []
   const titleWords = new Set(words(profile.title))
-  let score = 0
+  const points = { title: 0, skills: 0, reachable: 0, fresh: 0 }
 
   // Intitulé : meilleur recouvrement avec l'un des intitulés demandés (« Data Engineer » ↔ « Senior Data Engineer » = 100 %).
   let bestTitle = 0
@@ -151,30 +186,29 @@ export function scoreProfile(profile: MbcProfile, criteria: MbcCriteria, now: Da
   }
   if (criteria.titles.length === 0) {
     // Sans intitulé demandé, ce critère ne départage personne : ses points sont acquis à tous.
-    score += SCORE_WEIGHTS.title
+    points.title = SCORE_WEIGHTS.title
   } else if (bestTitle > 0) {
-    score += Math.round(SCORE_WEIGHTS.title * bestTitle)
+    points.title = Math.round(SCORE_WEIGHTS.title * bestTitle)
     reasons.push(bestTitle === 1 ? `Intitulé conforme : « ${bestTitleLabel} »` : `Intitulé proche de « ${bestTitleLabel} »`)
   }
 
   // Compétences : celles qu'on lit dans l'intitulé ou l'employeur (seuls textes visibles avant enrichissement).
   const visible = normalize(`${profile.title} ${profile.company}`)
   const found = criteria.skills.filter(s => visible.includes(normalize(s)))
-  if (criteria.skills.length === 0) score += SCORE_WEIGHTS.skills
+  if (criteria.skills.length === 0) points.skills = SCORE_WEIGHTS.skills
   else if (found.length > 0) {
-    score += Math.round(SCORE_WEIGHTS.skills * found.length / criteria.skills.length)
+    points.skills = Math.round(SCORE_WEIGHTS.skills * found.length / criteria.skills.length)
     reasons.push(`Compétence${found.length > 1 ? 's' : ''} visible${found.length > 1 ? 's' : ''} : ${found.join(', ')}`)
   }
 
   if (profile.hasEmail || profile.hasPhone) {
-    score += SCORE_WEIGHTS.reachable
+    points.reachable = SCORE_WEIGHTS.reachable
     reasons.push(profile.hasEmail && profile.hasPhone ? 'E-mail et téléphone disponibles' : profile.hasEmail ? 'E-mail disponible' : 'Téléphone disponible')
   }
 
-  const refreshed = Date.parse(profile.refreshedAt)
-  const fresh = Number.isFinite(refreshed) && now.getTime() - refreshed <= FRESH_DAYS * 86_400_000
+  const fresh = isFresh(profile.refreshedAt, now)
   if (fresh) {
-    score += SCORE_WEIGHTS.fresh
+    points.fresh = SCORE_WEIGHTS.fresh
     reasons.push('Profil mis à jour il y a moins de 6 mois')
   }
 
@@ -184,7 +218,8 @@ export function scoreProfile(profile: MbcProfile, criteria: MbcCriteria, now: Da
     reachable: profile.hasEmail || profile.hasPhone,
     fresh,
   }
-  return { ...profile, score: Math.min(100, score), reasons, match }
+  const score = points.title + points.skills + points.reachable + points.fresh
+  return { ...profile, score: Math.min(100, score), reasons, match, points }
 }
 
 /** Profils du meilleur au moins bon score ; à score égal, l'ordre d'Apollo est gardé. */
@@ -230,6 +265,8 @@ export function parseBriefCriteria(text: string): MbcCriteria | null {
     locations: list(obj.locations),
     seniorities: list(obj.seniorities).filter((s): s is Seniority => s in SENIORITIES),
     skills: list(obj.skills),
+    requiredSkills: [],
+    sectors: list(obj.sectors),
   }
   return criteriaProblem(criteria) ? null : criteria
 }
@@ -276,7 +313,7 @@ const httpsUrl = (v: string | null | undefined) => {
   const url = v.startsWith('http://') ? `https://${v.slice(7)}` : v
   return /^https:\/\/[^\s"'<>]+$/.test(url) ? url : ''
 }
-const PLAIN_EMAIL = /^[^\s@<>"?&]+@[^\s@<>"?&]+\.[a-z]{2,}$/i
+export const PLAIN_EMAIL = /^[^\s@<>"?&]+@[^\s@<>"?&]+\.[a-z]{2,}$/i
 
 const apolloMatchSchema = z.object({
   id: z.string().min(1),
@@ -340,4 +377,72 @@ export function parseApolloMatches(json: unknown): MbcRevealed[] | null {
     })
   }
   return out
+}
+
+/** Personne envoyée au brouillon d'approche : prénom, poste et parcours seulement (ni e-mail ni lien). */
+export const outreachPersonSchema = z.object({
+  firstName: z.string().trim().max(CRITERIA_LIMITS.item),
+  title: z.string().trim().max(200),
+  company: z.string().trim().max(200),
+  experiences: z.array(z.object({ title: z.string().max(200), company: z.string().max(200) })).max(8),
+})
+export type OutreachPerson = z.infer<typeof outreachPersonSchema>
+
+/** Texte de la personne pour l'IA, borné. */
+export function outreachPersonText(p: OutreachPerson): string {
+  const lines = [`Prénom : ${p.firstName || 'inconnu'}`, `Poste actuel : ${[p.title, p.company].filter(Boolean).join(' chez ') || 'inconnu'}`]
+  const past = p.experiences.filter(e => e.title || e.company).map(e => `- ${[e.title, e.company].filter(Boolean).join(' chez ')}`)
+  if (past.length) lines.push('Parcours :', ...past)
+  return lines.join('\n')
+}
+
+/** Besoin du recruteur pour le message : son brief, sinon ses critères. */
+export function outreachNeedText(brief: string, criteria: MbcCriteria): string {
+  if (brief.trim()) return brief.trim().slice(0, CRITERIA_LIMITS.brief)
+  return [
+    criteria.titles.length ? `Poste : ${criteria.titles.join(', ')}` : '',
+    criteria.skills.length ? `Compétences : ${criteria.skills.join(', ')}` : '',
+    criteria.locations.length ? `Lieu : ${criteria.locations.join(', ')}` : '',
+  ].filter(Boolean).join('\n')
+}
+
+/** Message rendu par l'IA, nettoyé : guillemets ou bloc de code autour retirés, 2 000 caractères au plus ; '' si vide. */
+export function cleanOutreachDraft(text: string): string {
+  return text.trim().replace(/^```[a-z]*\n?|```$/g, '').replace(/^["«]\s*|\s*["»]$/g, '').trim().slice(0, 2000)
+}
+
+/** Recherche enregistrée dans le navigateur du recruteur (critères et brief seulement : aucun profil). */
+export interface SavedSearch {
+  name: string
+  brief: string
+  criteria: MbcCriteria
+  savedAt: string
+}
+export const SAVED_SEARCHES_MAX = 20
+
+const savedSearchSchema = z.object({
+  name: z.string().trim().min(1).max(CRITERIA_LIMITS.item),
+  brief: z.string().max(CRITERIA_LIMITS.brief),
+  criteria: criteriaSchema,
+  savedAt: z.string().max(40),
+})
+
+/** Lit les recherches enregistrées (localStorage) : une entrée illisible est écartée, un contenu illisible donne []. */
+export function parseSavedSearches(raw: string | null): SavedSearch[] {
+  if (!raw) return []
+  let data: unknown
+  try { data = JSON.parse(raw) } catch { return [] }
+  if (!Array.isArray(data)) return []
+  return data.flatMap(d => { const p = savedSearchSchema.safeParse(d); return p.success ? [p.data] : [] }).slice(0, SAVED_SEARCHES_MAX)
+}
+
+/** Nom proposé pour une recherche : son premier intitulé et son premier lieu (« Data Engineer · Lyon »). */
+export function savedSearchName(criteria: MbcCriteria): string {
+  const city = criteria.locations[0]?.split(',')[0]?.trim()
+  return [criteria.titles[0] ?? criteria.skills[0] ?? 'Recherche', city].filter(Boolean).join(' · ').slice(0, CRITERIA_LIMITS.item)
+}
+
+/** Ajoute en tête (une recherche du même nom est remplacée), 20 au plus. */
+export function withSavedSearch(list: SavedSearch[], search: SavedSearch): SavedSearch[] {
+  return [search, ...list.filter(s => !same(s.name, search.name))].slice(0, SAVED_SEARCHES_MAX)
 }

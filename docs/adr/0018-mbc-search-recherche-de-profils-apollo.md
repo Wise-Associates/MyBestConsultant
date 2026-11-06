@@ -43,6 +43,13 @@ avec une clé de la plateforme.
 - **Rien n'est enregistré** : ni brief, ni critères, ni profils. Les journaux ne contiennent que le statut HTTP ou le
   type d'erreur, jamais le brief ni un profil.
 
+- **Espace de travail et suites** (2026-11-06, maquette validée par le client) : trois colonnes (critères, profils,
+  profil choisi), compétences obligatoires (seules envoyées en mots-clés), secteur de l'employeur, filtres e-mail et
+  profil récent, présélection, sélection multiple à révéler, jauge des profils complets du jour, recherches enregistrées
+  dans le navigateur. Un profil révélé peut être **ajouté au vivier** (général ou d'une offre) : CV du vivier sans
+  fichier, comparé aux offres comme un import ; c'est le seul enregistrement d'un profil (durée de conservation : celle
+  du vivier). « Rédiger une approche » : brouillon par l'IA, sans e-mail ni lien envoyé au modèle, rien d'envoyé.
+
 ## Conséquences
 
 - Mise en place : créer une clé d'API Apollo et la renseigner dans `APOLLO_API_KEY` (Vercel, Preview puis
