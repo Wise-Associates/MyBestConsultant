@@ -1,9 +1,9 @@
 'use client'
 
-import { useId, useState, type MouseEvent, type Ref } from 'react'
+import type { MouseEvent, Ref } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { MapPin, Clock, Sparkles, PanelRight, ChevronDown } from 'lucide-react'
+import { MapPin, Clock, Sparkles, PanelRight } from 'lucide-react'
 import { JobActions } from './job-actions'
 import { SocialStatus, usePublish } from './social-status'
 import { JobAssigneeSelect } from './job-assignee-select'
@@ -40,12 +40,9 @@ export function JobRow({ row, apps, stages, canPublish, recruiters, first, focus
   const { job, facts } = row
   const publish = usePublish(job.$id)
   const matchingHref = `/recruiter/pipeline/${job.$id}/matching`
-  const allStageCounts = stages.map(stage => ({ stage, count: apps.filter(a => a.status === stage.slug).length }))
-  const stageCounts = allStageCounts.filter(s => s.count > 0)
-  const peak = Math.max(1, ...stageCounts.map(s => s.count))
-  // Détail du pipeline (toutes les phases, même vides), replié par défaut : la colonne n'en montre qu'un résumé.
-  const [pipelineOpen, setPipelineOpen] = useState(false)
-  const pipelineId = useId()
+  const stageCounts = stages
+    .map(stage => ({ stage, count: apps.filter(a => a.status === stage.slug).length }))
+    .filter(s => s.count > 0)
   const working = !!row.social && ['queued', 'sent', 'images_ready'].includes(row.social.status) && !row.social.stale
   const ownOnline = !row.shared && facts.state === 'online'
 
@@ -53,7 +50,7 @@ export function JobRow({ row, apps, stages, canPublish, recruiters, first, focus
   // d'écran, les boutons et liens de la ligne gardent leur propre action. Sur un écran assez large pour le panneau
   // d'aperçu, le clic sur la ligne l'affiche dans ce panneau (le titre ouvre toujours le matching).
   function openFromRow(e: MouseEvent<HTMLElement>) {
-    if ((e.target as HTMLElement).closest('a, button, select, label, [role="menu"], [data-row-details]')) return
+    if ((e.target as HTMLElement).closest('a, button, select, label, [role="menu"]')) return
     if (window.matchMedia(PREVIEW_MEDIA).matches) {
       onPreview()
       return
@@ -132,12 +129,6 @@ export function JobRow({ row, apps, stages, canPublish, recruiters, first, focus
                 </li>
               ))}
             </ul>
-            <button type="button" onClick={() => setPipelineOpen(o => !o)} aria-expanded={pipelineOpen} aria-controls={pipelineId}
-              className="self-start inline-flex items-center gap-1 bg-transparent border-0 p-0 text-xs font-semibold cursor-pointer rounded-sm hover:underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
-              style={{ color: 'var(--color-text)' }}>
-              {pipelineOpen ? 'Masquer le détail' : 'Voir le détail'}
-              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${pipelineOpen ? 'rotate-180' : ''}`} aria-hidden />
-            </button>
           </>
         ) : (
           <>
@@ -159,31 +150,6 @@ export function JobRow({ row, apps, stages, canPublish, recruiters, first, focus
           canRepublish={canPublish && ownOnline && !!row.social && !working && !publish.pending}
           onRepublish={() => publish.run(true)} />
       </div>
-
-      {pipelineOpen && (
-        <div id={pipelineId} data-row-details className="col-span-full cursor-default rounded-xl px-4 py-3.5"
-          style={{ background: 'color-mix(in srgb, var(--color-text) 3%, transparent)' }}>
-          <div className="flex items-center justify-between gap-3 mb-2.5">
-            <h3 className="font-semibold uppercase" style={{ color: 'var(--color-text-muted)', fontSize: 11, letterSpacing: '0.06em', lineHeight: 1.4 }}>
-              Pipeline · {facts.applications} {facts.applications > 1 ? 'candidatures' : 'candidature'}
-            </h3>
-            <Link href={`/recruiter/pipeline/${job.$id}`} className="text-xs font-semibold no-underline hover:underline" style={{ color: 'var(--color-primary)' }}>
-              Ouvrir le pipeline
-            </Link>
-          </div>
-          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-2">
-            {allStageCounts.map(({ stage, count }) => (
-              <li key={stage.slug} className="flex items-center gap-3 text-[13px]" style={{ color: count > 0 ? 'var(--color-text)' : 'var(--color-text-muted)' }}>
-                <span className="w-36 shrink-0">{stage.label}</span>
-                <span aria-hidden className="flex-1 h-1.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--color-text) 6%, transparent)' }}>
-                  {count > 0 && <span className="block h-1.5 rounded-full" style={{ width: `${(count / peak) * 100}%`, background: stage.color }} />}
-                </span>
-                <span className="w-6 text-right font-semibold tabular-nums">{count}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </article>
   )
 }
