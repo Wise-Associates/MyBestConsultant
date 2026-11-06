@@ -233,3 +233,111 @@ export function parseBriefCriteria(text: string): MbcCriteria | null {
   }
   return criteriaProblem(criteria) ? null : criteria
 }
+
+/** Identifiant d'une personne chez Apollo (24 caractères hexadécimaux), seul élément envoyé pour l'enrichir. */
+export const APOLLO_PERSON_ID = /^[a-f0-9]{24}$/
+/** Personnes par appel d'enrichissement : la limite d'Apollo (`people/bulk_match`). */
+export const REVEAL_BATCH = 10
+
+export interface MbcExperience {
+  title: string
+  company: string
+  /** « 2021-03 » ou '' ; fin vide et `current` : poste actuel. */
+  start: string
+  end: string
+  current: boolean
+}
+
+/** Profil complet après enrichissement (payant) : nom entier, LinkedIn, e-mail professionnel, lieu, parcours. */
+export interface MbcRevealed {
+  id: string
+  name: string
+  title: string
+  headline: string
+  company: string
+  companyWebsite: string
+  location: string
+  linkedinUrl: string
+  email: string
+  /** « verified », « guessed »… tel que donné par Apollo ; '' sans e-mail. */
+  emailStatus: string
+  photoUrl: string
+  experiences: MbcExperience[]
+}
+
+/** Corps de `POST /api/v1/people/bulk_match` : seulement les identifiants Apollo, jamais un nom ni un e-mail. */
+export function toRevealRequest(ids: string[]) {
+  return { details: ids.map(id => ({ id })) }
+}
+
+const httpsUrl = (v: string | null | undefined) => {
+  if (!v) return ''
+  // Lien affiché tel quel dans la page : https seulement (pas de javascript: venu d'un tiers).
+  const url = v.startsWith('http://') ? `https://${v.slice(7)}` : v
+  return /^https:\/\/[^\s"'<>]+$/.test(url) ? url : ''
+}
+const PLAIN_EMAIL = /^[^\s@<>"?&]+@[^\s@<>"?&]+\.[a-z]{2,}$/i
+
+const apolloMatchSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().nullish(),
+  first_name: z.string().nullish(),
+  last_name: z.string().nullish(),
+  title: z.string().nullish(),
+  headline: z.string().nullish(),
+  linkedin_url: z.string().nullish(),
+  email: z.string().nullish(),
+  email_status: z.string().nullish(),
+  photo_url: z.string().nullish(),
+  city: z.string().nullish(),
+  state: z.string().nullish(),
+  country: z.string().nullish(),
+  organization: z.object({ name: z.string().nullish(), website_url: z.string().nullish() }).nullish(),
+  employment_history: z.array(z.object({
+    title: z.string().nullish(),
+    organization_name: z.string().nullish(),
+    start_date: z.string().nullish(),
+    end_date: z.string().nullish(),
+    current: z.boolean().nullish(),
+  })).nullish(),
+})
+
+const monthOf = (d: string | null | undefined) => (d && /^\d{4}-\d{2}/.test(d) ? d.slice(0, 7) : '')
+
+/**
+ * Lit la réponse de l'enrichissement. Une réponse d'une autre forme est une erreur (null) ; une personne non trouvée
+ * (null chez Apollo) ou illisible est seulement absente du résultat.
+ */
+export function parseApolloMatches(json: unknown): MbcRevealed[] | null {
+  const parsed = z.object({ matches: z.array(z.unknown()) }).safeParse(json)
+  if (!parsed.success) return null
+  const out: MbcRevealed[] = []
+  for (const raw of parsed.data.matches) {
+    const m = apolloMatchSchema.safeParse(raw)
+    if (!m.success) continue
+    const p = m.data
+    const name = p.name?.trim() || [p.first_name, p.last_name].filter(Boolean).join(' ').trim()
+    const email = p.email?.trim() ?? ''
+    out.push({
+      id: p.id,
+      name,
+      title: p.title?.trim() ?? '',
+      headline: p.headline?.trim() ?? '',
+      company: p.organization?.name?.trim() ?? '',
+      companyWebsite: httpsUrl(p.organization?.website_url),
+      location: [p.city, p.state, p.country].map(s => s?.trim()).filter(Boolean).filter((s, i, all) => all.indexOf(s) === i).join(', '),
+      linkedinUrl: httpsUrl(p.linkedin_url),
+      email: PLAIN_EMAIL.test(email) ? email : '',
+      emailStatus: PLAIN_EMAIL.test(email) ? p.email_status?.trim() ?? '' : '',
+      photoUrl: httpsUrl(p.photo_url),
+      experiences: (p.employment_history ?? []).slice(0, 8).map(e => ({
+        title: e.title?.trim() ?? '',
+        company: e.organization_name?.trim() ?? '',
+        start: monthOf(e.start_date),
+        end: monthOf(e.end_date),
+        current: e.current === true,
+      })).filter(e => e.title || e.company),
+    })
+  }
+  return out
+}
