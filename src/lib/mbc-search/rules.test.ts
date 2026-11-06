@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  EMPTY_CRITERIA, PAGE_SIZE, criteriaProblem, criteriaSchema, parseApolloPeople, parseBriefCriteria, rankProfiles, scoreProfile,
-  toApolloQuery, type MbcProfile,
+  APOLLO_PERSON_ID, EMPTY_CRITERIA, PAGE_SIZE, criteriaProblem, criteriaSchema, parseApolloMatches, parseApolloPeople, parseBriefCriteria,
+  rankProfiles, scoreProfile, toApolloQuery, toRevealRequest, type MbcProfile,
 } from './rules'
 import { MBC_SEARCH_DAILY_LIMITS, MBC_SEARCH_QUOTA_MESSAGE, mbcSearchDenial } from './access'
 
@@ -132,5 +132,49 @@ describe('MBC Search : accès', () => {
   it('annonce le plafond du jour', () => {
     assert.ok(MBC_SEARCH_DAILY_LIMITS.perOrganisation < MBC_SEARCH_DAILY_LIMITS.allOrganisations)
     assert.match(MBC_SEARCH_QUOTA_MESSAGE.organisation, new RegExp(`${MBC_SEARCH_DAILY_LIMITS.perOrganisation} recherches`))
+  })
+})
+
+describe('MBC Search : profils complets (enrichissement Apollo)', () => {
+  it('n\'envoie à Apollo que les identifiants des personnes', () => {
+    assert.deepEqual(toRevealRequest(['0123456789abcdef01234567']), { details: [{ id: '0123456789abcdef01234567' }] })
+    assert.ok(APOLLO_PERSON_ID.test('0123456789abcdef01234567'))
+    assert.ok(!APOLLO_PERSON_ID.test('../people/1'))
+  })
+
+  it('lit nom entier, LinkedIn, e-mail professionnel, lieu et parcours', () => {
+    const [p] = parseApolloMatches({
+      matches: [{
+        id: 'a1', first_name: 'Camille', last_name: 'Dupont', name: 'Camille Dupont', title: 'Data Engineer',
+        headline: 'Data Engineer chez Exemple SA', linkedin_url: 'http://www.linkedin.com/in/camille-exemple',
+        email: 'camille.dupont@exemple.fr', email_status: 'verified', photo_url: 'https://media.exemple.fr/p.jpg',
+        city: 'Lyon', state: 'Auvergne-Rhône-Alpes', country: 'France',
+        organization: { name: 'Exemple SA', website_url: 'http://www.exemple.fr' },
+        employment_history: [
+          { title: 'Data Engineer', organization_name: 'Exemple SA', start_date: '2022-03-01', end_date: null, current: true },
+          { title: 'Développeuse', organization_name: 'Démo SAS', start_date: '2019-01-01', end_date: '2022-02-01', current: false },
+          { title: null, organization_name: null },
+        ],
+      }],
+    }) ?? []
+    assert.deepEqual(p, {
+      id: 'a1', name: 'Camille Dupont', title: 'Data Engineer', headline: 'Data Engineer chez Exemple SA', company: 'Exemple SA',
+      companyWebsite: 'https://www.exemple.fr', location: 'Lyon, Auvergne-Rhône-Alpes, France',
+      linkedinUrl: 'https://www.linkedin.com/in/camille-exemple', email: 'camille.dupont@exemple.fr', emailStatus: 'verified',
+      photoUrl: 'https://media.exemple.fr/p.jpg',
+      experiences: [
+        { title: 'Data Engineer', company: 'Exemple SA', start: '2022-03', end: '', current: true },
+        { title: 'Développeuse', company: 'Démo SAS', start: '2019-01', end: '2022-02', current: false },
+      ],
+    })
+  })
+
+  it('écarte les personnes non trouvées, les liens dangereux et les e-mails qui ne sont pas de simples adresses', () => {
+    const res = parseApolloMatches({ matches: [null, { id: 'a2', first_name: 'Lucas', last_name: 'Martin', linkedin_url: 'javascript:alert(1)', email: 'x@y.fr?bcc=z@w.fr' }] })
+    assert.equal(res?.length, 1)
+    assert.equal(res?.[0].name, 'Lucas Martin')
+    assert.equal(res?.[0].linkedinUrl, '')
+    assert.equal(res?.[0].email, '')
+    assert.equal(parseApolloMatches({ people: [] }), null)
   })
 })

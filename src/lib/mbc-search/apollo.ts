@@ -1,13 +1,18 @@
 import 'server-only'
 
 import { callLLM } from '@/lib/ai/llm-router'
-import { CRITERIA_LIMITS, SENIORITIES, parseApolloPeople, toApolloQuery, type MbcCriteria, type MbcProfile } from './rules'
+import {
+  CRITERIA_LIMITS, SENIORITIES, parseApolloMatches, parseApolloPeople, toApolloQuery, toRevealRequest, type MbcCriteria, type MbcProfile,
+  type MbcRevealed,
+} from './rules'
 
-// Appels externes de MBC Search (ADR 0018) : la recherche de personnes d'Apollo.io et la lecture du brief par l'IA.
+// Appels externes de MBC Search (ADR 0018) : recherche et enrichissement de personnes d'Apollo.io, lecture du brief par l'IA.
 // Côté serveur seulement : la clé APOLLO_API_KEY n'est jamais envoyée au navigateur. Les journaux ne contiennent ni
 // le brief ni les profils (données personnelles), seulement le statut et le type d'erreur.
 
 const APOLLO_SEARCH_URL = 'https://api.apollo.io/api/v1/mixed_people/api_search'
+// Enrichissement : ni e-mails personnels ni téléphones (RGPD ; le téléphone coûte 8 crédits et passe par un webhook).
+const APOLLO_REVEAL_URL = 'https://api.apollo.io/api/v1/people/bulk_match?reveal_personal_emails=false&reveal_phone_number=false'
 const APOLLO_TIMEOUT_MS = 15_000
 const BRIEF_TIMEOUT_MS = 30_000
 
@@ -18,31 +23,47 @@ export function isApolloConfigured(): boolean {
   return Boolean(process.env.APOLLO_API_KEY)
 }
 
-export async function searchApolloPeople(criteria: MbcCriteria, page: number): Promise<{ total: number; profiles: MbcProfile[] }> {
+/** Appel à Apollo avec la clé de la plateforme ; erreurs traduites pour le recruteur, statut seul dans les journaux. */
+async function postApollo(url: string, body: unknown, what: string): Promise<unknown> {
   const apiKey = process.env.APOLLO_API_KEY
   if (!apiKey) throw new ApolloSearchError('La recherche Apollo n\'est pas configurée sur la plateforme : contactez le support.')
   let res: Response
   try {
-    res = await fetch(APOLLO_SEARCH_URL, {
+    res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'x-api-key': apiKey },
-      body: JSON.stringify(toApolloQuery(criteria, page)),
+      body: JSON.stringify(body),
       cache: 'no-store',
       signal: AbortSignal.timeout(APOLLO_TIMEOUT_MS),
     })
   } catch (err) {
-    console.error('[mbc-search] Apollo injoignable', err instanceof Error ? err.name : 'inconnu')
+    console.error(`[mbc-search] Apollo injoignable (${what})`, err instanceof Error ? err.name : 'inconnu')
     throw new ApolloSearchError('Apollo ne répond pas : réessayez dans quelques instants.')
   }
   if (!res.ok) {
-    console.error('[mbc-search] Apollo a refusé la recherche', res.status)
-    if (res.status === 429) throw new ApolloSearchError('Trop de recherches envoyées à Apollo : réessayez dans une minute.')
+    console.error(`[mbc-search] Apollo a refusé la demande (${what})`, res.status)
+    if (res.status === 429) throw new ApolloSearchError('Trop de demandes envoyées à Apollo : réessayez dans une minute.')
     if (res.status === 401 || res.status === 403) throw new ApolloSearchError('La clé Apollo de la plateforme est refusée : contactez le support.')
-    throw new ApolloSearchError('Apollo n\'a pas pu traiter la recherche : modifiez les critères ou réessayez.')
+    if (res.status === 402) throw new ApolloSearchError('Crédits Apollo de la plateforme épuisés : contactez le support.')
+    throw new ApolloSearchError('Apollo n\'a pas pu traiter la demande : modifiez les critères ou réessayez.')
   }
-  const parsed = parseApolloPeople(await res.json().catch(() => null))
+  return res.json().catch(() => null)
+}
+
+export async function searchApolloPeople(criteria: MbcCriteria, page: number): Promise<{ total: number; profiles: MbcProfile[] }> {
+  const parsed = parseApolloPeople(await postApollo(APOLLO_SEARCH_URL, toApolloQuery(criteria, page), 'recherche'))
   if (!parsed) {
-    console.error('[mbc-search] réponse Apollo d\'une forme inattendue')
+    console.error('[mbc-search] réponse de recherche Apollo d\'une forme inattendue')
+    throw new ApolloSearchError('Réponse d\'Apollo illisible : réessayez dans quelques instants.')
+  }
+  return parsed
+}
+
+/** Profils complets (10 au plus, payants : un crédit par personne trouvée). */
+export async function revealApolloPeople(ids: string[]): Promise<MbcRevealed[]> {
+  const parsed = parseApolloMatches(await postApollo(APOLLO_REVEAL_URL, toRevealRequest(ids), 'enrichissement'))
+  if (!parsed) {
+    console.error('[mbc-search] réponse d\'enrichissement Apollo d\'une forme inattendue')
     throw new ApolloSearchError('Réponse d\'Apollo illisible : réessayez dans quelques instants.')
   }
   return parsed

@@ -21,8 +21,17 @@ avec une clé de la plateforme.
   corrige ; 3) la recherche interroge Apollo et classe les profils.
 - **Apollo : `POST /api/v1/mixed_people/api_search`** (en-tête `x-api-key`, variable `APOLLO_API_KEY`, serveur
   seulement). Cette recherche ne consomme **aucun crédit** et ne renvoie ni e-mail ni téléphone ; le nom de famille
-  est masqué. L'enrichissement d'un profil (coordonnées, payant) n'est pas proposé : à décider à part, avec son coût
-  et sa base légale RGPD.
+  est masqué.
+- **Profil complet à la demande** (demande du 2026-11-06 : « we need whole info of them ») : « Profil complet » sur
+  une ligne, ou « Révéler N profils complets » pour la page (10 au plus par appel), appelle
+  `POST /api/v1/people/bulk_match?reveal_personal_emails=false&reveal_phone_number=false` avec les seuls identifiants
+  Apollo (`toRevealRequest`, identifiant vérifié `APOLLO_PERSON_ID`). Affiche nom complet, photo, intitulé, accroche,
+  employeur et son site, lieu, LinkedIn, **e-mail professionnel** et son statut, 8 expériences au plus
+  (`parseApolloMatches` : liens https seulement, adresse simple seulement). **1 crédit Apollo par personne trouvée.**
+  Ni e-mail personnel ni téléphone (RGPD ; le téléphone coûte 8 crédits et n'arrive que par webhook). Quota du jour
+  par profil demandé : 100 par organisation, 1 000 pour toute la plateforme (`MBC_REVEAL_DAILY_LIMITS`, compteurs
+  `mbcRevealOrg` « j » et `mbcRevealAll` « l » ; places rendues si le quota refuse). Pas d'enrichissement automatique
+  de toute la liste : il coûterait 25 crédits par page.
 - **Score sur 100 et raisons affichées** (`scoreProfile`, `src/lib/mbc-search/rules.ts`) : intitulé (55), compétences
   visibles dans l'intitulé ou l'employeur (25), e-mail ou téléphone connus d'Apollo (10), profil mis à jour depuis
   moins de 6 mois (10). Apollo filtre déjà lieu et séniorité ; le score ne départage que sur ce qui est visible avant
@@ -39,5 +48,6 @@ avec une clé de la plateforme.
 - Mise en place : créer une clé d'API Apollo et la renseigner dans `APOLLO_API_KEY` (Vercel, Preview puis
   Production). Sans clé, la page s'affiche et annonce que la recherche n'est pas activée.
 - Si Apollo répond « Need master API key » (403), la clé doit être une clé « master ».
-- Les profils sont des données personnelles venant d'un tiers : avant d'ajouter l'enregistrement d'un profil ou
-  l'enrichissement, documenter la base légale (intérêt légitime de sourcing) et l'information des personnes.
+- Les profils sont des données personnelles venant d'un tiers : base légale à documenter (intérêt légitime de
+  sourcing) et information des personnes contactées. Les profils complets ne sont pas enregistrés : ils disparaissent
+  avec la page. Avant d'ajouter leur enregistrement, décider de la durée de conservation.
