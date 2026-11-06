@@ -6,9 +6,9 @@ import { WEEKS_SHOWN, type DashboardSummary } from '@/lib/recruiter-dashboard'
 
 const cellStyle: CSSProperties = { background: 'var(--color-surface)' }
 const muted: CSSProperties = { color: 'var(--color-text-muted)' }
-const cell = 'flex flex-col gap-1.5 px-4 py-4 sm:px-6 sm:py-5 min-w-0'
+const cell = 'flex flex-col gap-1.5 px-4 py-4 sm:px-6 sm:py-5 min-[1440px]:py-4 min-w-0'
 const label = 'text-xs sm:text-[13px] font-medium'
-const value = 'text-[26px] sm:text-[32px] leading-[1.1] font-semibold tracking-[-0.02em] tabular-nums'
+const value = 'text-[26px] sm:text-[32px] min-[1440px]:text-[28px] leading-[1.1] font-semibold tracking-[-0.02em] tabular-nums'
 const note = 'text-xs sm:text-[13px]'
 
 const count = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`

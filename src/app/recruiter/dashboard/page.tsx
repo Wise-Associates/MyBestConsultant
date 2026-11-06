@@ -171,26 +171,33 @@ export default async function RecruiterDashboard({ searchParams }: {
     ...(selection.unassigned ? ['offres non affectées'] : []),
   ] : []
 
+  // En tête de la colonne de la liste : à côté du rail de filtres sur grand écran.
+  const header = (
+    <>
+      {recruteurs !== undefined && recruiters === null && (
+        <p role="status" className="px-3.5 py-2.5 rounded-xl text-[13px]" style={{ background: '#b4530914', color: '#b45309' }}>
+          Le filtre « Recruteurs » n’a pas pu être appliqué (équipe illisible) : toutes les offres sont affichées. Rechargez la page dans quelques instants.
+        </p>
+      )}
+      {selectionNames.length > 0 && (
+        <p className="text-[13px] -mb-2 sm:-mb-3 min-[1440px]:mb-0" style={{ color: 'var(--color-text-muted)' }}>
+          Indicateurs et offres de : <span className="font-semibold" style={{ color: 'var(--color-text)' }}>{selectionNames.join(', ')}</span>
+          {' · '}
+          <Link href="/recruiter/dashboard" className="font-semibold no-underline hover:underline" style={{ color: 'var(--color-primary)' }}>Tous les recruteurs</Link>
+        </p>
+      )}
+      <DashboardStats summary={summary} />
+    </>
+  )
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-7">
-        {recruteurs !== undefined && recruiters === null && (
-          <p role="status" className="px-3.5 py-2.5 rounded-xl text-[13px]" style={{ background: '#b4530914', color: '#b45309' }}>
-            Le filtre « Recruteurs » n’a pas pu être appliqué (équipe illisible) : toutes les offres sont affichées. Rechargez la page dans quelques instants.
-          </p>
-        )}
-        {selectionNames.length > 0 && (
-          <p className="text-[13px] -mb-2 sm:-mb-3" style={{ color: 'var(--color-text-muted)' }}>
-            Indicateurs et offres de : <span className="font-semibold" style={{ color: 'var(--color-text)' }}>{selectionNames.join(', ')}</span>
-            {' · '}
-            <Link href="/recruiter/dashboard" className="font-semibold no-underline hover:underline" style={{ color: 'var(--color-primary)' }}>Tous les recruteurs</Link>
-          </p>
-        )}
-        <DashboardStats summary={summary} />
-
-        {/* « À traiter » puis « Mes offres » : les tuiles filtrent la liste, elles partagent son état. Les autres outils
-            sont dans le sous-menu de l'espace (layout recruteur). */}
-        <JobsListClient rows={rows} appsByJob={appsByJobRecord} funnelStages={funnelStages}
+      {/* Grand écran (1440 px et plus) : toute la largeur, jusqu'à 1920 px, avec le rail de filtres et le panneau
+          d'aperçu de « Mes offres » (dashboard-layout.ts). */}
+      <div className="max-w-6xl min-[1440px]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[1440px]:px-8 py-6 sm:py-8 space-y-6 sm:space-y-7">
+        {/* Indicateurs, « À traiter » puis « Mes offres » : les tuiles filtrent la liste, elles partagent son état. Les
+            autres outils sont dans le sous-menu de l'espace (layout recruteur). */}
+        <JobsListClient rows={rows} appsByJob={appsByJobRecord} funnelStages={funnelStages} header={header}
           socialEnabled={isMakeConfigured()} socialUnavailable={socialPosts === null} recruiters={recruiters && recruiterOptions(recruiters)} jobsWithNew={summary.applications.jobsWithNew}
           focusJobId={typeof offre === 'string' ? offre : undefined}
           recruiterFiltered={selection !== null}

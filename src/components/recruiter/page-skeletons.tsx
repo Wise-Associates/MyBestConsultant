@@ -139,57 +139,86 @@ export function SectionPageSkeleton({ content = 'list' }: { content?: 'list' | '
 /** Tableau de bord : chiffres, filtres et « Créer une offre », puis « Mes offres ». */
 /** Tableau de bord : indicateurs séparés par un filet, tuiles « À traiter », puis « Mes offres ». */
 export function DashboardSkeleton() {
+  // Même mise en page que la page : rail de filtres à partir de 1440 px, panneau d'aperçu à partir de 1800 px
+  // (src/app/recruiter/dashboard/dashboard-layout.ts).
   return (
     <SkeletonRegion label="Chargement du tableau de bord…" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-7">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-px rounded-[20px] overflow-hidden" style={{ background: 'var(--color-border)', border: '1px solid var(--color-border)' }}>
-          {Array.from({ length: 4 }, (_, i) => (
-            <div key={i} className="px-4 py-4 sm:px-6 sm:py-5 space-y-2.5" style={{ background: 'var(--color-surface)' }}>
-              <Skeleton className="h-3 w-24" />
-              <Skeleton className="h-8 w-14" />
-              <Skeleton className="h-3 w-32 max-w-full" />
-            </div>
-          ))}
+      <div className="max-w-6xl min-[1440px]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[1440px]:px-8 py-6 sm:py-8 flex flex-col gap-6 sm:gap-7 min-[1440px]:grid min-[1440px]:grid-cols-[248px_minmax(0,1fr)] min-[1800px]:grid-cols-[248px_minmax(0,1fr)_340px] min-[1440px]:gap-6 min-[1440px]:items-start">
+        <div className="hidden min-[1440px]:flex flex-col gap-3.5">
+          <Skeleton className="h-10 w-full rounded-xl" />
+          <div className="rounded-[20px] p-3.5 space-y-2" style={card}>
+            <Skeleton className="h-3 w-20" />
+            {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-12 w-full rounded-xl" />)}
+          </div>
+          <div className="rounded-[20px] p-3.5 space-y-2" style={card}>
+            <Skeleton className="h-3 w-16" />
+            {Array.from({ length: 3 }, (_, i) => <Skeleton key={i} className="h-8 w-full rounded-lg" />)}
+            <Skeleton className="h-10 w-full rounded-xl" />
+            <Skeleton className="h-10 w-full rounded-xl" />
+          </div>
         </div>
-        <div className="space-y-3">
-          <Skeleton className="h-4 w-24" />
-          <div className="flex gap-2.5 overflow-hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:gap-3">
+        <div className="min-w-0 flex flex-col gap-6 sm:gap-7 min-[1440px]:gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-px rounded-[20px] overflow-hidden" style={{ background: 'var(--color-border)', border: '1px solid var(--color-border)' }}>
             {Array.from({ length: 4 }, (_, i) => (
-              <div key={i} className="flex-none w-57.5 sm:w-auto flex items-center gap-3.5 px-4 py-3.5 rounded-2xl" style={card}>
-                <Skeleton className="w-10 h-10 rounded-xl shrink-0" />
-                <div className="space-y-2 flex-1">
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-3 w-1/2" />
+              <div key={i} className="px-4 py-4 sm:px-6 sm:py-5 min-[1440px]:py-4 space-y-2.5" style={{ background: 'var(--color-surface)' }}>
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-8 w-14" />
+                <Skeleton className="h-3 w-32 max-w-full" />
+              </div>
+            ))}
+          </div>
+          <div className="space-y-3 min-[1440px]:hidden">
+            <Skeleton className="h-4 w-24" />
+            <div className="flex gap-2.5 overflow-hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:gap-3">
+              {Array.from({ length: 4 }, (_, i) => (
+                <div key={i} className="flex-none w-57.5 sm:w-auto flex items-center gap-3.5 px-4 py-3.5 rounded-2xl" style={card}>
+                  <Skeleton className="w-10 h-10 rounded-xl shrink-0" />
+                  <div className="space-y-2 flex-1">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-1/2" />
+                  </div>
                 </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-[20px] overflow-hidden" style={card}>
+            <div className="px-4 sm:px-6 pt-5 pb-4 flex flex-wrap items-center justify-between gap-3">
+              <Skeleton className="h-5 w-36" />
+              <div className="flex gap-2.5 w-full sm:w-auto">
+                <Skeleton className="h-10 w-36 rounded-[10px]" />
+                <Skeleton className="h-10 flex-1 sm:flex-none sm:w-40 rounded-xl" />
+              </div>
+            </div>
+            <div className="px-4 sm:px-6 pb-4 flex flex-col sm:flex-row gap-2.5 min-[1440px]:hidden">
+              <Skeleton className="h-11 sm:h-10 flex-1 rounded-xl" />
+              <Skeleton className="h-11 sm:h-10 sm:w-64 rounded-xl" />
+              <Skeleton className="h-11 sm:h-10 sm:w-80 rounded-xl" />
+            </div>
+            {Array.from({ length: 5 }, (_, i) => (
+              <div key={i} className="px-4 sm:px-6 py-4 min-[1440px]:py-3 grid grid-cols-2 lg:grid-cols-[minmax(0,1fr)_124px_200px_180px_88px] min-[1440px]:grid-cols-[minmax(0,1fr)_172px_190px_180px_88px] min-[1800px]:grid-cols-[minmax(0,1fr)_172px_180px_176px_132px] gap-x-5 gap-y-4 items-center" style={{ borderTop: '1px solid var(--color-border)' }}>
+                <div className="col-span-2 lg:col-span-1 space-y-2">
+                  <Skeleton className="h-4 w-3/5" />
+                  <Skeleton className="h-3 w-2/5" />
+                </div>
+                <Skeleton className="h-6 w-16" />
+                <Skeleton className="h-1.5 w-full rounded-full" />
+                <Skeleton className="hidden lg:block h-8 w-36" />
+                <Skeleton className="hidden lg:block h-8 w-20 justify-self-end" />
               </div>
             ))}
           </div>
         </div>
-        <div className="rounded-[20px] overflow-hidden" style={card}>
-          <div className="px-4 sm:px-6 pt-5 pb-4 flex flex-wrap items-center justify-between gap-3">
-            <Skeleton className="h-5 w-36" />
-            <div className="flex gap-2.5 w-full sm:w-auto">
-              <Skeleton className="h-10 w-36 rounded-[10px]" />
-              <Skeleton className="h-10 flex-1 sm:flex-none sm:w-40 rounded-xl" />
-            </div>
+        <div className="hidden min-[1800px]:flex flex-col gap-3.5">
+          <div className="rounded-[20px] p-5 space-y-3" style={card}>
+            <Skeleton className="h-5 w-4/5" />
+            <Skeleton className="h-3 w-3/5" />
+            <Skeleton className="h-16 w-full rounded-xl" />
+            {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-3 w-full" />)}
           </div>
-          <div className="px-4 sm:px-6 pb-4 flex flex-col sm:flex-row gap-2.5">
-            <Skeleton className="h-11 sm:h-10 flex-1 rounded-xl" />
-            <Skeleton className="h-11 sm:h-10 sm:w-64 rounded-xl" />
-            <Skeleton className="h-11 sm:h-10 sm:w-80 rounded-xl" />
+          <div className="rounded-[20px] p-5 space-y-3" style={card}>
+            <Skeleton className="h-3 w-28" />
+            {Array.from({ length: 3 }, (_, i) => <Skeleton key={i} className="h-9 w-full" />)}
           </div>
-          {Array.from({ length: 5 }, (_, i) => (
-            <div key={i} className="px-4 sm:px-6 py-4 grid grid-cols-2 lg:grid-cols-[minmax(0,1fr)_124px_200px_180px_88px] gap-x-5 gap-y-4 items-center" style={{ borderTop: '1px solid var(--color-border)' }}>
-              <div className="col-span-2 lg:col-span-1 space-y-2">
-                <Skeleton className="h-4 w-3/5" />
-                <Skeleton className="h-3 w-2/5" />
-              </div>
-              <Skeleton className="h-6 w-16" />
-              <Skeleton className="h-1.5 w-full rounded-full" />
-              <Skeleton className="hidden lg:block h-8 w-36" />
-              <Skeleton className="hidden lg:block h-8 w-20 justify-self-end" />
-            </div>
-          ))}
         </div>
       </div>
     </SkeletonRegion>
