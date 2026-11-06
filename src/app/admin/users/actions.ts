@@ -6,6 +6,7 @@ import { Query } from 'node-appwrite'
 import { getCurrentUser, createUserAccountAndProfile } from '@/lib/appwrite/auth'
 import { deleteAssistantTurnsForUser, isAssistantStorageConfigured } from '@/lib/assistant/host'
 import { deleteMbcSearchesForUser } from '@/lib/mbc-search/history-store'
+import { deleteSavedPeopleForUser } from '@/lib/mbc-search/saved-store'
 import { cvExportErrorName, deleteCvExportsForCandidate, isCvExportStorageConfigured, isCvExportStorageMissing } from '@/lib/cv-export/store'
 import { revalidatePath } from 'next/cache'
 import type { UserRole } from '@/types'
@@ -131,6 +132,13 @@ export async function deleteUserAccount(authId: string, listedProfileId: string 
       console.error('[mbc-search] suppression de l\'historique en échec', e instanceof Error ? e.message : String(e))
       return { error: 'Compte non supprimé : la suppression de son historique de recherches MBC Search a échoué. Réessayez.' }
     }
+    // Personnes enregistrées dans MBC Search (profils de tiers gardés sans limite de durée : RGPD), même règle.
+    try {
+      await deleteSavedPeopleForUser(authId)
+    } catch (e) {
+      console.error('[mbc-search] suppression des personnes enregistrées en échec', e instanceof Error ? e.message : String(e))
+      return { error: 'Compte non supprimé : la suppression de ses personnes enregistrées dans MBC Search a échoué. Réessayez.' }
+    }
     // CV au format ESN enregistrés pour ce candidat (RGPD), même règle : avant le compte.
     const hasCvExports = isCvExportStorageConfigured()
     if (profileId && hasCvExports) {
@@ -151,6 +159,9 @@ export async function deleteUserAccount(authId: string, listedProfileId: string 
     if (isAssistantStorageConfigured()) {
       await deleteAssistantTurnsForUser(authId).catch(e => console.error('[assistant] second passage de suppression en échec', e instanceof Error ? e.message : String(e)))
     }
+    // Même raison pour une personne enregistrée dans MBC Search pendant la suppression (gardée sans limite de durée :
+    // un échec ici laisse des documents mbc_saved_people de ce compte, à supprimer à la main).
+    await deleteSavedPeopleForUser(authId).catch(e => console.error('[mbc-search] second passage de suppression des personnes enregistrées en échec, à supprimer à la main', e instanceof Error ? e.message : String(e)))
     if (profileId) {
       try {
         await databases.deleteDocument(DB_ID, COLLECTIONS.USERS, profileId)

@@ -1,11 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, Copy, ExternalLink, Globe, Loader2, Mail, MapPin, MessageSquareText, Plus, Star, UserRound, X } from 'lucide-react'
+import { Bookmark, Check, Copy, ExternalLink, Globe, Loader2, Mail, MapPin, MessageSquareText, Plus, UserRound, X } from 'lucide-react'
 import { addMbcProfileToVivier } from '@/app/recruiter/vivier/actions'
 import { draftMbcOutreach } from './actions'
 import { SCORE_WEIGHTS, type MbcCriteria, type MbcRevealed, type ScoredProfile } from '@/lib/mbc-search/rules'
-import { Avatar, ErrorNote, orangeTint, surface, type Reveal } from './mbc-search-ui'
+import { Avatar, ErrorNote, orangeTint, surface, type Reveal, type SaveButton } from './mbc-search-ui'
 
 // Panneau du profil choisi dans la liste : score détaillé, puis, une fois révélé, coordonnées, parcours et suites
 // (vivier, offre, message d'approche). Colonne de droite sur grand écran, fenêtre plein écran en dessous.
@@ -36,17 +36,29 @@ function ContactRow({ label, value, children }: { label: string; value: string; 
 
 const smallBtn = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold shrink-0 disabled:opacity-40'
 
-export function ProfilePanel({ profile, reveal, criteria, brief, jobs, shortlisted, added, canReveal, onReveal, onShortlist, onAdded, onClose }: {
+/** « Enregistrer » / « Enregistré » ; `cost` : profil pas encore révélé, l'enregistrer coûte un crédit. */
+function SaveToggle({ save, className, cost }: { save: SaveButton; className: string; cost?: boolean }) {
+  return (
+    <button type="button" onClick={save.onToggle} disabled={save.disabled} aria-pressed={save.saved}
+      title={save.reason ?? (save.saved ? 'Retirer des personnes enregistrées' : cost ? 'Révèle le profil (1 crédit) et le garde dans vos personnes enregistrées' : 'Garder dans vos personnes enregistrées')}
+      className={`inline-flex items-center gap-1.5 rounded-xl text-sm font-bold whitespace-nowrap disabled:opacity-40 ${className}`}
+      style={save.saved ? { background: orangeTint(12), border: '1px solid var(--color-brand-orange)', color: 'var(--color-text)' } : { ...surface, color: 'var(--color-text)' }}>
+      {save.saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bookmark className="h-4 w-4" fill={save.saved ? 'currentColor' : 'none'} />}
+      {save.saved ? 'Enregistré' : cost ? 'Enregistrer · 1 crédit' : 'Enregistrer'}
+    </button>
+  )
+}
+
+export function ProfilePanel({ profile, reveal, criteria, brief, jobs, save, added, canReveal, onReveal, onAdded, onClose }: {
   profile: ScoredProfile
   reveal?: Reveal
   criteria: MbcCriteria
   brief: string
   jobs: { id: string; title: string }[] | null
-  shortlisted: boolean
+  save: SaveButton
   added: Added
   canReveal: boolean
   onReveal: () => void
-  onShortlist: () => void
   onAdded: (target: string) => void
   onClose: () => void
 }) {
@@ -172,12 +184,9 @@ export function ProfilePanel({ profile, reveal, criteria, brief, jobs, shortlist
               {adding === 'general' ? <Loader2 className="h-4 w-4 animate-spin" /> : added.general ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
               {added.general ? 'Dans le vivier' : 'Ajouter au vivier'}
             </button>
-            <button type="button" onClick={onShortlist} aria-pressed={shortlisted}
-              className="inline-flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap"
-              style={shortlisted ? { background: orangeTint(12), border: '1px solid var(--color-brand-orange)', color: 'var(--color-text)' } : { ...surface, color: 'var(--color-text)' }}>
-              <Star className="h-4 w-4" fill={shortlisted ? 'currentColor' : 'none'} /> {shortlisted ? 'Présélectionné' : 'Présélectionner'}
-            </button>
+            <SaveToggle save={save} className="justify-center px-2 py-2.5" />
           </div>
+          {save.reason && <p className="mt-1.5 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{save.reason}</p>}
           {jobs && jobs.length > 0 && (
             <div className="mt-2 flex gap-2">
               <label htmlFor="mbc-job" className="sr-only">Offre à associer</label>
@@ -235,16 +244,13 @@ export function ProfilePanel({ profile, reveal, criteria, brief, jobs, shortlist
             <>
               <p>Révélez le profil pour voir le nom entier, l’e-mail professionnel, le LinkedIn et le parcours.</p>
               <div className="mt-3 flex gap-2 flex-wrap">
-                <button type="button" onClick={onReveal} disabled={!canReveal || reveal?.state === 'loading'}
+                <button type="button" onClick={onReveal} disabled={!canReveal || reveal?.state === 'loading' || save.saving}
                   className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold disabled:opacity-40"
                   style={{ background: 'var(--color-brand-orange)', color: 'white' }}>
                   {reveal?.state === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserRound className="h-4 w-4" />}
                   Révéler · 1 crédit
                 </button>
-                <button type="button" onClick={onShortlist} aria-pressed={shortlisted}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold" style={{ ...surface, color: 'var(--color-text)' }}>
-                  <Star className="h-4 w-4" fill={shortlisted ? 'currentColor' : 'none'} /> {shortlisted ? 'Présélectionné' : 'Présélectionner'}
-                </button>
+                <SaveToggle save={save} className="px-3 py-2" cost />
               </div>
             </>
           )}
@@ -286,7 +292,7 @@ export function ProfilePanel({ profile, reveal, criteria, brief, jobs, shortlist
       )}
 
       <p className="mt-5 text-[11px] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
-        {full ? 'Profil complet révélé (1 crédit Apollo). ' : ''}Ni e-mail personnel ni téléphone. Rien n’est enregistré tant que vous n’ajoutez pas le profil à un vivier.
+        {full ? 'Profil complet révélé (1 crédit Apollo). ' : ''}Ni e-mail personnel ni téléphone. Un profil révélé est gardé 90 jours pour votre organisation ; enregistré, il reste dans votre liste jusqu’à ce que vous le retiriez.
       </p>
     </div>
   )
