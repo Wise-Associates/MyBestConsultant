@@ -331,3 +331,212 @@ export function AoOfferSkeleton() {
     </SkeletonRegion>
   )
 }
+
+/**
+ * Bandeau sombre du Pipeline et du Matching IA d'une offre : retour, surtitre, titre, ligne de l'offre, puis à partir de
+ * 1440 px les onglets « Matching IA / Pipeline ». Le Pipeline a un bandeau réduit (sans surtitre au-delà de 1440 px).
+ */
+function JobHeroSkeleton({ narrow, compact }: { narrow: string; compact?: boolean }) {
+  return (
+    <div style={{ background: 'var(--hero-bg)' }}>
+      <div className={`${narrow} min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 ${compact ? 'py-4 min-[90rem]:py-3' : 'py-6 min-[90rem]:py-4'}`}>
+        <Skeleton tone="dark" className="h-3 w-36 mb-3 min-[90rem]:mb-2" />
+        <div className="flex items-center justify-between gap-4 flex-wrap min-[90rem]:flex-nowrap">
+          <div className="space-y-2 min-w-0">
+            <Skeleton tone="dark" className={`h-3 w-28 ${compact ? 'min-[90rem]:hidden' : ''}`} />
+            <Skeleton tone="dark" className="h-7 w-64 sm:w-md min-[90rem]:w-xl max-w-full" />
+            <Skeleton tone="dark" className="h-3 w-56 min-[90rem]:w-72" />
+          </div>
+          <Skeleton tone="dark" className="hidden min-[90rem]:block h-10 w-54 rounded-xl shrink-0 mr-auto" />
+          <div className="flex gap-2">
+            <Skeleton tone="dark" className="h-8 w-28 rounded-lg" />
+            <Skeleton tone="dark" className="h-8 w-36 rounded-lg" />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Carte du rail de gauche : titre, puis des lignes de filtre. */
+function RailCardSkeleton({ lines, chart }: { lines: number; chart?: boolean }) {
+  return (
+    <div className="rounded-[20px] p-3.5 space-y-3" style={card}>
+      <Skeleton className="h-3 w-20" />
+      {chart && (
+        <div className="flex items-end gap-1 h-12">
+          {[10, 18, 30, 55, 80, 100, 70, 40].map((h, i) => <Skeleton key={i} className="flex-1 rounded-sm" style={{ height: `${h}%` }} />)}
+        </div>
+      )}
+      {Array.from({ length: lines }, (_, j) => (
+        <div key={j} className="flex items-center justify-between gap-3 py-1">
+          <Skeleton className="h-3.5 w-28" />
+          <Skeleton className="h-3 w-5" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** Grille du tableau du Matching IA : mêmes largeurs que ses colonnes (matching-client.tsx). */
+const MATCHING_ROW = 'grid items-center grid-cols-[52px_minmax(0,1fr)_140px_124px_118px_64px] min-[112.5rem]:grid-cols-[52px_minmax(0,1fr)_150px_124px_118px_minmax(0,1fr)_64px]'
+
+/** Matching IA d'une offre : cartes de candidats (moins de 1440 px) ; rail, tableau dense et panneau au-delà. */
+export function MatchingSkeleton() {
+  return (
+    <SkeletonRegion label="Chargement du matching…" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
+      <JobHeroSkeleton narrow="max-w-[1000px]" />
+      <div className="max-w-[1000px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-8 min-[90rem]:py-5 min-[90rem]:grid min-[90rem]:grid-cols-[240px_minmax(0,1fr)_320px] min-[112.5rem]:grid-cols-[264px_minmax(0,1fr)_360px] min-[90rem]:gap-5 min-[90rem]:items-start">
+        <div className="hidden min-[90rem]:flex flex-col gap-3">
+          <Skeleton className="h-10 w-full rounded-xl" />
+          <RailCardSkeleton lines={4} />
+          <RailCardSkeleton lines={3} chart />
+          <RailCardSkeleton lines={2} />
+        </div>
+        <div className="min-w-0">
+          {/* Moins de 1440 px : texte, guide du score, filtres, cartes. */}
+          <div className="min-[90rem]:hidden space-y-3">
+            <Skeleton className="h-3.5 w-full" />
+            <Skeleton className="h-3.5 w-4/5" />
+            <Skeleton className="h-12 w-full rounded-2xl" />
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <Skeleton className="h-10 flex-1 rounded-xl" />
+              <Skeleton className="h-10 sm:w-72 rounded-xl" />
+              <Skeleton className="h-10 sm:w-44 rounded-xl" />
+            </div>
+            {Array.from({ length: 4 }, (_, i) => (
+              <div key={i} className="p-4 rounded-2xl space-y-3" style={card}>
+                <div className="flex items-center gap-3">
+                  <Skeleton className="w-5 h-5 rounded shrink-0" />
+                  <div className="space-y-2 flex-1">
+                    <Skeleton className="h-4 w-2/5" />
+                    <Skeleton className="h-3 w-1/4" />
+                  </div>
+                  <Skeleton className="h-10 w-14 rounded-xl shrink-0" />
+                </div>
+                <Skeleton className="h-14 w-full rounded-xl" />
+                <Skeleton className="h-3 w-3/4" />
+              </div>
+            ))}
+          </div>
+          {/* À partir de 1440 px : tableau (sélection, candidat, type, score, critères, raison dès 1800 px, CV). */}
+          <div className="hidden min-[90rem]:block rounded-2xl overflow-hidden" style={card}>
+            <div className={`${MATCHING_ROW} h-9`} style={{ background: 'color-mix(in srgb, var(--color-text) 2%, transparent)', borderBottom: '1px solid var(--color-border)' }}>
+              <span />
+              <Skeleton className="h-3 w-16 mx-3" />
+              <Skeleton className="h-3 w-10 mx-3" />
+              <Skeleton className="h-3 w-12 mx-3" />
+              <Skeleton className="h-3 w-14 mx-3" />
+              <Skeleton className="hidden min-[112.5rem]:block h-3 w-16 mx-3" />
+              <span />
+            </div>
+            {Array.from({ length: 10 }, (_, i) => (
+              <div key={i} className={`${MATCHING_ROW} h-[62px]`} style={{ borderTop: i ? '1px solid var(--color-border)' : undefined }}>
+                <Skeleton className="w-4.5 h-4.5 rounded ml-4" />
+                <div className="space-y-2 px-3">
+                  <Skeleton className="h-3.5 w-32" />
+                  <Skeleton className="h-3 w-40 max-w-full" />
+                </div>
+                <Skeleton className="h-5 w-24 rounded-full mx-3" />
+                <div className="flex items-center gap-2 px-3">
+                  <Skeleton className="h-4 w-6" />
+                  <Skeleton className="h-1.5 flex-1 rounded-full" />
+                </div>
+                <div className="flex gap-1 px-3">
+                  {Array.from({ length: 5 }, (_, j) => <Skeleton key={j} className="h-2 flex-1 rounded-sm" />)}
+                </div>
+                <Skeleton className="hidden min-[112.5rem]:block h-3 mx-3" />
+                <Skeleton className="h-3.5 w-8 justify-self-end mr-4" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="hidden min-[90rem]:flex flex-col gap-3">
+          <div className="rounded-[20px] p-4 space-y-3.5" style={card}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-2 flex-1">
+                <Skeleton className="h-5 w-2/3" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+              <Skeleton className="h-5 w-20 rounded-full" />
+            </div>
+            <Skeleton className="h-9 w-32" />
+            {Array.from({ length: 5 }, (_, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <Skeleton className="h-3.5 w-20" />
+                <Skeleton className="h-1.5 flex-1 rounded-full" />
+                <Skeleton className="h-3.5 w-9" />
+              </div>
+            ))}
+            <div className="space-y-2 pt-2">
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-3/5" />
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <Skeleton className="h-11 rounded-xl" />
+              <Skeleton className="h-11 rounded-xl" />
+            </div>
+          </div>
+          <div className="rounded-[20px] p-4 space-y-2" style={{ background: 'var(--hero-bg)' }}>
+            <Skeleton tone="dark" className="h-3 w-full" />
+            <Skeleton tone="dark" className="h-3 w-3/5" />
+          </div>
+        </div>
+      </div>
+    </SkeletonRegion>
+  )
+}
+
+/** Pipeline d'une offre : colonnes de cartes repliées ; rail à partir de 1440 px, panneau de la carte à partir de 1800 px. */
+export function PipelineSkeleton() {
+  const columns = [3, 2, 0, 1, 2]
+  return (
+    <SkeletonRegion label="Chargement du pipeline…" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
+      <JobHeroSkeleton narrow="max-w-[1400px]" compact />
+      <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-8 min-[90rem]:py-5 min-[90rem]:grid min-[90rem]:grid-cols-[256px_minmax(0,1fr)] min-[112.5rem]:grid-cols-[256px_minmax(0,1fr)_340px] min-[90rem]:gap-5 min-[90rem]:items-start">
+        <div className="hidden min-[90rem]:flex flex-col gap-3">
+          <Skeleton className="h-10 w-full rounded-xl" />
+          <RailCardSkeleton lines={3} />
+          <RailCardSkeleton lines={2} />
+          <RailCardSkeleton lines={3} />
+        </div>
+        <div className="min-w-0 flex gap-4 min-[90rem]:gap-3 overflow-hidden">
+          {columns.map((cards, i) => cards === 0 ? (
+            // Phase vide : bande étroite à partir de 1440 px, colonne vide en dessous.
+            <div key={i} className="flex-none w-[300px] min-[90rem]:w-9 h-80 rounded-2xl"
+              style={{ border: '1px dashed var(--color-border)', background: 'color-mix(in srgb, var(--color-text) 2%, transparent)' }} />
+          ) : (
+            <div key={i} className="flex-none w-[300px] min-[90rem]:w-[232px] rounded-2xl p-3 space-y-2.5"
+              style={{ background: 'color-mix(in srgb, var(--color-text) 3%, transparent)', border: '1px solid var(--color-border)' }}>
+              <div className="flex items-center gap-2 pb-1">
+                <Skeleton className="w-2.5 h-2.5 rounded-full" />
+                <Skeleton className="h-3.5 w-24" />
+                <Skeleton className="h-4 w-5 rounded-full" />
+                <Skeleton className="h-3 w-12 ml-auto" />
+              </div>
+              {Array.from({ length: cards }, (_, j) => (
+                <div key={j} className="rounded-2xl p-3.5 space-y-2.5" style={card}>
+                  <div className="flex items-start gap-2">
+                    <Skeleton className="w-7 h-7 rounded-full shrink-0" />
+                    <div className="space-y-1.5 flex-1">
+                      <Skeleton className="h-3.5 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
+                    <Skeleton className="w-3.5 h-3.5 rounded shrink-0" />
+                  </div>
+                  <Skeleton className="h-5 w-16 rounded-full" />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        <div className="hidden min-[112.5rem]:block rounded-[20px] p-4 space-y-2.5" style={card}>
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-4/5" />
+          <Skeleton className="h-3 w-3/5" />
+        </div>
+      </div>
+    </SkeletonRegion>
+  )
+}
