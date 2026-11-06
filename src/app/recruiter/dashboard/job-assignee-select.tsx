@@ -17,6 +17,13 @@ export function JobAssigneeSelect({ jobId, jobTitle, assigneeId, recruiters }: {
 }) {
   const router = useRouter()
   const [value, setValue] = useState(assigneeId)
+  // Le même choix est aussi dans le panneau d'aperçu du tableau de bord : une affectation faite dans l'un arrive dans
+  // l'autre par la page relue (router.refresh), sans effacer le message affiché sous le choix.
+  const [synced, setSynced] = useState(assigneeId)
+  if (assigneeId !== synced) {
+    setSynced(assigneeId)
+    setValue(assigneeId)
+  }
   const [message, setMessage] = useState<{ tone: 'error' | 'warning'; text: string } | null>(null)
   const [pending, startTransition] = useTransition()
   // Recruteur affecté qui n'est plus dans l'équipe (parti) : gardé dans la liste pour ne pas afficher « Non affectée ».
