@@ -16,7 +16,7 @@ import {
 } from '@/lib/cv-export/store'
 import { vivierExportKey } from '@/lib/cv-export/stored'
 import { getEsnTemplateInfo } from '@/lib/cv-export/templates'
-import { PLAIN_EMAIL as MBC_PLAIN_EMAIL } from '@/lib/mbc-search/rules'
+import { APOLLO_PERSON_ID as MBC_APOLLO_PERSON_ID, PLAIN_EMAIL as MBC_PLAIN_EMAIL } from '@/lib/mbc-search/rules'
 import type { UserProfile } from '@/types'
 import {
   VIVIER_MATCHING_DAILY_LIMITS, VIVIER_MATCHING_REFUSAL, matchingOffers, mergeOfferScores, offersToCompare, parseOfferScores,
@@ -205,6 +205,8 @@ export async function attachVivierCv(jobIdInput: string | null, fileIdInput: str
 const mbcProfileInput = z.object({
   jobId: z.string().min(1).max(36).nullable(),
   profile: z.object({
+    /** Personne chez Apollo : repère le profil dans les recherches suivantes (« Dans votre vivier »). */
+    apolloId: z.string().regex(MBC_APOLLO_PERSON_ID).optional(),
     name: z.string().trim().min(1).max(200),
     title: z.string().trim().max(200),
     headline: z.string().trim().max(300),
@@ -221,8 +223,8 @@ const mbcProfileInput = z.object({
 /**
  * « Ajouter au vivier » de MBC Search : un profil révélé devient un CV du vivier (général, ou d'une offre avec
  * « Associer à une offre ») sans fichier, puis passe au Matching IA comme un CV importé. Le profil vient du navigateur
- * (rien n'est gardé côté serveur après la recherche) : il ne vaut que pour le vivier de celui qui l'ajoute, comme un
- * CV qu'il importerait. C'est le seul moment où un profil de MBC Search est enregistré.
+ * (il ne vaut que pour le vivier de celui qui l'ajoute, comme un CV qu'il importerait) ; son identifiant Apollo
+ * permet de le signaler « dans votre vivier » dans les recherches suivantes.
  */
 export async function addMbcProfileToVivier(input: unknown): Promise<{ id?: string; notice?: string; error?: string }> {
   try {
@@ -267,6 +269,7 @@ export async function addMbcProfileToVivier(input: unknown): Promise<{ id?: stri
       candidateEmail: p.email,
       candidatePhone: '',
       cvProfileJson: JSON.stringify(cvProfile),
+      ...(p.apolloId ? { apolloId: p.apolloId } : {}),
     })
     const notice = await matchProfile(user, tenantId, jobId, doc.$id, cvProfile)
     revalidateVivier(jobId)

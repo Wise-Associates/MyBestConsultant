@@ -48,6 +48,14 @@ avec une clé de la plateforme.
   profil récent, présélection, sélection multiple à révéler, jauge des profils complets du jour. Un profil révélé peut être **ajouté au vivier** (général ou d'une offre) : CV du vivier sans
   fichier, comparé aux offres comme un import ; c'est le seul enregistrement d'un profil (durée de conservation : celle
   du vivier). « Rédiger une approche » : brouillon par l'IA, sans e-mail ni lien envoyé au modèle, rien d'envoyé.
+- **Profils révélés gardés 90 jours** (2026-11-06, demande du client : une recherche relancée refaisait payer des
+  profils déjà révélés, et rien ne signalait une personne déjà ajoutée au vivier) : collection `mbc_reveals`, un
+  document par organisation et par personne Apollo, partagé par les recruteurs de l'organisation (le crédit est payé
+  une fois pour elle). Contenu : le profil complet tel qu'affiché (nom, poste, entreprise, lieu, LinkedIn, e-mail
+  professionnel, photo, parcours). Durée de conservation : 90 jours depuis la révélation (données personnelles d'un
+  tiers, intérêt légitime de sourcing), purge quotidienne ; au-delà, la personne est à révéler de nouveau. Une personne
+  ajoutée au vivier garde son identifiant Apollo sur le CV (`vivier_cvs.apolloId`) pour être signalée « Dans votre
+  vivier » ; elle suit ensuite la conservation du vivier.
 - **Historique des recherches en base** (2026-11-06, demande du client : retrouver ses recherches d'un poste à
   l'autre ; remplace l'enregistrement dans le navigateur) : collection `mbc_searches`, un document par recruteur et par
   jeu de critères (identifiant dérivé du compte et des critères : relancer la même recherche met à jour sa ligne),
@@ -66,5 +74,5 @@ avec une clé de la plateforme.
   humain pousse la structure (`schema:check` / `schema:push -- prod`) avant de définir la variable. Sans la variable,
   la recherche fonctionne sans historique.
 - Les profils sont des données personnelles venant d'un tiers : base légale à documenter (intérêt légitime de
-  sourcing) et information des personnes contactées. Les profils complets ne sont pas enregistrés : ils disparaissent
-  avec la page. Avant d'ajouter leur enregistrement, décider de la durée de conservation.
+  sourcing) et information des personnes contactées. Les profils complets révélés sont gardés 90 jours pour
+  l'organisation (voir plus haut), puis supprimés.

@@ -77,7 +77,7 @@ export function ProfilePanel({ profile, reveal, criteria, brief, jobs, shortlist
       const res = await addMbcProfileToVivier({
         jobId: target === 'general' ? null : target,
         profile: {
-          name: full.name, title: full.title, headline: full.headline, company: full.company, location: full.location,
+          apolloId: full.id, name: full.name, title: full.title, headline: full.headline, company: full.company, location: full.location,
           linkedinUrl: full.linkedinUrl, email: full.email, experiences: full.experiences,
         },
       })
