@@ -12,6 +12,12 @@ export const orangeTint = (pct: number) => `color-mix(in srgb, var(--color-brand
 /** État du profil complet d'une ligne : en cours, révélé, ou introuvable chez Apollo. */
 export type Reveal = { state: 'loading' } | { state: 'done'; profile: MbcRevealed } | { state: 'missing' }
 
+/**
+ * Bouton « Enregistrer » d'une personne (ligne et panneau) : marque-page plein = enregistrée, un clic la retire.
+ * `reason` : pourquoi il est grisé (affiché au survol et dans le panneau).
+ */
+export type SaveButton = { saved: boolean; saving: boolean; disabled: boolean; reason: string | null; onToggle: () => void }
+
 export function ErrorNote({ children }: { children: React.ReactNode }) {
   return (
     <p role="alert" className="flex items-start gap-2 rounded-2xl p-4 text-sm"
@@ -24,17 +30,21 @@ export function ErrorNote({ children }: { children: React.ReactNode }) {
 
 const initials = (name: string) => name.split(/\s+/).filter(w => /^\p{L}/u.test(w)).slice(0, 2).map(w => w[0]?.toUpperCase()).join('') || '?'
 
-/** Photo du profil révélé, sinon ses initiales. */
+/**
+ * Photo du profil révélé posée sur ses initiales. Le cadre de taille fixe reste toujours : une photo d'Apollo expirée,
+ * ou masquée par un bloqueur, retirait l'élément de la grille et décalait toutes les colonnes de la ligne.
+ */
 export function Avatar({ name, photoUrl, size = 40 }: { name: string; photoUrl?: string; size?: number }) {
-  if (photoUrl) {
-    // Photo servie par Apollo depuis des hôtes variés : <img> simple, sans passer par l'optimiseur de Next.
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={photoUrl} alt="" referrerPolicy="no-referrer" className="rounded-full object-cover shrink-0" style={{ width: size, height: size }} />
-  }
+  const [failed, setFailed] = useState<string | null>(null)
   return (
-    <span aria-hidden className="rounded-full shrink-0 inline-flex items-center justify-center font-bold"
+    <span aria-hidden className="relative rounded-full shrink-0 inline-flex items-center justify-center font-bold overflow-hidden"
       style={{ width: size, height: size, fontSize: size * 0.34, background: orangeTint(14), color: 'var(--color-text)' }}>
       {initials(name)}
+      {photoUrl && photoUrl !== failed && (
+        // Photo servie par Apollo depuis des hôtes variés : <img> simple, sans passer par l'optimiseur de Next.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={photoUrl} alt="" referrerPolicy="no-referrer" onError={() => setFailed(photoUrl)} className="absolute inset-0 w-full h-full object-cover" />
+      )}
     </span>
   )
 }

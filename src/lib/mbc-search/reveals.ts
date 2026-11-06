@@ -38,7 +38,7 @@ const revealedSchema = z.object({
   experiences: z.array(z.object({ title: text(300), company: text(300), start: text(7), end: text(7), current: z.boolean() })).max(8),
 })
 
-/** Texte enregistré pour un profil : champs bornés comme à la relecture (l'attribut fait 10 000 caractères). */
+/** Texte enregistré pour un profil : champs bornés comme à la relecture (l'attribut profileJson fait 20 000 caractères). */
 export function revealJson(profile: MbcRevealed): string {
   const cut = (v: string, max: number) => v.slice(0, max)
   const p: MbcRevealed = {
@@ -50,12 +50,17 @@ export function revealJson(profile: MbcRevealed): string {
   return JSON.stringify(p)
 }
 
+/** Relit le texte d'un profil enregistré (révélé ou enregistré par un recruteur) ; illisible ou d'une autre personne : null. */
+export function parseRevealedJson(json: unknown, apolloId: unknown): MbcRevealed | null {
+  let raw: unknown
+  try { raw = JSON.parse(typeof json === 'string' ? json : '') } catch { return null }
+  const p = revealedSchema.safeParse(raw)
+  return p.success && p.data.id === apolloId ? p.data : null
+}
+
 /** Relit un document ; périmé ou illisible : null (le profil sera de nouveau à révéler). */
 export function parseRevealDoc(doc: Record<string, unknown>, now: Date): MbcRevealed | null {
   const at = typeof doc.revealedAt === 'string' ? Date.parse(doc.revealedAt) : NaN
   if (!Number.isFinite(at) || at < revealCutoff(now).getTime()) return null
-  let raw: unknown
-  try { raw = JSON.parse(typeof doc.profileJson === 'string' ? doc.profileJson : '') } catch { return null }
-  const p = revealedSchema.safeParse(raw)
-  return p.success && p.data.id === doc.apolloId ? p.data : null
+  return parseRevealedJson(doc.profileJson, doc.apolloId)
 }

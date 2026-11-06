@@ -46,6 +46,9 @@ export async function resendInviteAction(userId: string): Promise<{ inviteUrl?: 
 }
 
 export async function removeMemberAction(userId: string): Promise<{ error?: string }> {
+  // Identifiant de compte seulement : un tableau ferait de Query.equal un « ou », et les suppressions qui suivent
+  // (assistant, MBC Search) toucheraient les comptes d'autres organisations.
+  if (typeof userId !== 'string' || !/^[\w-]{1,36}$/.test(userId)) return { error: 'Membre introuvable' }
   try {
     const { tenantId } = await requireOwner()
     const res = await removeMember({ tenantId, userId })

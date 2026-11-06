@@ -8,7 +8,7 @@ import { RECRUITER_SECTIONS, recruiterSectionOf, type RecruiterSectionKey } from
 
 // Sous-menu de l'espace recruteur, sous la barre du site (layout recruteur) : les rubriques (recruiter-nav.ts), la
 // rubrique de la page en surbrillance. Grand écran (≥ 1024 px) : onglets, icônes dès 1280 px pour que tous les libellés
-// tiennent sur une ligne. Plus étroit : un bouton qui montre la rubrique courante et ouvre la liste des rubriques.
+// tiennent sur une ligne (mesuré le 2026-11-06 avec 9 rubriques : 1 156 px avec icônes, 940 px sans). Plus étroit : un bouton qui montre la rubrique courante et ouvre la liste des rubriques.
 // Couleurs du thème du site (var(--color-…)), comme le reste de l'espace recruteur.
 
 const ICONS: Record<RecruiterSectionKey, ComponentType<{ className?: string; 'aria-hidden'?: boolean }>> = {
@@ -33,7 +33,8 @@ export function RecruiterSubnav() {
   return (
     <nav aria-label="Rubriques de l’espace recruteur" className="relative z-30"
       style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)' }}>
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
+      {/* Largeur de la barre du site (max-w-7xl) : en 6xl, les 9 rubriques débordaient et « Entretiens IA » était coupé. */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
         {/* Grand écran : une ligne d'onglets. */}
         <ul className="hidden lg:flex items-stretch gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           {RECRUITER_SECTIONS.map(section => {
