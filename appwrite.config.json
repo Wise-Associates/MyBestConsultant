@@ -4404,9 +4404,9 @@
                 {
                     "key": "profileJson",
                     "type": "string",
-                    "required": true,
+                    "required": false,
                     "array": false,
-                    "size": 16000,
+                    "size": 20000,
                     "default": null,
                     "encrypt": false
                 },
@@ -4422,7 +4422,7 @@
                 {
                     "key": "revealedAt",
                     "type": "datetime",
-                    "required": true,
+                    "required": false,
                     "array": false,
                     "format": "",
                     "default": null
