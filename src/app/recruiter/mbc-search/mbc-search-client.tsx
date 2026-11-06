@@ -1,29 +1,24 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
-  AlertCircle, ArrowRight, Building2, Check, Circle, ExternalLink, Globe, Loader2, Mail, MapPin, Minus, Pencil, Phone, Plus, Radar,
-  RotateCcw, Sparkles, UserRound, X,
+  AlertCircle, ArrowRight, Bookmark, Check, Circle, ExternalLink, Loader2, Mail, Minus, Pencil, Plus, Radar, RotateCcw, Sparkles,
+  Star, UserRound, X,
 } from 'lucide-react'
 import { analyseMbcBrief, revealMbcProfiles, searchMbcProfiles } from './actions'
 import {
-  CRITERIA_LIMITS, EMPTY_CRITERIA, MAX_PAGE, PAGE_SIZE, REVEAL_BATCH, SENIORITIES, criteriaProblem,
-  type CriteriaMatch, type MbcCriteria, type MbcRevealed, type ScoredProfile, type Seniority,
+  CRITERIA_LIMITS, EMPTY_CRITERIA, MAX_PAGE, PAGE_SIZE, REVEAL_BATCH, SENIORITIES, criteriaProblem, parseSavedSearches,
+  requiredSkillsOf, savedSearchName, withSavedSearch, type MbcCriteria, type SavedSearch, type ScoredProfile, type Seniority,
 } from '@/lib/mbc-search/rules'
+import { ProfilePanel, type Added } from './mbc-profile-panel'
+import { Avatar, ChipField, ErrorNote, Toggle, orangeTint, surface, type Reveal } from './mbc-search-ui'
 
-// Parcours en deux temps : un grand champ pour décrire le profil, puis l'espace de travail (critères modifiables,
-// étapes de la recherche, liste avec la grille des critères remplis par chaque profil).
-
-type ListKey = 'titles' | 'skills' | 'locations'
-const LISTS: { key: ListKey; label: string; placeholder: string }[] = [
-  { key: 'titles', label: 'Intitulés', placeholder: 'ex : Data Engineer' },
-  { key: 'skills', label: 'Compétences', placeholder: 'ex : Spark' },
-  { key: 'locations', label: 'Lieux', placeholder: 'ex : Lyon, France' },
-]
+// Parcours en deux temps : un grand champ pour décrire le profil, puis l'espace de travail en trois colonnes —
+// critères à gauche, profils classés au centre, profil choisi à droite (fenêtre plein écran sur petit écran).
 
 // Briefs d'exemple, fictifs, pour montrer le niveau de détail attendu.
 const EXAMPLES = [
-  'Data engineer senior à Lyon, Spark et Kafka, à l\'aise en environnement cloud',
+  'Data engineer senior à Lyon, Spark et Kafka, idéalement passé par le secteur bancaire',
   'Chef de projet SAP FI/CO confirmé, Île-de-France, expérience de déploiement international',
   'Développeur React / Node.js, 3 à 5 ans d\'expérience, Nantes ou Rennes',
 ]
@@ -31,230 +26,135 @@ const EXAMPLES = [
 type StepKey = 'brief' | 'search' | 'rank'
 type StepState = 'todo' | 'run' | 'done' | 'error' | 'skip'
 const STEPS: { key: StepKey; label: string }[] = [
-  { key: 'brief', label: 'Lecture du brief par l\'IA' },
-  { key: 'search', label: 'Recherche dans la base Apollo' },
-  { key: 'rank', label: 'Classement selon vos critères' },
+  { key: 'brief', label: 'Brief lu' },
+  { key: 'search', label: 'Recherche Apollo' },
+  { key: 'rank', label: 'Classement' },
 ]
 const IDLE_STEPS: Record<StepKey, StepState> = { brief: 'todo', search: 'todo', rank: 'todo' }
 
-const surface = { background: 'var(--color-surface)', border: '1px solid var(--color-border)' } as const
-const orangeTint = (pct: number) => `color-mix(in srgb, var(--color-brand-orange) ${pct}%, transparent)`
+type Tab = 'all' | 'revealed' | 'shortlist'
 
-function ErrorNote({ children }: { children: React.ReactNode }) {
-  return (
-    <p role="alert" className="flex items-start gap-2 rounded-2xl p-4 text-sm"
-      style={{ ...surface, borderColor: 'var(--color-brand-orange)', color: 'var(--color-text)' }}>
-      <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" style={{ color: 'var(--color-brand-orange)' }} />
-      {children}
-    </p>
-  )
+// Recherches enregistrées : dans ce navigateur seulement (critères et brief, aucun profil).
+const SAVED_KEY = 'mbc-search:recherches'
+function readSaved(): SavedSearch[] {
+  try { return parseSavedSearches(window.localStorage.getItem(SAVED_KEY)) } catch { return [] }
+}
+function writeSaved(list: SavedSearch[]): boolean {
+  try { window.localStorage.setItem(SAVED_KEY, JSON.stringify(list)); return true } catch { return false }
 }
 
-/** Valeurs d'un critère en puces, avec un petit champ pour en ajouter (Entrée ou +). */
-function ChipField({ id, label, placeholder, values, onChange }: {
-  id: string; label: string; placeholder: string; values: string[]; onChange: (v: string[]) => void
-}) {
-  const [draft, setDraft] = useState('')
-  const full = values.length >= CRITERIA_LIMITS.items
-  const add = () => {
-    const v = draft.trim().slice(0, CRITERIA_LIMITS.item)
-    if (!v || full || values.some(x => x.toLowerCase() === v.toLowerCase())) return
-    onChange([...values, v])
-    setDraft('')
-  }
-  return (
-    <div className="min-w-0">
-      <label htmlFor={id} className="text-[11px] font-bold uppercase tracking-wider block mb-1.5" style={{ color: 'var(--color-text-muted)' }}>{label}</label>
-      <div className="flex flex-wrap items-center gap-1.5 rounded-xl p-1.5" style={surface}>
-        {values.map(v => (
-          <span key={v} className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-lg text-xs font-semibold"
-            style={{ background: orangeTint(12), color: 'var(--color-text)' }}>
-            {v}
-            <button type="button" onClick={() => onChange(values.filter(x => x !== v))} aria-label={`Retirer ${v}`}
-              className="rounded p-0.5 hover:opacity-70 focus-visible:outline-2">
-              <X className="h-3 w-3" />
-            </button>
-          </span>
-        ))}
-        <input id={id} value={draft} onChange={e => setDraft(e.target.value)} onBlur={add} disabled={full} maxLength={CRITERIA_LIMITS.item}
-          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-          placeholder={full ? `${CRITERIA_LIMITS.items} au plus` : placeholder}
-          className="flex-1 min-w-[7rem] bg-transparent px-1.5 py-1 text-sm outline-none" style={{ color: 'var(--color-text)' }} />
-        {draft.trim() && (
-          <button type="button" onClick={add} aria-label={`Ajouter à ${label}`} className="rounded-lg p-1" style={{ color: 'var(--color-text)' }}>
-            <Plus className="h-4 w-4" />
-          </button>
-        )}
-      </div>
-    </div>
-  )
-}
+const revealSelectionLabel = (n: number) => `Révéler ${n > 0 ? `la sélection · ${n} crédit${n > 1 ? 's' : ''}` : 'la sélection'}`
 
 function StepIcon({ state }: { state: StepState }) {
-  if (state === 'run') return <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'var(--color-brand-orange)' }} />
-  if (state === 'done') return <Check className="h-4 w-4" style={{ color: 'var(--color-brand-orange)' }} />
-  if (state === 'error') return <AlertCircle className="h-4 w-4" style={{ color: 'var(--color-brand-orange)' }} />
-  if (state === 'skip') return <Minus className="h-4 w-4" style={{ color: 'var(--color-text-muted)' }} />
-  return <Circle className="h-4 w-4" style={{ color: 'var(--color-border)' }} />
+  if (state === 'run') return <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: 'var(--color-brand-orange)' }} />
+  if (state === 'done') return <Check className="h-3.5 w-3.5" style={{ color: 'var(--color-brand-orange)' }} />
+  if (state === 'error') return <AlertCircle className="h-3.5 w-3.5" style={{ color: 'var(--color-brand-orange)' }} />
+  if (state === 'skip') return <Minus className="h-3.5 w-3.5" style={{ color: 'var(--color-text-muted)' }} />
+  return <Circle className="h-3.5 w-3.5" style={{ color: 'var(--color-border)' }} />
 }
 
-function Progress({ steps }: { steps: Record<StepKey, StepState> }) {
+function Progress({ steps, total }: { steps: Record<StepKey, StepState>; total: number | null }) {
   return (
-    <ol className="flex flex-col sm:flex-row gap-2 sm:gap-6" aria-label="Étapes de la recherche">
+    <ol className="flex flex-wrap gap-x-4 gap-y-1" aria-label="Étapes de la recherche">
       {STEPS.map(s => (
-        <li key={s.key} className="flex items-center gap-2 text-sm"
+        <li key={s.key} className="flex items-center gap-1.5 text-xs font-semibold"
           style={{ color: steps[s.key] === 'todo' || steps[s.key] === 'skip' ? 'var(--color-text-muted)' : 'var(--color-text)' }}>
           <StepIcon state={steps[s.key]} />
-          <span>{s.label}</span>
-          <span className="sr-only">
-            {{ todo: 'à venir', run: 'en cours', done: 'terminée', error: 'en échec', skip: 'sautée' }[steps[s.key]]}
-          </span>
+          <span>{s.key === 'search' && steps.search === 'done' && total !== null ? `${total.toLocaleString('fr-FR')} profils trouvés` : s.label}</span>
+          <span className="sr-only">{{ todo: 'à venir', run: 'en cours', done: 'terminée', error: 'en échec', skip: 'sautée' }[steps[s.key]]}</span>
         </li>
       ))}
     </ol>
   )
 }
 
-/** Case de la grille des critères : rempli, en partie, non rempli, ou critère non demandé. */
-function MatchCell({ value, label }: { value: 'yes' | 'partial' | 'no' | 'any'; label: string }) {
-  const text = { yes: 'rempli', partial: 'en partie', no: 'non rempli', any: 'non demandé' }[value]
+/** Score sur 100 dans un anneau rempli d'autant. */
+function ScoreRing({ score }: { score: number }) {
   return (
-    <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg" title={`${label} : ${text}`}
-      style={value === 'yes' ? { background: 'var(--color-brand-orange)', color: 'white' }
-        : value === 'partial' ? { background: orangeTint(18), color: 'var(--color-text)' }
-          : { border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
-      {value === 'yes' ? <Check className="h-4 w-4" /> : value === 'partial' ? <Check className="h-3.5 w-3.5 opacity-60" /> : <Minus className="h-3.5 w-3.5" />}
-      <span className="sr-only">{label} : {text}</span>
+    <span className="relative inline-flex items-center justify-center w-11 h-11 rounded-full shrink-0" aria-label={`Score : ${score} sur 100`}
+      style={{ background: `conic-gradient(var(--color-brand-orange) ${score}%, var(--color-border) 0)` }}>
+      <span className="absolute inset-[4px] rounded-full" style={{ background: 'var(--color-surface)' }} />
+      <span className="relative text-sm font-bold" style={{ color: 'var(--color-text)' }}>{score}</span>
     </span>
   )
 }
 
-function matchCells(m: CriteriaMatch, wantedSkills: number) {
-  return [
-    { label: 'Intitulé', value: m.title === 'full' ? 'yes' : m.title === 'partial' ? 'partial' : m.title === 'any' ? 'any' : 'no' },
-    { label: 'Compétences', value: wantedSkills === 0 ? 'any' : m.skills.length === wantedSkills ? 'yes' : m.skills.length > 0 ? 'partial' : 'no' },
-    { label: 'Joignable', value: m.reachable ? 'yes' : 'no' },
-    { label: 'Profil récent', value: m.fresh ? 'yes' : 'no' },
-  ] as const
-}
-
-const GRID = 'md:grid md:grid-cols-[3.5rem_minmax(0,1fr)_repeat(4,4.75rem)] md:items-center md:gap-3'
-
-/** « Révéler 10 profils (10 crédits) » : le coût est annoncé avant le clic. */
-const revealLabel = (n: number) => `Révéler ${n} profil${n > 1 ? 's' : ''} complet${n > 1 ? 's' : ''} (${n} crédit${n > 1 ? 's' : ''} max.)`
-
-/** État du profil complet d'une ligne : pas demandé, en cours, révélé, ou introuvable chez Apollo. */
-type Reveal = { state: 'loading' } | { state: 'done'; profile: MbcRevealed } | { state: 'missing' }
-
-const period = (e: MbcRevealed['experiences'][number]) => {
-  const fmt = (m: string) => (m ? `${m.slice(5, 7)}/${m.slice(0, 4)}` : '')
-  return [fmt(e.start), e.current ? 'aujourd\'hui' : fmt(e.end)].filter(Boolean).join(' – ')
-}
-
-/** Profil complet sous la ligne : coordonnées professionnelles, liens et parcours. */
-function RevealedDetails({ r }: { r: MbcRevealed }) {
-  const link = 'inline-flex items-center gap-1 font-semibold no-underline hover:underline'
+/** Pastilles des critères : remplis en couleur, manqués barrés. */
+function CriteriaPills({ p, criteria }: { p: ScoredProfile; criteria: MbcCriteria }) {
+  const pills: { label: string; ok: boolean }[] = []
+  if (p.match.title !== 'any') pills.push({ label: 'Intitulé', ok: p.match.title !== 'none' })
+  for (const s of criteria.skills.slice(0, 3)) pills.push({ label: s, ok: p.match.skills.includes(s) })
+  pills.push({ label: 'E-mail', ok: p.hasEmail }, { label: 'Récent', ok: p.match.fresh })
   return (
-    <div className="mt-2 space-y-2 text-xs" style={{ color: 'var(--color-text)' }}>
-      {r.headline && <p style={{ color: 'var(--color-text-muted)' }}>{r.headline}</p>}
-      <p className="flex items-center gap-x-4 gap-y-1 flex-wrap">
-        {r.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{r.location}</span>}
-        {r.email && (
-          <a href={`mailto:${r.email}`} className={link} style={{ color: 'var(--color-text)' }}>
-            <Mail className="h-3 w-3" />{r.email}
-            {r.emailStatus && r.emailStatus !== 'verified' && <span className="font-normal" style={{ color: 'var(--color-text-muted)' }}>(non vérifié)</span>}
-          </a>
-        )}
-        {r.linkedinUrl && (
-          <a href={r.linkedinUrl} target="_blank" rel="noopener noreferrer" className={link} style={{ color: 'var(--color-text)' }}>
-            <ExternalLink className="h-3 w-3" />LinkedIn
-          </a>
-        )}
-        {r.companyWebsite && (
-          <a href={r.companyWebsite} target="_blank" rel="noopener noreferrer" className={link} style={{ color: 'var(--color-text)' }}>
-            <Globe className="h-3 w-3" />Site de l&apos;entreprise
-          </a>
-        )}
-      </p>
-      {r.experiences.length > 0 && (
-        <ol className="space-y-0.5 pl-3" style={{ borderLeft: '2px solid var(--color-border)' }} aria-label="Parcours">
-          {r.experiences.map((e, i) => (
-            <li key={`${e.title}-${e.company}-${i}`}>
-              <span className="font-semibold">{e.title || 'Poste'}</span>
-              {e.company && <> · {e.company}</>}
-              {period(e) && <span style={{ color: 'var(--color-text-muted)' }}> · {period(e)}</span>}
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
+    <ul className="flex flex-wrap gap-1" aria-label="Critères remplis">
+      {pills.map(c => (
+        <li key={c.label} className="text-[10.5px] px-1.5 py-0.5 rounded font-semibold"
+          style={c.ok ? { background: orangeTint(12), color: 'var(--color-text)' } : { color: 'var(--color-text-muted)', textDecoration: 'line-through', fontWeight: 500 }}>
+          {c.label}<span className="sr-only">{c.ok ? ' : rempli' : ' : non rempli'}</span>
+        </li>
+      ))}
+    </ul>
   )
 }
 
-function ResultRow({ p, wantedSkills, reveal, onReveal, canReveal }: {
-  p: ScoredProfile; wantedSkills: number; reveal?: Reveal; onReveal: () => void; canReveal: boolean
+function ResultRow({ p, criteria, reveal, active, selected, shortlisted, busy, onOpen, onSelect, onShortlist, onReveal }: {
+  p: ScoredProfile; criteria: MbcCriteria; reveal?: Reveal; active: boolean; selected: boolean; shortlisted: boolean; busy: boolean
+  onOpen: () => void; onSelect: () => void; onShortlist: () => void; onReveal: () => void
 }) {
   const full = reveal?.state === 'done' ? reveal.profile : null
   const name = full?.name || [p.firstName, p.lastNameMasked].filter(Boolean).join(' ') || 'Profil sans nom'
+  const iconBtn = 'inline-flex items-center justify-center w-8 h-8 rounded-lg shrink-0'
   return (
-    <li className={`px-4 py-4 ${GRID}`} style={{ borderTop: '1px solid var(--color-border)' }}>
-      <div className="flex items-start gap-3 md:contents">
-        <span className="shrink-0 md:self-start inline-flex items-center justify-center w-12 h-12 rounded-xl text-base font-bold"
-          style={{ background: orangeTint(8 + Math.round(p.score * 0.22)), color: 'var(--color-text)' }}
-          aria-label={`Score : ${p.score} sur 100`}>
-          {p.score}
-        </span>
-        <div className="min-w-0 flex-1 flex items-start gap-3">
-          {full?.photoUrl && (
-            // Photo servie par Apollo depuis des hôtes variés : <img> simple, sans passer par l'optimiseur de Next.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={full.photoUrl} alt="" referrerPolicy="no-referrer" className="w-10 h-10 rounded-full object-cover shrink-0" />
-          )}
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>{name}</p>
-              {!full && reveal?.state !== 'missing' && (
-                <button type="button" onClick={onReveal} disabled={!canReveal || reveal?.state === 'loading'}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold disabled:opacity-40"
-                  style={{ border: '1px solid var(--color-brand-orange)', color: 'var(--color-text)' }}>
-                  {reveal?.state === 'loading' ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserRound className="h-3 w-3" />}
-                  Profil complet
-                </button>
-              )}
-              {reveal?.state === 'missing' && <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>Profil complet introuvable chez Apollo</span>}
-            </div>
-            {(full?.title || p.title) && <p className="text-sm" style={{ color: 'var(--color-text)' }}>{full?.title || p.title}</p>}
-            <p className="flex items-center gap-3 flex-wrap text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-              {(full?.company || p.company) && <span className="inline-flex items-center gap-1 min-w-0"><Building2 className="h-3 w-3 shrink-0" /><span className="truncate">{full?.company || p.company}</span></span>}
-              {!full && p.hasEmail && <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />E-mail</span>}
-              {p.hasPhone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />Téléphone connu d&apos;Apollo</span>}
-            </p>
-            {full && <RevealedDetails r={full} />}
-            {p.reasons.length > 0 && (
-              <details className="mt-1.5 text-xs" style={{ color: 'var(--color-text)' }}>
-                <summary className="cursor-pointer font-semibold w-fit" style={{ color: 'var(--color-text-muted)' }}>Pourquoi ce score ?</summary>
-                <ul className="mt-1.5 space-y-0.5 pl-1">
-                  {p.reasons.map(r => <li key={r}>· {r}</li>)}
-                </ul>
-              </details>
-            )}
-          </div>
-        </div>
-      </div>
-      {/* Mobile : la grille devient une ligne de pastilles libellées sous le profil. */}
-      <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 md:contents">
-        {matchCells(p.match, wantedSkills).map(c => (
-          <span key={c.label} className="inline-flex items-center gap-1.5 md:justify-center md:self-start md:pt-2.5">
-            <MatchCell value={c.value} label={c.label} />
-            <span className="md:hidden text-xs" style={{ color: 'var(--color-text-muted)' }}>{c.label}</span>
+    <li className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] sm:grid-cols-[auto_auto_minmax(0,1fr)_minmax(0,13rem)_auto_auto] items-center gap-x-3 gap-y-2 px-4 py-3"
+      style={{ borderTop: '1px solid var(--color-border)', background: active ? orangeTint(5) : undefined, boxShadow: active ? 'inset 3px 0 var(--color-brand-orange)' : undefined }}>
+      <input type="checkbox" checked={selected} onChange={onSelect} disabled={Boolean(full) || reveal?.state === 'missing'}
+        aria-label={`Sélectionner ${name}`} className="w-4 h-4 accent-[var(--color-brand-orange)] disabled:opacity-30" />
+      <Avatar name={name} photoUrl={full?.photoUrl} />
+      <button type="button" onClick={onOpen} className="min-w-0 text-left" aria-current={active ? 'true' : undefined}>
+        <span className="flex items-center gap-1.5 flex-wrap">
+          <span className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>
+            {full ? name : <>{p.firstName || 'Profil'} <span style={{ color: 'var(--color-text-muted)', fontWeight: 500 }}>{p.lastNameMasked}</span></>}
           </span>
-        ))}
+          {full && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: orangeTint(14), color: 'var(--color-text)' }}>Révélé</span>}
+          {reveal?.state === 'missing' && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ ...surface, color: 'var(--color-text-muted)' }}>Introuvable chez Apollo</span>}
+        </span>
+        <span className="block text-sm truncate" style={{ color: 'var(--color-text-muted)' }}>{[full?.title || p.title, full?.company || p.company].filter(Boolean).join(' · ')}</span>
+        {full?.location && <span className="block text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{full.location}</span>}
+      </button>
+      <div className="col-start-3 col-span-2 sm:col-start-auto sm:col-span-1 row-start-2 sm:row-start-auto"><CriteriaPills p={p} criteria={criteria} /></div>
+      <div className="col-start-4 row-start-1 sm:col-start-auto sm:row-start-auto"><ScoreRing score={p.score} /></div>
+      <div className="hidden sm:flex items-center gap-1.5 justify-end">
+        <button type="button" onClick={onShortlist} aria-pressed={shortlisted} aria-label={shortlisted ? `Retirer ${name} de la présélection` : `Présélectionner ${name}`}
+          className={iconBtn} style={shortlisted ? { background: orangeTint(12), border: '1px solid var(--color-brand-orange)', color: 'var(--color-brand-orange)' } : { ...surface, color: 'var(--color-text-muted)' }}>
+          <Star className="h-4 w-4" fill={shortlisted ? 'currentColor' : 'none'} />
+        </button>
+        {full ? (
+          <>
+            {full.linkedinUrl
+              ? <a href={full.linkedinUrl} target="_blank" rel="noopener noreferrer" aria-label={`LinkedIn de ${name}`} className={`${iconBtn} no-underline`} style={{ ...surface, color: 'var(--color-text)' }}><ExternalLink className="h-4 w-4" /></a>
+              : <span className={iconBtn} />}
+            {full.email
+              ? <a href={`mailto:${full.email}`} aria-label={`Écrire à ${name}`} className={`${iconBtn} no-underline`} style={{ ...surface, color: 'var(--color-text)' }}><Mail className="h-4 w-4" /></a>
+              : <span className={iconBtn} />}
+          </>
+        ) : reveal?.state !== 'missing' && (
+          <button type="button" onClick={onReveal} disabled={busy || reveal?.state === 'loading'}
+            className="inline-flex items-center gap-1 px-2.5 h-8 rounded-lg text-xs font-bold disabled:opacity-40 whitespace-nowrap" style={{ ...surface, color: 'var(--color-text)' }}>
+            {reveal?.state === 'loading' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserRound className="h-3.5 w-3.5" />} Révéler · 1
+          </button>
+        )}
       </div>
     </li>
   )
 }
 
-export function MbcSearchClient({ configured }: { configured: boolean }) {
+export function MbcSearchClient({ configured, revealUsage, jobs }: {
+  configured: boolean
+  /** Profils complets révélés aujourd'hui par l'organisation, sur sa limite ; null si illisible. */
+  revealUsage: { used: number; limit: number } | null
+  /** Offres ouvertes de l'organisation, pour « Associer à une offre » ; null si illisibles. */
+  jobs: { id: string; title: string }[] | null
+}) {
   const [phase, setPhase] = useState<'compose' | 'workspace'>('compose')
   const [brief, setBrief] = useState('')
   const [criteria, setCriteria] = useState<MbcCriteria>(EMPTY_CRITERIA)
@@ -264,6 +164,21 @@ export function MbcSearchClient({ configured }: { configured: boolean }) {
   const [busy, setBusy] = useState(false)
   // Profils complets déjà révélés, par identifiant Apollo : gardés d'une page à l'autre (déjà payés).
   const [reveals, setReveals] = useState<Record<string, Reveal>>({})
+  // Profils gardés d'une page à l'autre pour les onglets « Révélés » et « Présélection » (pendant la visite seulement).
+  const [seen, setSeen] = useState<Record<string, ScoredProfile>>({})
+  const [shortlist, setShortlist] = useState<string[]>([])
+  const [selected, setSelected] = useState<string[]>([])
+  const [tab, setTab] = useState<Tab>('all')
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [added, setAdded] = useState<Record<string, Added>>({})
+  const [revealUsed, setRevealUsed] = useState(revealUsage?.used ?? null)
+  const [saved, setSaved] = useState<SavedSearch[]>([])
+  const [savedNote, setSavedNote] = useState<string | null>(null)
+
+  // localStorage n'existe que dans le navigateur : lu après le premier rendu (sinon le rendu serveur différerait).
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture unique d'un stockage extérieur à React
+  useEffect(() => { setSaved(readSaved()) }, [])
 
   const setStep = (key: StepKey, state: StepState) => setSteps(s => ({ ...s, [key]: state }))
 
@@ -282,9 +197,14 @@ export function MbcSearchClient({ configured }: { configured: boolean }) {
       setError(res.error)
       return
     }
+    const profiles = res.profiles ?? []
     setStep('search', 'done')
     setStep('rank', 'done')
-    setResults({ profiles: res.profiles ?? [], total: res.total ?? 0, page })
+    setResults({ profiles, total: res.total ?? 0, page })
+    setSeen(s => ({ ...s, ...Object.fromEntries(profiles.map(p => [p.id, p])) }))
+    setSelected([])
+    setTab('all')
+    setActiveId(profiles[0]?.id ?? null)
   }
 
   /** Profil complet (payant) des profils demandés ; ceux déjà révélés ou en cours ne sont pas redemandés. */
@@ -301,6 +221,8 @@ export function MbcSearchClient({ configured }: { configured: boolean }) {
         setError(res.error ?? 'Profils indisponibles pour le moment.')
         return
       }
+      // Une place du quota par profil demandé, trouvé ou non (comme le serveur les compte).
+      setRevealUsed(u => (u === null ? null : u + wanted.length))
       const found = new Map(res.profiles.map(p => [p.id, p]))
       setReveals(r => ({
         ...r,
@@ -309,6 +231,7 @@ export function MbcSearchClient({ configured }: { configured: boolean }) {
           return [id, profile ? { state: 'done', profile } : { state: 'missing' }] as [string, Reveal]
         })),
       }))
+      setSelected(s => s.filter(id => !wanted.includes(id)))
     } catch {
       forget()
       setError('Le serveur ne répond pas : vérifiez votre connexion puis réessayez.')
@@ -338,12 +261,12 @@ export function MbcSearchClient({ configured }: { configured: boolean }) {
     }
   }
 
-  const relaunch = async (page = 1) => {
+  const relaunch = async (page = 1, c: MbcCriteria = criteria) => {
     setError(null)
     setBusy(true)
     setSteps(s => ({ brief: s.brief === 'done' ? 'done' : 'skip', search: 'todo', rank: 'todo' }))
     try {
-      await runSearch(criteria, page)
+      await runSearch(c, page)
     } catch {
       failRunning()
     } finally {
@@ -357,24 +280,74 @@ export function MbcSearchClient({ configured }: { configured: boolean }) {
     setSteps({ ...IDLE_STEPS, brief: 'skip' })
   }
 
-  const toggleSeniority = (s: Seniority) => setCriteria(c => ({
-    ...c, seniorities: c.seniorities.includes(s) ? c.seniorities.filter(x => x !== s) : [...c.seniorities, s],
-  }))
+  const saveSearch = () => {
+    const next = withSavedSearch(saved, { name: savedSearchName(criteria), brief, criteria, savedAt: new Date().toISOString() })
+    if (!writeSaved(next)) { setSavedNote('Enregistrement impossible dans ce navigateur (navigation privée ?).'); return }
+    setSaved(next)
+    setSavedNote(`Recherche « ${next[0].name} » enregistrée dans ce navigateur.`)
+  }
+  const removeSaved = (name: string) => {
+    const next = saved.filter(s => s.name !== name)
+    if (writeSaved(next)) setSaved(next)
+  }
+  const openSaved = (s: SavedSearch) => {
+    setBrief(s.brief)
+    setCriteria(s.criteria)
+    setPhase('workspace')
+    setSteps({ ...IDLE_STEPS, brief: s.brief ? 'done' : 'skip' })
+    if (configured && !criteriaProblem(s.criteria)) relaunch(1, s.criteria)
+  }
+
+  const toggleIn = (list: string[], id: string) => (list.includes(id) ? list.filter(x => x !== id) : [...list, id])
+  const toggleSeniority = (s: Seniority) => setCriteria(c => ({ ...c, seniorities: toggleIn(c.seniorities, s) as Seniority[] }))
+  const toggleRequired = (skill: string) => setCriteria(c => {
+    const req = requiredSkillsOf(c)
+    const on = req.some(r => r.toLowerCase() === skill.toLowerCase())
+    return { ...c, requiredSkills: on ? req.filter(r => r.toLowerCase() !== skill.toLowerCase()) : [...req, skill] }
+  })
 
   const missing = criteriaProblem(criteria)
   const lastPage = results ? Math.min(MAX_PAGE, Math.ceil(results.total / PAGE_SIZE)) : 0
+  const revealedIds = Object.entries(reveals).filter(([, r]) => r.state === 'done').map(([id]) => id)
+  const listed: ScoredProfile[] = tab === 'all'
+    ? (results?.profiles ?? []).filter(p => !criteria.recentOnly || p.match.fresh)
+    : (tab === 'revealed' ? revealedIds : shortlist).map(id => seen[id]).filter((p): p is ScoredProfile => Boolean(p))
+  const hiddenByRecent = tab === 'all' && criteria.recentOnly ? (results?.profiles.length ?? 0) - listed.length : 0
+  const selectable = listed.filter(p => !reveals[p.id]).map(p => p.id)
+  const allSelected = selectable.length > 0 && selectable.every(id => selected.includes(id))
+  const active = activeId ? seen[activeId] : undefined
+  const quotaLeft = revealUsage && revealUsed !== null ? Math.max(0, revealUsage.limit - revealUsed) : null
+
+  const openProfile = (id: string) => { setActiveId(id); setPanelOpen(true) }
+  const toggleShortlist = (id: string) => setShortlist(s => toggleIn(s, id))
 
   return (
     <div className="relative" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <div style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
-          <div className="flex items-center gap-2 mb-1">
-            <Radar className="h-5 w-5" style={{ color: 'var(--color-brand-orange)' }} />
-            <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>MBC Search</h1>
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-7 flex items-end gap-4 flex-wrap">
+          <div className="flex-1 min-w-[16rem]">
+            <div className="flex items-center gap-2 mb-1">
+              <Radar className="h-5 w-5" style={{ color: 'var(--color-brand-orange)' }} />
+              <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>MBC Search</h1>
+            </div>
+            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem' }}>Trouvez des profils hors de votre base, classés selon votre besoin.</p>
           </div>
-          <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem' }}>
-            Décrivez le profil idéal : l&apos;IA en tire les critères et cherche parmi des millions de profils professionnels.
-          </p>
+          {revealUsage && revealUsed !== null && (
+            <div className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs" style={{ border: '1px solid rgba(255,255,255,0.16)', color: 'rgba(255,255,255,0.75)' }}
+              title="Chaque profil complet coûte un crédit Apollo à la plateforme. Le compteur repart à zéro chaque jour (minuit UTC).">
+              Profils complets aujourd&apos;hui
+              <span className="w-16 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.16)' }} aria-hidden>
+                <span className="block h-full" style={{ width: `${Math.min(100, (revealUsed / revealUsage.limit) * 100)}%`, background: 'var(--color-brand-orange)' }} />
+              </span>
+              <strong style={{ color: 'white' }}>{revealUsed} / {revealUsage.limit}</strong>
+            </div>
+          )}
+          {phase === 'workspace' && (
+            <button type="button" onClick={() => { setPhase('compose'); setError(null) }} disabled={busy}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold disabled:opacity-40" style={{ background: 'var(--color-brand-orange)', color: 'white' }}>
+              <Plus className="h-4 w-4" /> Nouvelle recherche
+            </button>
+          )}
         </div>
       </div>
 
@@ -400,16 +373,36 @@ export function MbcSearchClient({ configured }: { configured: boolean }) {
               </button>
             </div>
           </div>
-          <div className="mt-5">
-            <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>Exemples</p>
-            <div className="flex flex-col gap-2">
-              {EXAMPLES.map(ex => (
-                <button key={ex} type="button" onClick={() => setBrief(ex)}
-                  className="text-left text-sm rounded-xl px-4 py-2.5 inline-flex items-center justify-between gap-3 hover:opacity-80" style={{ ...surface, color: 'var(--color-text)' }}>
-                  {ex}
-                  <ArrowRight className="h-4 w-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
-                </button>
-              ))}
+          <div className="mt-5 grid gap-5 sm:grid-cols-2">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>Exemples</p>
+              <div className="flex flex-col gap-2">
+                {EXAMPLES.map(ex => (
+                  <button key={ex} type="button" onClick={() => setBrief(ex)}
+                    className="text-left text-sm rounded-xl px-4 py-2.5 inline-flex items-center justify-between gap-3 hover:opacity-80" style={{ ...surface, color: 'var(--color-text)' }}>
+                    {ex}
+                    <ArrowRight className="h-4 w-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>Vos recherches enregistrées</p>
+              {saved.length === 0 ? (
+                <p className="text-sm rounded-xl px-4 py-3" style={{ ...surface, color: 'var(--color-text-muted)' }}>
+                  Aucune pour le moment : enregistrez une recherche avec <Bookmark className="inline h-3.5 w-3.5" /> pour la relancer en un clic.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {saved.slice(0, 5).map(s => (
+                    <button key={s.name} type="button" onClick={() => openSaved(s)} disabled={!configured}
+                      className="text-left text-sm rounded-xl px-4 py-2.5 inline-flex items-center justify-between gap-3 hover:opacity-80 disabled:opacity-40" style={{ ...surface, color: 'var(--color-text)' }}>
+                      <span className="truncate">{s.name}</span>
+                      <RotateCcw className="h-4 w-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           <p className="text-center mt-6">
@@ -419,114 +412,166 @@ export function MbcSearchClient({ configured }: { configured: boolean }) {
           </p>
         </div>
       ) : (
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-5">
-          {/* Brief et critères : l'IA les a remplis, le recruteur les corrige puis relance. */}
-          <section className="rounded-3xl p-4 sm:p-6 space-y-5" style={surface} aria-labelledby="mbc-criteria-title">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div className="min-w-0 flex-1">
-                <h2 id="mbc-criteria-title" className="text-lg font-bold" style={{ color: 'var(--color-text)' }}>Critères de recherche</h2>
-                {brief.trim() && <p className="text-sm mt-1 line-clamp-2" style={{ color: 'var(--color-text-muted)' }}>« {brief.trim()} »</p>}
-              </div>
-              <button type="button" onClick={() => { setPhase('compose'); setError(null) }} disabled={busy}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold disabled:opacity-40" style={{ ...surface, color: 'var(--color-text)' }}>
-                <Pencil className="h-3.5 w-3.5" /> Modifier le brief
-              </button>
-            </div>
-            <div className="grid gap-4 md:grid-cols-3">
-              {LISTS.map(l => (
-                <ChipField key={l.key} id={`mbc-${l.key}`} label={l.label} placeholder={l.placeholder} values={criteria[l.key]}
-                  onChange={v => setCriteria(c => ({ ...c, [l.key]: v }))} />
-              ))}
-            </div>
-            <fieldset>
-              <legend className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>Séniorité</legend>
-              <div className="flex flex-wrap gap-1.5">
-                {(Object.keys(SENIORITIES) as Seniority[]).map(s => {
-                  const on = criteria.seniorities.includes(s)
-                  return (
-                    <button key={s} type="button" onClick={() => toggleSeniority(s)} aria-pressed={on}
-                      className="mbc-search-pill px-3 py-1.5 rounded-lg text-xs font-semibold"
-                      style={on ? { background: orangeTint(14), color: 'var(--color-text)', border: '1px solid var(--color-brand-orange)' }
-                        : { ...surface, color: 'var(--color-text-muted)' }}>
-                      {SENIORITIES[s]}
-                    </button>
-                  )
-                })}
-              </div>
-            </fieldset>
-            <div className="flex items-center justify-between gap-4 flex-wrap pt-4" style={{ borderTop: '1px solid var(--color-border)' }}>
-              <Progress steps={steps} />
-              <button type="button" onClick={() => relaunch(1)} disabled={busy || !configured || Boolean(missing)}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold disabled:opacity-40"
-                style={{ background: 'var(--color-brand-orange)', color: 'white' }}>
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                {results ? 'Relancer avec ces critères' : 'Rechercher'}
-              </button>
-            </div>
-            {missing && !busy && steps.brief !== 'run' && <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{missing}</p>}
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 space-y-4">
+          <section className="rounded-2xl px-4 py-3 flex items-center gap-4 flex-wrap" style={surface} aria-label="Votre brief">
+            <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Votre brief</span>
+            <p className="flex-1 min-w-[14rem] text-sm line-clamp-2" style={{ color: brief.trim() ? 'var(--color-text)' : 'var(--color-text-muted)' }}>
+              {brief.trim() || 'Critères renseignés à la main.'}
+            </p>
+            <Progress steps={steps} total={results?.total ?? null} />
+            <button type="button" onClick={() => { setPhase('compose'); setError(null) }} disabled={busy}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-40" style={{ ...surface, color: 'var(--color-text)' }}>
+              <Pencil className="h-3.5 w-3.5" /> Modifier le brief
+            </button>
           </section>
 
           {error && <ErrorNote>{error}</ErrorNote>}
 
-          <section className="rounded-3xl overflow-hidden" style={surface} aria-labelledby="mbc-results-title" aria-busy={busy}>
-            <div className="flex items-baseline justify-between gap-4 flex-wrap px-4 sm:px-6 py-4">
-              <h2 id="mbc-results-title" className="text-lg font-bold" style={{ color: 'var(--color-text)' }}>
-                {results ? `${results.total.toLocaleString('fr-FR')} profil${results.total > 1 ? 's' : ''}` : 'Profils'}
-              </h2>
-              {results && results.total > 0 && (
-                <div className="flex items-center gap-3 flex-wrap">
-                  <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Page {results.page} sur {lastPage} · classés par score</p>
-                  {results.profiles.some(p => !reveals[p.id]) && (
-                    <button type="button" onClick={() => reveal(results.profiles.map(p => p.id))} disabled={busy}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold disabled:opacity-40"
-                      style={{ background: 'var(--color-brand-orange)', color: 'white' }}>
-                      <UserRound className="h-3.5 w-3.5" /> {revealLabel(Math.min(REVEAL_BATCH, results.profiles.filter(p => !reveals[p.id]).length))}
-                    </button>
-                  )}
+          <div className="grid gap-4 items-start lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)_340px]">
+            {/* Critères : remplis par l'IA, corrigés par le recruteur, puis « Relancer ». */}
+            <aside className="rounded-2xl p-4 space-y-4" style={surface} aria-label="Critères de recherche">
+              <ChipField id="mbc-titles" label="Intitulés" hint="1 au moins" placeholder="ex : Data Engineer" values={criteria.titles}
+                onChange={v => setCriteria(c => ({ ...c, titles: v }))} />
+              <ChipField id="mbc-skills" label="Compétences" hint="★ = obligatoire" placeholder="ex : Spark" values={criteria.skills}
+                onChange={v => setCriteria(c => ({ ...c, skills: v }))} starred={requiredSkillsOf(criteria)} onStar={toggleRequired} />
+              <ChipField id="mbc-locations" label="Lieu" placeholder="ex : Lyon, France" values={criteria.locations}
+                onChange={v => setCriteria(c => ({ ...c, locations: v }))} />
+              <ChipField id="mbc-sectors" label="Secteur de l'employeur" hint="en anglais" placeholder="ex : Banking" values={criteria.sectors ?? []}
+                onChange={v => setCriteria(c => ({ ...c, sectors: v }))} />
+              <fieldset>
+                <legend className="text-xs font-bold mb-1.5" style={{ color: 'var(--color-text)' }}>Séniorité</legend>
+                <div className="flex flex-wrap gap-1.5">
+                  {(Object.keys(SENIORITIES) as Seniority[]).map(s => {
+                    const on = criteria.seniorities.includes(s)
+                    return (
+                      <button key={s} type="button" onClick={() => toggleSeniority(s)} aria-pressed={on}
+                        className="px-2.5 py-1 rounded-full text-xs font-semibold"
+                        style={on ? { background: orangeTint(12), color: 'var(--color-text)', border: '1px solid var(--color-brand-orange)' } : { ...surface, color: 'var(--color-text-muted)' }}>
+                        {SENIORITIES[s]}
+                      </button>
+                    )
+                  })}
+                </div>
+              </fieldset>
+              <div className="pt-3" style={{ borderTop: '1px solid var(--color-border)' }}>
+                <Toggle label="E-mail disponible seulement" checked={criteria.emailOnly ?? false} onChange={v => setCriteria(c => ({ ...c, emailOnly: v }))} />
+                <Toggle label="Mis à jour depuis moins de 6 mois" checked={criteria.recentOnly ?? false} onChange={v => setCriteria(c => ({ ...c, recentOnly: v }))} />
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => relaunch(1)} disabled={busy || !configured || Boolean(missing)}
+                  className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-bold disabled:opacity-40"
+                  style={{ background: 'var(--color-brand-orange)', color: 'white' }}>
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                  {results ? 'Relancer' : 'Rechercher'}
+                </button>
+                <button type="button" onClick={saveSearch} disabled={Boolean(missing)} aria-label="Enregistrer cette recherche" title="Enregistrer cette recherche"
+                  className="inline-flex items-center justify-center w-11 rounded-xl disabled:opacity-40" style={{ ...surface, color: 'var(--color-text)' }}>
+                  <Bookmark className="h-4 w-4" />
+                </button>
+              </div>
+              {missing && !busy && steps.brief !== 'run' && <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{missing}</p>}
+              {savedNote && <p role="status" className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{savedNote}</p>}
+              {saved.length > 0 && (
+                <div className="pt-3" style={{ borderTop: '1px solid var(--color-border)' }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: 'var(--color-text)' }}>Recherches enregistrées</p>
+                  <ul>
+                    {saved.map(s => (
+                      <li key={s.name} className="flex items-center gap-1">
+                        <button type="button" onClick={() => openSaved(s)} disabled={busy} className="flex-1 min-w-0 text-left text-sm py-1 truncate hover:underline disabled:opacity-40" style={{ color: 'var(--color-text)' }}>{s.name}</button>
+                        <button type="button" onClick={() => removeSaved(s.name)} aria-label={`Supprimer la recherche ${s.name}`} className="p-1 rounded" style={{ color: 'var(--color-text-muted)' }}><X className="h-3.5 w-3.5" /></button>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
-            </div>
+            </aside>
 
-            {!results ? (
-              <p className="px-6 pb-10 pt-4 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                {busy ? 'Recherche en cours…' : 'Vérifiez les critères puis lancez la recherche.'}
-              </p>
-            ) : results.profiles.length === 0 ? (
-              <p className="px-6 pb-10 pt-4 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                Aucun profil pour ces critères. Retirez un lieu ou une séniorité, ou élargissez les intitulés.
-              </p>
-            ) : (
-              <>
-                <div className={`hidden px-4 pb-2 text-[11px] font-bold uppercase tracking-wider ${GRID}`} style={{ color: 'var(--color-text-muted)' }} aria-hidden>
-                  <span>Score</span><span>Profil</span>
-                  <span className="text-center">Intitulé</span><span className="text-center">Compét.</span>
-                  <span className="text-center">Joignable</span><span className="text-center">Récent</span>
+            <section className="rounded-2xl overflow-hidden min-w-0" style={surface} aria-label="Profils" aria-busy={busy}>
+              <div className="flex items-center gap-2 flex-wrap px-4 py-3">
+                <div className="inline-flex rounded-lg p-0.5" style={{ background: 'var(--page-bg)' }} role="tablist" aria-label="Profils affichés">
+                  {([['all', `Tous · ${results?.profiles.length ?? 0}`], ['revealed', `Révélés · ${revealedIds.length}`], ['shortlist', `Présélection · ${shortlist.length}`]] as [Tab, string][]).map(([key, label]) => (
+                    <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
+                      className="px-2.5 py-1 rounded-md text-xs whitespace-nowrap"
+                      style={tab === key ? { ...surface, color: 'var(--color-text)', fontWeight: 700 } : { color: 'var(--color-text-muted)' }}>
+                      {label}
+                    </button>
+                  ))}
                 </div>
+                <span className="flex-1" />
+                {selectable.length > 0 && (
+                  <label className="inline-flex items-center gap-1.5 text-xs whitespace-nowrap" style={{ color: 'var(--color-text-muted)' }}>
+                    <input type="checkbox" checked={allSelected} className="w-4 h-4 accent-[var(--color-brand-orange)]"
+                      onChange={() => setSelected(allSelected ? [] : selectable.slice(0, REVEAL_BATCH))} />
+                    {selected.length > 0 ? `${selected.length} sélectionné${selected.length > 1 ? 's' : ''}` : `Sélectionner (${REVEAL_BATCH} au plus)`}
+                  </label>
+                )}
+                <button type="button" onClick={() => reveal(selected)} disabled={busy || selected.length === 0 || (quotaLeft !== null && quotaLeft < selected.length)}
+                  title={quotaLeft !== null && quotaLeft < selected.length ? `Il vous reste ${quotaLeft} profil${quotaLeft > 1 ? 's' : ''} complet${quotaLeft > 1 ? 's' : ''} aujourd'hui.` : undefined}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-40 whitespace-nowrap"
+                  style={{ background: 'var(--color-brand-orange)', color: 'white' }}>
+                  <UserRound className="h-3.5 w-3.5" /> {revealSelectionLabel(selected.length)}
+                </button>
+              </div>
+
+              {!results && tab === 'all' ? (
+                <p className="px-6 pb-10 pt-6 text-center text-sm" style={{ color: 'var(--color-text-muted)', borderTop: '1px solid var(--color-border)' }}>
+                  {busy ? 'Recherche en cours…' : 'Vérifiez les critères puis lancez la recherche.'}
+                </p>
+              ) : listed.length === 0 ? (
+                <p className="px-6 pb-10 pt-6 text-center text-sm" style={{ color: 'var(--color-text-muted)', borderTop: '1px solid var(--color-border)' }}>
+                  {tab === 'revealed' ? 'Aucun profil révélé pour le moment.'
+                    : tab === 'shortlist' ? 'Aucun profil présélectionné : cliquez sur l’étoile d’un profil.'
+                      : hiddenByRecent > 0 ? 'Aucun profil récent sur cette page : décochez « Mis à jour depuis moins de 6 mois » ou passez à la page suivante.'
+                        : 'Aucun profil pour ces critères. Retirez un lieu, une séniorité ou une compétence obligatoire.'}
+                </p>
+              ) : (
                 <ul style={{ opacity: busy ? 0.5 : 1 }}>
-                  {results.profiles.map(p => (
-                    <ResultRow key={p.id} p={p} wantedSkills={criteria.skills.length} reveal={reveals[p.id]}
-                      onReveal={() => reveal([p.id])} canReveal={!busy} />
+                  {listed.map(p => (
+                    <ResultRow key={p.id} p={p} criteria={criteria} reveal={reveals[p.id]} active={p.id === activeId} busy={busy}
+                      selected={selected.includes(p.id)} shortlisted={shortlist.includes(p.id)}
+                      onOpen={() => openProfile(p.id)} onSelect={() => setSelected(s => (s.includes(p.id) ? s.filter(x => x !== p.id) : s.length < REVEAL_BATCH ? [...s, p.id] : s))}
+                      onShortlist={() => toggleShortlist(p.id)} onReveal={() => reveal([p.id])} />
                   ))}
                 </ul>
-              </>
-            )}
+              )}
 
-            {results && lastPage > 1 && (
-              <nav className="flex items-center justify-center gap-3 py-4" style={{ borderTop: '1px solid var(--color-border)' }} aria-label="Pages de résultats">
-                <button type="button" onClick={() => relaunch(results.page - 1)} disabled={busy || results.page <= 1}
-                  className="px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-40" style={{ ...surface, color: 'var(--color-text)' }}>
-                  Précédente
-                </button>
-                <button type="button" onClick={() => relaunch(results.page + 1)} disabled={busy || results.page >= lastPage}
-                  className="px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-40" style={{ ...surface, color: 'var(--color-text)' }}>
-                  Suivante
-                </button>
-              </nav>
-            )}
-          </section>
+              {results && tab === 'all' && results.profiles.length > 0 && (
+                <nav className="flex items-center justify-between gap-3 flex-wrap px-4 py-3 text-xs" style={{ borderTop: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }} aria-label="Pages de résultats">
+                  <span>
+                    Page {results.page} sur {lastPage} · classés par score{hiddenByRecent > 0 ? ` · ${hiddenByRecent} profil${hiddenByRecent > 1 ? 's' : ''} ancien${hiddenByRecent > 1 ? 's' : ''} masqué${hiddenByRecent > 1 ? 's' : ''}` : ''} · nom de famille masqué tant que le profil n’est pas révélé
+                  </span>
+                  {lastPage > 1 && (
+                    <span className="flex gap-2">
+                      <button type="button" onClick={() => relaunch(results.page - 1)} disabled={busy || results.page <= 1}
+                        className="px-3 py-1.5 rounded-lg font-semibold disabled:opacity-40" style={{ ...surface, color: 'var(--color-text)' }}>Précédente</button>
+                      <button type="button" onClick={() => relaunch(results.page + 1)} disabled={busy || results.page >= lastPage}
+                        className="px-3 py-1.5 rounded-lg font-semibold disabled:opacity-40" style={{ ...surface, color: 'var(--color-text)' }}>Suivante</button>
+                    </span>
+                  )}
+                </nav>
+              )}
+            </section>
+
+            {/* Profil choisi : colonne collée à droite sur très grand écran, fenêtre plein écran en dessous. */}
+            <aside aria-label="Profil choisi"
+              className={`${panelOpen && active ? 'fixed inset-0 z-50 overflow-y-auto p-4' : 'hidden'} xl:block xl:p-0 xl:sticky xl:inset-auto xl:top-24 xl:overflow-visible xl:z-auto`}
+              style={panelOpen && active ? { background: 'var(--page-bg)' } : undefined}>
+              {active ? (
+                <ProfilePanel key={active.id} profile={active} reveal={reveals[active.id]} criteria={criteria} brief={brief} jobs={jobs}
+                  shortlisted={shortlist.includes(active.id)} added={added[active.id] ?? {}} canReveal={!busy && (quotaLeft === null || quotaLeft > 0)}
+                  onReveal={() => reveal([active.id])} onShortlist={() => toggleShortlist(active.id)}
+                  onAdded={target => setAdded(a => ({ ...a, [active.id]: { ...a[active.id], [target]: true } }))}
+                  onClose={() => setPanelOpen(false)} />
+              ) : (
+                <div className="hidden xl:block rounded-2xl p-6 text-sm text-center" style={{ ...surface, color: 'var(--color-text-muted)' }}>
+                  Choisissez un profil dans la liste pour voir le détail de son score et le révéler.
+                </div>
+              )}
+            </aside>
+          </div>
 
           <p className="text-xs text-center" style={{ color: 'var(--color-text-muted)' }}>
-            Source : Apollo.io. « Profil complet » donne le nom entier, l&apos;e-mail professionnel, le LinkedIn, le lieu et le parcours, pour un crédit Apollo par profil trouvé. Rien n&apos;est enregistré : utilisez ces données pour un recrutement, conformément au RGPD.
+            Source : Apollo.io. Un profil complet (nom entier, e-mail professionnel, LinkedIn, lieu, parcours) coûte un crédit Apollo par profil trouvé. Rien n&apos;est enregistré tant que vous n&apos;ajoutez pas un profil à un vivier : utilisez ces données pour un recrutement, conformément au RGPD.
           </p>
         </div>
       )}

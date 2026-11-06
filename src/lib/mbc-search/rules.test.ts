@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  APOLLO_PERSON_ID, EMPTY_CRITERIA, PAGE_SIZE, criteriaProblem, criteriaSchema, parseApolloMatches, parseApolloPeople, parseBriefCriteria,
+  APOLLO_PERSON_ID, EMPTY_CRITERIA, apolloKeywords, cleanOutreachDraft, outreachNeedText, outreachPersonText, parseSavedSearches, savedSearchName, withSavedSearch, PAGE_SIZE, criteriaProblem, criteriaSchema, parseApolloMatches, parseApolloPeople, parseBriefCriteria,
   rankProfiles, scoreProfile, toApolloQuery, toRevealRequest, type MbcProfile,
 } from './rules'
 import { MBC_SEARCH_DAILY_LIMITS, MBC_SEARCH_QUOTA_MESSAGE, mbcSearchDenial } from './access'
@@ -26,14 +26,27 @@ describe('MBC Search : critères de recherche', () => {
     assert.equal(criteriaSchema.safeParse({ titles: ['Data Engineer'], locations: ['Paris'], seniorities: ['senior'], skills: [] }).success, true)
   })
 
-  it('construit la requête Apollo : compétences en mots-clés, 25 profils par page', () => {
-    const q = toApolloQuery({ titles: ['Data Engineer'], locations: ['Paris, France'], seniorities: ['senior'], skills: ['Spark', 'Kafka'] }, 3)
+  it('construit la requête Apollo : compétences obligatoires en mots-clés, 25 profils par page', () => {
+    const q = toApolloQuery({ titles: ['Data Engineer'], locations: ['Paris, France'], seniorities: ['senior'], skills: ['Spark', 'Kafka'], requiredSkills: ['kafka'] }, 3)
     assert.deepEqual(q.person_titles, ['Data Engineer'])
     assert.deepEqual(q.person_locations, ['Paris, France'])
     assert.deepEqual(q.person_seniorities, ['senior'])
-    assert.equal(q.q_keywords, 'Spark Kafka')
+    assert.equal(q.q_keywords, 'kafka')
     assert.equal(q.page, 3)
     assert.equal(q.per_page, PAGE_SIZE)
+    assert.ok(!('q_organization_keyword_tags' in q) && !('contact_email_status' in q))
+  })
+
+  it('ne filtre pas sur les compétences facultatives, sauf sans intitulé ; oublie une obligatoire retirée de la liste', () => {
+    assert.equal(apolloKeywords({ ...EMPTY_CRITERIA, titles: ['Data Engineer'], skills: ['Spark'] }), '')
+    assert.equal(apolloKeywords({ ...EMPTY_CRITERIA, skills: ['Spark', 'Kafka'] }), 'Spark Kafka')
+    assert.equal(apolloKeywords({ ...EMPTY_CRITERIA, titles: ['Dev'], skills: ['Spark'], requiredSkills: ['Kafka'] }), '')
+  })
+
+  it('filtre par secteur de l\'employeur et sur les personnes à l\'e-mail connu', () => {
+    const q = toApolloQuery({ ...EMPTY_CRITERIA, titles: ['Dev'], sectors: ['Banking'], emailOnly: true }, 1)
+    assert.deepEqual(q.q_organization_keyword_tags, ['Banking'])
+    assert.ok(q.contact_email_status?.includes('verified'))
   })
 })
 
@@ -71,6 +84,7 @@ describe('MBC Search : score et classement', () => {
     assert.equal(s.score, 75)
     assert.deepEqual(s.reasons, ['Intitulé conforme : « Data Engineer »', 'E-mail disponible', 'Profil mis à jour il y a moins de 6 mois'])
     assert.deepEqual(s.match, { title: 'full', skills: [], reachable: true, fresh: true })
+    assert.deepEqual(s.points, { title: 55, skills: 0, reachable: 10, fresh: 10 })
   })
 
   it('compte une compétence visible dans l\'intitulé, sans tenir compte des accents ni de la casse', () => {
@@ -103,8 +117,8 @@ describe('MBC Search : score et classement', () => {
 
 describe('MBC Search : critères tirés du brief par l\'IA', () => {
   it('lit le JSON même entouré de texte, écarte doublons et séniorités inconnues', () => {
-    const c = parseBriefCriteria('Voici :\n```json\n{"titles":["Data Engineer","data engineer"],"locations":["Lyon"],"seniorities":["senior","boss"],"skills":["Spark"]}\n```')
-    assert.deepEqual(c, { titles: ['Data Engineer'], locations: ['Lyon'], seniorities: ['senior'], skills: ['Spark'] })
+    const c = parseBriefCriteria('Voici :\n```json\n{"titles":["Data Engineer","data engineer"],"locations":["Lyon"],"seniorities":["senior","boss"],"skills":["Spark"],"sectors":["Banking"]}\n```')
+    assert.deepEqual(c, { titles: ['Data Engineer'], locations: ['Lyon'], seniorities: ['senior'], skills: ['Spark'], requiredSkills: [], sectors: ['Banking'] })
   })
 
   it('renvoie null quand rien n\'est exploitable (fail closed)', () => {
@@ -176,5 +190,45 @@ describe('MBC Search : profils complets (enrichissement Apollo)', () => {
     assert.equal(res?.[0].linkedinUrl, '')
     assert.equal(res?.[0].email, '')
     assert.equal(parseApolloMatches({ people: [] }), null)
+  })
+})
+
+describe('MBC Search : message d\'approche', () => {
+  it('n\'envoie à l\'IA que le prénom, le poste et le parcours', () => {
+    const text = outreachPersonText({ firstName: 'Camille', title: 'Data Engineer', company: 'Exemple SA', experiences: [{ title: 'Développeuse', company: 'Démo SAS' }, { title: '', company: '' }] })
+    assert.equal(text, 'Prénom : Camille\nPoste actuel : Data Engineer chez Exemple SA\nParcours :\n- Développeuse chez Démo SAS')
+  })
+
+  it('prend le brief comme besoin, sinon les critères', () => {
+    assert.equal(outreachNeedText('  Data engineer à Lyon ', EMPTY_CRITERIA), 'Data engineer à Lyon')
+    assert.equal(outreachNeedText('', { ...EMPTY_CRITERIA, titles: ['Data Engineer'], locations: ['Lyon'] }), 'Poste : Data Engineer\nLieu : Lyon')
+    assert.equal(outreachNeedText('', EMPTY_CRITERIA), '')
+  })
+
+  it('nettoie la réponse de l\'IA (guillemets, bloc de code)', () => {
+    assert.equal(cleanOutreachDraft('```\nBonjour Camille,\n```'), 'Bonjour Camille,')
+    assert.equal(cleanOutreachDraft('« Bonjour »'), 'Bonjour')
+    assert.equal(cleanOutreachDraft('   '), '')
+  })
+})
+
+describe('MBC Search : recherches enregistrées', () => {
+  const search = (name: string) => ({ name, brief: '', criteria: { ...EMPTY_CRITERIA, titles: ['Dev'] }, savedAt: '2026-11-06T10:00:00Z' })
+
+  it('nomme une recherche d\'après son intitulé et sa ville', () => {
+    assert.equal(savedSearchName({ ...EMPTY_CRITERIA, titles: ['Data Engineer'], locations: ['Lyon, France'] }), 'Data Engineer · Lyon')
+    assert.equal(savedSearchName({ ...EMPTY_CRITERIA, skills: ['Kafka'] }), 'Kafka')
+  })
+
+  it('remplace une recherche du même nom et garde la plus récente en tête', () => {
+    const list = withSavedSearch([search('A'), search('B')], { ...search('a'), brief: 'nouveau' })
+    assert.deepEqual(list.map(s => s.name), ['a', 'B'])
+  })
+
+  it('écarte ce qui ne se relit pas (stockage modifié à la main)', () => {
+    assert.deepEqual(parseSavedSearches('pas du json'), [])
+    assert.deepEqual(parseSavedSearches('{"a":1}'), [])
+    const raw = JSON.stringify([search('A'), { name: 'B', criteria: { titles: 'x' } }])
+    assert.deepEqual(parseSavedSearches(raw).map(s => s.name), ['A'])
   })
 })

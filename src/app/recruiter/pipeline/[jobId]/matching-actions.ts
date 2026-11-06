@@ -69,6 +69,8 @@ async function resolveCandidateFromVivier(
   if (!vivierDoc || vivierDoc.tenantId !== owner.tenantId || vivierDoc.recruiterId !== owner.profileId || (vivierDoc.jobId && vivierDoc.jobId !== jobId)) {
     return { error: 'CV introuvable' }
   }
+  // Profil ajouté depuis MBC Search : aucun fichier CV à joindre à la candidature.
+  if (!vivierDoc.cvFileId) return { error: 'Profil sans CV (ajouté depuis MBC Search) : importez son CV dans le vivier pour l’ajouter au funnel.' }
   const email = ((vivierDoc.candidateEmail as string) ?? '').trim()
   if (!email) return { error: 'CV sans email détecté sur le CV — impossible de lancer un screening' }
 
