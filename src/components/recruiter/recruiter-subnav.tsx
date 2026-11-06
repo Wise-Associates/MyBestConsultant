@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useId, useRef, useState, type ComponentType } from 'react'
-import { BarChart3, ChevronDown, FolderOpen, FolderSearch, GitBranch, Inbox, LayoutDashboard, MessageSquare, Users } from 'lucide-react'
+import { BarChart3, ChevronDown, FolderOpen, FolderSearch, GitBranch, Inbox, LayoutDashboard, MessageSquare, Radar, Users } from 'lucide-react'
 import { RECRUITER_SECTIONS, recruiterSectionOf, type RecruiterSectionKey } from '@/lib/recruiter-nav'
 
 // Sous-menu de l'espace recruteur, sous la barre du site (layout recruteur) : les rubriques (recruiter-nav.ts), la
@@ -18,6 +18,7 @@ const ICONS: Record<RecruiterSectionKey, ComponentType<{ className?: string; 'ar
   reporting: BarChart3,
   vivier: FolderOpen,
   cvtheque: FolderSearch,
+  mbcsearch: Radar,
   equipe: Users,
   interviews: MessageSquare,
 }
