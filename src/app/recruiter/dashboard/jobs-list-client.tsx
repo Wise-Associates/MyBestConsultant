@@ -381,7 +381,7 @@ export function JobsListClient({
 
       {previewRow && (
         <aside aria-label="Aperçu de l’offre" className="hidden min-[1800px]:block sticky top-[84px]">
-          <JobPreviewPanel row={previewRow} apps={appsByJob[previewRow.job.$id] ?? []} stages={sortedStages} recruiters={recruiters}
+          <JobPreviewPanel row={previewRow} apps={appsByJob[previewRow.job.$id] ?? []} stages={sortedStages}
             onOpenApplications={() => setOpenJobId(previewRow.job.$id)} />
         </aside>
       )}
