@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { wrapEmailHtml } from '@/lib/email-template'
 import { deleteAssistantTurnsForUser, isAssistantStorageConfigured } from '@/lib/assistant/host'
+import { deleteMbcSearchesForUser } from '@/lib/mbc-search/history-store'
 
 // Équipe d'un recruteur. Modèle : toutes les données (offres, candidatures, pipeline, rapports,
 // historique) sont déjà rattachées au tenant ; un collaborateur est donc simplement un compte
@@ -162,9 +163,10 @@ export async function removeMember(params: { tenantId: string; userId: string })
   try {
     const { profile } = await requireMemberOfTenant(params.tenantId, params.userId)
     const { databases, users } = createAdminClient()
-    // Retirer un membre supprime son compte : ses conversations avec l'assistant IA d'abord (RGPD) ; si cela échoue,
-    // rien n'est supprimé et le propriétaire peut recommencer.
+    // Retirer un membre supprime son compte : ses conversations avec l'assistant IA et son historique MBC Search d'abord
+    // (RGPD) ; si cela échoue, rien n'est supprimé et le propriétaire peut recommencer.
     if (isAssistantStorageConfigured()) await deleteAssistantTurnsForUser(params.userId)
+    await deleteMbcSearchesForUser(params.userId)
     await databases.deleteDocument(DB_ID, COLLECTIONS.USERS, profile.$id)
     try { await users.delete(params.userId) } catch { /* déjà supprimé */ }
     return {}

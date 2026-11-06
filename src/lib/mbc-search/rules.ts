@@ -411,38 +411,8 @@ export function cleanOutreachDraft(text: string): string {
   return text.trim().replace(/^```[a-z]*\n?|```$/g, '').replace(/^["«]\s*|\s*["»]$/g, '').trim().slice(0, 2000)
 }
 
-/** Recherche enregistrée dans le navigateur du recruteur (critères et brief seulement : aucun profil). */
-export interface SavedSearch {
-  name: string
-  brief: string
-  criteria: MbcCriteria
-  savedAt: string
-}
-export const SAVED_SEARCHES_MAX = 20
-
-const savedSearchSchema = z.object({
-  name: z.string().trim().min(1).max(CRITERIA_LIMITS.item),
-  brief: z.string().max(CRITERIA_LIMITS.brief),
-  criteria: criteriaSchema,
-  savedAt: z.string().max(40),
-})
-
-/** Lit les recherches enregistrées (localStorage) : une entrée illisible est écartée, un contenu illisible donne []. */
-export function parseSavedSearches(raw: string | null): SavedSearch[] {
-  if (!raw) return []
-  let data: unknown
-  try { data = JSON.parse(raw) } catch { return [] }
-  if (!Array.isArray(data)) return []
-  return data.flatMap(d => { const p = savedSearchSchema.safeParse(d); return p.success ? [p.data] : [] }).slice(0, SAVED_SEARCHES_MAX)
-}
-
 /** Nom proposé pour une recherche : son premier intitulé et son premier lieu (« Data Engineer · Lyon »). */
 export function savedSearchName(criteria: MbcCriteria): string {
   const city = criteria.locations[0]?.split(',')[0]?.trim()
   return [criteria.titles[0] ?? criteria.skills[0] ?? 'Recherche', city].filter(Boolean).join(' · ').slice(0, CRITERIA_LIMITS.item)
-}
-
-/** Ajoute en tête (une recherche du même nom est remplacée), 20 au plus. */
-export function withSavedSearch(list: SavedSearch[], search: SavedSearch): SavedSearch[] {
-  return [search, ...list.filter(s => !same(s.name, search.name))].slice(0, SAVED_SEARCHES_MAX)
 }

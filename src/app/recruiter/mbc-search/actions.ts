@@ -12,10 +12,12 @@ import {
   APOLLO_PERSON_ID, CRITERIA_LIMITS, MAX_PAGE, REVEAL_BATCH, cleanOutreachDraft, criteriaProblem, criteriaSchema, outreachNeedText,
   outreachPersonSchema, outreachPersonText, parseBriefCriteria, rankProfiles, type MbcCriteria, type MbcRevealed, type ScoredProfile,
 } from '@/lib/mbc-search/rules'
+import { SAVED_SEARCHES_MAX, searchIdSchema, searchNameSchema, type MbcSearchEntry } from '@/lib/mbc-search/history'
+import { deleteMbcSearch, isMbcHistoryConfigured, recordMbcSearch, setMbcSearchPinned } from '@/lib/mbc-search/history-store'
 
 // Actions de MBC Search (/recruiter/mbc-search, ADR 0018). Chacune vérifie elle-même le recruteur : une Server Action
-// est un point d'entrée public. Les résultats ne sont pas enregistrés (ni profils révélés, ni coordonnées) : rien n'est
-// écrit, sauf les places de quota.
+// est un point d'entrée public. Les résultats ne sont pas enregistrés (ni profils révélés, ni coordonnées) : seuls sont
+// écrits les places de quota et l'historique des recherches du recruteur (critères, brief, nombre de résultats).
 
 const SESSION_EXPIRED = 'Session expirée : rechargez la page et reconnectez-vous.'
 
@@ -68,26 +70,87 @@ export async function analyseMbcBrief(brief: unknown): Promise<{ criteria?: MbcC
 
 const pageSchema = z.number().int().min(1).max(MAX_PAGE)
 
-/** « Rechercher » : profils d'Apollo pour ces critères, classés avec les raisons du score. */
-export async function searchMbcProfiles(criteria: unknown, page: unknown = 1): Promise<{
+const historyBriefSchema = z.string().max(CRITERIA_LIMITS.brief)
+
+/**
+ * « Rechercher » : profils d'Apollo pour ces critères, classés avec les raisons du score. La première page est notée
+ * dans l'historique du recruteur (`entry`) ; un historique indisponible n'empêche pas la recherche (`historyError`).
+ */
+export async function searchMbcProfiles(criteria: unknown, page: unknown = 1, brief: unknown = ''): Promise<{
   profiles?: ScoredProfile[]
   total?: number
+  entry?: MbcSearchEntry
+  historyError?: string
   error?: string
 }> {
   const c = criteriaSchema.safeParse(criteria)
   const p = pageSchema.safeParse(page)
-  if (!c.success || !p.success) return { error: 'Critères invalides : rechargez la page.' }
+  const b = historyBriefSchema.safeParse(brief)
+  if (!c.success || !p.success || !b.success) return { error: 'Critères invalides : rechargez la page.' }
   const problem = criteriaProblem(c.data)
   if (problem) return { error: problem }
+  const user = await getCurrentUser()
   const refused = await searchSlot()
-  if (refused) return refused
+  if (refused || !user?.tenantId) return refused ?? { error: SESSION_EXPIRED }
+  let found: { total: number; profiles: ScoredProfile[] }
   try {
     const { total, profiles } = await searchApolloPeople(c.data, p.data)
-    return { total, profiles: rankProfiles(profiles, c.data, new Date()) }
+    found = { total, profiles: rankProfiles(profiles, c.data, new Date()) }
   } catch (err) {
     if (err instanceof ApolloSearchError) return { error: err.message }
     console.error('[mbc-search] recherche impossible', err instanceof Error ? err.name : 'inconnu')
     return { error: 'Recherche impossible pour le moment : réessayez dans quelques instants.' }
+  }
+  if (p.data !== 1 || !isMbcHistoryConfigured()) return found
+  try {
+    const entry = await recordMbcSearch({ userId: user.userId, tenantId: user.tenantId, brief: b.data.trim(), criteria: c.data, total: found.total, now: new Date() })
+    return { ...found, entry }
+  } catch (err) {
+    console.error('[mbc-search] historique non mis à jour', err instanceof Error ? err.message : String(err))
+    return { ...found, historyError: 'Recherche non ajoutée à votre historique (enregistrement impossible).' }
+  }
+}
+
+const HISTORY_UNAVAILABLE = 'Historique des recherches indisponible pour le moment.'
+
+/** Recruteur de la session (compte Auth : clé de son historique). */
+async function historyOwner(): Promise<{ userId: string } | { error: string }> {
+  const user = await getCurrentUser()
+  if (!user || user.role !== 'recruiter' || !user.tenantId) return { error: SESSION_EXPIRED }
+  if (!isMbcHistoryConfigured()) return { error: HISTORY_UNAVAILABLE }
+  return { userId: user.userId }
+}
+
+/** Enregistre une recherche de l'historique sous un nom (`pinned: true`), ou la retire des recherches enregistrées. */
+export async function pinMbcSearch(input: unknown): Promise<{ entry?: MbcSearchEntry; error?: string }> {
+  const parsed = z.object({ id: searchIdSchema, pinned: z.boolean(), name: searchNameSchema.optional() }).safeParse(input)
+  if (!parsed.success) return { error: parsed.error.issues.find(i => i.path[0] === 'name')?.message ?? 'Recherche invalide : rechargez la page.' }
+  const owner = await historyOwner()
+  if ('error' in owner) return owner
+  try {
+    const res = await setMbcSearchPinned(owner.userId, parsed.data.id, parsed.data.pinned, parsed.data.name)
+    if (res === 'full') return { error: `${SAVED_SEARCHES_MAX} recherches enregistrées au plus : retirez-en une d'abord.` }
+    if (!res) return { error: 'Recherche introuvable : elle a peut-être été supprimée.' }
+    return { entry: res }
+  } catch (err) {
+    console.error('[mbc-search] enregistrement d\'une recherche impossible', err instanceof Error ? err.message : String(err))
+    return { error: HISTORY_UNAVAILABLE }
+  }
+}
+
+/** Supprime une recherche de l'historique du recruteur. */
+export async function deleteMbcSearchEntry(id: unknown): Promise<{ ok?: true; error?: string }> {
+  const parsed = searchIdSchema.safeParse(id)
+  if (!parsed.success) return { error: 'Recherche invalide : rechargez la page.' }
+  const owner = await historyOwner()
+  if ('error' in owner) return owner
+  try {
+    // Introuvable (déjà supprimée, ou d'un autre) : rien à faire, la ligne disparaît de l'écran.
+    await deleteMbcSearch(owner.userId, parsed.data)
+    return { ok: true }
+  } catch (err) {
+    console.error('[mbc-search] suppression d\'une recherche impossible', err instanceof Error ? err.message : String(err))
+    return { error: HISTORY_UNAVAILABLE }
   }
 }
 

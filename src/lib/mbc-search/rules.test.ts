@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  APOLLO_PERSON_ID, EMPTY_CRITERIA, apolloKeywords, cleanOutreachDraft, outreachNeedText, outreachPersonText, parseSavedSearches, savedSearchName, withSavedSearch, PAGE_SIZE, criteriaProblem, criteriaSchema, parseApolloMatches, parseApolloPeople, parseBriefCriteria,
+  APOLLO_PERSON_ID, EMPTY_CRITERIA, apolloKeywords, cleanOutreachDraft, outreachNeedText, outreachPersonText, savedSearchName, PAGE_SIZE, criteriaProblem, criteriaSchema, parseApolloMatches, parseApolloPeople, parseBriefCriteria,
   rankProfiles, scoreProfile, toApolloQuery, toRevealRequest, type MbcProfile,
 } from './rules'
 import { MBC_SEARCH_DAILY_LIMITS, MBC_SEARCH_QUOTA_MESSAGE, mbcSearchDenial } from './access'
@@ -212,23 +212,9 @@ describe('MBC Search : message d\'approche', () => {
   })
 })
 
-describe('MBC Search : recherches enregistrées', () => {
-  const search = (name: string) => ({ name, brief: '', criteria: { ...EMPTY_CRITERIA, titles: ['Dev'] }, savedAt: '2026-11-06T10:00:00Z' })
-
+describe('MBC Search : nom d\'une recherche', () => {
   it('nomme une recherche d\'après son intitulé et sa ville', () => {
     assert.equal(savedSearchName({ ...EMPTY_CRITERIA, titles: ['Data Engineer'], locations: ['Lyon, France'] }), 'Data Engineer · Lyon')
     assert.equal(savedSearchName({ ...EMPTY_CRITERIA, skills: ['Kafka'] }), 'Kafka')
-  })
-
-  it('remplace une recherche du même nom et garde la plus récente en tête', () => {
-    const list = withSavedSearch([search('A'), search('B')], { ...search('a'), brief: 'nouveau' })
-    assert.deepEqual(list.map(s => s.name), ['a', 'B'])
-  })
-
-  it('écarte ce qui ne se relit pas (stockage modifié à la main)', () => {
-    assert.deepEqual(parseSavedSearches('pas du json'), [])
-    assert.deepEqual(parseSavedSearches('{"a":1}'), [])
-    const raw = JSON.stringify([search('A'), { name: 'B', criteria: { titles: 'x' } }])
-    assert.deepEqual(parseSavedSearches(raw).map(s => s.name), ['A'])
   })
 })
