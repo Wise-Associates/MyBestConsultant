@@ -279,6 +279,7 @@ export function MbcSearchClient({ configured, revealUsage, jobs, history }: {
       // Places du quota prises par le serveur : une par profil payé, trouvé ou non (un profil déjà révélé n'en prend pas).
       const charged = res.charged ?? wanted.length
       setRevealUsed(u => (u === null ? null : u + charged))
+      if (res.notKept) setError(res.notKept)
       const found = new Map(res.profiles.map(p => [p.id, p]))
       setReveals(r => ({
         ...r,
