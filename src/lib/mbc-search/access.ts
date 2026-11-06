@@ -21,3 +21,14 @@ export function mbcSearchDenial(requester: { tenantId: string; subscriptionStatu
   if (!requester.emailVerified) return 'Vérifiez votre adresse e-mail (lien reçu à l\'inscription) pour lancer une recherche.'
   return null
 }
+
+/**
+ * Profils révélés par jour (UTC) : chaque profil trouvé coûte au moins un crédit Apollo à la plateforme (nom, e-mail
+ * professionnel). Par organisation, et pour toutes ensemble.
+ */
+export const MBC_REVEAL_DAILY_LIMITS = { perOrganisation: 100, allOrganisations: 1000 } as const
+
+export const MBC_REVEAL_QUOTA_MESSAGE = {
+  organisation: `Limite de ${MBC_REVEAL_DAILY_LIMITS.perOrganisation} profils complets par jour atteinte pour votre organisation : réessayez demain.`,
+  platform: 'Trop de profils complets demandés aujourd\'hui sur la plateforme : réessayez demain.',
+} as const

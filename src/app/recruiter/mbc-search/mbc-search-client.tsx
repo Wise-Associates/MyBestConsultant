@@ -2,12 +2,13 @@
 
 import { useState } from 'react'
 import {
-  AlertCircle, ArrowRight, Building2, Check, Circle, Loader2, Mail, Minus, Pencil, Phone, Plus, Radar, RotateCcw, Sparkles, X,
+  AlertCircle, ArrowRight, Building2, Check, Circle, ExternalLink, Globe, Loader2, Mail, MapPin, Minus, Pencil, Phone, Plus, Radar,
+  RotateCcw, Sparkles, UserRound, X,
 } from 'lucide-react'
-import { analyseMbcBrief, searchMbcProfiles } from './actions'
+import { analyseMbcBrief, revealMbcProfiles, searchMbcProfiles } from './actions'
 import {
-  CRITERIA_LIMITS, EMPTY_CRITERIA, MAX_PAGE, PAGE_SIZE, SENIORITIES, criteriaProblem,
-  type CriteriaMatch, type MbcCriteria, type ScoredProfile, type Seniority,
+  CRITERIA_LIMITS, EMPTY_CRITERIA, MAX_PAGE, PAGE_SIZE, REVEAL_BATCH, SENIORITIES, criteriaProblem,
+  type CriteriaMatch, type MbcCriteria, type MbcRevealed, type ScoredProfile, type Seniority,
 } from '@/lib/mbc-search/rules'
 
 // Parcours en deux temps : un grand champ pour décrire le profil, puis l'espace de travail (critères modifiables,
@@ -139,38 +140,111 @@ function matchCells(m: CriteriaMatch, wantedSkills: number) {
 
 const GRID = 'md:grid md:grid-cols-[3.5rem_minmax(0,1fr)_repeat(4,4.75rem)] md:items-center md:gap-3'
 
-function ResultRow({ p, wantedSkills }: { p: ScoredProfile; wantedSkills: number }) {
-  const name = [p.firstName, p.lastNameMasked].filter(Boolean).join(' ') || 'Profil sans nom'
+/** « Révéler 10 profils (10 crédits) » : le coût est annoncé avant le clic. */
+const revealLabel = (n: number) => `Révéler ${n} profil${n > 1 ? 's' : ''} complet${n > 1 ? 's' : ''} (${n} crédit${n > 1 ? 's' : ''} max.)`
+
+/** État du profil complet d'une ligne : pas demandé, en cours, révélé, ou introuvable chez Apollo. */
+type Reveal = { state: 'loading' } | { state: 'done'; profile: MbcRevealed } | { state: 'missing' }
+
+const period = (e: MbcRevealed['experiences'][number]) => {
+  const fmt = (m: string) => (m ? `${m.slice(5, 7)}/${m.slice(0, 4)}` : '')
+  return [fmt(e.start), e.current ? 'aujourd\'hui' : fmt(e.end)].filter(Boolean).join(' – ')
+}
+
+/** Profil complet sous la ligne : coordonnées professionnelles, liens et parcours. */
+function RevealedDetails({ r }: { r: MbcRevealed }) {
+  const link = 'inline-flex items-center gap-1 font-semibold no-underline hover:underline'
+  return (
+    <div className="mt-2 space-y-2 text-xs" style={{ color: 'var(--color-text)' }}>
+      {r.headline && <p style={{ color: 'var(--color-text-muted)' }}>{r.headline}</p>}
+      <p className="flex items-center gap-x-4 gap-y-1 flex-wrap">
+        {r.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{r.location}</span>}
+        {r.email && (
+          <a href={`mailto:${r.email}`} className={link} style={{ color: 'var(--color-text)' }}>
+            <Mail className="h-3 w-3" />{r.email}
+            {r.emailStatus && r.emailStatus !== 'verified' && <span className="font-normal" style={{ color: 'var(--color-text-muted)' }}>(non vérifié)</span>}
+          </a>
+        )}
+        {r.linkedinUrl && (
+          <a href={r.linkedinUrl} target="_blank" rel="noopener noreferrer" className={link} style={{ color: 'var(--color-text)' }}>
+            <ExternalLink className="h-3 w-3" />LinkedIn
+          </a>
+        )}
+        {r.companyWebsite && (
+          <a href={r.companyWebsite} target="_blank" rel="noopener noreferrer" className={link} style={{ color: 'var(--color-text)' }}>
+            <Globe className="h-3 w-3" />Site de l&apos;entreprise
+          </a>
+        )}
+      </p>
+      {r.experiences.length > 0 && (
+        <ol className="space-y-0.5 pl-3" style={{ borderLeft: '2px solid var(--color-border)' }} aria-label="Parcours">
+          {r.experiences.map((e, i) => (
+            <li key={`${e.title}-${e.company}-${i}`}>
+              <span className="font-semibold">{e.title || 'Poste'}</span>
+              {e.company && <> · {e.company}</>}
+              {period(e) && <span style={{ color: 'var(--color-text-muted)' }}> · {period(e)}</span>}
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  )
+}
+
+function ResultRow({ p, wantedSkills, reveal, onReveal, canReveal }: {
+  p: ScoredProfile; wantedSkills: number; reveal?: Reveal; onReveal: () => void; canReveal: boolean
+}) {
+  const full = reveal?.state === 'done' ? reveal.profile : null
+  const name = full?.name || [p.firstName, p.lastNameMasked].filter(Boolean).join(' ') || 'Profil sans nom'
   return (
     <li className={`px-4 py-4 ${GRID}`} style={{ borderTop: '1px solid var(--color-border)' }}>
       <div className="flex items-start gap-3 md:contents">
-        <span className="shrink-0 inline-flex items-center justify-center w-12 h-12 rounded-xl text-base font-bold"
+        <span className="shrink-0 md:self-start inline-flex items-center justify-center w-12 h-12 rounded-xl text-base font-bold"
           style={{ background: orangeTint(8 + Math.round(p.score * 0.22)), color: 'var(--color-text)' }}
           aria-label={`Score : ${p.score} sur 100`}>
           {p.score}
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="font-bold text-sm truncate" style={{ color: 'var(--color-text)' }}>{name}</p>
-          {p.title && <p className="text-sm truncate" style={{ color: 'var(--color-text)' }}>{p.title}</p>}
-          <p className="flex items-center gap-3 flex-wrap text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-            {p.company && <span className="inline-flex items-center gap-1 min-w-0"><Building2 className="h-3 w-3 shrink-0" /><span className="truncate">{p.company}</span></span>}
-            {p.hasEmail && <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />E-mail</span>}
-            {p.hasPhone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />Téléphone</span>}
-          </p>
-          {p.reasons.length > 0 && (
-            <details className="mt-1.5 text-xs" style={{ color: 'var(--color-text)' }}>
-              <summary className="cursor-pointer font-semibold w-fit" style={{ color: 'var(--color-text-muted)' }}>Pourquoi ce score ?</summary>
-              <ul className="mt-1.5 space-y-0.5 pl-1">
-                {p.reasons.map(r => <li key={r}>· {r}</li>)}
-              </ul>
-            </details>
+        <div className="min-w-0 flex-1 flex items-start gap-3">
+          {full?.photoUrl && (
+            // Photo servie par Apollo depuis des hôtes variés : <img> simple, sans passer par l'optimiseur de Next.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={full.photoUrl} alt="" referrerPolicy="no-referrer" className="w-10 h-10 rounded-full object-cover shrink-0" />
           )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>{name}</p>
+              {!full && reveal?.state !== 'missing' && (
+                <button type="button" onClick={onReveal} disabled={!canReveal || reveal?.state === 'loading'}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold disabled:opacity-40"
+                  style={{ border: '1px solid var(--color-brand-orange)', color: 'var(--color-text)' }}>
+                  {reveal?.state === 'loading' ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserRound className="h-3 w-3" />}
+                  Profil complet
+                </button>
+              )}
+              {reveal?.state === 'missing' && <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>Profil complet introuvable chez Apollo</span>}
+            </div>
+            {(full?.title || p.title) && <p className="text-sm" style={{ color: 'var(--color-text)' }}>{full?.title || p.title}</p>}
+            <p className="flex items-center gap-3 flex-wrap text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+              {(full?.company || p.company) && <span className="inline-flex items-center gap-1 min-w-0"><Building2 className="h-3 w-3 shrink-0" /><span className="truncate">{full?.company || p.company}</span></span>}
+              {!full && p.hasEmail && <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />E-mail</span>}
+              {p.hasPhone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />Téléphone connu d&apos;Apollo</span>}
+            </p>
+            {full && <RevealedDetails r={full} />}
+            {p.reasons.length > 0 && (
+              <details className="mt-1.5 text-xs" style={{ color: 'var(--color-text)' }}>
+                <summary className="cursor-pointer font-semibold w-fit" style={{ color: 'var(--color-text-muted)' }}>Pourquoi ce score ?</summary>
+                <ul className="mt-1.5 space-y-0.5 pl-1">
+                  {p.reasons.map(r => <li key={r}>· {r}</li>)}
+                </ul>
+              </details>
+            )}
+          </div>
         </div>
       </div>
       {/* Mobile : la grille devient une ligne de pastilles libellées sous le profil. */}
       <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 md:contents">
         {matchCells(p.match, wantedSkills).map(c => (
-          <span key={c.label} className="inline-flex items-center gap-1.5 md:justify-center">
+          <span key={c.label} className="inline-flex items-center gap-1.5 md:justify-center md:self-start md:pt-2.5">
             <MatchCell value={c.value} label={c.label} />
             <span className="md:hidden text-xs" style={{ color: 'var(--color-text-muted)' }}>{c.label}</span>
           </span>
@@ -188,6 +262,8 @@ export function MbcSearchClient({ configured }: { configured: boolean }) {
   const [results, setResults] = useState<{ profiles: ScoredProfile[]; total: number; page: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // Profils complets déjà révélés, par identifiant Apollo : gardés d'une page à l'autre (déjà payés).
+  const [reveals, setReveals] = useState<Record<string, Reveal>>({})
 
   const setStep = (key: StepKey, state: StepState) => setSteps(s => ({ ...s, [key]: state }))
 
@@ -209,6 +285,34 @@ export function MbcSearchClient({ configured }: { configured: boolean }) {
     setStep('search', 'done')
     setStep('rank', 'done')
     setResults({ profiles: res.profiles ?? [], total: res.total ?? 0, page })
+  }
+
+  /** Profil complet (payant) des profils demandés ; ceux déjà révélés ou en cours ne sont pas redemandés. */
+  const reveal = async (ids: string[]) => {
+    const wanted = ids.filter(id => !reveals[id]).slice(0, REVEAL_BATCH)
+    if (wanted.length === 0) return
+    setError(null)
+    setReveals(r => ({ ...r, ...Object.fromEntries(wanted.map(id => [id, { state: 'loading' } as Reveal])) }))
+    const forget = () => setReveals(r => Object.fromEntries(Object.entries(r).filter(([id]) => !wanted.includes(id))))
+    try {
+      const res = await revealMbcProfiles(wanted)
+      if (res.error || !res.profiles) {
+        forget()
+        setError(res.error ?? 'Profils indisponibles pour le moment.')
+        return
+      }
+      const found = new Map(res.profiles.map(p => [p.id, p]))
+      setReveals(r => ({
+        ...r,
+        ...Object.fromEntries(wanted.map(id => {
+          const profile = found.get(id)
+          return [id, profile ? { state: 'done', profile } : { state: 'missing' }] as [string, Reveal]
+        })),
+      }))
+    } catch {
+      forget()
+      setError('Le serveur ne répond pas : vérifiez votre connexion puis réessayez.')
+    }
   }
 
   const launchFromBrief = async () => {
@@ -370,7 +474,16 @@ export function MbcSearchClient({ configured }: { configured: boolean }) {
                 {results ? `${results.total.toLocaleString('fr-FR')} profil${results.total > 1 ? 's' : ''}` : 'Profils'}
               </h2>
               {results && results.total > 0 && (
-                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Page {results.page} sur {lastPage} · classés par score</p>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Page {results.page} sur {lastPage} · classés par score</p>
+                  {results.profiles.some(p => !reveals[p.id]) && (
+                    <button type="button" onClick={() => reveal(results.profiles.map(p => p.id))} disabled={busy}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold disabled:opacity-40"
+                      style={{ background: 'var(--color-brand-orange)', color: 'white' }}>
+                      <UserRound className="h-3.5 w-3.5" /> {revealLabel(Math.min(REVEAL_BATCH, results.profiles.filter(p => !reveals[p.id]).length))}
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
@@ -390,7 +503,10 @@ export function MbcSearchClient({ configured }: { configured: boolean }) {
                   <span className="text-center">Joignable</span><span className="text-center">Récent</span>
                 </div>
                 <ul style={{ opacity: busy ? 0.5 : 1 }}>
-                  {results.profiles.map(p => <ResultRow key={p.id} p={p} wantedSkills={criteria.skills.length} />)}
+                  {results.profiles.map(p => (
+                    <ResultRow key={p.id} p={p} wantedSkills={criteria.skills.length} reveal={reveals[p.id]}
+                      onReveal={() => reveal([p.id])} canReveal={!busy} />
+                  ))}
                 </ul>
               </>
             )}
@@ -410,7 +526,7 @@ export function MbcSearchClient({ configured }: { configured: boolean }) {
           </section>
 
           <p className="text-xs text-center" style={{ color: 'var(--color-text-muted)' }}>
-            Source : Apollo.io. Les noms de famille sont masqués et les coordonnées ne sont pas affichées : elles ne sont révélées qu&apos;à l&apos;enrichissement d&apos;un profil, qui consomme des crédits.
+            Source : Apollo.io. « Profil complet » donne le nom entier, l&apos;e-mail professionnel, le LinkedIn, le lieu et le parcours, pour un crédit Apollo par profil trouvé. Rien n&apos;est enregistré : utilisez ces données pour un recrutement, conformément au RGPD.
           </p>
         </div>
       )}
