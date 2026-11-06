@@ -422,8 +422,10 @@ function CandidateCard({
         </div>
       )}
 
+      {/* Dès 1800 px, le panneau de droite montre le résumé de l'IA, les étiquettes et la note de la carte cliquée
+          (demande du 2026-11-06 : pas deux fois la même information) ; la carte ne les répète pas. */}
       {candidate.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-2">
+        <div className="flex flex-wrap gap-1 mt-2 min-[112.5rem]:hidden">
           {candidate.tags.map(t => (
             <span key={t} className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
               style={{ background: 'rgba(232,163,61,0.12)', color: '#b8862f' }}>{t}</span>
@@ -431,14 +433,14 @@ function CandidateCard({
         </div>
       )}
       {candidate.note && (
-        <p className="flex items-start gap-1 text-[11px] mt-2 leading-snug" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="flex items-start gap-1 text-[11px] mt-2 leading-snug min-[112.5rem]:hidden" style={{ color: 'var(--color-text-muted)' }}>
           <StickyNote className="h-3 w-3 mt-0.5 shrink-0" /> {candidate.note}
         </p>
       )}
 
 
       {hasResults && (
-        <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
+        <div className={`flex items-center gap-1.5 mt-2.5 flex-wrap ${candidate.interviews.length === 0 ? 'min-[112.5rem]:hidden' : ''}`}>
           <button onClick={() => setExpanded(v => !v)}
             className="flex items-center gap-1 text-[11px] font-semibold transition-opacity hover:opacity-70"
             style={{ color: 'var(--color-text-muted)' }}>
@@ -472,7 +474,7 @@ function CandidateCard({
       {expanded && hasResults && (
         <div className="mt-2 space-y-2">
           {candidate.aiSummary && (
-            <div className="rounded-xl p-2.5" style={{ background: 'var(--color-surface)', boxShadow: '0 1px 2px rgba(11,29,81,0.04), 0 4px 10px -4px rgba(11,29,81,0.12)', border: '1px solid var(--color-border)' }}>
+            <div className="rounded-xl p-2.5 min-[112.5rem]:hidden" style={{ background: 'var(--color-surface)', boxShadow: '0 1px 2px rgba(11,29,81,0.04), 0 4px 10px -4px rgba(11,29,81,0.12)', border: '1px solid var(--color-border)' }}>
               <div className="flex items-center gap-1.5">
                 <Brain className="h-3 w-3" style={{ color: '#8b5cf6' }} />
                 <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'var(--color-text-muted)' }}>Screening</span>
@@ -566,12 +568,12 @@ function CandidateCard({
           <Mail className="h-3.5 w-3.5" />
         </button>
         <button onClick={onOpenEdit} title="Modifier (étiquettes, note)"
-          className="p-1.5 rounded-lg transition-opacity hover:opacity-70"
+          className="p-1.5 rounded-lg transition-opacity hover:opacity-70 min-[112.5rem]:hidden"
           style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6' }}>
           <Pencil className="h-3.5 w-3.5" />
         </button>
         <button onClick={onOpenHistory} title="Historique"
-          className="p-1.5 rounded-lg transition-opacity hover:opacity-70"
+          className="p-1.5 rounded-lg transition-opacity hover:opacity-70 min-[112.5rem]:hidden"
           style={{ background: 'rgba(107,114,128,0.1)', color: '#6b7280' }}>
           <History className="h-3.5 w-3.5" />
         </button>
