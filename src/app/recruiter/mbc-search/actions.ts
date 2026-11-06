@@ -4,13 +4,13 @@ import { z } from 'zod'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { tenantSubscriptionStatus } from '@/lib/ao/offer-actions'
 import { releaseDailySlot, takeDailySlotId } from '@/lib/ao/state'
-import { ApolloSearchError, briefToCriteriaText, revealApolloPeople, searchApolloPeople } from '@/lib/mbc-search/apollo'
+import { ApolloSearchError, briefToCriteriaText, outreachDraftText, revealApolloPeople, searchApolloPeople } from '@/lib/mbc-search/apollo'
 import {
   MBC_REVEAL_DAILY_LIMITS, MBC_REVEAL_QUOTA_MESSAGE, MBC_SEARCH_DAILY_LIMITS, MBC_SEARCH_QUOTA_MESSAGE, mbcSearchDenial,
 } from '@/lib/mbc-search/access'
 import {
-  APOLLO_PERSON_ID, CRITERIA_LIMITS, MAX_PAGE, REVEAL_BATCH, criteriaProblem, criteriaSchema, parseBriefCriteria, rankProfiles,
-  type MbcCriteria, type MbcRevealed, type ScoredProfile,
+  APOLLO_PERSON_ID, CRITERIA_LIMITS, MAX_PAGE, REVEAL_BATCH, cleanOutreachDraft, criteriaProblem, criteriaSchema, outreachNeedText,
+  outreachPersonSchema, outreachPersonText, parseBriefCriteria, rankProfiles, type MbcCriteria, type MbcRevealed, type ScoredProfile,
 } from '@/lib/mbc-search/rules'
 
 // Actions de MBC Search (/recruiter/mbc-search, ADR 0018). Chacune vérifie elle-même le recruteur : une Server Action
@@ -136,5 +136,34 @@ export async function revealMbcProfiles(ids: unknown): Promise<{ profiles?: MbcR
     if (err instanceof ApolloSearchError) return { error: err.message }
     console.error('[mbc-search] enrichissement impossible', err instanceof Error ? err.name : 'inconnu')
     return { error: 'Profils indisponibles pour le moment : réessayez dans quelques instants.' }
+  }
+}
+
+const outreachSchema = z.object({
+  brief: z.string().max(CRITERIA_LIMITS.brief),
+  criteria: criteriaSchema,
+  person: outreachPersonSchema,
+})
+
+/**
+ * « Rédiger une approche » : brouillon du premier message à la personne, que le recruteur relit, modifie et envoie
+ * lui-même (rien n'est envoyé ni enregistré). Même quota que les recherches : un appel à l'IA.
+ */
+export async function draftMbcOutreach(input: unknown): Promise<{ message?: string; error?: string }> {
+  const parsed = outreachSchema.safeParse(input)
+  if (!parsed.success) return { error: 'Profil invalide : rechargez la page.' }
+  const need = outreachNeedText(parsed.data.brief, parsed.data.criteria)
+  if (!need) return { error: 'Décrivez d\'abord le besoin (brief ou critères).' }
+  const user = await getCurrentUser()
+  const refused = await searchSlot()
+  if (refused || !user) return refused ?? { error: SESSION_EXPIRED }
+  try {
+    const recruiter = [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Le recruteur'
+    const message = cleanOutreachDraft(await outreachDraftText({ need, recruiter, person: outreachPersonText(parsed.data.person) }))
+    if (!message) return { error: 'L\'IA n\'a pas rédigé de message : réessayez.' }
+    return { message }
+  } catch (err) {
+    console.error('[mbc-search] rédaction de l\'approche impossible', err instanceof Error ? err.name : 'inconnu')
+    return { error: 'L\'IA n\'a pas pu rédiger le message : réessayez dans quelques instants.' }
   }
 }
