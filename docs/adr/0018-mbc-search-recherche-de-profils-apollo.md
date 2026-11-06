@@ -40,12 +40,12 @@ avec une clé de la plateforme.
 - **Accès** comme « Trouver des candidats » des AO : recruteur d'une organisation à l'abonnement actif (essai compris),
   adresse e-mail vérifiée, quota quotidien partagé entre analyses de brief et recherches (60 par organisation,
   600 pour toute la plateforme ; compteurs `mbcSearchOrg` « k » et `mbcSearchAll` « z » dans `ao_sync_state`).
-- **Rien n'est enregistré** : ni brief, ni critères, ni profils (voir l'historique ci-dessous, ajouté le 2026-11-06). Les journaux ne contiennent que le statut HTTP ou le
+- **Rien n'est enregistré** : ni brief, ni critères, ni profils (voir plus bas l'historique, les profils révélés et les personnes enregistrées, ajoutés le 2026-11-06). Les journaux ne contiennent que le statut HTTP ou le
   type d'erreur, jamais le brief ni un profil.
 
 - **Espace de travail et suites** (2026-11-06, maquette validée par le client) : trois colonnes (critères, profils,
   profil choisi), compétences obligatoires (seules envoyées en mots-clés), secteur de l'employeur, filtres e-mail et
-  profil récent, présélection, sélection multiple à révéler, jauge des profils complets du jour. Un profil révélé peut être **ajouté au vivier** (général ou d'une offre) : CV du vivier sans
+  profil récent, sélection multiple à révéler, jauge des profils complets du jour. Un profil révélé peut être **ajouté au vivier** (général ou d'une offre) : CV du vivier sans
   fichier, comparé aux offres comme un import ; c'est le seul enregistrement d'un profil (durée de conservation : celle
   du vivier). « Rédiger une approche » : brouillon par l'IA, sans e-mail ni lien envoyé au modèle, rien d'envoyé.
 - **Profils révélés gardés 90 jours** (2026-11-06, demande du client : une recherche relancée refaisait payer des
@@ -56,6 +56,18 @@ avec une clé de la plateforme.
   tiers, intérêt légitime de sourcing), purge quotidienne ; au-delà, la personne est à révéler de nouveau. Une personne
   ajoutée au vivier garde son identifiant Apollo sur le CV (`vivier_cvs.apolloId`) pour être signalée « Dans votre
   vivier » ; elle suit ensuite la conservation du vivier.
+- **Personnes enregistrées** (2026-11-06, demande du client : « for all saved persons, they should be revealed
+  automatically, and give me the ability to save them » ; choix validés : enregistrement à la manière d'Apollo, liste
+  personnelle, gardée jusqu'au retrait) : « Enregistrer » remplace la présélection, qui ne durait que la visite.
+  Enregistrer une personne la **révèle** (mêmes conditions, crédit et quota que « Révéler » ; aucun crédit si
+  l'organisation l'a déjà révélée) et la garde dans la collection `mbc_saved_people`, un document par recruteur et par
+  personne : profil complet tel qu'affiché et ligne de la recherche (intitulé, employeur, indicateurs d'Apollo) pour la
+  noter selon les critères affichés. La liste est chargée avec la page, révélée, sans crédit ; une personne enregistrée
+  qui revient dans une recherche est révélée même après les 90 jours des profils révélés. **Aucun collègue ne la voit**
+  (comme un vivier). **Durée de conservation : jusqu'à ce que le recruteur la retire, ou jusqu'à la suppression de son
+  compte** (comme un vivier : le recruteur a choisi de garder cette personne pour un recrutement) ; 200 personnes au
+  plus par recruteur, la liste entière étant chargée avec la page. Retirer une personne ne touche pas à son profil
+  révélé (90 jours pour l'organisation).
 - **Historique des recherches en base** (2026-11-06, demande du client : retrouver ses recherches d'un poste à
   l'autre ; remplace l'enregistrement dans le navigateur) : collection `mbc_searches`, un document par recruteur et par
   jeu de critères (identifiant dérivé du compte et des critères : relancer la même recherche met à jour sa ligne),
@@ -70,9 +82,13 @@ avec une clé de la plateforme.
 - Mise en place : créer une clé d'API Apollo et la renseigner dans `APOLLO_API_KEY` (Vercel, Preview puis
   Production). Sans clé, la page s'affiche et annonce que la recherche n'est pas activée.
 - Si Apollo répond « Need master API key » (403), la clé doit être une clé « master ».
+- Personnes enregistrées : comme l'historique, collection `mbc_saved_people` puis `APPWRITE_COLLECTION_MBC_SAVED_PEOPLE`
+  (sans elle, « Enregistrer » est indisponible et la recherche marche), définie seulement une fois la collection complète
+  (`schema:check` sans ligne `mbc_saved_people`) : incomplète, elle ferait payer la révélation sans enregistrer.
 - Historique : `npm run schema:push -- dev` puis `APPWRITE_COLLECTION_MBC_SEARCHES` (Preview) ; en production, un
   humain pousse la structure (`schema:check` / `schema:push -- prod`) avant de définir la variable. Sans la variable,
   la recherche fonctionne sans historique.
 - Les profils sont des données personnelles venant d'un tiers : base légale à documenter (intérêt légitime de
   sourcing) et information des personnes contactées. Les profils complets révélés sont gardés 90 jours pour
-  l'organisation (voir plus haut), puis supprimés.
+  l'organisation (voir plus haut), puis supprimés ; les personnes enregistrées, jusqu'à ce que le recruteur les retire
+  ou que son compte soit supprimé.

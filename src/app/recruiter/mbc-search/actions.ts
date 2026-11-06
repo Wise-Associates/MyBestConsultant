@@ -15,11 +15,14 @@ import {
 import { SAVED_SEARCHES_MAX, searchIdSchema, searchNameSchema, type MbcSearchEntry } from '@/lib/mbc-search/history'
 import { deleteMbcSearch, isMbcHistoryConfigured, recordMbcSearch, setMbcSearchPinned } from '@/lib/mbc-search/history-store'
 import { isMbcRevealStoreConfigured, saveReveals, storedReveals, vivierTargetsOf } from '@/lib/mbc-search/reveal-store'
+import { SAVED_PEOPLE_MAX, searchRowSchema, type MbcSavedPerson } from '@/lib/mbc-search/saved'
+import { countSavedPeople, deleteSavedPerson, isMbcSavedStoreConfigured, saveSavedPerson, savedPerson } from '@/lib/mbc-search/saved-store'
 
 // Actions de MBC Search (/recruiter/mbc-search, ADR 0018). Chacune vérifie elle-même le recruteur : une Server Action
-// est un point d'entrée public. Les résultats ne sont pas enregistrés (ni profils révélés, ni coordonnées) : seuls sont
-// écrits les places de quota, l'historique des recherches du recruteur (critères, brief, nombre de résultats) et les
-// profils complets payés par l'organisation (gardés 90 jours pour ne pas les payer deux fois).
+// est un point d'entrée public. Les pages de résultats ne sont pas enregistrées : seuls sont écrits les places de quota,
+// l'historique des recherches du recruteur (critères, brief, nombre de résultats), les profils complets payés par
+// l'organisation (gardés 90 jours pour ne pas les payer deux fois) et les personnes que le recruteur enregistre (gardées
+// jusqu'à ce qu'il les retire).
 
 const SESSION_EXPIRED = 'Session expirée : rechargez la page et reconnectez-vous.'
 
@@ -177,19 +180,25 @@ const revealSchema = z.array(z.string().regex(APOLLO_PERSON_ID)).min(1).max(REVE
  * demandé sur les quotas du jour des profils révélés (organisation, puis toutes), un profil non trouvé comptant quand
  * même. `charged` : places prises.
  */
-export async function revealMbcProfiles(ids: unknown): Promise<{ profiles?: MbcRevealed[]; charged?: number; notKept?: string; error?: string }> {
+export async function revealMbcProfiles(ids: unknown): Promise<RevealOutcome> {
   const parsed = revealSchema.safeParse(ids)
   if (!parsed.success) return { error: 'Profils invalides : rechargez la page.' }
-  const unique = [...new Set(parsed.data)]
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) return { error: SESSION_EXPIRED }
+  return revealForRecruiter({ userId: user.userId, tenantId: user.tenantId, emailVerified: user.emailVerification }, [...new Set(parsed.data)])
+}
+
+type RevealOutcome = { profiles?: MbcRevealed[]; charged?: number; notKept?: string; error?: string }
+
+/** Révélation pour le recruteur de la session (déjà vérifié par l'action) : voir `revealMbcProfiles`. */
+async function revealForRecruiter(user: { userId: string; tenantId: string; emailVerified: boolean }, unique: string[]): Promise<RevealOutcome> {
   const tenantId = user.tenantId
   const taken: string[] = []
   const now = new Date()
   let known: MbcRevealed[] = []
   let wanted = unique
   try {
-    const denial = mbcSearchDenial({ tenantId, subscriptionStatus: await tenantSubscriptionStatus(tenantId), emailVerified: user.emailVerification })
+    const denial = mbcSearchDenial({ tenantId, subscriptionStatus: await tenantSubscriptionStatus(tenantId), emailVerified: user.emailVerified })
     if (denial) return { error: denial }
     try {
       known = await storedReveals(tenantId, unique, now)
@@ -240,6 +249,65 @@ export async function revealMbcProfiles(ids: unknown): Promise<{ profiles?: MbcR
     return { profiles: [...known, ...fresh], charged: wanted.length, notKept }
   }
   return { profiles: [...known, ...fresh], charged: wanted.length }
+}
+
+const SAVED_UNAVAILABLE = 'Personnes enregistrées indisponibles pour le moment : réessayez dans quelques instants.'
+const savedFullMessage = `${SAVED_PEOPLE_MAX} personnes enregistrées au plus : retirez-en une d'abord.`
+
+/**
+ * « Enregistrer » une personne : la révèle si besoin (mêmes conditions, crédit et quota que « Révéler » ; aucun crédit
+ * si l'organisation l'a déjà révélée), puis la garde, révélée, dans la liste du recruteur jusqu'à ce qu'il la retire.
+ * Déjà enregistrée : renvoyée telle quelle, sans crédit. `row` : la ligne de recherche affichée (`searchRowSchema`).
+ * Révélée mais pas enregistrée (écriture en échec) : `revealed` et `error`. Introuvable chez Apollo : `missing`.
+ */
+export async function saveMbcPerson(row: unknown): Promise<{
+  saved?: MbcSavedPerson; revealed?: MbcRevealed; missing?: true; charged?: number; error?: string
+}> {
+  const parsed = searchRowSchema.safeParse(row)
+  if (!parsed.success) return { error: 'Profil invalide : rechargez la page.' }
+  const user = await getCurrentUser()
+  if (!user || user.role !== 'recruiter' || !user.tenantId) return { error: SESSION_EXPIRED }
+  if (!isMbcSavedStoreConfigured()) return { error: 'L\'enregistrement des personnes n\'est pas encore activé sur la plateforme. Contactez le support.' }
+  const id = parsed.data.id
+  try {
+    const already = await savedPerson(user.userId, id)
+    if (already) return { saved: already, charged: 0 }
+    // Vérifié avant de payer : une personne qui ne pourrait pas être gardée ne coûte pas de crédit.
+    if ((await countSavedPeople(user.userId)) >= SAVED_PEOPLE_MAX) return { error: savedFullMessage }
+  } catch (err) {
+    console.error('[mbc-search] personnes enregistrées illisibles', err instanceof Error ? err.message : String(err))
+    return { error: SAVED_UNAVAILABLE }
+  }
+  const res = await revealForRecruiter({ userId: user.userId, tenantId: user.tenantId, emailVerified: user.emailVerification }, [id])
+  if (res.error) return { error: res.error }
+  const profile = res.profiles?.find(p => p.id === id)
+  if (!profile) return { missing: true, charged: res.charged, error: 'Apollo ne trouve pas le profil complet de cette personne : elle n\'est pas enregistrée.' }
+  try {
+    const saved = await saveSavedPerson({ userId: user.userId, tenantId: user.tenantId, search: parsed.data, profile, now: new Date() })
+    if (saved === 'full') return { revealed: profile, charged: res.charged, error: savedFullMessage }
+    return { saved, charged: res.charged }
+  } catch (err) {
+    console.error('[mbc-search] personne non enregistrée', err instanceof Error ? err.message : String(err))
+    // Le profil est payé : il s'affiche quand même ; un nouvel essai le relit parmi les profils révélés, sans crédit.
+    return { revealed: profile, charged: res.charged, error: 'Profil révélé, mais pas enregistré : réessayez « Enregistrer ».' }
+  }
+}
+
+/** Retire une personne de la liste du recruteur (son profil révélé reste gardé pour l'organisation, 90 jours). */
+export async function unsaveMbcPerson(apolloId: unknown): Promise<{ ok?: true; error?: string }> {
+  const parsed = z.string().regex(APOLLO_PERSON_ID).safeParse(apolloId)
+  if (!parsed.success) return { error: 'Profil invalide : rechargez la page.' }
+  const user = await getCurrentUser()
+  if (!user || user.role !== 'recruiter' || !user.tenantId) return { error: SESSION_EXPIRED }
+  if (!isMbcSavedStoreConfigured()) return { error: SAVED_UNAVAILABLE }
+  try {
+    // Absente (déjà retirée, ou d'un autre recruteur) : rien à faire, la ligne disparaît de l'écran.
+    await deleteSavedPerson(user.userId, parsed.data)
+    return { ok: true }
+  } catch (err) {
+    console.error('[mbc-search] personne non retirée', err instanceof Error ? err.message : String(err))
+    return { error: SAVED_UNAVAILABLE }
+  }
 }
 
 const outreachSchema = z.object({

@@ -3,16 +3,17 @@
 import { useState } from 'react'
 import {
   AlertCircle, ArrowRight, Bookmark, Check, Circle, ExternalLink, History, Loader2, Mail, Minus, Pencil, Plus, Radar, RotateCcw, Sparkles,
-  Star, UserRound, X,
+  UserRound, X,
 } from 'lucide-react'
-import { analyseMbcBrief, deleteMbcSearchEntry, pinMbcSearch, revealMbcProfiles, searchMbcProfiles } from './actions'
+import { analyseMbcBrief, deleteMbcSearchEntry, pinMbcSearch, revealMbcProfiles, saveMbcPerson, searchMbcProfiles, unsaveMbcPerson } from './actions'
 import {
   CRITERIA_LIMITS, EMPTY_CRITERIA, MAX_PAGE, PAGE_SIZE, REVEAL_BATCH, SENIORITIES, criteriaProblem,
-  requiredSkillsOf, type MbcCriteria, type ScoredProfile, type Seniority,
+  requiredSkillsOf, scoreProfile, type MbcCriteria, type ScoredProfile, type Seniority,
 } from '@/lib/mbc-search/rules'
 import type { MbcSearchEntry } from '@/lib/mbc-search/history'
+import type { MbcSavedPerson } from '@/lib/mbc-search/saved'
 import { ProfilePanel, type Added } from './mbc-profile-panel'
-import { Avatar, ChipField, ErrorNote, Toggle, orangeTint, surface, type Reveal } from './mbc-search-ui'
+import { Avatar, ChipField, ErrorNote, Toggle, orangeTint, surface, type Reveal, type SaveButton } from './mbc-search-ui'
 
 // Parcours en deux temps : un grand champ pour décrire le profil, puis l'espace de travail en trois colonnes —
 // critères à gauche, profils classés au centre, profil choisi à droite (fenêtre plein écran sur petit écran).
@@ -33,7 +34,7 @@ const STEPS: { key: StepKey; label: string }[] = [
 ]
 const IDLE_STEPS: Record<StepKey, StepState> = { brief: 'todo', search: 'todo', rank: 'todo' }
 
-type Tab = 'all' | 'revealed' | 'shortlist'
+type Tab = 'all' | 'revealed' | 'saved'
 
 // Historique des recherches : enregistré sur le serveur à chaque recherche (critères et brief, aucun profil).
 const withEntry = (list: MbcSearchEntry[], entry: MbcSearchEntry) => [entry, ...list.filter(e => e.id !== entry.id)]
@@ -97,9 +98,9 @@ function CriteriaPills({ p, criteria }: { p: ScoredProfile; criteria: MbcCriteri
   )
 }
 
-function ResultRow({ p, criteria, reveal, active, selected, shortlisted, inVivier, busy, onOpen, onSelect, onShortlist, onReveal }: {
-  p: ScoredProfile; criteria: MbcCriteria; reveal?: Reveal; active: boolean; selected: boolean; shortlisted: boolean; inVivier: boolean; busy: boolean
-  onOpen: () => void; onSelect: () => void; onShortlist: () => void; onReveal: () => void
+function ResultRow({ p, criteria, reveal, active, selected, save, inVivier, busy, onOpen, onSelect, onReveal }: {
+  p: ScoredProfile; criteria: MbcCriteria; reveal?: Reveal; active: boolean; selected: boolean; save: SaveButton; inVivier: boolean; busy: boolean
+  onOpen: () => void; onSelect: () => void; onReveal: () => void
 }) {
   const full = reveal?.state === 'done' ? reveal.profile : null
   const name = full?.name || [p.firstName, p.lastNameMasked].filter(Boolean).join(' ') || 'Profil sans nom'
@@ -125,9 +126,11 @@ function ResultRow({ p, criteria, reveal, active, selected, shortlisted, inVivie
       <div className="col-start-3 col-span-2 sm:col-start-auto sm:col-span-1 row-start-2 sm:row-start-auto"><CriteriaPills p={p} criteria={criteria} /></div>
       <div className="col-start-4 row-start-1 sm:col-start-auto sm:row-start-auto"><ScoreRing score={p.score} /></div>
       <div className="hidden sm:flex items-center gap-1.5 justify-end">
-        <button type="button" onClick={onShortlist} aria-pressed={shortlisted} aria-label={shortlisted ? `Retirer ${name} de la présélection` : `Présélectionner ${name}`}
-          className={iconBtn} style={shortlisted ? { background: orangeTint(12), border: '1px solid var(--color-brand-orange)', color: 'var(--color-brand-orange)' } : { ...surface, color: 'var(--color-text-muted)' }}>
-          <Star className="h-4 w-4" fill={shortlisted ? 'currentColor' : 'none'} />
+        <button type="button" onClick={save.onToggle} disabled={save.disabled} aria-pressed={save.saved}
+          aria-label={save.saved ? `Retirer ${name} des personnes enregistrées` : `Enregistrer ${name}${full ? '' : ' (révèle le profil : 1 crédit)'}`}
+          title={save.reason ?? (save.saved ? 'Retirer des personnes enregistrées' : full ? 'Enregistrer' : 'Enregistrer : révèle le profil (1 crédit)')}
+          className={`${iconBtn} disabled:opacity-40`} style={save.saved ? { background: orangeTint(12), border: '1px solid var(--color-brand-orange)', color: 'var(--color-brand-orange)' } : { ...surface, color: 'var(--color-text-muted)' }}>
+          {save.saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bookmark className="h-4 w-4" fill={save.saved ? 'currentColor' : 'none'} />}
         </button>
         {full ? (
           <>
@@ -139,7 +142,7 @@ function ResultRow({ p, criteria, reveal, active, selected, shortlisted, inVivie
               : <span className={iconBtn} />}
           </>
         ) : reveal?.state !== 'missing' && (
-          <button type="button" onClick={onReveal} disabled={busy || reveal?.state === 'loading'}
+          <button type="button" onClick={onReveal} disabled={busy || reveal?.state === 'loading' || save.saving}
             className="inline-flex items-center gap-1 px-2.5 h-8 rounded-lg text-xs font-bold disabled:opacity-40 whitespace-nowrap" style={{ ...surface, color: 'var(--color-text)' }}>
             {reveal?.state === 'loading' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserRound className="h-3.5 w-3.5" />} Révéler · 1
           </button>
@@ -187,7 +190,7 @@ function EntryList({ title, entries, busy, currentId, onOpen, onRemove, removeLa
   )
 }
 
-export function MbcSearchClient({ configured, revealUsage, jobs, history }: {
+export function MbcSearchClient({ configured, revealUsage, jobs, history, savedPeople }: {
   configured: boolean
   /** Profils complets révélés aujourd'hui par l'organisation, sur sa limite ; null si illisible. */
   revealUsage: { used: number; limit: number } | null
@@ -195,6 +198,8 @@ export function MbcSearchClient({ configured, revealUsage, jobs, history }: {
   jobs: { id: string; title: string }[] | null
   /** Historique des recherches du recruteur, plus récente d'abord ; null si indisponible. */
   history: MbcSearchEntry[] | null
+  /** Personnes enregistrées par le recruteur, la plus récente d'abord ; null si indisponibles. */
+  savedPeople: MbcSavedPerson[] | null
 }) {
   const [phase, setPhase] = useState<'compose' | 'workspace'>('compose')
   const [brief, setBrief] = useState('')
@@ -203,11 +208,18 @@ export function MbcSearchClient({ configured, revealUsage, jobs, history }: {
   const [results, setResults] = useState<{ profiles: ScoredProfile[]; total: number; page: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  // Profils complets déjà révélés, par identifiant Apollo : gardés d'une page à l'autre (déjà payés).
-  const [reveals, setReveals] = useState<Record<string, Reveal>>({})
-  // Profils gardés d'une page à l'autre pour les onglets « Révélés » et « Présélection » (pendant la visite seulement).
+  // Profils complets déjà révélés, par identifiant Apollo : gardés d'une page à l'autre (déjà payés). Les personnes
+  // enregistrées le sont d'emblée : leur profil complet est gardé avec elles.
+  const [reveals, setReveals] = useState<Record<string, Reveal>>(
+    () => Object.fromEntries((savedPeople ?? []).map(s => [s.profile.id, { state: 'done', profile: s.profile } as Reveal])),
+  )
+  // Profils gardés d'une page à l'autre pour l'onglet « Révélés » (pendant la visite seulement).
   const [seen, setSeen] = useState<Record<string, ScoredProfile>>({})
-  const [shortlist, setShortlist] = useState<string[]>([])
+  const [savedPersons, setSavedPersons] = useState<MbcSavedPerson[]>(savedPeople ?? [])
+  const [saving, setSaving] = useState<string[]>([])
+  // Une personne enregistrée absente des résultats est notée selon les critères affichés, avec la ligne de recherche
+  // gardée à son enregistrement ; « récent » se mesure à l'ouverture de la page.
+  const [openedAt] = useState(() => new Date())
   const [selected, setSelected] = useState<string[]>([])
   const [tab, setTab] = useState<Tab>('all')
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -292,6 +304,56 @@ export function MbcSearchClient({ configured, revealUsage, jobs, history }: {
     } catch {
       forget()
       setError('Le serveur ne répond pas : vérifiez votre connexion puis réessayez.')
+    }
+  }
+
+  const savedById = new Map(savedPersons.map(s => [s.profile.id, s]))
+  const profileOf = (id: string): ScoredProfile | undefined => {
+    const s = savedById.get(id)
+    return seen[id] ?? (s ? scoreProfile(s.search, criteria, openedAt) : undefined)
+  }
+
+  /**
+   * « Enregistrer » : révèle la personne si besoin (1 crédit, sauf profil déjà révélé par l'organisation) et la garde
+   * dans la liste du recruteur ; sur une personne enregistrée, la retire de la liste (son profil reste affiché).
+   */
+  const toggleSave = async (id: string) => {
+    const p = profileOf(id)
+    if (!p || saving.includes(id)) return
+    const wasRevealed = reveals[id]?.state === 'done'
+    const forgetLoading = () => setReveals(r => Object.fromEntries(Object.entries(r).filter(([k, v]) => k !== id || v.state !== 'loading')))
+    setError(null)
+    setSaving(s => [...s, id])
+    try {
+      if (savedById.has(id)) {
+        const res = await unsaveMbcPerson(id)
+        if (res.error) { setError(res.error); return }
+        // Encore révélée pour la visite : sa ligne reste dans l'onglet « Révélés » (et le panneau ouvert).
+        setSeen(s => (s[id] ? s : { ...s, [id]: p }))
+        setSavedPersons(list => list.filter(s => s.profile.id !== id))
+        return
+      }
+      // Révélation en cours : « Révéler » et « Révéler la sélection » l'écartent, sinon la personne serait payée deux fois.
+      if (!wasRevealed) setReveals(r => ({ ...r, [id]: { state: 'loading' } }))
+      const res = await saveMbcPerson({
+        id: p.id, firstName: p.firstName, lastNameMasked: p.lastNameMasked, title: p.title, company: p.company,
+        hasEmail: p.hasEmail, hasPhone: p.hasPhone, refreshedAt: p.refreshedAt,
+      })
+      const charged = res.charged ?? 0
+      if (charged > 0) setRevealUsed(u => (u === null ? null : u + charged))
+      const full = res.saved?.profile ?? res.revealed
+      if (full) setReveals(r => ({ ...r, [id]: { state: 'done', profile: full } }))
+      else if (res.missing) setReveals(r => ({ ...r, [id]: { state: 'missing' } }))
+      else if (!wasRevealed) forgetLoading()
+      if (full || res.missing) setSelected(s => s.filter(x => x !== id))
+      const entry = res.saved
+      if (entry) setSavedPersons(list => [entry, ...list.filter(s => s.profile.id !== id)])
+      if (res.error) setError(res.error)
+    } catch {
+      if (!wasRevealed) forgetLoading()
+      setError('Le serveur ne répond pas : vérifiez votre connexion puis réessayez.')
+    } finally {
+      setSaving(s => s.filter(x => x !== id))
     }
   }
 
@@ -393,15 +455,37 @@ export function MbcSearchClient({ configured, revealUsage, jobs, history }: {
   const revealedIds = Object.entries(reveals).filter(([, r]) => r.state === 'done').map(([id]) => id)
   const listed: ScoredProfile[] = tab === 'all'
     ? (results?.profiles ?? []).filter(p => !criteria.recentOnly || p.match.fresh)
-    : (tab === 'revealed' ? revealedIds : shortlist).map(id => seen[id]).filter((p): p is ScoredProfile => Boolean(p))
+    : (tab === 'revealed' ? revealedIds : savedPersons.map(s => s.profile.id)).map(profileOf).filter((p): p is ScoredProfile => Boolean(p))
   const hiddenByRecent = tab === 'all' && criteria.recentOnly ? (results?.profiles.length ?? 0) - listed.length : 0
   const selectable = listed.filter(p => !reveals[p.id]).map(p => p.id)
   const allSelected = selectable.length > 0 && selectable.every(id => selected.includes(id))
-  const active = activeId ? seen[activeId] : undefined
+  const active = activeId ? profileOf(activeId) : undefined
   const quotaLeft = revealUsage && revealUsed !== null ? Math.max(0, revealUsage.limit - revealUsed) : null
 
   const openProfile = (id: string) => { setActiveId(id); setPanelOpen(true) }
-  const toggleShortlist = (id: string) => setShortlist(s => toggleIn(s, id))
+  /** Bouton « Enregistrer » d'une personne : sans profil révélé, il en révèle un et prend donc une place du quota. */
+  const saveButton = (id: string): SaveButton => {
+    const isSaved = savedById.has(id)
+    const r = reveals[id]
+    const reason = savedPeople === null ? 'Enregistrement des personnes indisponible pour le moment.'
+      : isSaved ? null
+        : r?.state === 'missing' ? 'Apollo ne trouve pas le profil complet de cette personne.'
+          : r?.state !== 'done' && quotaLeft !== null && quotaLeft <= 0 ? 'Plus de profil complet disponible aujourd’hui.'
+            : null
+    return {
+      saved: isSaved,
+      saving: saving.includes(id),
+      disabled: reason !== null || saving.includes(id) || r?.state === 'loading',
+      reason,
+      onToggle: () => toggleSave(id),
+    }
+  }
+  const openSaved = () => {
+    setError(null)
+    setPhase('workspace')
+    setTab('saved')
+    if (!results) setSteps({ ...IDLE_STEPS, brief: 'skip' })
+  }
 
   return (
     <div className="relative" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
@@ -500,10 +584,16 @@ export function MbcSearchClient({ configured, revealUsage, jobs, history }: {
               )}
             </div>
           </div>
-          <p className="text-center mt-6">
+          <p className="text-center mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
             <button type="button" onClick={manualCriteria} className="text-sm font-semibold underline-offset-4 hover:underline" style={{ color: 'var(--color-text)' }}>
               Ou renseignez les critères vous-même
             </button>
+            {savedPersons.length > 0 && (
+              <button type="button" onClick={openSaved} className="inline-flex items-center gap-1.5 text-sm font-semibold underline-offset-4 hover:underline" style={{ color: 'var(--color-text)' }}>
+                <Bookmark className="h-4 w-4" fill="currentColor" style={{ color: 'var(--color-brand-orange)' }} aria-hidden />
+                Vos personnes enregistrées ({savedPersons.length})
+              </button>
+            )}
           </p>
         </div>
       ) : (
@@ -601,7 +691,7 @@ export function MbcSearchClient({ configured, revealUsage, jobs, history }: {
             <section className="rounded-2xl overflow-hidden min-w-0" style={surface} aria-label="Profils" aria-busy={busy}>
               <div className="flex items-center gap-2 flex-wrap px-4 py-3">
                 <div className="inline-flex rounded-lg p-0.5" style={{ background: 'var(--page-bg)' }} role="tablist" aria-label="Profils affichés">
-                  {([['all', `Tous · ${results?.profiles.length ?? 0}`], ['revealed', `Révélés · ${revealedIds.length}`], ['shortlist', `Présélection · ${shortlist.length}`]] as [Tab, string][]).map(([key, label]) => (
+                  {([['all', `Tous · ${results?.profiles.length ?? 0}`], ['revealed', `Révélés · ${revealedIds.length}`], ['saved', `Enregistrés · ${savedPersons.length}`]] as [Tab, string][]).map(([key, label]) => (
                     <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
                       className="px-2.5 py-1 rounded-md text-xs whitespace-nowrap"
                       style={tab === key ? { ...surface, color: 'var(--color-text)', fontWeight: 700 } : { color: 'var(--color-text-muted)' }}>
@@ -632,7 +722,9 @@ export function MbcSearchClient({ configured, revealUsage, jobs, history }: {
               ) : listed.length === 0 ? (
                 <p className="px-6 pb-10 pt-6 text-center text-sm" style={{ color: 'var(--color-text-muted)', borderTop: '1px solid var(--color-border)' }}>
                   {tab === 'revealed' ? 'Aucun profil révélé pour le moment.'
-                    : tab === 'shortlist' ? 'Aucun profil présélectionné : cliquez sur l’étoile d’un profil.'
+                    : tab === 'saved' ? (savedPeople === null
+                      ? 'Personnes enregistrées indisponibles pour le moment : la recherche fonctionne, sans elles.'
+                      : 'Aucune personne enregistrée : cliquez sur le marque-page d’un profil. Elle est révélée (1 crédit si elle ne l’est pas encore) et reste ici jusqu’à ce que vous la retiriez.')
                       : hiddenByRecent > 0 ? 'Aucun profil récent sur cette page : décochez « Mis à jour depuis moins de 6 mois » ou passez à la page suivante.'
                         : 'Aucun profil pour ces critères. Retirez un lieu, une séniorité ou une compétence obligatoire.'}
                 </p>
@@ -640,9 +732,9 @@ export function MbcSearchClient({ configured, revealUsage, jobs, history }: {
                 <ul style={{ opacity: busy ? 0.5 : 1 }}>
                   {listed.map(p => (
                     <ResultRow key={p.id} p={p} criteria={criteria} reveal={reveals[p.id]} active={p.id === activeId} busy={busy}
-                      selected={selected.includes(p.id)} shortlisted={shortlist.includes(p.id)} inVivier={Object.keys(added[p.id] ?? {}).length > 0}
+                      selected={selected.includes(p.id)} save={saveButton(p.id)} inVivier={Object.keys(added[p.id] ?? {}).length > 0}
                       onOpen={() => openProfile(p.id)} onSelect={() => setSelected(s => (s.includes(p.id) ? s.filter(x => x !== p.id) : s.length < REVEAL_BATCH ? [...s, p.id] : s))}
-                      onShortlist={() => toggleShortlist(p.id)} onReveal={() => reveal([p.id])} />
+                      onReveal={() => reveal([p.id])} />
                   ))}
                 </ul>
               )}
@@ -670,8 +762,8 @@ export function MbcSearchClient({ configured, revealUsage, jobs, history }: {
               style={panelOpen && active ? { background: 'var(--page-bg)' } : undefined}>
               {active ? (
                 <ProfilePanel key={active.id} profile={active} reveal={reveals[active.id]} criteria={criteria} brief={brief} jobs={jobs}
-                  shortlisted={shortlist.includes(active.id)} added={added[active.id] ?? {}} canReveal={!busy && (quotaLeft === null || quotaLeft > 0)}
-                  onReveal={() => reveal([active.id])} onShortlist={() => toggleShortlist(active.id)}
+                  save={saveButton(active.id)} added={added[active.id] ?? {}} canReveal={!busy && (quotaLeft === null || quotaLeft > 0)}
+                  onReveal={() => reveal([active.id])}
                   onAdded={target => setAdded(a => ({ ...a, [active.id]: { ...a[active.id], [target]: true } }))}
                   onClose={() => setPanelOpen(false)} />
               ) : (
@@ -683,7 +775,7 @@ export function MbcSearchClient({ configured, revealUsage, jobs, history }: {
           </div>
 
           <p className="text-xs text-center" style={{ color: 'var(--color-text-muted)' }}>
-            Source : Apollo.io. Un profil complet (nom entier, e-mail professionnel, LinkedIn, lieu, parcours) coûte un crédit Apollo par profil trouvé. Un profil révélé est gardé 90 jours pour votre organisation (il ne coûte pas de second crédit), puis supprimé ; vos critères et votre brief restent dans votre historique : utilisez ces données pour un recrutement, conformément au RGPD.
+            Source : Apollo.io. Un profil complet (nom entier, e-mail professionnel, LinkedIn, lieu, parcours) coûte un crédit Apollo par profil trouvé. Un profil révélé est gardé 90 jours pour votre organisation (il ne coûte pas de second crédit), puis supprimé ; une personne que vous enregistrez reste dans votre liste, révélée, jusqu&apos;à ce que vous la retiriez ; vos critères et votre brief restent dans votre historique : utilisez ces données pour un recrutement, conformément au RGPD.
           </p>
         </div>
       )}
