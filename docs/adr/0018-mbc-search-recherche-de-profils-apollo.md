@@ -40,21 +40,31 @@ avec une clé de la plateforme.
 - **Accès** comme « Trouver des candidats » des AO : recruteur d'une organisation à l'abonnement actif (essai compris),
   adresse e-mail vérifiée, quota quotidien partagé entre analyses de brief et recherches (60 par organisation,
   600 pour toute la plateforme ; compteurs `mbcSearchOrg` « k » et `mbcSearchAll` « z » dans `ao_sync_state`).
-- **Rien n'est enregistré** : ni brief, ni critères, ni profils. Les journaux ne contiennent que le statut HTTP ou le
+- **Rien n'est enregistré** : ni brief, ni critères, ni profils (voir l'historique ci-dessous, ajouté le 2026-11-06). Les journaux ne contiennent que le statut HTTP ou le
   type d'erreur, jamais le brief ni un profil.
 
 - **Espace de travail et suites** (2026-11-06, maquette validée par le client) : trois colonnes (critères, profils,
   profil choisi), compétences obligatoires (seules envoyées en mots-clés), secteur de l'employeur, filtres e-mail et
-  profil récent, présélection, sélection multiple à révéler, jauge des profils complets du jour, recherches enregistrées
-  dans le navigateur. Un profil révélé peut être **ajouté au vivier** (général ou d'une offre) : CV du vivier sans
+  profil récent, présélection, sélection multiple à révéler, jauge des profils complets du jour. Un profil révélé peut être **ajouté au vivier** (général ou d'une offre) : CV du vivier sans
   fichier, comparé aux offres comme un import ; c'est le seul enregistrement d'un profil (durée de conservation : celle
   du vivier). « Rédiger une approche » : brouillon par l'IA, sans e-mail ni lien envoyé au modèle, rien d'envoyé.
+- **Historique des recherches en base** (2026-11-06, demande du client : retrouver ses recherches d'un poste à
+  l'autre ; remplace l'enregistrement dans le navigateur) : collection `mbc_searches`, un document par recruteur et par
+  jeu de critères (identifiant dérivé du compte et des critères : relancer la même recherche met à jour sa ligne),
+  écrit à chaque recherche lancée. Contenu : brief, critères, nombre de résultats, date, nom, épinglage — **jamais un
+  profil ni une coordonnée**. Le brief peut citer un client ou un besoin confidentiel : il reste propre au recruteur
+  (aucun collègue ne le voit, comme un vivier). Conservation : 20 recherches enregistrées au plus, les 50 autres plus
+  récentes, le reste supprimé à chaque recherche ; tout est supprimé avec le compte. Écriture en échec : la recherche
+  est quand même affichée, avec un message.
 
 ## Conséquences
 
 - Mise en place : créer une clé d'API Apollo et la renseigner dans `APOLLO_API_KEY` (Vercel, Preview puis
   Production). Sans clé, la page s'affiche et annonce que la recherche n'est pas activée.
 - Si Apollo répond « Need master API key » (403), la clé doit être une clé « master ».
+- Historique : `npm run schema:push -- dev` puis `APPWRITE_COLLECTION_MBC_SEARCHES` (Preview) ; en production, un
+  humain pousse la structure (`schema:check` / `schema:push -- prod`) avant de définir la variable. Sans la variable,
+  la recherche fonctionne sans historique.
 - Les profils sont des données personnelles venant d'un tiers : base légale à documenter (intérêt légitime de
   sourcing) et information des personnes contactées. Les profils complets ne sont pas enregistrés : ils disparaissent
   avec la page. Avant d'ajouter leur enregistrement, décider de la durée de conservation.

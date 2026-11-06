@@ -1,15 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
-  AlertCircle, ArrowRight, Bookmark, Check, Circle, ExternalLink, Loader2, Mail, Minus, Pencil, Plus, Radar, RotateCcw, Sparkles,
+  AlertCircle, ArrowRight, Bookmark, Check, Circle, ExternalLink, History, Loader2, Mail, Minus, Pencil, Plus, Radar, RotateCcw, Sparkles,
   Star, UserRound, X,
 } from 'lucide-react'
-import { analyseMbcBrief, revealMbcProfiles, searchMbcProfiles } from './actions'
+import { analyseMbcBrief, deleteMbcSearchEntry, pinMbcSearch, revealMbcProfiles, searchMbcProfiles } from './actions'
 import {
-  CRITERIA_LIMITS, EMPTY_CRITERIA, MAX_PAGE, PAGE_SIZE, REVEAL_BATCH, SENIORITIES, criteriaProblem, parseSavedSearches,
-  requiredSkillsOf, savedSearchName, withSavedSearch, type MbcCriteria, type SavedSearch, type ScoredProfile, type Seniority,
+  CRITERIA_LIMITS, EMPTY_CRITERIA, MAX_PAGE, PAGE_SIZE, REVEAL_BATCH, SENIORITIES, criteriaProblem,
+  requiredSkillsOf, type MbcCriteria, type ScoredProfile, type Seniority,
 } from '@/lib/mbc-search/rules'
+import type { MbcSearchEntry } from '@/lib/mbc-search/history'
 import { ProfilePanel, type Added } from './mbc-profile-panel'
 import { Avatar, ChipField, ErrorNote, Toggle, orangeTint, surface, type Reveal } from './mbc-search-ui'
 
@@ -34,14 +35,13 @@ const IDLE_STEPS: Record<StepKey, StepState> = { brief: 'todo', search: 'todo', 
 
 type Tab = 'all' | 'revealed' | 'shortlist'
 
-// Recherches enregistrées : dans ce navigateur seulement (critères et brief, aucun profil).
-const SAVED_KEY = 'mbc-search:recherches'
-function readSaved(): SavedSearch[] {
-  try { return parseSavedSearches(window.localStorage.getItem(SAVED_KEY)) } catch { return [] }
+// Historique des recherches : enregistré sur le serveur à chaque recherche (critères et brief, aucun profil).
+const withEntry = (list: MbcSearchEntry[], entry: MbcSearchEntry) => [entry, ...list.filter(e => e.id !== entry.id)]
+const shortDate = (iso: string) => {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', timeZone: 'Europe/Paris' })
 }
-function writeSaved(list: SavedSearch[]): boolean {
-  try { window.localStorage.setItem(SAVED_KEY, JSON.stringify(list)); return true } catch { return false }
-}
+const entryMeta = (e: MbcSearchEntry) => [`${e.total.toLocaleString('fr-FR')} profil${e.total > 1 ? 's' : ''}`, shortDate(e.lastRunAt)].filter(Boolean).join(' · ')
 
 const revealSelectionLabel = (n: number) => `Révéler ${n > 0 ? `la sélection · ${n} crédit${n > 1 ? 's' : ''}` : 'la sélection'}`
 
@@ -148,12 +148,52 @@ function ResultRow({ p, criteria, reveal, active, selected, shortlisted, busy, o
   )
 }
 
-export function MbcSearchClient({ configured, revealUsage, jobs }: {
+/** Liste de recherches de la colonne des critères : un clic relance, la croix retire (ou supprime). */
+function EntryList({ title, entries, busy, currentId, onOpen, onRemove, removeLabel, collapsed }: {
+  title: string; entries: MbcSearchEntry[]; busy: boolean; currentId: string | null
+  onOpen: (e: MbcSearchEntry) => void; onRemove: (e: MbcSearchEntry) => void; removeLabel: (e: MbcSearchEntry) => string
+  collapsed?: boolean
+}) {
+  const list = (
+    <ul className="mt-1">
+      {entries.map(e => (
+        <li key={e.id} className="flex items-center gap-1">
+          <button type="button" onClick={() => onOpen(e)} disabled={busy} aria-current={e.id === currentId || undefined}
+            className="flex-1 min-w-0 text-left py-1 hover:underline disabled:opacity-40" style={{ color: 'var(--color-text)' }}>
+            <span className={`block text-sm truncate ${e.id === currentId ? 'font-bold' : ''}`}>{e.name}</span>
+            <span className="block text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{entryMeta(e)}</span>
+          </button>
+          <button type="button" onClick={() => onRemove(e)} disabled={busy} aria-label={removeLabel(e)} title={removeLabel(e)}
+            className="p-1 rounded disabled:opacity-40" style={{ color: 'var(--color-text-muted)' }}><X className="h-3.5 w-3.5" /></button>
+        </li>
+      ))}
+    </ul>
+  )
+  return (
+    <div className="pt-3" style={{ borderTop: '1px solid var(--color-border)' }}>
+      {collapsed ? (
+        <details>
+          <summary className="text-xs font-bold cursor-pointer" style={{ color: 'var(--color-text)' }}>{title} ({entries.length})</summary>
+          {list}
+        </details>
+      ) : (
+        <>
+          <p className="text-xs font-bold" style={{ color: 'var(--color-text)' }}>{title}</p>
+          {list}
+        </>
+      )}
+    </div>
+  )
+}
+
+export function MbcSearchClient({ configured, revealUsage, jobs, history }: {
   configured: boolean
   /** Profils complets révélés aujourd'hui par l'organisation, sur sa limite ; null si illisible. */
   revealUsage: { used: number; limit: number } | null
   /** Offres ouvertes de l'organisation, pour « Associer à une offre » ; null si illisibles. */
   jobs: { id: string; title: string }[] | null
+  /** Historique des recherches du recruteur, plus récente d'abord ; null si indisponible. */
+  history: MbcSearchEntry[] | null
 }) {
   const [phase, setPhase] = useState<'compose' | 'workspace'>('compose')
   const [brief, setBrief] = useState('')
@@ -173,12 +213,12 @@ export function MbcSearchClient({ configured, revealUsage, jobs }: {
   const [panelOpen, setPanelOpen] = useState(false)
   const [added, setAdded] = useState<Record<string, Added>>({})
   const [revealUsed, setRevealUsed] = useState(revealUsage?.used ?? null)
-  const [saved, setSaved] = useState<SavedSearch[]>([])
+  const [entries, setEntries] = useState<MbcSearchEntry[]>(history ?? [])
+  // Ligne de l'historique de la dernière recherche lancée, et ses critères (pour savoir s'ils ont changé depuis).
+  const [current, setCurrent] = useState<{ id: string; criteria: string } | null>(null)
+  const [naming, setNaming] = useState<string | null>(null)
   const [savedNote, setSavedNote] = useState<string | null>(null)
-
-  // localStorage n'existe que dans le navigateur : lu après le premier rendu (sinon le rendu serveur différerait).
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture unique d'un stockage extérieur à React
-  useEffect(() => { setSaved(readSaved()) }, [])
+  const [historyBusy, setHistoryBusy] = useState(false)
 
   const setStep = (key: StepKey, state: StepState) => setSteps(s => ({ ...s, [key]: state }))
 
@@ -189,9 +229,9 @@ export function MbcSearchClient({ configured, revealUsage, jobs }: {
   }
 
   /** Recherche Apollo puis classement, avec ces critères (ceux de l'IA, ou ceux corrigés par le recruteur). */
-  const runSearch = async (c: MbcCriteria, page: number) => {
+  const runSearch = async (c: MbcCriteria, page: number, b: string = brief) => {
     setStep('search', 'run')
-    const res = await searchMbcProfiles(c, page)
+    const res = await searchMbcProfiles(c, page, b)
     if (res.error) {
       setStep('search', 'error')
       setError(res.error)
@@ -201,6 +241,13 @@ export function MbcSearchClient({ configured, revealUsage, jobs }: {
     setStep('search', 'done')
     setStep('rank', 'done')
     setResults({ profiles, total: res.total ?? 0, page })
+    if (page === 1) {
+      const entry = res.entry
+      setCurrent(entry ? { id: entry.id, criteria: JSON.stringify(c) } : null)
+      if (entry) setEntries(list => withEntry(list, entry))
+      setNaming(null)
+      setSavedNote(res.historyError ?? null)
+    }
     setSeen(s => ({ ...s, ...Object.fromEntries(profiles.map(p => [p.id, p])) }))
     setSelected([])
     setTab('all')
@@ -261,12 +308,12 @@ export function MbcSearchClient({ configured, revealUsage, jobs }: {
     }
   }
 
-  const relaunch = async (page = 1, c: MbcCriteria = criteria) => {
+  const relaunch = async (page = 1, c: MbcCriteria = criteria, b: string = brief) => {
     setError(null)
     setBusy(true)
     setSteps(s => ({ brief: s.brief === 'done' ? 'done' : 'skip', search: 'todo', rank: 'todo' }))
     try {
-      await runSearch(c, page)
+      await runSearch(c, page, b)
     } catch {
       failRunning()
     } finally {
@@ -280,22 +327,43 @@ export function MbcSearchClient({ configured, revealUsage, jobs }: {
     setSteps({ ...IDLE_STEPS, brief: 'skip' })
   }
 
-  const saveSearch = () => {
-    const next = withSavedSearch(saved, { name: savedSearchName(criteria), brief, criteria, savedAt: new Date().toISOString() })
-    if (!writeSaved(next)) { setSavedNote('Enregistrement impossible dans ce navigateur (navigation privée ?).'); return }
-    setSaved(next)
-    setSavedNote(`Recherche « ${next[0].name} » enregistrée dans ce navigateur.`)
+  /** Enregistre la recherche lancée sous un nom, ou la retire des recherches enregistrées (elle reste dans l'historique). */
+  const pin = async (id: string, pinned: boolean, name?: string) => {
+    setHistoryBusy(true)
+    setSavedNote(null)
+    try {
+      const res = await pinMbcSearch({ id, pinned, name })
+      if (res.error || !res.entry) { setSavedNote(res.error ?? 'Enregistrement impossible.'); return }
+      const entry = res.entry
+      setEntries(list => list.map(e => (e.id === entry.id ? entry : e)))
+      setNaming(null)
+      if (pinned) setSavedNote(`Recherche « ${entry.name} » enregistrée.`)
+    } catch {
+      setSavedNote('Le serveur ne répond pas : réessayez.')
+    } finally {
+      setHistoryBusy(false)
+    }
   }
-  const removeSaved = (name: string) => {
-    const next = saved.filter(s => s.name !== name)
-    if (writeSaved(next)) setSaved(next)
+  const removeEntry = async (id: string) => {
+    setHistoryBusy(true)
+    setSavedNote(null)
+    try {
+      const res = await deleteMbcSearchEntry(id)
+      if (res.error) { setSavedNote(res.error); return }
+      setEntries(list => list.filter(e => e.id !== id))
+      if (current?.id === id) setCurrent(null)
+    } catch {
+      setSavedNote('Le serveur ne répond pas : réessayez.')
+    } finally {
+      setHistoryBusy(false)
+    }
   }
-  const openSaved = (s: SavedSearch) => {
-    setBrief(s.brief)
-    setCriteria(s.criteria)
+  const openEntry = (e: MbcSearchEntry) => {
+    setBrief(e.brief)
+    setCriteria(e.criteria)
     setPhase('workspace')
-    setSteps({ ...IDLE_STEPS, brief: s.brief ? 'done' : 'skip' })
-    if (configured && !criteriaProblem(s.criteria)) relaunch(1, s.criteria)
+    setSteps({ ...IDLE_STEPS, brief: e.brief ? 'done' : 'skip' })
+    if (configured && !criteriaProblem(e.criteria)) relaunch(1, e.criteria, e.brief)
   }
 
   const toggleIn = (list: string[], id: string) => (list.includes(id) ? list.filter(x => x !== id) : [...list, id])
@@ -307,6 +375,10 @@ export function MbcSearchClient({ configured, revealUsage, jobs }: {
   })
 
   const missing = criteriaProblem(criteria)
+  const saved = entries.filter(e => e.pinned)
+  const recent = entries.filter(e => !e.pinned)
+  // La recherche affichée peut être enregistrée tant que ses critères n'ont pas changé depuis son lancement.
+  const currentEntry = current && current.criteria === JSON.stringify(criteria) ? entries.find(e => e.id === current.id) ?? null : null
   const lastPage = results ? Math.min(MAX_PAGE, Math.ceil(results.total / PAGE_SIZE)) : 0
   const revealedIds = Object.entries(reveals).filter(([, r]) => r.state === 'done').map(([id]) => id)
   const listed: ScoredProfile[] = tab === 'all'
@@ -387,20 +459,33 @@ export function MbcSearchClient({ configured, revealUsage, jobs }: {
               </div>
             </div>
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>Vos recherches enregistrées</p>
-              {saved.length === 0 ? (
+              <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>Vos recherches</p>
+              {history === null ? (
                 <p className="text-sm rounded-xl px-4 py-3" style={{ ...surface, color: 'var(--color-text-muted)' }}>
-                  Aucune pour le moment : enregistrez une recherche avec <Bookmark className="inline h-3.5 w-3.5" /> pour la relancer en un clic.
+                  Historique indisponible pour le moment : la recherche fonctionne, sans garder vos recherches.
+                </p>
+              ) : entries.length === 0 ? (
+                <p className="text-sm rounded-xl px-4 py-3" style={{ ...surface, color: 'var(--color-text-muted)' }}>
+                  Aucune pour le moment : chaque recherche lancée s&apos;ajoute ici, et <Bookmark className="inline h-3.5 w-3.5" /> la garde en haut de la liste.
                 </p>
               ) : (
                 <div className="flex flex-col gap-2">
-                  {saved.slice(0, 5).map(s => (
-                    <button key={s.name} type="button" onClick={() => openSaved(s)} disabled={!configured}
-                      className="text-left text-sm rounded-xl px-4 py-2.5 inline-flex items-center justify-between gap-3 hover:opacity-80 disabled:opacity-40" style={{ ...surface, color: 'var(--color-text)' }}>
-                      <span className="truncate">{s.name}</span>
-                      <RotateCcw className="h-4 w-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
+                  {[...saved, ...recent].slice(0, 5).map(e => (
+                    <button key={e.id} type="button" onClick={() => openEntry(e)} disabled={!configured}
+                      className="text-left text-sm rounded-xl px-4 py-2.5 flex items-center gap-3 hover:opacity-80 disabled:opacity-40" style={{ ...surface, color: 'var(--color-text)' }}>
+                      {e.pinned
+                        ? <Bookmark className="h-4 w-4 shrink-0" fill="currentColor" style={{ color: 'var(--color-brand-orange)' }} aria-label="Enregistrée" />
+                        : <History className="h-4 w-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} aria-hidden />}
+                      <span className="flex-1 min-w-0">
+                        <span className="block truncate font-semibold">{e.name}</span>
+                        <span className="block text-xs" style={{ color: 'var(--color-text-muted)' }}>{entryMeta(e)}</span>
+                      </span>
+                      <RotateCcw className="h-4 w-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} aria-hidden />
                     </button>
                   ))}
+                  {entries.length > 5 && (
+                    <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Toutes vos recherches : dans l&apos;espace de travail, sous les critères.</p>
+                  )}
                 </div>
               )}
             </div>
@@ -464,25 +549,42 @@ export function MbcSearchClient({ configured, revealUsage, jobs }: {
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                   {results ? 'Relancer' : 'Rechercher'}
                 </button>
-                <button type="button" onClick={saveSearch} disabled={Boolean(missing)} aria-label="Enregistrer cette recherche" title="Enregistrer cette recherche"
-                  className="inline-flex items-center justify-center w-11 rounded-xl disabled:opacity-40" style={{ ...surface, color: 'var(--color-text)' }}>
-                  <Bookmark className="h-4 w-4" />
+                <button type="button" disabled={!currentEntry || historyBusy || busy}
+                  onClick={() => currentEntry && (currentEntry.pinned ? pin(currentEntry.id, false) : setNaming(n => (n === null ? currentEntry.name : null)))}
+                  aria-pressed={currentEntry?.pinned ?? false}
+                  aria-label={currentEntry?.pinned ? 'Retirer des recherches enregistrées' : 'Enregistrer cette recherche'}
+                  title={!currentEntry ? 'Lancez la recherche avec ces critères pour l\'enregistrer' : currentEntry.pinned ? 'Retirer des recherches enregistrées' : 'Enregistrer cette recherche'}
+                  className="inline-flex items-center justify-center w-11 rounded-xl disabled:opacity-40" style={{ ...surface, color: currentEntry?.pinned ? 'var(--color-brand-orange)' : 'var(--color-text)' }}>
+                  <Bookmark className="h-4 w-4" fill={currentEntry?.pinned ? 'currentColor' : 'none'} />
                 </button>
               </div>
               {missing && !busy && steps.brief !== 'run' && <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{missing}</p>}
+              {naming !== null && currentEntry && (
+                <form className="flex items-center gap-1.5" onSubmit={ev => { ev.preventDefault(); pin(currentEntry.id, true, naming) }}>
+                  <label htmlFor="mbc-save-name" className="sr-only">Nom de la recherche</label>
+                  <input id="mbc-save-name" value={naming} onChange={ev => setNaming(ev.target.value)} maxLength={CRITERIA_LIMITS.item} autoFocus
+                    className="flex-1 min-w-0 rounded-lg px-2 py-1.5 text-sm outline-none" style={{ ...surface, color: 'var(--color-text)' }} />
+                  <button type="submit" disabled={historyBusy || !naming.trim()} className="px-2.5 py-1.5 rounded-lg text-xs font-bold disabled:opacity-40"
+                    style={{ background: 'var(--color-brand-orange)', color: 'white' }}>
+                    {historyBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Enregistrer'}
+                  </button>
+                  <button type="button" onClick={() => setNaming(null)} aria-label="Annuler" className="p-1 rounded" style={{ color: 'var(--color-text-muted)' }}><X className="h-3.5 w-3.5" /></button>
+                </form>
+              )}
               {savedNote && <p role="status" className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{savedNote}</p>}
-              {saved.length > 0 && (
-                <div className="pt-3" style={{ borderTop: '1px solid var(--color-border)' }}>
-                  <p className="text-xs font-bold mb-1" style={{ color: 'var(--color-text)' }}>Recherches enregistrées</p>
-                  <ul>
-                    {saved.map(s => (
-                      <li key={s.name} className="flex items-center gap-1">
-                        <button type="button" onClick={() => openSaved(s)} disabled={busy} className="flex-1 min-w-0 text-left text-sm py-1 truncate hover:underline disabled:opacity-40" style={{ color: 'var(--color-text)' }}>{s.name}</button>
-                        <button type="button" onClick={() => removeSaved(s.name)} aria-label={`Supprimer la recherche ${s.name}`} className="p-1 rounded" style={{ color: 'var(--color-text-muted)' }}><X className="h-3.5 w-3.5" /></button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+              {history === null ? (
+                <p className="text-xs pt-3" style={{ borderTop: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>Historique des recherches indisponible pour le moment.</p>
+              ) : (
+                <>
+                  {saved.length > 0 && (
+                    <EntryList title="Recherches enregistrées" entries={saved} busy={busy || historyBusy} currentId={current?.id ?? null}
+                      onOpen={openEntry} onRemove={e => pin(e.id, false)} removeLabel={e => `Retirer ${e.name} des recherches enregistrées`} />
+                  )}
+                  {recent.length > 0 && (
+                    <EntryList title="Historique" entries={recent} busy={busy || historyBusy} currentId={current?.id ?? null}
+                      onOpen={openEntry} onRemove={e => removeEntry(e.id)} removeLabel={e => `Supprimer ${e.name} de l'historique`} collapsed />
+                  )}
+                </>
               )}
             </aside>
 
@@ -571,7 +673,7 @@ export function MbcSearchClient({ configured, revealUsage, jobs }: {
           </div>
 
           <p className="text-xs text-center" style={{ color: 'var(--color-text-muted)' }}>
-            Source : Apollo.io. Un profil complet (nom entier, e-mail professionnel, LinkedIn, lieu, parcours) coûte un crédit Apollo par profil trouvé. Rien n&apos;est enregistré tant que vous n&apos;ajoutez pas un profil à un vivier : utilisez ces données pour un recrutement, conformément au RGPD.
+            Source : Apollo.io. Un profil complet (nom entier, e-mail professionnel, LinkedIn, lieu, parcours) coûte un crédit Apollo par profil trouvé. Seuls vos critères et votre brief sont gardés dans votre historique ; aucun profil n&apos;est enregistré tant que vous ne l&apos;ajoutez pas à un vivier : utilisez ces données pour un recrutement, conformément au RGPD.
           </p>
         </div>
       )}
