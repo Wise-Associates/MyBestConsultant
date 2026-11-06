@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useMemo, useState, useTransition, useEffect } from 'react'
+import { Fragment, useId, useMemo, useRef, useState, useTransition, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { BackLink } from '@/components/recruiter/back-link'
@@ -9,7 +9,7 @@ import {
   FileText, ArrowDownWideNarrow, ArrowUpWideNarrow, Settings2, Plus, X,
   Brain, Video, Pencil, Trash2, History, Loader2, GripVertical, Tag as TagIcon,
   StickyNote, CheckCircle2, ChevronDown, ChevronUp, Sparkles, AlertCircle,
-  Archive, ThumbsUp, ThumbsDown, Mail, Copy, ExternalLink, Edit3, Send, ChevronRight, GitBranch, Search,
+  Archive, ThumbsUp, ThumbsDown, Mail, Copy, ExternalLink, Edit3, Send, ChevronRight, GitBranch, Search, ChartColumn,
 } from 'lucide-react'
 import {
   moveApplicationStage, saveFunnelStagesAction, updateApplicationCardAction,
@@ -1252,20 +1252,24 @@ export function PipelineClient({
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <div className="sticky top-0 z-20 min-[90rem]:static" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-        <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-6 min-[90rem]:py-4">
+        <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-4 min-[90rem]:py-3">
           <BackLink fallbackHref="/recruiter/dashboard"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 min-[90rem]:mb-1.5 no-underline transition-opacity hover:opacity-80"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold mb-2 min-[90rem]:mb-1 no-underline transition-opacity hover:opacity-80"
             style={{ color: '#c4b5fd' }} />
           <div className="flex items-center justify-between gap-4 flex-wrap min-[90rem]:flex-nowrap">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              <p className="min-[90rem]:hidden text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
                 Pipeline de recrutement
               </p>
-              <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.5rem' }}>{jobTitle}</h1>
-              <p className="hidden min-[90rem]:block text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>{jobMeta}</p>
-              <Link href={`/recruiter/funnel?tab=phases${pipeline ? `&pipeline=${pipeline.id}` : ''}`} className="inline-flex items-center gap-1.5 mt-1.5 text-[11px] font-semibold no-underline transition-opacity hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }}>
-                Colonnes : <span style={{ color: '#E8A33D' }}>{pipeline?.name ?? 'Pipeline par défaut'}</span> · gérer
-              </Link>
+              <h1 className="min-[90rem]:truncate" style={{ color: 'white', fontWeight: 300, fontSize: '1.375rem', lineHeight: 1.3 }}>{jobTitle}</h1>
+              {/* Offre et colonnes sur une seule ligne (demande du 2026-11-06 : bandeau réduit). */}
+              <p className="flex items-center gap-x-1.5 gap-y-0.5 flex-wrap text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                <span className="hidden min-[90rem]:inline">{jobMeta}</span>
+                <span aria-hidden className="hidden min-[90rem]:inline">·</span>
+                <Link href={`/recruiter/funnel?tab=phases${pipeline ? `&pipeline=${pipeline.id}` : ''}`} className="font-semibold no-underline transition-opacity hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                  Colonnes : <span style={{ color: '#E8A33D' }}>{pipeline?.name ?? 'Pipeline par défaut'}</span> · gérer
+                </Link>
+              </p>
             </div>
             <JobTabs jobId={jobId} current="pipeline" />
             <div className="flex items-center gap-3 flex-wrap min-[90rem]:shrink-0">
@@ -1286,6 +1290,7 @@ export function PipelineClient({
                 style={{ background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.3)' }}>
                 <Brain className="h-3.5 w-3.5" /> Matching IA
               </Link>
+              <StageStatsButton stats={stageStats} total={candidates.length} />
               <button onClick={() => setConfigOpen(true)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80"
                 style={{ background: 'rgba(232,163,61,0.15)', color: '#E8A33D', border: '1px solid rgba(232,163,61,0.3)' }}>
@@ -1293,21 +1298,6 @@ export function PipelineClient({
               </button>
             </div>
           </div>
-
-          {/* Stats du funnel — vue d'ensemble de l'avancement de tous les candidats sur
-              cette offre, un chiffre par étape configurée. */}
-          {stageStats.some(s => s.count > 0) && (
-            <div className="flex items-center gap-2 flex-wrap mt-4 pt-4 min-[90rem]:mt-3 min-[90rem]:pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-              {stageStats.map(({ stage, count }) => (
-                <div key={stage.slug} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
-                  style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${stage.color}40` }}>
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: stage.color }} />
-                  <span className="text-sm font-bold" style={{ color: 'white' }}>{count}</span>
-                  <span className="text-[11px] font-medium" style={{ color: 'rgba(255,255,255,0.55)' }}>{stage.label}</span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
 
@@ -1747,6 +1737,68 @@ function HistoryModal({ applicationId, stages, onClose }: { applicationId: strin
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Nombre de candidats par phase, ouvert au clic sur « Statistiques » (demande du 2026-11-06 : la ligne de pastilles
+ * agrandissait le bandeau). Toujours sur tous les candidats de l'offre, sans les filtres de la page.
+ */
+function StageStatsButton({ stats, total }: { stats: { stage: FunnelStage; count: number }[]; total: number }) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelId = useId()
+  const peak = Math.max(1, ...stats.map(s => s.count))
+
+  useEffect(() => {
+    if (!open) return
+    const onOutside = (e: Event) => { if (!rootRef.current?.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onOutside)
+    document.addEventListener('focusin', onOutside)
+    return () => {
+      document.removeEventListener('mousedown', onOutside)
+      document.removeEventListener('focusin', onOutside)
+    }
+  }, [open])
+
+  return (
+    <div ref={rootRef} className="sm:relative"
+      onKeyDown={e => {
+        if (e.key === 'Escape' && open) {
+          e.stopPropagation()
+          setOpen(false)
+          triggerRef.current?.focus()
+        }
+      }}>
+      <button ref={triggerRef} type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} aria-controls={panelId}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        style={{ background: open ? 'white' : 'rgba(255,255,255,0.1)', color: open ? '#1c1c1e' : 'white', border: '1px solid rgba(255,255,255,0.15)' }}>
+        <ChartColumn className="h-3.5 w-3.5" aria-hidden /> Statistiques
+        <span className="tabular-nums" style={{ opacity: 0.7 }}>{total}</span>
+      </button>
+      {open && (
+        <div id={panelId} role="dialog" aria-label="Candidats par phase"
+          className="absolute left-4 right-4 sm:left-0 sm:right-auto min-[90rem]:left-auto min-[90rem]:right-0 top-full mt-1.5 z-30 sm:w-72 p-3 rounded-[14px]"
+          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 16px 40px rgba(28,28,30,0.18)' }}>
+          <p className="text-[11px] font-semibold uppercase mb-2" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>
+            Candidats par phase · {total}
+          </p>
+          <ul className="flex flex-col gap-1.5">
+            {stats.map(({ stage, count }) => (
+              <li key={stage.slug} className="flex items-center gap-2.5 text-[13px]" style={{ color: count > 0 ? 'var(--color-text)' : 'var(--color-text-muted)' }}>
+                <span aria-hidden className="w-2 h-2 rounded-full shrink-0" style={{ background: stage.color }} />
+                <span className="flex-1 min-w-0 truncate">{stage.label}</span>
+                <span aria-hidden className="w-16 shrink-0 h-1.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--color-text) 6%, transparent)' }}>
+                  {count > 0 && <span className="block h-1.5 rounded-full" style={{ width: `${(count / peak) * 100}%`, background: stage.color }} />}
+                </span>
+                <span className="w-5 text-right font-semibold tabular-nums">{count}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
