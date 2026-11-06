@@ -70,18 +70,25 @@ describe('MBC Search : score et classement', () => {
     // 55 (intitulé) + 0 (Spark non visible) + 10 (e-mail) + 10 (mis à jour il y a un mois)
     assert.equal(s.score, 75)
     assert.deepEqual(s.reasons, ['Intitulé conforme : « Data Engineer »', 'E-mail disponible', 'Profil mis à jour il y a moins de 6 mois'])
+    assert.deepEqual(s.match, { title: 'full', skills: [], reachable: true, fresh: true })
   })
 
   it('compte une compétence visible dans l\'intitulé, sans tenir compte des accents ni de la casse', () => {
     const s = scoreProfile(profile({ title: 'Ingénieur données SPARK' }), { ...criteria, titles: ['Ingénieur données'] }, NOW)
     assert.equal(s.score, 100)
     assert.ok(s.reasons.includes('Compétence visible : Spark'))
+    assert.deepEqual(s.match.skills, ['Spark'])
   })
 
   it('note partiellement un intitulé proche et ignore un profil ancien ou injoignable', () => {
     const s = scoreProfile(profile({ title: 'Data Analyst', hasEmail: false, refreshedAt: '2025-01-01T00:00:00Z' }), criteria, NOW)
     assert.equal(s.score, 28)
     assert.deepEqual(s.reasons, ['Intitulé proche de « Data Engineer »'])
+    assert.deepEqual(s.match, { title: 'partial', skills: [], reachable: false, fresh: false })
+  })
+
+  it('marque le critère d\'intitulé « indifférent » quand aucun intitulé n\'est demandé', () => {
+    assert.equal(scoreProfile(profile(), { ...criteria, titles: [] }, NOW).match.title, 'any')
   })
 
   it('classe du meilleur au moins bon, en gardant l\'ordre d\'Apollo à score égal', () => {
