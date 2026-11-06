@@ -41,9 +41,11 @@ describe('filtres de « Mes offres »', () => {
   })
 
   it('filtre sur le contrat et combine les filtres', () => {
-    assert.deepEqual(ids({ contract: 'cdi' }), ['b'])
-    assert.deepEqual(ids({ status: 'active', contract: 'cdi' }), [])
-    assert.equal(isFiltering({ ...EMPTY_JOB_FILTERS, contract: 'cdi' }), true)
+    assert.deepEqual(ids({ contract: ['cdi'] }), ['b'])
+    assert.deepEqual(ids({ status: 'active', contract: ['cdi'] }), [])
+    assert.equal(isFiltering({ ...EMPTY_JOB_FILTERS, contract: ['cdi'] }), true)
+    // Choix multiple : une offre passe si son contrat est l'un des contrats choisis ; une offre sans contrat, jamais.
+    assert.deepEqual(ids({ contract: ['cdi', 'mission'] }).sort(), ['b', 'd'])
   })
 
   it('garde les offres d\'une tuile « À traiter »', () => {
@@ -89,9 +91,9 @@ describe('filtre par recruteur (adresse de la page)', () => {
 
 describe('filtres de « Mes offres » dans l’adresse', () => {
   it('relit à l’identique les filtres écrits', () => {
-    const f: JobFilters = { q: 'développeur java', status: 'archived', contract: 'mission', focus: 'expiringSoon', sort: 'score' }
+    const f: JobFilters = { q: 'développeur java', status: 'archived', contract: ['freelance', 'mission'], focus: 'expiringSoon', sort: 'score' }
     const params = withJobFilters(new URLSearchParams(), f)
-    assert.equal(params.toString(), 'q=d%C3%A9veloppeur+java&status=archived&contract=mission&focus=expiringSoon&sort=score')
+    assert.equal(params.toString(), 'q=d%C3%A9veloppeur+java&status=archived&contract=freelance%2Cmission&focus=expiringSoon&sort=score')
     assert.deepEqual(jobFiltersFromSearchParams(params), f)
   })
 
@@ -103,6 +105,12 @@ describe('filtres de « Mes offres » dans l’adresse', () => {
   it('ignore une valeur inconnue (adresse modifiée, ancien lien)', () => {
     const f = jobFiltersFromSearchParams(new URLSearchParams('status=supprimees&contract=stage&focus=tout&sort=hasard'))
     assert.deepEqual(f, EMPTY_JOB_FILTERS)
+  })
+
+  it('relit les contrats sans doublon, dans un ordre fixe, et les anciens liens à un seul contrat', () => {
+    assert.deepEqual(jobFiltersFromSearchParams(new URLSearchParams('contract=mission,cdi,stage,cdi')).contract, ['cdi', 'mission'])
+    assert.deepEqual(jobFiltersFromSearchParams(new URLSearchParams('contract=cdd')).contract, ['cdd'])
+    assert.equal(withJobFilters(new URLSearchParams(), { ...EMPTY_JOB_FILTERS, contract: ['mission', 'cdi'] }).get('contract'), 'cdi,mission')
   })
 
   it('borne la recherche relue', () => {
