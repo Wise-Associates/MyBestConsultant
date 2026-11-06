@@ -24,7 +24,7 @@ const STATE_BADGES = {
 const TOP_PROFILES = 3
 
 const muted: CSSProperties = { color: 'var(--color-text-muted)' }
-const card = 'rounded-[20px] p-5'
+const card = 'rounded-[20px] p-5 min-[112.5rem]:p-4'
 const cardStyle: CSSProperties = { background: 'var(--color-surface)', border: '1px solid var(--color-border)' }
 const heading = 'font-semibold uppercase mb-2.5'
 // En style : les règles h1–h6 de globals.css (hors couche Tailwind) l'emportent sur les classes de taille.
