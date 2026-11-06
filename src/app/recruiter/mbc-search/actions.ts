@@ -14,7 +14,7 @@ import {
 } from '@/lib/mbc-search/rules'
 import { SAVED_SEARCHES_MAX, searchIdSchema, searchNameSchema, type MbcSearchEntry } from '@/lib/mbc-search/history'
 import { deleteMbcSearch, isMbcHistoryConfigured, recordMbcSearch, setMbcSearchPinned } from '@/lib/mbc-search/history-store'
-import { saveReveals, storedReveals, vivierTargetsOf } from '@/lib/mbc-search/reveal-store'
+import { isMbcRevealStoreConfigured, saveReveals, storedReveals, vivierTargetsOf } from '@/lib/mbc-search/reveal-store'
 
 // Actions de MBC Search (/recruiter/mbc-search, ADR 0018). Chacune vérifie elle-même le recruteur : une Server Action
 // est un point d'entrée public. Les résultats ne sont pas enregistrés (ni profils révélés, ni coordonnées) : seuls sont
@@ -109,12 +109,12 @@ export async function searchMbcProfiles(criteria: unknown, page: unknown = 1, br
   }
   // Ce que l'organisation a déjà payé et ce qui est déjà dans le vivier : facultatif, la liste s'affiche sans.
   const ids = found.profiles.map(x => x.id)
-  try {
-    const [revealed, inVivier] = await Promise.all([storedReveals(user.tenantId, ids, new Date()), vivierTargetsOf(user.tenantId, user.$id, ids)])
-    found = { ...found, revealed, inVivier }
-  } catch (err) {
-    console.error('[mbc-search] profils déjà révélés ou vivier illisibles', err instanceof Error ? err.message : String(err))
-  }
+  // Lus séparément : une lecture en échec ne prive pas de l'autre.
+  const [revealed, inVivier] = await Promise.allSettled([storedReveals(user.tenantId, ids, new Date()), vivierTargetsOf(user.tenantId, user.$id, ids)])
+  if (revealed.status === 'fulfilled') found = { ...found, revealed: revealed.value }
+  else console.error('[mbc-search] profils déjà révélés illisibles', revealed.reason instanceof Error ? revealed.reason.message : String(revealed.reason))
+  if (inVivier.status === 'fulfilled') found = { ...found, inVivier: inVivier.value }
+  else console.error('[mbc-search] vivier illisible', inVivier.reason instanceof Error ? inVivier.reason.message : String(inVivier.reason))
   if (p.data !== 1 || !isMbcHistoryConfigured()) return found
   try {
     const entry = await recordMbcSearch({ userId: user.userId, tenantId: user.tenantId, brief: b.data.trim(), criteria: c.data, total: found.total, now: new Date() })
@@ -177,7 +177,7 @@ const revealSchema = z.array(z.string().regex(APOLLO_PERSON_ID)).min(1).max(REVE
  * demandé sur les quotas du jour des profils révélés (organisation, puis toutes), un profil non trouvé comptant quand
  * même. `charged` : places prises.
  */
-export async function revealMbcProfiles(ids: unknown): Promise<{ profiles?: MbcRevealed[]; charged?: number; error?: string }> {
+export async function revealMbcProfiles(ids: unknown): Promise<{ profiles?: MbcRevealed[]; charged?: number; notKept?: string; error?: string }> {
   const parsed = revealSchema.safeParse(ids)
   if (!parsed.success) return { error: 'Profils invalides : rechargez la page.' }
   const unique = [...new Set(parsed.data)]
@@ -227,11 +227,17 @@ export async function revealMbcProfiles(ids: unknown): Promise<{ profiles?: MbcR
     console.error('[mbc-search] enrichissement impossible', err instanceof Error ? err.name : 'inconnu')
     return { error: 'Profils indisponibles pour le moment : réessayez dans quelques instants.' }
   }
+  // Profils affichés quand même (déjà payés) ; non gardés, ils seraient à révéler (et payer) de nouveau : le dire.
+  const notKept = 'Profils révélés non gardés : ils ne resteront pas révélés à la prochaine recherche. Prévenez l\'administrateur.'
+  if (!isMbcRevealStoreConfigured()) {
+    console.error('[mbc-search] profils révélés non gardés : APPWRITE_COLLECTION_MBC_REVEALS non définie')
+    return { profiles: [...known, ...fresh], charged: wanted.length, notKept }
+  }
   try {
     await saveReveals(tenantId, user.userId, fresh, now)
   } catch (err) {
-    // Profils affichés quand même (déjà payés) ; ils seront à révéler de nouveau à la prochaine visite.
     console.error('[mbc-search] profils révélés non gardés', err instanceof Error ? err.message : String(err))
+    return { profiles: [...known, ...fresh], charged: wanted.length, notKept }
   }
   return { profiles: [...known, ...fresh], charged: wanted.length }
 }
