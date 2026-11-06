@@ -1945,6 +1945,15 @@
                     "size": 20000,
                     "default": null,
                     "encrypt": false
+                },
+                {
+                    "key": "apolloId",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 24,
+                    "default": null,
+                    "encrypt": false
                 }
             ],
             "indexes": [
@@ -1963,6 +1972,15 @@
                     "status": "available",
                     "attributes": [
                         "cvFileId"
+                    ],
+                    "orders": []
+                },
+                {
+                    "key": "apolloId_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "apolloId"
                     ],
                     "orders": []
                 }
@@ -4352,6 +4370,81 @@
                     "status": "available",
                     "attributes": [
                         "userId"
+                    ],
+                    "orders": []
+                }
+            ]
+        },
+        {
+            "$id": "mbc_reveals",
+            "$permissions": [],
+            "databaseId": "bestconsultant-dev",
+            "name": "MBC reveals",
+            "enabled": true,
+            "documentSecurity": false,
+            "attributes": [
+                {
+                    "key": "tenantId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 100,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "apolloId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 24,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "profileJson",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 16000,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "revealedBy",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "revealedAt",
+                    "type": "datetime",
+                    "required": true,
+                    "array": false,
+                    "format": "",
+                    "default": null
+                }
+            ],
+            "indexes": [
+                {
+                    "key": "tenantId_apolloId",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "tenantId",
+                        "apolloId"
+                    ],
+                    "orders": []
+                },
+                {
+                    "key": "revealedAt_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "revealedAt"
                     ],
                     "orders": []
                 }

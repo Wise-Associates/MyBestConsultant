@@ -97,8 +97,8 @@ function CriteriaPills({ p, criteria }: { p: ScoredProfile; criteria: MbcCriteri
   )
 }
 
-function ResultRow({ p, criteria, reveal, active, selected, shortlisted, busy, onOpen, onSelect, onShortlist, onReveal }: {
-  p: ScoredProfile; criteria: MbcCriteria; reveal?: Reveal; active: boolean; selected: boolean; shortlisted: boolean; busy: boolean
+function ResultRow({ p, criteria, reveal, active, selected, shortlisted, inVivier, busy, onOpen, onSelect, onShortlist, onReveal }: {
+  p: ScoredProfile; criteria: MbcCriteria; reveal?: Reveal; active: boolean; selected: boolean; shortlisted: boolean; inVivier: boolean; busy: boolean
   onOpen: () => void; onSelect: () => void; onShortlist: () => void; onReveal: () => void
 }) {
   const full = reveal?.state === 'done' ? reveal.profile : null
@@ -116,6 +116,7 @@ function ResultRow({ p, criteria, reveal, active, selected, shortlisted, busy, o
             {full ? name : <>{p.firstName || 'Profil'} <span style={{ color: 'var(--color-text-muted)', fontWeight: 500 }}>{p.lastNameMasked}</span></>}
           </span>
           {full && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: orangeTint(14), color: 'var(--color-text)' }}>Révélé</span>}
+          {inVivier && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded inline-flex items-center gap-0.5" style={{ border: '1px solid var(--color-brand-orange)', color: 'var(--color-text)' }}><Check className="h-3 w-3" /> Dans votre vivier</span>}
           {reveal?.state === 'missing' && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ ...surface, color: 'var(--color-text-muted)' }}>Introuvable chez Apollo</span>}
         </span>
         <span className="block text-sm truncate" style={{ color: 'var(--color-text-muted)' }}>{[full?.title || p.title, full?.company || p.company].filter(Boolean).join(' · ')}</span>
@@ -241,6 +242,13 @@ export function MbcSearchClient({ configured, revealUsage, jobs, history }: {
     setStep('search', 'done')
     setStep('rank', 'done')
     setResults({ profiles, total: res.total ?? 0, page })
+    // Profils déjà payés par l'organisation : affichés révélés, sans nouveau crédit ; vivier : déjà ajoutés.
+    const known = res.revealed ?? []
+    if (known.length > 0) setReveals(r => ({ ...r, ...Object.fromEntries(known.map(k => [k.id, { state: 'done', profile: k } as Reveal])) }))
+    const inVivier = res.inVivier ?? {}
+    if (Object.keys(inVivier).length > 0) {
+      setAdded(a => ({ ...a, ...Object.fromEntries(Object.entries(inVivier).map(([id, targets]) => [id, { ...a[id], ...Object.fromEntries(targets.map(t => [t, true as const])) }])) }))
+    }
     if (page === 1) {
       const entry = res.entry
       setCurrent(entry ? { id: entry.id, criteria: JSON.stringify(c) } : null)
@@ -268,8 +276,9 @@ export function MbcSearchClient({ configured, revealUsage, jobs, history }: {
         setError(res.error ?? 'Profils indisponibles pour le moment.')
         return
       }
-      // Une place du quota par profil demandé, trouvé ou non (comme le serveur les compte).
-      setRevealUsed(u => (u === null ? null : u + wanted.length))
+      // Places du quota prises par le serveur : une par profil payé, trouvé ou non (un profil déjà révélé n'en prend pas).
+      const charged = res.charged ?? wanted.length
+      setRevealUsed(u => (u === null ? null : u + charged))
       const found = new Map(res.profiles.map(p => [p.id, p]))
       setReveals(r => ({
         ...r,
@@ -630,7 +639,7 @@ export function MbcSearchClient({ configured, revealUsage, jobs, history }: {
                 <ul style={{ opacity: busy ? 0.5 : 1 }}>
                   {listed.map(p => (
                     <ResultRow key={p.id} p={p} criteria={criteria} reveal={reveals[p.id]} active={p.id === activeId} busy={busy}
-                      selected={selected.includes(p.id)} shortlisted={shortlist.includes(p.id)}
+                      selected={selected.includes(p.id)} shortlisted={shortlist.includes(p.id)} inVivier={Object.keys(added[p.id] ?? {}).length > 0}
                       onOpen={() => openProfile(p.id)} onSelect={() => setSelected(s => (s.includes(p.id) ? s.filter(x => x !== p.id) : s.length < REVEAL_BATCH ? [...s, p.id] : s))}
                       onShortlist={() => toggleShortlist(p.id)} onReveal={() => reveal([p.id])} />
                   ))}
@@ -673,7 +682,7 @@ export function MbcSearchClient({ configured, revealUsage, jobs, history }: {
           </div>
 
           <p className="text-xs text-center" style={{ color: 'var(--color-text-muted)' }}>
-            Source : Apollo.io. Un profil complet (nom entier, e-mail professionnel, LinkedIn, lieu, parcours) coûte un crédit Apollo par profil trouvé. Seuls vos critères et votre brief sont gardés dans votre historique ; aucun profil n&apos;est enregistré tant que vous ne l&apos;ajoutez pas à un vivier : utilisez ces données pour un recrutement, conformément au RGPD.
+            Source : Apollo.io. Un profil complet (nom entier, e-mail professionnel, LinkedIn, lieu, parcours) coûte un crédit Apollo par profil trouvé. Un profil révélé est gardé 90 jours pour votre organisation (il ne coûte pas de second crédit), puis supprimé ; vos critères et votre brief restent dans votre historique : utilisez ces données pour un recrutement, conformément au RGPD.
           </p>
         </div>
       )}
