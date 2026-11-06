@@ -1,8 +1,8 @@
 'use client'
 
-import type { CSSProperties } from 'react'
+import { useId, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
-import { MapPin, Sparkles, Share2 } from 'lucide-react'
+import { MapPin, Sparkles, Share2, ChevronDown } from 'lucide-react'
 import { NETWORK_LABEL } from '@/lib/social-content'
 import type { CandidateApp } from './applications-panel'
 import type { DashboardJobRow } from './jobs-list-client'
@@ -42,6 +42,11 @@ export function JobPreviewPanel({ row, apps, stages, onOpenApplications }: {
   const matchingHref = `/recruiter/pipeline/${job.$id}/matching`
   const stageCounts = stages.map(stage => ({ stage, count: apps.filter(a => a.status === stage.slug).length }))
   const peak = Math.max(1, ...stageCounts.map(s => s.count))
+  const filled = stageCounts.filter(s => s.count > 0)
+  // Pipeline replié par défaut (demande du 2026-11-06 : la liste de toutes les phases prenait la moitié du panneau) :
+  // une barre et les seules phases qui ont des candidats ; « Toutes les phases » déplie la liste complète.
+  const [allStages, setAllStages] = useState(false)
+  const stagesId = useId()
   const top = apps
     .filter((a): a is CandidateApp & { aiScore: number } => typeof a.aiScore === 'number')
     .sort((a, b) => b.aiScore - a.aiScore)
@@ -76,21 +81,49 @@ export function JobPreviewPanel({ row, apps, stages, onOpenApplications }: {
           ))}
         </dl>
 
-        <h3 className={heading} style={headingStyle}>Pipeline</h3>
+        <div className="flex items-center justify-between gap-3 mb-2.5">
+          <h3 className="font-semibold uppercase" style={headingStyle}>Pipeline</h3>
+          {stageCounts.length > 0 && (
+            <button type="button" onClick={() => setAllStages(o => !o)} aria-expanded={allStages} aria-controls={stagesId}
+              className="inline-flex items-center gap-1 bg-transparent border-0 p-0 text-xs font-semibold cursor-pointer rounded-sm hover:underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
+              style={{ color: 'var(--color-text)' }}>
+              {allStages ? 'Réduire' : `Toutes les phases (${stageCounts.length})`}
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${allStages ? 'rotate-180' : ''}`} aria-hidden />
+            </button>
+          )}
+        </div>
         {stageCounts.length === 0 ? (
           <p className="text-[13px]" style={muted}>Aucune phase définie.</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
+        ) : allStages ? (
+          <ul id={stagesId} className="flex flex-col gap-2">
             {stageCounts.map(({ stage, count }) => (
-              <li key={stage.slug} className="flex items-center gap-3 text-[13px]" style={{ color: 'var(--color-text)' }}>
-                <span className="w-28 truncate">{stage.label}</span>
-                <span aria-hidden className="flex-1 h-1.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--color-text) 6%, transparent)' }}>
+              <li key={stage.slug} className="flex items-center gap-3 text-[13px]" style={{ color: count > 0 ? 'var(--color-text)' : 'var(--color-text-muted)' }}>
+                <span className="flex-1 min-w-0">{stage.label}</span>
+                <span aria-hidden className="w-16 shrink-0 h-1.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--color-text) 6%, transparent)' }}>
                   {count > 0 && <span className="block h-1.5 rounded-full" style={{ width: `${(count / peak) * 100}%`, background: stage.color }} />}
                 </span>
-                <span className="w-6 text-right font-semibold tabular-nums">{count}</span>
+                <span className="w-5 text-right font-semibold tabular-nums">{count}</span>
               </li>
             ))}
           </ul>
+        ) : filled.length === 0 ? (
+          <p id={stagesId} className="text-[13px]" style={muted}>Aucun candidat dans le pipeline.</p>
+        ) : (
+          <div id={stagesId} className="flex flex-col gap-2">
+            <div aria-hidden className="flex gap-0.5 h-1.5">
+              {filled.map(({ stage, count }) => (
+                <span key={stage.slug} className="h-1.5 min-w-1.5 rounded-full" style={{ flex: `${count} 1 0`, background: stage.color }} />
+              ))}
+            </div>
+            <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs" style={{ color: 'var(--color-text)' }}>
+              {filled.map(({ stage, count }) => (
+                <li key={stage.slug} className="inline-flex items-center gap-1.5">
+                  <span aria-hidden className="w-1.5 h-1.5 rounded-full" style={{ background: stage.color }} />
+                  <span className="font-semibold tabular-nums">{count}</span> {stage.label}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         <div className="grid grid-cols-2 gap-2 mt-4">
