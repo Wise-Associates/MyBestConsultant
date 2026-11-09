@@ -43,7 +43,9 @@ services:
       options:
         max-size: 20m
         max-file: "5"
-    networks: [mbc]
+    # mbc : l'application. wise-site : réseau interne du site Wise Associates (dépôt TNP-Clone), que Caddy est le seul à
+    # partager avec lui. Les deux sont créés par mbc-deploy s'ils manquent.
+    networks: [mbc, wise-site]
 
 volumes:
   caddy_data:
@@ -51,4 +53,6 @@ volumes:
 
 networks:
   mbc:
+    external: true
+  wise-site:
     external: true

@@ -1,6 +1,7 @@
 # Proxy de production de MyBestConsultant (ADR 0027, docs/deploiement-vps.md).
-# Caddy obtient et renouvelle seul les certificats HTTPS, dès que le DNS des deux noms pointe vers ce serveur.
+# Caddy obtient et renouvelle seul les certificats HTTPS, dès que le DNS de chaque nom pointe vers ce serveur.
 # Après une modification : elle est appliquée au déploiement suivant (mbc-deploy recharge Caddy).
+# Il sert aussi le site Wise Associates (dépôt TNP-Clone) : blocs en fin de fichier.
 
 # Adresse canonique : www (comme sur Vercel). Le domaine nu redirige.
 mybestconsultant.fr {
@@ -22,4 +23,29 @@ www.mybestconsultant.fr {
 	# Version active de l'application : « reverse_proxy mbc-app-<couleur>:3000 », écrite par mbc-deploy.
 	# Pas de délai maximal ni de mise en mémoire tampon par défaut : les routes de 300 s et le streaming passent.
 	import /mbc-state/upstream.caddy
+}
+
+# Site Wise Associates (dépôt TNP-Clone, son ADR 0003 et son docs/deploiement-vps.md) : conteneur wise-site, déployé
+# par wise-site-deploy, joint par le réseau interne wise-site (compose.proxy.yml). Tant que le DNS de wise-associates.fr
+# pointe vers l'ancien hébergement, Caddy n'obtient pas ces certificats et réessaie seul (journal de mbc-caddy) ; cela
+# ne touche pas ceux de MyBestConsultant.
+
+# Adresse canonique : le domaine nu, comme sur l'hébergement précédent. www y redirige.
+www.wise-associates.fr {
+	header Strict-Transport-Security "max-age=31536000"
+	redir https://wise-associates.fr{uri} permanent
+}
+
+wise-associates.fr {
+	# Sans includeSubDomains : irrbb. et les autres sous-domaines gardent leur propre réglage.
+	header Strict-Transport-Security "max-age=31536000"
+
+	# Seuls envois attendus : les formulaires (quelques Ko, message limité à 4 000 caractères). Une limite basse
+	# empêche de remplir la mémoire du serveur avec de gros envois.
+	request_body {
+		max_size 64KB
+	}
+
+	# Arrêté ou absent, le conteneur fait répondre 502 à ce site seulement.
+	reverse_proxy wise-site:3000
 }

@@ -86,6 +86,12 @@ flock -n 9 || die "un autre déploiement est en cours"
 trap '' HUP PIPE
 exec > >(tee -p "$LOG" >&2) 2>&1
 
+# Réseaux de Caddy (compose.proxy.yml), créés s'ils manquent (serveur neuf ou reconstruit), avant tout démarrage de
+# Caddy, « proxy » compris : « mbc » pour l'application ; « wise-site », interne (ni Internet ni l'application), pour
+# le site Wise Associates (dépôt TNP-Clone), dont le script de déploiement refuse un réseau non interne.
+docker network inspect "$NETWORK" > /dev/null 2>&1 || docker network create "$NETWORK" > /dev/null
+docker network inspect wise-site > /dev/null 2>&1 || docker network create --internal wise-site > /dev/null
+
 if [[ $action == proxy ]]; then
   # Recréer Caddy coupe le site quelques secondes : jamais pendant un déploiement, seulement par cette commande.
   caddy_image=$(proxy_compose config --images)
@@ -121,8 +127,6 @@ if [[ -f $STATE/active-color ]]; then
 fi
 if [[ $active == blue ]]; then next=green; else next=blue; fi
 if [[ -n $active ]]; then unchanged="la version précédente reste en ligne"; else unchanged="aucune version n'était en ligne"; fi
-
-docker network inspect "$NETWORK" > /dev/null 2>&1 || docker network create "$NETWORK" > /dev/null
 
 # Fichiers de déploiement (compose, Caddyfile, crontab) du commit déployé : la configuration suit le code.
 log "fichiers de déploiement du commit $commit"

@@ -45,7 +45,7 @@ Internet ──► Caddy (ports 80 et 443, HTTPS) ──► mbc-app-blue  ou  mb
 |---|---|
 | `Dockerfile`, `.dockerignore` | Image de l'application (Next.js en mode `standalone`) |
 | `deploy/compose.app.yml` | Conteneur de l'application (une couleur), durci : lecture seule, sans privilège, sans port publié |
-| `deploy/compose.proxy.yml`, `deploy/caddy/Caddyfile` | Caddy : HTTPS, redirection du domaine nu, en-têtes, limites |
+| `deploy/compose.proxy.yml`, `deploy/caddy/Caddyfile` | Caddy : HTTPS, redirection du domaine nu, en-têtes, limites ; sert aussi `wise-associates.fr` (9, « Site Wise Associates ») |
 | `deploy/mbc-deploy.sh` | Déploiement sans coupure, retour arrière, état |
 | `deploy/crontab`, `deploy/mbc-cron.sh` | Tâches planifiées (remplacent les `crons` de `vercel.json`) |
 | `.github/workflows/deploy-vps.yml` | « Déployer en production », lancé à la main : vérification, image, `prod` placée sur `main`, envoi et bascule |
@@ -58,6 +58,10 @@ Internet ──► Caddy (ports 80 et 443, HTTPS) ──► mbc-app-blue  ou  mb
 | `/usr/local/bin/mbc-deploy` | Copie installée de `deploy/mbc-deploy.sh` |
 
 Le `docker-compose.yml` à la racine du dépôt est un ancien Appwrite local de développement : il ne sert pas ici.
+
+Le serveur héberge aussi la veille (`veille-marches-emplois`, sans Caddy) et le site Wise Associates
+(`wise-associates.fr`, dépôt TNP-Clone, servi par ce Caddy). Chacun a son guide `docs/deploiement-vps.md`, son
+script de déploiement et sa clé SSH ; leurs conteneurs ne sont pas sur le réseau `mbc`.
 
 ## 2. Le serveur
 
@@ -470,6 +474,34 @@ des heures de travail quand `/var/run/reboot-required` existe (correctifs du noy
   « ATTENTION : deploy/mbc-deploy.sh diffère de la copie installée ». Après ce déploiement :
   `sudo install -m 755 /opt/mybestconsultant/repo/deploy/mbc-deploy.sh /usr/local/bin/mbc-deploy`.
 
+### Site Wise Associates
+
+Caddy sert aussi `wise-associates.fr` (blocs en fin de `deploy/caddy/Caddyfile`) : le conteneur `wise-site`, déployé
+par le dépôt TNP-Clone (son guide `docs/deploiement-vps.md`, son ADR 0003), sur le réseau Docker **interne**
+`wise-site`, que Caddy rejoint en plus de `mbc` (`deploy/compose.proxy.yml`). Le site n'atteint ainsi ni
+l'application ni Internet. `mbc-deploy` crée les deux réseaux s'ils manquent (serveur neuf ou reconstruit).
+
+**Mise en place, une fois, dans cet ordre** (la copie installée de `mbc-deploy` ne crée pas encore `wise-site`, et
+Docker refuse de démarrer ou de garder Caddy avec un réseau absent : le déploiement serait refusé, la version en ligne
+restant en place) :
+
+1. Sur le serveur, avant la mise en production qui apporte ces blocs (sans effet s'il existe déjà) :
+   `sudo docker network inspect wise-site > /dev/null 2>&1 || sudo docker network create --internal wise-site`.
+2. Mise en production (« Déployer en production »). Le journal signale que `mbc-deploy.sh` diffère de la copie
+   installée et que `compose.proxy.yml` a changé.
+3. `sudo install -m 755 /opt/mybestconsultant/repo/deploy/mbc-deploy.sh /usr/local/bin/mbc-deploy`.
+4. Hors des heures de travail : `sudo -u deploy mbc-deploy proxy` (Caddy recréé, coupure de quelques secondes).
+5. Vérifier :
+
+   ```bash
+   sudo docker inspect -f '{{range $n, $_ := .NetworkSettings.Networks}}{{$n}} {{end}}' mbc-caddy   # mbc wise-site
+   curl -sI https://www.mybestconsultant.fr | head -1                                               # HTTP/2 200
+   ```
+
+Tant que le DNS de `wise-associates.fr` pointe vers l'ancien hébergement, le journal de Caddy montre des échecs de
+certificat pour ces deux noms : c'est normal, et sans effet sur les certificats de MyBestConsultant. Tant que le
+conteneur `wise-site` n'existe pas, ce site répond 502, MyBestConsultant n'en est pas affecté.
+
 ### Surveillance
 
 Vercel signalait les pannes ; plus personne ne le fait. Mettez en place une sonde externe (UptimeRobot, Better Stack…)
@@ -478,7 +510,8 @@ sur `https://www.mybestconsultant.fr/logo.png` toutes les minutes, avec alerte p
 ### Sauvegarde
 
 Rien à sauvegarder sur le serveur hormis `app.env` (gestionnaire de mots de passe de l'équipe). Serveur perdu : un
-nouveau serveur, ce guide (parties 3 et 4, `VPS_HOST` et `VPS_SSH_KNOWN_HOSTS` à changer), Run workflow, DNS.
+nouveau serveur, ce guide (parties 3 et 4, `VPS_HOST` et `VPS_SSH_KNOWN_HOSTS` à changer), Run workflow, DNS. La veille
+et le site Wise Associates se réinstallent ensuite avec leurs propres guides.
 Les sauvegardes d'Appwrite restent celles de son serveur.
 
 ### Ce qui protège la production

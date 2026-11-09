@@ -5,6 +5,9 @@
 - Note : le numéro 0025 est pris par une décision non fusionnée (procédure de mise en production).
 - Mise à jour du 2026-11-05 : le déclenchement est remplacé par l'ADR 0025 (lancement à la main depuis `main`, `prod`
   avancée par le workflow, environnement `production` limité à `main`). Le reste de cet ADR est inchangé.
+- Mise à jour du 2026-11-09 : ce Caddy sert aussi `wise-associates.fr` (site du dépôt TNP-Clone, son ADR 0003), par
+  un réseau Docker interne `wise-site` qu'il est seul à partager avec ce site ; `mbc-deploy` crée ce réseau s'il
+  manque (guide, partie 9 « Site Wise Associates »).
 
 ## Contexte
 
