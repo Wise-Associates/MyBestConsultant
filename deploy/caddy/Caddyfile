@@ -30,13 +30,15 @@ www.mybestconsultant.fr {
 # pointe vers l'ancien hébergement, Caddy n'obtient pas ces certificats et réessaie seul (journal de mbc-caddy) ; cela
 # ne touche pas ceux de MyBestConsultant.
 
-# Adresse canonique : le domaine nu, comme sur l'hébergement précédent. www y redirige.
-www.wise-associates.fr {
+# Adresse canonique : www, comme MyBestConsultant (décision du 2026-11-09). Le domaine nu y redirige. L'hébergement
+# précédent faisait l'inverse : un navigateur qui avait gardé son ancienne redirection 301 (www vers le domaine nu)
+# tourne en boucle jusqu'à ce que son cache soit vidé ; risque accepté.
+wise-associates.fr {
 	header Strict-Transport-Security "max-age=31536000"
-	redir https://wise-associates.fr{uri} permanent
+	redir https://www.wise-associates.fr{uri} permanent
 }
 
-wise-associates.fr {
+www.wise-associates.fr {
 	# Sans includeSubDomains : irrbb. et les autres sous-domaines gardent leur propre réglage.
 	header Strict-Transport-Security "max-age=31536000"
 
