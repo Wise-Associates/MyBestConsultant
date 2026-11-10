@@ -1,4 +1,5 @@
 import type { Element } from '@xmldom/xmldom'
+import { maskContacts } from '../contact-mask'
 import { childW, childrenW, descendantsW, elements, isTabRun, isW, parseXml, readTemplate, runKey, runTabs, runText, textOf } from './render'
 
 // Inspection d'un modèle Word : portage de inspect_template.py (skill cv-esn-anonymise), lu par l'IA qui écrit la
@@ -56,21 +57,8 @@ export function paragraphSegments(p: Element): string[] {
 const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s)
 
 // L'inspection part chez l'IA : la cartographie n'a pas besoin des coordonnées (celles du commercial de l'ESN, ou d'un
-// candidat si le modèle est un vrai dossier). Un téléphone compte au moins 9 chiffres : « 2012 - 2014 » n'en est pas un.
-const EMAIL = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g
-const PHONE = /(?:\+|\b00)?\d[\d .()-]{7,}\d/g
-
-/** E-mails et numéros de téléphone (9 chiffres au moins) d'un texte. */
-export function contactsIn(text: string): string[] {
-  return [...(text.match(EMAIL) ?? []), ...(text.match(PHONE) ?? []).filter(m => m.replace(/\D/g, '').length >= 9)]
-}
-
-/** Texte sans e-mail ni numéro de téléphone (marqueurs expliqués à l'IA). */
-export function maskContacts(text: string): string {
-  return text
-    .replace(EMAIL, '‹e-mail masqué›')
-    .replace(PHONE, m => (m.replace(/\D/g, '').length >= 9 ? '‹téléphone masqué›' : m))
-}
+// candidat si le modèle est un vrai dossier).
+export { contactsIn, maskContacts } from '../contact-mask'
 
 function describeParagraph(p: Element): string {
   const style = W_VAL(childW(childW(p, 'pPr') ?? p, 'pStyle')) || '-'

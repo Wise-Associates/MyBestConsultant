@@ -331,8 +331,10 @@ async function compareWithNewOffers(user: UserProfile, tenantId: string, docId: 
   await assertVivierOfferMatchesReady()
   const refusal = await matchingSlot(user, tenantId)
   if (refusal) return refusal
-  const { scoreCvAgainstOffers } = await import('@/lib/matching-core')
-  const { scores, failed } = await scoreCvAgainstOffers(profile, toCompare.map(j => ({
+  // Le texte du CV, comme toute notation (ADR 0029) ; le profil extrait seulement sans texte à lire.
+  const { scoreCvAgainstOffers, vivierCvText } = await import('@/lib/matching-core')
+  const cvText = await vivierCvText(doc.cvFileId as string | undefined, profile)
+  const { scores, failed } = await scoreCvAgainstOffers(cvText, toCompare.map(j => ({
     $id: j.$id, title: j.title ?? '', skills: j.skills, location: j.location ?? '', description: j.description ?? '',
   })))
 

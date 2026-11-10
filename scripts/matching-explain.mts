@@ -1,6 +1,7 @@
 #!/usr/bin/env -S npx tsx
-// Explique la note d'un CV pour une offre (Matching IA, ADR 0028), SANS RIEN ÉCRIRE : lit l'offre et le CV, les fait
-// juger par l'IA du « Matching IA » de Config IA avec exactement le code de l'application (cvScorer, sourcing-core.ts),
+// Explique la note d'un CV pour une offre (Matching IA, ADR 0028 et 0029), SANS RIEN ÉCRIRE : lit l'offre et le CV, les
+// fait juger par l'IA du « Matching IA » de Config IA avec exactement le code de l'application (cvScorer, sourcing-core.ts :
+// la notation des candidatures, de la base candidats et du vivier de l'offre),
 // puis affiche les jugements, leurs preuves, le score calculé et son plafond, à côté du score enregistré aujourd'hui.
 // Sert à vérifier un score contesté avant de le recalculer sur la page.
 //   npm run matching:explain -- .env.dev --job <id de l'offre> --cv <id du fichier CV>
@@ -55,7 +56,7 @@ Object.assign(process.env, env)
 const { Query } = await import('node-appwrite')
 const { createAdminClient } = await import('../src/lib/appwrite/client')
 const { DB_ID, COLLECTIONS } = await import('../src/lib/appwrite/config')
-const { CV_CHARS_FOR_SCORING, cvScorer, extractCVText } = await import('../src/lib/sourcing-core')
+const { cvScorer, readCvForScoring } = await import('../src/lib/sourcing-core')
 const { capFor } = await import('../src/lib/match-scoring')
 
 const { databases } = createAdminClient()
@@ -66,8 +67,8 @@ try {
   console.error(`Offre ${jobId} illisible : ${(err as Error).message}`)
   process.exit(1)
 }
-const cvText = await extractCVText(cvFileId, CV_CHARS_FOR_SCORING)
-if (cvText.length <= 30) {
+const cvText = await readCvForScoring(cvFileId)
+if (!cvText) {
   console.error(`CV ${cvFileId} illisible (fichier introuvable, scanné ou vide) : rien à noter.`)
   process.exit(1)
 }
@@ -120,3 +121,4 @@ console.log(`Domaine : ${j.domain} · Niveau : ${j.level}`)
 const cap = capFor(j)
 console.log(`\nScore calculé : ${result.score}${cap < 100 ? ` (plafond ${cap})` : ''}`)
 console.log(`Raison affichée : ${result.reason}`)
+console.log('Recommandations reçues par le candidat sur les expertises de l\'offre : bonus ajouté au score affiché (non calculé ici).')

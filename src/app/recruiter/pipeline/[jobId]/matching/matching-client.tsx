@@ -117,7 +117,8 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
     setRunning(prev => new Set(prev).add(m.applicationId!))
     const res = await runApplicationMatchingAction(jobId, m.applicationId)
     if (res.matches) setMatches(res.matches)
-    else if (res.error) setFlash(res.error)
+    // Liste à jour et analyse sans score (CV sans texte, IA indisponible) : la raison est affichée.
+    if (res.error) setFlash(res.error)
     setRunning(prev => { const n = new Set(prev); n.delete(m.applicationId!); return n })
   }
 

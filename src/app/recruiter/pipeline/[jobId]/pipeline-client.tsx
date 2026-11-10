@@ -1330,7 +1330,7 @@ export function PipelineClient({
                   onDragOver={e => { e.preventDefault(); setDragOverStage(stage.slug) }}
                   onDragLeave={() => setDragOverStage(prev => (prev === stage.slug ? null : prev))}
                   onDrop={() => handleDrop(stage.slug)}
-                  className="hidden min-[90rem]:flex shrink-0 w-9 flex-col items-center gap-2.5 py-3 rounded-2xl cursor-pointer max-h-[calc(100vh-220px)] focus-visible:outline-2 focus-visible:outline-(--color-text)"
+                  className="hidden min-[90rem]:flex shrink-0 w-11 flex-col items-center gap-2.5 py-3 rounded-2xl cursor-pointer max-h-[calc(100vh-220px)] focus-visible:outline-2 focus-visible:outline-(--color-text)"
                   style={{ background: isOver ? `${stage.color}14` : '#F5F3EE', border: `1px dashed ${isOver ? stage.color : 'rgba(0,0,0,0.14)'}`, color: 'var(--color-text-muted)', minHeight: 320 }}>
                   <span aria-hidden className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: stage.color }} />
                   <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(0,0,0,0.06)' }}>0</span>

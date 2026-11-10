@@ -6,22 +6,19 @@
 import { displayEmail } from '@/lib/candidate-identity'
 import { callLLM } from '@/lib/ai/llm-router'
 import { createAdminClient } from '@/lib/appwrite/client'
-import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
+import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
 import type { CvProfile } from '@/lib/cv-profile-extract'
 import {
   VIVIER_MATCHING_SYSTEM, offerBatches, parseVivierMatching, profileForAi, vivierMatchingPrompt, vivierScore,
   type OfferScore, type OfferToScore, type ProfileToScore,
 } from '@/lib/vivier-matching'
-import {
-  MATCH_RULES, criteriaBlock, criteriaCounts, judgedScore, judgementFields, judgementSummary, offerCriteria, offerTextForAi, parseJudgements,
-  withBonus,
-} from '@/lib/match-scoring'
+import { expertiseBoost, withRecommendationBonus } from '@/lib/recommendation-boost'
 import { listAllByValues, listAllDocuments } from '@/lib/appwrite/list-all'
 import { listVivierOfferMatches } from '@/lib/appwrite/vivier-offer-matches'
 import { planPoolRows, poolRowId } from '@/lib/pool-matching'
 import { withCheckedTitles } from '@/lib/title-check'
-import type { MatchResult } from '@/lib/sourcing-core'
+import { SCORING_AI, cvScorer, readCvForScoring, type MatchResult } from '@/lib/sourcing-core'
 
 export interface JobMatchResult {
   source: 'pool' | 'vivier' | 'application'
@@ -126,43 +123,42 @@ export async function runPoolMatching(
   }
 }
 
-// Population 2 — scores a single vivier CV against a job right after it's uploaded, using
-// the profile already extracted at upload time (no need to re-download/re-parse the file).
+/**
+ * Texte d'un CV du vivier tel que la notation le lit (ADR 0029) : le fichier, comme pour une candidature et la base
+ * candidats (readCvForScoring) ; le profil extrait seulement s'il n'y a pas de fichier (profil ajouté depuis MBC Search)
+ * ou si le fichier n'a pas de texte (PDF scanné, lu par l'IA à l'import). '' : rien à noter. Fichier illisible
+ * (stockage injoignable, fichier abîmé) : lève — le CV n'est pas noté sur un autre texte que le sien.
+ */
+export async function vivierCvText(cvFileId: string | null | undefined, profile: ProfileToScore | null): Promise<string> {
+  const fromFile = cvFileId ? await readCvForScoring(cvFileId, BUCKETS.VIVIER_CVS) : ''
+  return fromFile || (profile ? profileForAi(profile) : '')
+}
+
+// Population 2 — scores a single vivier CV against a job right after it's uploaded, with the scoring used for
+// applications and the candidate database (cvScorer, ADR 0029).
 export async function matchVivierCvAgainstJob(jobId: string, vivierCvId: string, profile: CvProfile): Promise<void> {
   try {
     const { databases } = createAdminClient()
-    const job = await databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId)
-
-    const criteria = offerCriteria((job.skills as string[]) ?? [], (job.description as string) ?? '')
-    const SYSTEM = `Tu es un expert en sourcing de candidats. On te donne une offre d'emploi et le profil extrait d'un CV. Évalue ce candidat pour ce poste.
-Réponds UNIQUEMENT avec un JSON valide, sans markdown : {${judgementFields(criteriaCounts(criteria))},"raison":"une phrase"}
-
-${MATCH_RULES}`
-    // Parcours avec employeurs et missions (pas seulement les compétences) et profil recherché d'abord : sans eux, l'IA
-    // ne pouvait pas voir qu'un domaine exigé manquait (match-scoring.ts).
-    const userMsg = `=== OFFRE ===\nPoste : ${job.title}\n${criteriaBlock(criteria)}\nDescription : ${offerTextForAi((job.description as string) ?? '', 4000)}\n\n=== PROFIL CANDIDAT ===\n${profileForAi(profile)}`
-
-    // Une preuve par élément jugé : réponse plus longue qu'une note (et la réflexion du modèle compte dans la limite).
-    const { content } = await callLLM([{ role: 'user', content: userMsg }], SYSTEM, { module: 'matching', maxTokens: 8000 })
-    const jsonMatch = content.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      console.error('[matching] réponse de l\'IA illisible pour un CV du vivier de l\'offre', jobId, vivierCvId)
+    const [job, doc] = await Promise.all([
+      databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId),
+      databases.getDocument(DB_ID, COLLECTIONS.VIVIER_CVS, vivierCvId),
+    ])
+    const cvText = await vivierCvText(doc.cvFileId as string | undefined, profile)
+    if (!cvText) {
+      console.error('[matching] CV du vivier de l\'offre sans texte à noter', jobId, vivierCvId)
       return
     }
-
-    const parsed = JSON.parse(jsonMatch[0])
-    // Score calculé par le code à partir des jugements de l'IA (match-scoring.ts) ; réponse sans jugement : CV non noté.
-    // Jugements vérifiés dans le profil que l'IA a lu (citations, intitulés), métiers du titre confirmés (title-check.ts).
-    const parsedJudgements = parseJudgements(parsed, criteria, profileForAi(profile))
-    const [judgements] = parsedJudgements ? await withCheckedTitles([parsedJudgements]) : [null]
-    if (!judgements) {
+    const scored = await cvScorer({
+      title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? ''),
+    })(cvText)
+    // Réponse sans jugement : CV non noté (jamais un score inventé).
+    if (!scored) {
       console.error('[matching] réponse de l\'IA sans jugement lisible pour un CV du vivier de l\'offre', jobId, vivierCvId)
       return
     }
-    const said = typeof parsed.raison === 'string' && parsed.raison.trim() ? ` — ${parsed.raison.trim()}` : ''
     await databases.updateDocument(DB_ID, COLLECTIONS.VIVIER_CVS, vivierCvId, {
-      matchScore: judgedScore(judgements),
-      matchReason: `${judgementSummary(judgements)}${said}`.slice(0, 500),
+      matchScore: scored.score,
+      matchReason: scored.reason.slice(0, 500),
     })
   } catch (e) {
     // best-effort — a vivier CV stays usable (unscored) even if matching fails
@@ -171,18 +167,18 @@ ${MATCH_RULES}`
 }
 
 /**
- * Vivier général : note un CV de 0 à 100 pour chacune des `offers`, par lots envoyés en parallèle, avec le modèle du
- * Matching IA de Config IA, ou Claude s'il n'y en a pas (repli habituel s'il échoue). Un lot en échec laisse ses offres
- * non comparées (elles le seront à la synchronisation suivante) et donne `failed`, détaillé dans les journaux seulement.
+ * Vivier général : note un CV de 0 à 100 pour chacune des `offers`, par lots envoyés en parallèle, avec le modèle de
+ * toute notation (SCORING_AI) et le texte du CV (`cvText` : vivierCvText). Un lot en échec laisse ses offres non comparées
+ * (elles le seront à la synchronisation suivante) et donne `failed`, détaillé dans les journaux seulement.
  */
-export async function scoreCvAgainstOffers(profile: ProfileToScore, offers: OfferToScore[]): Promise<{ scores: OfferScore[]; failed: boolean }> {
+export async function scoreCvAgainstOffers(cvText: string, offers: OfferToScore[]): Promise<{ scores: OfferScore[]; failed: boolean }> {
   const batches = await Promise.all(offerBatches(offers).map(async batch => {
     try {
-      const { content } = await callLLM([{ role: 'user', content: vivierMatchingPrompt(profile, batch) }], VIVIER_MATCHING_SYSTEM, {
+      const { content } = await callLLM([{ role: 'user', content: vivierMatchingPrompt(cvText, batch) }], VIVIER_MATCHING_SYSTEM, {
         // 5 offres, une preuve par élément jugé de chacune : réponse plus longue qu'une note par offre.
-        module: 'matching', moduleDefault: 'claude', maxTokens: 8000, timeoutMs: 120_000,
+        ...SCORING_AI, maxTokens: 8000, timeoutMs: 120_000,
       })
-      const judged = parseVivierMatching(content, batch, profileForAi(profile))
+      const judged = parseVivierMatching(content, batch, cvText)
       if (!judged) {
         console.error('Vivier : réponse de l\'IA illisible pour la comparaison CV / offres')
         return null
@@ -271,23 +267,21 @@ export async function getJobMatches(
   )
 
   // Recommandations : plus un candidat est recommandé sur une expertise demandée par l'offre, plus son score monte (plafonné).
-  const [{ getSubmittedRecommendationsFor }, { expertiseBoost, formatMatched }] = await Promise.all([
-    import('@/lib/appwrite/recommendations'), import('@/lib/recommendation-boost'),
-  ])
+  const { getSubmittedRecommendationsFor } = await import('@/lib/appwrite/recommendations')
   const jobText = jobDoc ? `${jobDoc.title ?? ''} ${((jobDoc.skills as string[]) ?? []).join(' ')} ${jobDoc.description ?? ''}` : ''
   const recsByCandidate = await getSubmittedRecommendationsFor(poolDocs.map(d => d.candidateId as string))
 
   const poolMatches: JobMatchResult[] = poolDocs.map(d => {
     const info = usersMap.get(d.candidateId as string)
-    const boost = expertiseBoost(recsByCandidate.get(d.candidateId as string) ?? [], jobText)
-    const base = d.score as number
+    const recs = recsByCandidate.get(d.candidateId as string) ?? []
+    // Même règle que le screening d'une candidature (withRecommendationBonus) : rapproche du seuil « correspond » un
+    // candidat noté en dessous, sans le lui faire passer.
+    const { score, reason, points } = withRecommendationBonus(d.score as number, (d.reason as string) ?? '', recs, jobText)
     return {
       source: 'pool', id: d.$id, candidateId: d.candidateId as string,
       name: info?.name || 'Candidat', email: info?.email ?? '',
-      // Les recommandations rapprochent du seuil « correspond » un candidat noté en dessous, sans le lui faire passer.
-      score: withBonus(base, boost.points),
-      reason: `${(d.reason as string) ?? ''}${boost.points > 0 ? ` — Recommandé sur : ${formatMatched(boost.matched)} (+${boost.points} pts)` : ''}`,
-      recommendation: boost.points > 0 ? boost : undefined,
+      score, reason,
+      recommendation: points > 0 ? expertiseBoost(recs, jobText) : undefined,
       cvFileId: info?.cvFileId, cvBucket: 'cvs',
       alreadyInFunnel: applicantCandidateIds.has(d.candidateId as string),
       matchedAt: d.$createdAt,
