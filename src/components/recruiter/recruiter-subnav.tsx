@@ -34,7 +34,7 @@ export function RecruiterSubnav() {
     <nav aria-label="Rubriques de l’espace recruteur" className="relative z-30"
       style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)' }}>
       {/* Largeur de la barre du site (max-w-7xl) : en 6xl, les 9 rubriques débordaient et « Entretiens IA » était coupé.
-          Pages en pleine largeur à partir de 1440 px (isWideRecruiterPage) : alignée sur leur contenu. */}
+          Pipeline et Matching IA d'une offre à partir de 1440 px (isWideRecruiterPage) : alignée sur leur contenu. */}
       <div className={`max-w-7xl mx-auto px-4 sm:px-6 ${isWideRecruiterPage(pathname) ? 'min-[90rem]:max-w-[1920px] min-[90rem]:px-8' : ''}`}>
         {/* Grand écran : une ligne d'onglets. */}
         <ul className="hidden lg:flex items-stretch gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>

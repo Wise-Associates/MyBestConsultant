@@ -41,10 +41,10 @@ export function recruiterSectionOf(pathname: string): RecruiterSectionKey | null
 }
 
 /**
- * Pages de l'espace recruteur en pleine largeur à partir de 1440 px (jusqu'à 1920 px) : le sous-menu (RecruiterSubnav)
- * s'aligne sur elles, sinon ses onglets restaient centrés au-dessus d'un contenu qui part du bord (2026-11-10). À tenir
- * à jour avec les pages : tableau de bord (dashboard/page.tsx), pipeline et Matching IA d'une offre.
+ * Pages de l'espace recruteur dont le sous-menu (RecruiterSubnav) s'élargit à partir de 1440 px (jusqu'à 1920 px) pour
+ * s'aligner sur leur contenu en pleine largeur (2026-11-10) : pipeline et Matching IA d'une offre. Le tableau de bord,
+ * lui aussi en pleine largeur, garde le sous-menu centré (demande du 2026-11-10, comme l'espace chasseur).
  */
 export function isWideRecruiterPage(pathname: string): boolean {
-  return pathname === '/recruiter/dashboard' || /^\/recruiter\/pipeline\/[^/]+(\/matching)?$/.test(pathname)
+  return /^\/recruiter\/pipeline\/[^/]+(\/matching)?$/.test(pathname)
 }
