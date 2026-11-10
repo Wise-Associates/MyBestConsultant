@@ -9,7 +9,7 @@ export default async function HunterVivierPage() {
   if (!user || user.role !== 'hunter') redirect('/login')
   const profiles = await listHunterProfiles(user.userId)
   return (
-    <HunterShell title="Mon vivier" subtitle="Tous les CV et profils dont vous disposez, prêts à être proposés">
+    <HunterShell title="Mon vivier">
       <VivierClient initial={profiles} />
     </HunterShell>
   )

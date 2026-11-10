@@ -4,6 +4,7 @@ import { SiteNavbar } from '@/components/shared/site-navbar'
 import { SiteFooter } from '@/components/shared/site-footer'
 import { LoadingProvider } from '@/components/shared/loading-provider'
 import { VerifyEmailBanner } from '@/components/shared/verify-email-banner'
+import { HunterSubnav } from './hunter-shell'
 
 export default async function HunterLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser()
@@ -16,7 +17,11 @@ export default async function HunterLayout({ children }: { children: React.React
           un vide noir fantôme sous la barre. */}
       <SiteNavbar />
       <VerifyEmailBanner verified={user.emailVerification} />
-      <main className="mbc-app">{children}</main>
+      <main className="mbc-app">
+        {/* Rubriques de l'espace chasseur, sur toutes ses pages (comme le sous-menu de l'espace recruteur). */}
+        <HunterSubnav />
+        {children}
+      </main>
       <SiteFooter />
     </LoadingProvider>
   )

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { RECRUITER_SECTIONS, recruiterSectionOf } from './recruiter-nav'
+import { RECRUITER_SECTIONS, isWideRecruiterPage, recruiterSectionOf } from './recruiter-nav'
 
 describe('sous-menu de l\'espace recruteur', () => {
   it('garde les rubriques dans l\'ordre demandé', () => {
@@ -31,5 +31,19 @@ describe('sous-menu de l\'espace recruteur', () => {
     assert.equal(recruiterSectionOf('/recruiter/viviers'), null)
     assert.equal(recruiterSectionOf('/recruiter/support'), null)
     assert.equal(recruiterSectionOf('/recruiter/parametres'), null)
+  })
+})
+
+describe('pages en pleine largeur à partir de 1440 px (le sous-menu s\'aligne sur elles)', () => {
+  it('tableau de bord, pipeline et Matching IA d\'une offre', () => {
+    assert.equal(isWideRecruiterPage('/recruiter/dashboard'), true)
+    assert.equal(isWideRecruiterPage('/recruiter/pipeline/ao123'), true)
+    assert.equal(isWideRecruiterPage('/recruiter/pipeline/ao123/matching'), true)
+  })
+
+  it('les autres pages gardent leur largeur', () => {
+    for (const path of ['/recruiter/vivier', '/recruiter/pipeline', '/recruiter/dashboardx', '/recruiter/funnel', '/recruiter/candidates/a1']) {
+      assert.equal(isWideRecruiterPage(path), false, path)
+    }
   })
 })

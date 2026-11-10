@@ -39,3 +39,12 @@ export function recruiterSectionOf(pathname: string): RecruiterSectionKey | null
   const path = pathname.replace(/\/+$/, '') || '/'
   return RECRUITER_SECTIONS.find(section => [section.href, ...section.also].some(base => isUnder(path, base)))?.key ?? null
 }
+
+/**
+ * Pages de l'espace recruteur en pleine largeur à partir de 1440 px (jusqu'à 1920 px) : le sous-menu (RecruiterSubnav)
+ * s'aligne sur elles, sinon ses onglets restaient centrés au-dessus d'un contenu qui part du bord (2026-11-10). À tenir
+ * à jour avec les pages : tableau de bord (dashboard/page.tsx), pipeline et Matching IA d'une offre.
+ */
+export function isWideRecruiterPage(pathname: string): boolean {
+  return pathname === '/recruiter/dashboard' || /^\/recruiter\/pipeline\/[^/]+(\/matching)?$/.test(pathname)
+}
