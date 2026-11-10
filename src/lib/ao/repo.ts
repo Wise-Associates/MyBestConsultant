@@ -357,14 +357,16 @@ async function mirrorAoOfferIndex(offerId: string, patch: Partial<Pick<AoOfferIn
 /**
  * Enregistre les détails d'une offre (document de même identifiant ; mis à jour s'il existe déjà). Le canal n'est écrit
  * que pour la veille : absent, l'offre vient d'un e-mail (et les e-mails ordinaires n'exigent pas l'attribut `channel`).
- * Contact et lien d'origine : écrits seulement s'ils existent (même raison).
+ * Contact, lien d'origine et source de la veille : écrits seulement s'ils existent (même raison).
  */
-export async function saveAoOfferDetails(offerId: string, details: AoOfferDetails, channel?: AoChannel): Promise<void> {
+export async function saveAoOfferDetails(offerId: string, details: AoOfferDetails, channel?: AoChannel, veilleSource = ''): Promise<void> {
   const { databases } = createAdminClient()
   const data = {
     engagement: details.engagement,
     technologies: details.technologies,
     ...(channel === 'scraping' ? { channel } : {}),
+    // Source de la veille (suivi des sources, ADR 0030) : seulement pour la veille, comme le canal.
+    ...(channel === 'scraping' && veilleSource ? { veilleSource } : {}),
     ...(contactJson(offerId, details.contact)),
     ...(details.sourceUrl ? { sourceUrl: details.sourceUrl } : {}),
   }
@@ -421,9 +423,9 @@ export async function saveAoOfferSourcing(offerId: string, record: AoSourcingRec
  * Détails des offres `offerIds` (absents : offre reçue avant ces détails, ou e-mail sans assistance / forfait ni
  * technologie). Canal absent ou inconnu : e-mail.
  */
-export async function listAoOfferDetails(offerIds: string[]): Promise<Map<string, AoOfferDetails & { channel: AoChannel }>> {
+export async function listAoOfferDetails(offerIds: string[]): Promise<Map<string, AoOfferDetails & { channel: AoChannel; veilleSource: string }>> {
   const { databases } = createAdminClient()
-  const map = new Map<string, AoOfferDetails & { channel: AoChannel }>()
+  const map = new Map<string, AoOfferDetails & { channel: AoChannel; veilleSource: string }>()
   // Lots lus en parallèle : chaque appel à Appwrite coûte un aller-retour réseau.
   const pages = await Promise.all(batchByLength([...new Set(offerIds.filter(Boolean))]).map(batch =>
     databases.listDocuments(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, [Query.equal('$id', batch), Query.limit(batch.length)])))
@@ -432,6 +434,7 @@ export async function listAoOfferDetails(offerIds: string[]): Promise<Map<string
       engagement: engagementOf(str(doc.engagement)),
       technologies: Array.isArray(doc.technologies) ? (doc.technologies as string[]) : [],
       channel: doc.channel === 'scraping' ? 'scraping' : 'email',
+      veilleSource: str(doc.veilleSource),
       contact: storedContact(str(doc.contact), doc.$id),
       sourceUrl: str(doc.sourceUrl),
     })
@@ -545,6 +548,7 @@ async function aoOfferRowsOf(offers: AoOffer[], tenantId: string): Promise<AoOff
       subject: email?.subject ?? '',
       receivedAt: email?.receivedAt ?? offer.createdAt,
       channel: details.get(offer.$id)?.channel ?? 'email',
+      veilleSource: details.get(offer.$id)?.veilleSource ?? '',
     }
   })
 }

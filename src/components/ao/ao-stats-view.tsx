@@ -18,9 +18,11 @@ interface Props {
   now: Date
   /** Espace admin : retour, titre et sous-titre dans la barre du haut du layout (AdminPageHeader). */
   titleInAdminBar?: boolean
+  /** Sections propres à l'espace, après les statistiques (plateforme : suivi des sources de la veille). */
+  children?: React.ReactNode
 }
 
-export function AoStatsView({ rows, loadError, back, scope, now, titleInAdminBar }: Props) {
+export function AoStatsView({ rows, loadError, back, scope, now, titleInAdminBar, children }: Props) {
   const months = offersByMonth(rows, now)
   const lastYear = months.reduce((sum, m) => sum + m.published + m.to_review + m.ignored, 0)
   const published = rows.filter(r => r.status === 'published').length
@@ -88,6 +90,7 @@ export function AoStatsView({ rows, loadError, back, scope, now, titleInAdminBar
           </div>
         </>
       )}
+      {children}
     </div>
   )
 }

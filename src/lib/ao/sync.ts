@@ -441,11 +441,12 @@ async function processEnvelope(
         ? { engagement: offer.engagement, technologies: offer.technologies, contact: offer.contact, sourceUrl: offer.sourceUrl }
         : null
       const channel = scraping ? 'scraping' : 'email'
+      const veilleSource = scraping ? (message.veilleSource ?? '') : ''
       // Créée par un essai interrompu de ce même e-mail : c'est la sienne, pas un doublon (ses détails ont pu manquer).
       // Vérifié avant l'échéance : une reprise le lendemain de la date limite complète l'offre déjà créée.
       if (duplicate?.emailId === emailId) {
         await saveAoOfferIndex(duplicate, indexContext)
-        if (details) await saveAoOfferDetails(duplicate.$id, details, channel)
+        if (details) await saveAoOfferDetails(duplicate.$id, details, channel, veilleSource)
         created++
         continue
       }
@@ -470,7 +471,7 @@ async function processEnvelope(
           })
           throw err
         }
-        if (details) await saveAoOfferDetails(saved.$id, details, channel)
+        if (details) await saveAoOfferDetails(saved.$id, details, channel, veilleSource)
         created++
       }
     }
