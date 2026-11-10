@@ -34,15 +34,14 @@ describe('sous-menu de l\'espace recruteur', () => {
   })
 })
 
-describe('pages en pleine largeur à partir de 1440 px (le sous-menu s\'aligne sur elles)', () => {
-  it('tableau de bord, pipeline et Matching IA d\'une offre', () => {
-    assert.equal(isWideRecruiterPage('/recruiter/dashboard'), true)
+describe('pages dont le sous-menu s\'élargit à partir de 1440 px', () => {
+  it('pipeline et Matching IA d\'une offre', () => {
     assert.equal(isWideRecruiterPage('/recruiter/pipeline/ao123'), true)
     assert.equal(isWideRecruiterPage('/recruiter/pipeline/ao123/matching'), true)
   })
 
-  it('les autres pages gardent leur largeur', () => {
-    for (const path of ['/recruiter/vivier', '/recruiter/pipeline', '/recruiter/dashboardx', '/recruiter/funnel', '/recruiter/candidates/a1']) {
+  it('les autres pages gardent le sous-menu centré, tableau de bord compris', () => {
+    for (const path of ['/recruiter/dashboard', '/recruiter/vivier', '/recruiter/pipeline', '/recruiter/dashboardx', '/recruiter/funnel', '/recruiter/candidates/a1']) {
       assert.equal(isWideRecruiterPage(path), false, path)
     }
   })
