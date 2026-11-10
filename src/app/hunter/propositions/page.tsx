@@ -11,7 +11,7 @@ export default async function HunterProposalsPage() {
   const proposals = await listProposals(user.userId)
 
   return (
-    <HunterShell title="Mes propositions" subtitle="Où en sont les profils que vous avez proposés">
+    <HunterShell title="Mes propositions">
       {proposals.length === 0 ? (
         <div className="rounded-3xl p-12 text-center" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
           <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Vous n’avez encore proposé aucun profil.</p>

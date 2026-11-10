@@ -27,7 +27,7 @@ export default async function HunterProposePage({ params }: { params: Promise<{ 
   }).sort((a, b) => b.score - a.score)
 
   return (
-    <HunterShell title={job.title} subtitle={`${job.companyName ? `${job.companyName} · ` : ''}${job.location}`}>
+    <HunterShell title={job.title}>
       <ProposeClient
         job={{ id: job.$id, title: job.title, company: job.companyName ?? '', location: job.location, skills: job.skills, description: job.description.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 700) }}
         profiles={rows} hunterName={`${user.firstName} ${user.lastName}`.trim()}

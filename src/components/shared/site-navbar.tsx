@@ -5,9 +5,9 @@ import { countUnreadForUser } from '@/lib/support'
 import type { UserRole } from '@/types'
 
 const NAV_BY_ROLE: Record<UserRole, { label: string; href: string }[]> = {
+  // « Mon vivier » est dans les rubriques de l'espace chasseur (HunterSubnav), plus dans la barre (2026-11-10).
   hunter: [
     { label: 'Offres', href: '/jobs' },
-    { label: 'Mon vivier', href: '/hunter/vivier' },
     { label: 'Mon espace', href: '/hunter/dashboard' },
   ],
   candidate: [

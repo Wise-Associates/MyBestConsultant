@@ -28,7 +28,7 @@ export default async function HunterOffersPage() {
   })
 
   return (
-    <HunterShell title="Offres" subtitle="Toutes les offres ouvertes — proposez-y les profils de votre vivier">
+    <HunterShell title="Offres">
       <OffersClient rows={rows} hasProfiles={usable.length > 0} />
     </HunterShell>
   )
