@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { ImapFlow } from 'imapflow'
 import { simpleParser } from 'mailparser'
 import { IMAP_TLS_PORT, type ImapEndpoint } from './imap-host'
+import { veilleSourceOf } from '@/lib/veille/run-report'
 
 // Accès à une boîte d'appels d'offres (sources.ts : la nôtre, ao@wise-associates.fr, ou celle d'une organisation) en
 // IMAP sur TLS, à l'adresse vérifiée par imap-host.ts.
@@ -39,6 +40,11 @@ export interface InboxMessage {
   attachments: InboxAttachment[]
   /** En-tête « X-Wise-Veille: scraping » : offre relevée par la veille des sites publics (à confirmer par fromVeille). */
   scraping: boolean
+  /**
+   * En-tête « X-Wise-Veille-Source » : source de l'offre dans la veille (`boamp`, `csp-dgfip`…), '' sinon ; lu seulement
+   * pour un e-mail reconnu par fromVeille (suivi des sources, ADR 0030).
+   */
+  veilleSource?: string
 }
 
 // Les listes ne téléchargent que l'enveloppe de chaque message (Message-ID, taille, date) ; le contenu
@@ -166,6 +172,7 @@ async function openAndWork<T>(client: ImapFlow, settings: AoInboxSettings, work:
               .filter(a => !a.related)
               .map(a => ({ filename: a.filename || 'piece-jointe', contentType: a.contentType || '', content: a.content })),
             scraping: String(mail.headers.get('x-wise-veille') ?? '').trim().toLowerCase() === 'scraping',
+            veilleSource: veilleSourceOf(mail.headers.get('x-wise-veille-source')),
           }
         },
       })

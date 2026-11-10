@@ -3616,6 +3616,15 @@
                     "size": 36,
                     "default": null,
                     "encrypt": false
+                },
+                {
+                    "key": "veilleSource",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 50,
+                    "default": null,
+                    "encrypt": false
                 }
             ],
             "indexes": []
@@ -4519,6 +4528,44 @@
                     "status": "available",
                     "attributes": [
                         "userId"
+                    ],
+                    "orders": []
+                }
+            ]
+        },
+        {
+            "$id": "veille_runs",
+            "$permissions": [],
+            "databaseId": "bestconsultant-dev",
+            "name": "Veille runs",
+            "enabled": true,
+            "documentSecurity": false,
+            "attributes": [
+                {
+                    "key": "startedAt",
+                    "type": "datetime",
+                    "required": true,
+                    "array": false,
+                    "format": "",
+                    "default": null
+                },
+                {
+                    "key": "report",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 100000,
+                    "default": null,
+                    "encrypt": false
+                }
+            ],
+            "indexes": [
+                {
+                    "key": "startedAt_key",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "startedAt"
                     ],
                     "orders": []
                 }

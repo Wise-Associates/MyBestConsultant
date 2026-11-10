@@ -20,6 +20,8 @@ export interface AoOfferRow extends AoOffer, AoOfferDetails {
   receivedAt: string
   /** Canal d'arrivée (colonne « Source » de la page). */
   channel: AoChannel
+  /** Source de la veille qui a apporté l'offre (`boamp`, `csp-dgfip`…) ; '' pour un e-mail ou une offre d'avant le suivi. */
+  veilleSource: string
 }
 
 /** Libellé du canal d'arrivée, dans la colonne « Source » et le panneau de détail. */
