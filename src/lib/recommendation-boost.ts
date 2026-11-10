@@ -1,5 +1,9 @@
 // Recommandations et matching : plus un candidat est recommandé sur une expertise que l'offre demande, plus son score monte.
-// Pur (aucun accès base) : partagé par le screening, la page Matching et l'affichage.
+// Pur (aucun accès base) : partagé par le screening, la page Matching et l'affichage. Une seule règle depuis le 2026-11-10
+// (ADR 0029) : ce bonus, pour les candidatures comme pour la base candidats. Le mélange avec la note en étoiles
+// (« Pondération IA », /admin/scoring), qui pouvait baisser le score d'une candidature seulement, est retiré.
+
+import { withBonus } from './match-scoring'
 
 export const RELATIONSHIPS = [
   { value: 'manager', label: 'Responsable hiérarchique (N+1, N+2…)' },
@@ -44,3 +48,16 @@ export function expertiseBoost(recs: { endorsedExpertises?: string[] }[], jobTex
 }
 
 export const formatMatched = (matched: ExpertiseCount[]) => matched.map(m => `${m.expertise} ×${m.count}`).join(', ')
+
+/**
+ * Score d'un candidat avec le bonus de ses recommandations sur les expertises de l'offre, et la raison qui le dit : la
+ * même règle pour une candidature (enregistrée par le screening) et pour la base candidats (appliquée par le Matching IA).
+ * Ne baisse jamais un score et ne fait pas passer le seuil « correspond » (withBonus).
+ */
+export function withRecommendationBonus(
+  score: number, reason: string, recs: { endorsedExpertises?: string[] }[], jobText: string,
+): { score: number; reason: string; points: number } {
+  const { points, matched } = expertiseBoost(recs, jobText)
+  if (points === 0) return { score, reason, points }
+  return { score: withBonus(score, points), reason: `${reason} — Recommandé sur : ${formatMatched(matched)} (+${points} pts)`, points }
+}

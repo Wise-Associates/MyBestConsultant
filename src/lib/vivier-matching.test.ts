@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   MAX_OFFERS_PER_RUN, OFFERS_PER_CALL, VIVIER_MATCH_MIN_SCORE, matchingOffers, mergeOfferScores, newOffersFor,
   VIVIER_MATCHING_SYSTEM, offerBatches, offersToCompare, parseOfferScores, parseVivierMatching, serializeOfferScores,
-  vivierMatchingPrompt, vivierScore, type OfferScore, type OfferToScore,
+  profileForAi, vivierMatchingPrompt, vivierScore, type OfferScore, type OfferToScore,
 } from './vivier-matching'
 
 const offer = (id: string): OfferToScore => ({ $id: id, title: `Offre ${id}`, skills: ['Java'], location: 'Lyon', description: 'Mission fictive.' })
@@ -110,30 +110,40 @@ describe('vivier général : réponse de l\'IA', () => {
     assert.equal(parseVivierMatching('[{"offre": 1, domaine: "oui"]', offers, cv), null)
   })
 
-  it('borne la taille du message même pour des offres saisies sans limite', () => {
+  it('borne la taille du message même pour des offres et un CV saisis sans limite', () => {
     const hostile: OfferToScore = { $id: 'h', title: 'T'.repeat(5000), skills: Array.from({ length: 500 }, () => 'S'.repeat(100)), location: 'L'.repeat(5000), description: 'D'.repeat(50_000) }
-    const profile = { skills: Array.from({ length: 500 }, () => 'K'.repeat(100)), experienceSummary: 'E'.repeat(50_000), experiences: Array.from({ length: 50 }, () => ({ title: 'P'.repeat(5000) })), yearsOfExperience: 3, languages: Array.from({ length: 50 }, () => ({ name: 'N'.repeat(500), level: 'C1' })) }
-    const prompt = vivierMatchingPrompt(profile, Array.from({ length: OFFERS_PER_CALL }, () => hostile))
+    const prompt = vivierMatchingPrompt('C'.repeat(100_000), Array.from({ length: OFFERS_PER_CALL }, () => hostile))
     assert.ok(prompt.length < 70_000, `${prompt.length} caractères`)
   })
 
-  it('envoie le parcours (employeurs, périodes, missions) pour juger le domaine, et le barème commun', () => {
-    const prompt = vivierMatchingPrompt({
-      skills: ['Java'], experienceSummary: 'Développeur fictif.', yearsOfExperience: 6, languages: [],
-      experiences: [{ title: 'Développeur Java', company: 'Banque Fictive', period: '2020 - 2024', missions: ['Refonte du crédit immobilier'] }],
-    }, [offer('a')])
-    assert.match(prompt, /Développeur Java — Banque Fictive \(2020 - 2024\) : Refonte du crédit immobilier/)
+  it('le profil extrait (repli sans texte de CV) reste borné', () => {
+    const profile = { skills: Array.from({ length: 500 }, () => 'K'.repeat(100)), experienceSummary: 'E'.repeat(50_000), experiences: Array.from({ length: 50 }, () => ({ title: 'P'.repeat(5000) })), yearsOfExperience: 3, languages: Array.from({ length: 50 }, () => ({ name: 'N'.repeat(500), level: 'C1' })) }
+    assert.ok(profileForAi(profile).length < 20_000, `${profileForAi(profile).length} caractères`)
+  })
+
+  it('envoie le texte du CV, comme toute notation, et le barème commun (ADR 0029)', () => {
+    const prompt = vivierMatchingPrompt('Développeur Java — Banque Fictive (2020 - 2024) : Refonte du crédit immobilier', [offer('a')])
+    assert.match(prompt, /=== CV DU CANDIDAT ===\nDéveloppeur Java — Banque Fictive \(2020 - 2024\) : Refonte du crédit immobilier/)
     assert.match(VIVIER_MATCHING_SYSTEM, /une compétence ou un outil ne la prouve pas/)
     assert.match(VIVIER_MATCHING_SYSTEM, /"offre":1/)
     assert.match(VIVIER_MATCHING_SYSTEM, /"intitule"/)
+    assert.match(VIVIER_MATCHING_SYSTEM, /coordonnées et liens du CV sont masqués/)
     assert.doesNotMatch(VIVIER_MATCHING_SYSTEM, /"score"/)
   })
 
-  it('n\'envoie à l\'IA ni le nom ni les coordonnées du candidat', () => {
-    const prompt = vivierMatchingPrompt({
+  it('profil extrait : le parcours (employeurs, périodes, missions) pour juger le domaine', () => {
+    assert.match(profileForAi({
+      skills: ['Java'], experienceSummary: 'Développeur fictif.', yearsOfExperience: 6, languages: [],
+      experiences: [{ title: 'Développeur Java', company: 'Banque Fictive', period: '2020 - 2024', missions: ['Refonte du crédit immobilier'] }],
+    }), /Développeur Java — Banque Fictive \(2020 - 2024\) : Refonte du crédit immobilier/)
+  })
+
+  it('profil extrait : ni le nom ni les coordonnées du candidat ; offres numérotées, sans identifiant', () => {
+    const candidate = profileForAi({
       skills: ['Java', 'Spring'], experienceSummary: 'Développeur fictif.', experiences: [{ title: 'Développeur Java' }],
       yearsOfExperience: 6, languages: [{ name: 'Anglais', level: 'B2' }],
-    }, [offer('a')])
+    })
+    const prompt = vivierMatchingPrompt(candidate, [offer('a')])
     assert.match(prompt, /Développeur Java/)
     assert.match(prompt, /--- Offre 1 ---/)
     assert.match(prompt, /1\. Java/)

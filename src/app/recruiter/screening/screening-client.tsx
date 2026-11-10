@@ -6,8 +6,7 @@ import { useMemo, useState, useTransition } from 'react'
 import {
   Brain, Loader2, Check, X, ChevronDown, ChevronUp,
   Download, Star, AlertTriangle, TrendingUp, TrendingDown,
-  CheckCircle2, XCircle, MinusCircle, Users, Target, SlidersHorizontal,
-  Briefcase, Clock, Globe, Zap, Search, FileText,
+  CheckCircle2, XCircle, MinusCircle, Users, Target, Search, FileText,
 } from 'lucide-react'
 import { screenAllApplications, exportScreeningCSV, type ScreeningScore, type ApplicationRow } from './actions'
 import { useLoading } from '@/components/shared/loading-provider'
@@ -18,22 +17,6 @@ import { CvPreviewModal } from '@/components/shared/cv-preview-modal'
 const PAGE_SIZE = 50
 
 // ── Types ─────────────────────────────────────────────────────────
-
-export interface ScreeningCriteria {
-  experienceLevel: 'any' | 'junior' | 'senior' | 'expert'
-  availability: 'any' | 'immediate' | 'one_month' | 'flexible'
-  languages: 'any' | 'fr' | 'en' | 'bilingual'
-  prioritySkills: string  // free text
-  extraInstructions: string
-}
-
-const DEFAULT_CRITERIA: ScreeningCriteria = {
-  experienceLevel: 'any',
-  availability: 'any',
-  languages: 'any',
-  prioritySkills: '',
-  extraInstructions: '',
-}
 
 // ── Constants ─────────────────────────────────────────────────────
 
@@ -195,169 +178,6 @@ function ResultCard({ result, jobId, jobDescription, jobSkills }: ResultCardProp
   )
 }
 
-// ── Criteria panel ────────────────────────────────────────────────
-
-function CriteriaChip<T extends string>({
-  label, value, active, onClick,
-}: { label: string; value: T; active: boolean; onClick: (v: T) => void }) {
-  return (
-    <button onClick={() => onClick(value)}
-      className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-      style={{
-        background: active ? 'rgba(124,58,237,0.14)' : 'rgba(11,29,81,0.03)',
-        color: active ? '#7c3aed' : 'var(--color-text-muted)',
-        border: active ? '1px solid rgba(124,58,237,0.35)' : '1px solid var(--color-border)',
-      }}>
-      {label}
-    </button>
-  )
-}
-
-function CriteriaPanel({ criteria, onChange }: { criteria: ScreeningCriteria; onChange: (c: ScreeningCriteria) => void }) {
-  const [open, setOpen] = useState(false)
-
-  const set = <K extends keyof ScreeningCriteria>(key: K, val: ScreeningCriteria[K]) =>
-    onChange({ ...criteria, [key]: val })
-
-  const hasCustom = criteria.experienceLevel !== 'any' || criteria.availability !== 'any' ||
-    criteria.languages !== 'any' || criteria.prioritySkills || criteria.extraInstructions
-
-  return (
-    <div className="rounded-3xl overflow-hidden" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 8px 24px rgba(11,29,81,0.06)' }}>
-      <button onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-5 py-4 text-left transition-all">
-        <div className="flex items-center gap-3">
-          <SlidersHorizontal className="h-4 w-4" style={{ color: hasCustom ? '#7c3aed' : 'var(--color-text-muted)' }} />
-          <span className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
-            Critères de scoring
-          </span>
-          {hasCustom && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold"
-              style={{ background: 'rgba(124,58,237,0.14)', color: '#7c3aed' }}>
-              Personnalisés
-            </span>
-          )}
-        </div>
-        {open ? <ChevronUp className="h-4 w-4" style={{ color: 'var(--color-text-muted)' }} />
-               : <ChevronDown className="h-4 w-4" style={{ color: 'var(--color-text-muted)' }} />}
-      </button>
-
-      {open && (
-        <div className="px-5 pb-5 space-y-5" style={{ borderTop: '1px solid var(--color-border)' }}>
-          {/* Expérience */}
-          <div className="pt-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Briefcase className="h-3.5 w-3.5" style={{ color: 'var(--color-text-muted)' }} />
-              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>
-                Niveau d&apos;expérience
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { label: 'Peu importe', value: 'any' },
-                { label: '< 3 ans (Junior)', value: 'junior' },
-                { label: '3–7 ans (Senior)', value: 'senior' },
-                { label: '7+ ans (Expert)', value: 'expert' },
-              ].map(o => (
-                <CriteriaChip key={o.value} label={o.label} value={o.value as ScreeningCriteria['experienceLevel']}
-                  active={criteria.experienceLevel === o.value}
-                  onClick={v => set('experienceLevel', v)} />
-              ))}
-            </div>
-          </div>
-
-          {/* Disponibilité */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Clock className="h-3.5 w-3.5" style={{ color: 'var(--color-text-muted)' }} />
-              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>
-                Disponibilité souhaitée
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { label: 'Flexible', value: 'any' },
-                { label: 'Immédiate', value: 'immediate' },
-                { label: 'Sous 1 mois', value: 'one_month' },
-                { label: 'À négocier', value: 'flexible' },
-              ].map(o => (
-                <CriteriaChip key={o.value} label={o.label} value={o.value as ScreeningCriteria['availability']}
-                  active={criteria.availability === o.value}
-                  onClick={v => set('availability', v)} />
-              ))}
-            </div>
-          </div>
-
-          {/* Langues */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Globe className="h-3.5 w-3.5" style={{ color: 'var(--color-text-muted)' }} />
-              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>
-                Langue(s) requise(s)
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { label: 'Indifférent', value: 'any' },
-                { label: 'Français', value: 'fr' },
-                { label: 'Anglais', value: 'en' },
-                { label: 'Bilingue FR/EN', value: 'bilingual' },
-              ].map(o => (
-                <CriteriaChip key={o.value} label={o.label} value={o.value as ScreeningCriteria['languages']}
-                  active={criteria.languages === o.value}
-                  onClick={v => set('languages', v)} />
-              ))}
-            </div>
-          </div>
-
-          {/* Compétences prioritaires */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Zap className="h-3.5 w-3.5" style={{ color: 'var(--color-text-muted)' }} />
-              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>
-                Compétences prioritaires (bonus)
-              </p>
-            </div>
-            <input
-              value={criteria.prioritySkills}
-              onChange={e => set('prioritySkills', e.target.value)}
-              placeholder="ex: React, TypeScript, Docker…"
-              className="w-full px-4 py-2.5 rounded-xl text-sm"
-              style={{
-                background: 'rgba(11,29,81,0.03)',
-                border: '1px solid var(--color-border)',
-                color: 'var(--color-text)',
-                outline: 'none',
-              }}
-            />
-          </div>
-
-          {/* Instructions libres */}
-          <div>
-            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-muted)' }}>
-              Instructions personnalisées
-            </p>
-            <textarea
-              value={criteria.extraInstructions}
-              onChange={e => set('extraInstructions', e.target.value)}
-              placeholder="ex: Favoriser les profils avec expérience SaaS, exclure les profils sans expérience en startup…"
-              rows={3}
-              className="w-full px-4 py-2.5 rounded-xl text-sm resize-none"
-              style={{
-                background: 'rgba(11,29,81,0.03)',
-                border: '1px solid var(--color-border)',
-                color: 'var(--color-text)',
-                outline: 'none',
-                lineHeight: 1.6,
-              }}
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ── Main ──────────────────────────────────────────────────────────
 
 export function ScreeningClient({
@@ -371,7 +191,6 @@ export function ScreeningClient({
   existingResults?: ScreeningScore[]
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set(applications.map(a => a.applicationId)))
-  const [criteria, setCriteria] = useState<ScreeningCriteria>(DEFAULT_CRITERIA)
   const [results, setResults] = useState<ScreeningScore[]>(existingResults)
   const [errors, setErrors] = useState<string[]>([])
   const [isPending, startTransition] = useTransition()
@@ -416,7 +235,7 @@ export function ScreeningClient({
     setDone(false); setResults([]); setErrors([])
     withLoading(() => new Promise<void>(resolve => {
       startTransition(async () => {
-        const { results: res, errors: errs } = await screenAllApplications(jobId, [...selected], criteria)
+        const { results: res, errors: errs } = await screenAllApplications(jobId, [...selected])
         setResults(res); setErrors(errs); setDone(true)
         resolve()
       })
@@ -471,9 +290,6 @@ export function ScreeningClient({
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-6 space-y-4">
-
-        {/* Criteria */}
-        <CriteriaPanel criteria={criteria} onChange={setCriteria} />
 
         {/* Candidate list (pre-run) */}
         {!done && (

@@ -1,13 +1,13 @@
 // Catalogue et règles de sélection des modèles IA (Module 10) — pur, sans accès base ni clé :
 // partagé par le routeur serveur (llm-router.ts) et l'écran admin /admin/llm-config.
 
-export type AIModule = 'screening' | 'interview' | 'matching' | 'assistant' | 'cvExport'
+export type AIModule = 'interview' | 'matching' | 'assistant' | 'cvExport'
 
 export const AI_MODULES: { id: AIModule; label: string; description: string }[] = [
-  { id: 'screening', label: 'Screening CV', description: 'Score et analyse des candidatures' },
   { id: 'interview', label: 'Entretiens IA', description: 'Questions, relances et analyse des entretiens' },
-  // Vivier général (src/lib/vivier-matching.ts) : Claude quand aucun modèle n'est choisi ici (callLLM moduleDefault).
-  { id: 'matching', label: 'Matching IA', description: 'Correspondance offres / profils et sourcing — vivier général des recruteurs : Claude si « Modèle par défaut »' },
+  // Toute notation d'un candidat pour une offre (SCORING_AI, sourcing-core.ts ; ADR 0029, qui a retiré la ligne
+  // « Screening CV ») : Claude quand aucun modèle n'est choisi ici (callLLM moduleDefault).
+  { id: 'matching', label: 'Matching IA', description: 'Score des candidats pour une offre : candidatures (screening), base candidats, viviers — Claude si « Modèle par défaut »' },
   // Sans repli (callLLM strict, src/lib/assistant/host.ts) : les conversations ne partent que chez le modèle choisi ici.
   { id: 'assistant', label: 'Assistant IA', description: 'Questions d’aide des candidats et recruteurs — sans repli : en cas de panne, l’assistant affiche une erreur' },
   // Sans repli (callLLM strict, src/lib/cv-export/export.ts) : le CV complet du candidat ne part que chez le modèle choisi ici.

@@ -1,20 +1,16 @@
 'use server'
 
 import { notificationUserId } from '@/lib/candidate-identity'
-import { callLLM } from '@/lib/ai/llm-router'
 import { createAdminClient } from '@/lib/appwrite/client'
-import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
+import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { ID, Query } from 'node-appwrite'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { revalidatePath } from 'next/cache'
 import { generateInterviewQuestions, createInterviewSession } from '@/app/recruiter/interviews/actions'
 import { wrapEmailHtml } from '@/lib/email-template'
-import {
-  MATCH_RULES, capFor, criteriaBlock, criteriaCounts, judgedScore, judgementFields, judgementSummary, offerCriteria, offerTextForAi,
-  parseJudgements, recommendationFor, withBonus, type Judgement,
-} from '@/lib/match-scoring'
-import { CV_CHARS_FOR_SCORING } from '@/lib/sourcing-core'
-import { withCheckedTitles } from '@/lib/title-check'
+import { recommendationFor, type Judgement } from '@/lib/match-scoring'
+import { cvScorer, readCvForScoring } from '@/lib/sourcing-core'
+import { withRecommendationBonus } from '@/lib/recommendation-boost'
 
 // ── Prepare & send interview invite from a screening result ────────
 export async function prepareInterviewFromScreening(params: {
@@ -221,48 +217,8 @@ export interface ApplicationToScreen {
   jobTitle: string
   jobDescription: string
   jobSkills: string[]
-  cvText: string
+  /** CV joint à la candidature ; sans CV lisible, pas de score (jamais une note sur un texte d'erreur). */
   cvFileId?: string
-  coverLetter?: string
-  criteria?: ScreeningCriteria
-}
-
-// ── Extract text from CV file in Appwrite Storage ─────────────────
-async function extractCVText(cvFileId: string): Promise<string> {
-  try {
-    const { storage } = createAdminClient()
-    const bytes = await storage.getFileDownload(BUCKETS.CVS, cvFileId)
-    const buffer = Buffer.from(bytes)
-
-    // Detect file type from magic bytes
-    const isPdf = buffer[0] === 0x25 && buffer[1] === 0x50 // %P
-    const isDocx = buffer[0] === 0x50 && buffer[1] === 0x4B // PK (zip)
-
-    if (isPdf) {
-      // Polyfill DOMMatrix for pdf-parse
-      if (typeof globalThis.DOMMatrix === 'undefined') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(globalThis as any).DOMMatrix = class DOMMatrix { constructor() { return this } }
-      }
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParse = require('pdf-parse/lib/pdf-parse.js') as (buf: Buffer) => Promise<{ text: string }>
-      const data = await pdfParse(buffer)
-      const text = data.text.replace(/\s{3,}/g, '\n').trim()
-      return text.length > 30 ? text.slice(0, CV_CHARS_FOR_SCORING) : '[PDF sans texte extractible]'
-    }
-
-    if (isDocx) {
-      const mammoth = await import('mammoth')
-      const result = await mammoth.extractRawText({ buffer })
-      return result.value.slice(0, CV_CHARS_FOR_SCORING).trim() || '[DOCX sans contenu texte]'
-    }
-
-    // Fallback: UTF-8 (TXT, HTML CV)
-    const text = buffer.toString('utf-8').replace(/[^\x20-\x7E\n\tÀ-ɏ]/g, ' ').replace(/\s{3,}/g, '\n').trim()
-    return text.length > 50 ? text.slice(0, CV_CHARS_FOR_SCORING) : '[Fichier non lisible]'
-  } catch (e) {
-    return `[Erreur lecture CV: ${e instanceof Error ? e.message : 'inconnu'}]`
-  }
 }
 
 // ── Score a single CV against a job ──────────────────────────────
@@ -275,48 +231,25 @@ export async function screenApplication(app: ApplicationToScreen): Promise<Scree
 // Same scoring logic, without the recruiter-role gate — used by the
 // automatic screening triggered right after a candidate applies, where
 // there is no recruiter in session.
+// La notation de la base candidats et du vivier de l'offre (cvScorer, ADR 0029) : même consigne, même modèle, même texte
+// du CV ; ni lettre de motivation ni critère ajouté. Puis le bonus des recommandations, la même règle que sur le Matching IA.
 async function scoreApplicationInternal(app: ApplicationToScreen): Promise<ScreeningScore | { error: string }> {
   try {
-    // L'IA juge chaque critère, le code calcule le score et la recommandation (match-scoring.ts, 2026-11-04 : sa note
-    // libre changeait d'une analyse à l'autre). Sans liste de compétences dans l'offre, elle nomme celles qu'elle a jugées.
-    const criteria = offerCriteria(app.jobSkills, app.jobDescription)
-    const skills = criteria.skills
-    const skillsShape = skills.length > 0 ? '' : ',"skills":[{"name":"compétence","match":"yes"|"partial"|"no"}]'
-    const SYSTEM = `Tu es un expert en recrutement RH et technique. Analyse le CV du candidat par rapport à l'offre d'emploi.
-Réponds UNIQUEMENT avec un objet JSON valide, sans markdown, sans texte avant ou après :
-{${judgementFields(criteriaCounts(criteria))}${skillsShape},"strengths":["point fort 1","point fort 2"],"concerns":["vigilance 1"],"summary":"Résumé en 2-3 phrases concrètes du profil par rapport au poste"}
+    if (!app.cvFileId) return { error: 'Pas de CV joint à la candidature : score impossible' }
+    let cvText: string
+    try {
+      cvText = await readCvForScoring(app.cvFileId)
+    } catch (e) {
+      console.error('[screening] lecture du CV impossible', app.applicationId, e instanceof Error ? e.message : e)
+      return { error: 'Lecture du CV impossible (fichier abîmé ou stockage injoignable) : réessayez' }
+    }
+    if (!cvText) return { error: 'CV sans texte lisible (PDF scanné) : score impossible' }
 
-${MATCH_RULES}
-Domaine exigé absent : le dire dans "concerns".`
-
-    const criteriaPrompt = app.criteria ? buildCriteriaPrompt(app.criteria) : ''
-    const userMsg = `=== OFFRE D'EMPLOI ===
-Poste : ${app.jobTitle}
-${criteriaBlock(criteria)}
-Description : ${offerTextForAi(app.jobDescription, 4000)}
-${criteriaPrompt}
-
-=== CV DU CANDIDAT : ${app.candidateName} ===
-${app.cvText.slice(0, CV_CHARS_FOR_SCORING)}
-${app.coverLetter ? `\n=== MESSAGE DE MOTIVATION ===\n${app.coverLetter.slice(0, 500)}` : ''}`
-
-    // Une preuve par élément jugé : réponse plus longue qu'une note (et la réflexion du modèle compte dans la limite).
-    const { content, provider } = await callLLM([{ role: 'user', content: userMsg }], SYSTEM, { module: 'screening', maxTokens: 8000 })
-
-    const jsonMatch = content.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return { error: 'Réponse LLM invalide' }
-
-    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>
-    // Jugements vérifiés dans le texte du CV que l'IA a lu (citations, intitulés), métiers du titre confirmés par la
-    // comparaison des intitulés (title-check.ts).
-    const parsedJudgements = parseJudgements(parsed, criteria, app.cvText.slice(0, CV_CHARS_FOR_SCORING))
-    if (!parsedJudgements) return { error: 'Réponse LLM invalide' }
-    const [judgements] = await withCheckedTitles([parsedJudgements])
-    // Score calculé à partir des jugements, plafonné quand le poste du titre ou le domaine exigé manque, puis mélangé
-    // avec la note des recommandations, qui ne fait passer ni le seuil « correspond » ni ce plafond.
-    const aiScore = judgedScore(judgements)
-    const blended = await blendWithRecommendationScore(aiScore, app.candidateId, `${app.jobTitle} ${app.jobSkills.join(' ')} ${app.jobDescription}`)
-    const score = Math.round(Math.min(withBonus(aiScore, blended - aiScore), capFor(judgements)))
+    const scored = await cvScorer({ title: app.jobTitle, skills: app.jobSkills, description: app.jobDescription })(cvText)
+    if (!scored) return { error: 'Réponse de l\'IA sans jugement lisible : relancez le screening' }
+    const jobText = `${app.jobTitle} ${app.jobSkills.join(' ')} ${app.jobDescription}`
+    const { score, reason } = withRecommendationBonus(scored.score, scored.reason, await recommendationsOf(app.candidateId), jobText)
+    const { criteria, judgements, notes } = scored
 
     return {
       applicationId: app.applicationId,
@@ -326,16 +259,16 @@ ${app.coverLetter ? `\n=== MESSAGE DE MOTIVATION ===\n${app.coverLetter.slice(0,
       cvFileId: app.cvFileId,
       score,
       recommendation: recommendationFor(score),
-      skills: skills.length > 0
-        ? skills.map((name, i) => ({ name, match: SKILL_MATCH[judgements.skills[i]] }))
-        : (Array.isArray(parsed.skills) ? (parsed.skills as ScreeningScore['skills']).slice(0, 12) : []),
-      strengths: Array.isArray(parsed.strengths) ? parsed.strengths.slice(0, 4) : [],
-      concerns: Array.isArray(parsed.concerns) ? parsed.concerns.slice(0, 3) : [],
-      // D'où vient le score, devant le résumé de l'IA (aussi affiché comme raison sur la page du Matching IA).
-      summary: `${judgementSummary(judgements)} — ${String(parsed.summary ?? '')}`,
-      plainSummary: String(parsed.summary ?? ''),
+      skills: criteria.skills.length > 0
+        ? criteria.skills.map((name, i) => ({ name, match: SKILL_MATCH[judgements.skills[i]] }))
+        : notes.namedSkills.map(s => ({ name: s.name, match: SKILL_MATCH[s.match] })),
+      strengths: notes.strengths,
+      concerns: notes.concerns,
+      // D'où vient le score, puis la phrase de l'IA et les recommandations : la raison affichée sur le Matching IA.
+      summary: reason,
+      plainSummary: notes.summary,
       scoredAt: new Date().toISOString(),
-      provider,
+      provider: scored.provider,
     }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur inconnue' }
@@ -344,29 +277,15 @@ ${app.coverLetter ? `\n=== MESSAGE DE MOTIVATION ===\n${app.coverLetter.slice(0,
 
 const SKILL_MATCH: Record<Judgement, 'yes' | 'partial' | 'no'> = { oui: 'yes', partiel: 'partial', non: 'no' }
 
-// Blends the AI's CV/offer score with the candidate's average recommendation rating,
-// per the admin-adjustable weight in /admin/scoring. Candidates with no submitted
-// recommendation yet are never penalized — the AI score is used as-is for them.
-async function blendWithRecommendationScore(aiScore: number, candidateId: string | undefined, jobText = ''): Promise<number> {
-  if (!candidateId) return aiScore
+/** Recommandations reçues par le candidat ; illisibles : aucune (journalisé), le score reste celui des jugements. */
+async function recommendationsOf(candidateId: string | undefined): Promise<{ endorsedExpertises?: string[] }[]> {
+  if (!candidateId) return []
   try {
-    const [{ getSubmittedRecommendations }, { getScoringWeights }, { expertiseBoost }] = await Promise.all([
-      import('@/lib/appwrite/recommendations'),
-      import('@/lib/scoring-weights'),
-      import('@/lib/recommendation-boost'),
-    ])
-    const recs = await getSubmittedRecommendations(candidateId)
-    const ratings = recs.map(r => r.rating).filter((n): n is number => typeof n === 'number')
-    if (ratings.length === 0) return aiScore
-    const avgRating = ratings.reduce((a, b) => a + b, 0) / ratings.length
-    const { recommendationWeight } = await getScoringWeights()
-    const recommendationScore = ((avgRating - 1) / 4) * 100 // 1-5 stars → 0-100
-    const blended = aiScore * (1 - recommendationWeight) + recommendationScore * recommendationWeight
-    // + points selon le nombre de recommandations reçues sur les expertises que l'offre demande (plafonné)
-    const boost = expertiseBoost(recs, jobText).points
-    return Math.round(Math.min(100, Math.max(0, blended + boost)))
-  } catch {
-    return aiScore
+    const { getSubmittedRecommendations } = await import('@/lib/appwrite/recommendations')
+    return await getSubmittedRecommendations(candidateId)
+  } catch (e) {
+    console.error('[screening] recommandations non lues, score sans leur bonus', candidateId, e instanceof Error ? e.message : e)
+    return []
   }
 }
 
@@ -374,8 +293,8 @@ async function blendWithRecommendationScore(aiScore: number, candidateId: string
 // Fire-and-forget from /api/apply: scores the CV against the job it was
 // just submitted to, saves the result, and emails the candidate if they
 // score 70+. Never throws — screening failure must never surface to the
-// candidate's apply flow.
-export async function autoScreenApplication(applicationId: string): Promise<void> {
+// candidate's apply flow. `error` : pourquoi la candidature reste sans score (« Relancer » du Matching IA l'affiche).
+export async function autoScreenApplication(applicationId: string): Promise<{ error?: string }> {
   try {
     const { databases } = createAdminClient()
     const appDoc = await databases.getDocument(DB_ID, COLLECTIONS.APPLICATIONS, applicationId)
@@ -389,8 +308,6 @@ export async function autoScreenApplication(applicationId: string): Promise<void
       candidateEmail = (userDoc.email as string) ?? ''
     } catch { /* user not found */ }
 
-    const cvText = appDoc.cvFileId ? await extractCVText(appDoc.cvFileId as string) : '[Pas de CV joint]'
-
     const result = await scoreApplicationInternal({
       applicationId,
       candidateId: appDoc.candidateId as string,
@@ -399,11 +316,13 @@ export async function autoScreenApplication(applicationId: string): Promise<void
       jobTitle: jobDoc.title as string,
       jobDescription: jobDoc.description as string,
       jobSkills: (jobDoc.skills as string[]) ?? [],
-      cvText,
       cvFileId: appDoc.cvFileId as string | undefined,
-      coverLetter: appDoc.coverLetter as string | undefined,
     })
-    if ('error' in result) return
+    if ('error' in result) {
+      // La candidature reste sans score : le Matching IA la relance à son ouverture, le recruteur depuis sa carte.
+      console.error('[screening] analyse automatique sans score', applicationId, result.error)
+      return { error: result.error }
+    }
 
     await Promise.all([
       databases.createDocument(DB_ID, COLLECTIONS.SCREENINGS, ID.unique(), {
@@ -435,7 +354,12 @@ export async function autoScreenApplication(applicationId: string): Promise<void
 
     revalidatePath('/recruiter/screening')
     revalidatePath('/recruiter/dashboard')
-  } catch { /* best-effort — never breaks the candidate's apply flow */ }
+    return {}
+  } catch (e) {
+    // best-effort — never breaks the candidate's apply flow
+    console.error('[screening] analyse automatique en échec', applicationId, e instanceof Error ? e.message : e)
+    return { error: 'Analyse impossible pour le moment : réessayez dans quelques minutes' }
+  }
 }
 
 // ── Load all applications for a job and screen them ──────────────
@@ -543,34 +467,7 @@ export async function getApplicationsForJob(jobId: string): Promise<{ apps: Appl
   }
 }
 
-export interface ScreeningCriteria {
-  experienceLevel: 'any' | 'junior' | 'senior' | 'expert'
-  availability: 'any' | 'immediate' | 'one_month' | 'flexible'
-  languages: 'any' | 'fr' | 'en' | 'bilingual'
-  prioritySkills: string
-  extraInstructions: string
-}
-
-function buildCriteriaPrompt(c: ScreeningCriteria): string {
-  const lines: string[] = []
-  if (c.experienceLevel !== 'any') {
-    const map = { junior: '< 3 ans', senior: '3–7 ans', expert: '7+ ans' }
-    lines.push(`- Niveau d'expérience requis : ${map[c.experienceLevel]}`)
-  }
-  if (c.availability !== 'any') {
-    const map = { immediate: 'Disponibilité immédiate requise', one_month: 'Disponible sous 1 mois', flexible: 'Disponibilité à négocier' }
-    lines.push(`- ${map[c.availability]}`)
-  }
-  if (c.languages !== 'any') {
-    const map = { fr: 'Français requis', en: 'Anglais requis', bilingual: 'Bilingue FR/EN requis' }
-    lines.push(`- Langue : ${map[c.languages]}`)
-  }
-  if (c.prioritySkills) lines.push(`- Compétences prioritaires (bonus si présentes) : ${c.prioritySkills}`)
-  if (c.extraInstructions) lines.push(`- Instructions spéciales : ${c.extraInstructions}`)
-  return lines.length > 0 ? '\n\nCRITÈRES SUPPLÉMENTAIRES DU RECRUTEUR :\n' + lines.join('\n') : ''
-}
-
-export async function screenAllApplications(jobId: string, appIds: string[], criteria?: ScreeningCriteria): Promise<{ results: ScreeningScore[]; errors: string[] }> {
+export async function screenAllApplications(jobId: string, appIds: string[]): Promise<{ results: ScreeningScore[]; errors: string[] }> {
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter') return { results: [], errors: ['Non autorisé'] }
 
@@ -588,7 +485,6 @@ export async function screenAllApplications(jobId: string, appIds: string[], cri
   for (const appId of appIds) {
     try {
       const appDoc = await databases.getDocument(DB_ID, COLLECTIONS.APPLICATIONS, appId)
-      const cvText = appDoc.cvFileId ? await extractCVText(appDoc.cvFileId as string) : `[Pas de CV joint]`
 
       // Resolve candidate name/email from USERS collection
       let candidateName = `Candidat #${(appDoc.candidateId as string).slice(-6)}`
@@ -607,10 +503,7 @@ export async function screenAllApplications(jobId: string, appIds: string[], cri
         jobTitle: job.title,
         jobDescription: job.description,
         jobSkills: job.skills,
-        cvText,
         cvFileId: appDoc.cvFileId as string | undefined,
-        coverLetter: appDoc.coverLetter as string | undefined,
-        criteria,
       }
 
       const result = await screenApplication(toScreen)

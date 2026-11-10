@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  DOMAIN_CAP, MATCH_RULES, ROLE_CAP, capFor, cappedScore, criteriaBlock, judgedScore, judgementFields, judgementSummary, offerCriteria,
+  CV_CHARS_FOR_SCORING, DOMAIN_CAP, MATCH_RULES, ROLE_CAP, capFor, carriedScreening, matchToCarry, criteriaCounts, cvTextForScoring, parseScoringNotes,
+  scoringSystemPrompt, scoringUserMessage, type OfferCriteria, cappedScore, criteriaBlock, judgedScore, judgementFields, judgementSummary, offerCriteria,
   offerRequirements, offerTextForAi, parseDomainFit, parseJudgements, parseTitleRelations, recommendationFor, requiredSkills, rolePairs,
   titleCheckPrompt, withBonus, withTitleRelations, type MatchJudgements,
 } from './match-scoring'
@@ -255,5 +256,103 @@ describe('score calculé à partir des jugements de l\'IA (stable d\'un calcul �
     })), 'Poste : Scrum Master oui, Développeur Full Stack non · Exigences : 1 sur 3, 1 partielle · Compétences : 1 sur 2 · Domaine : non requis · Niveau : oui')
     assert.equal(judgementSummary(judged({ requirements: ['partiel'], requirementsListed: false, skills: ['oui'], skillsListed: false })),
       'Poste : oui · Exigences : partiel · Compétences : oui · Domaine : oui · Niveau : oui')
+  })
+})
+
+describe('une seule notation pour tous les candidats (ADR 0029)', () => {
+  const listed: OfferCriteria = { skills: ['Python', 'React'], requirements: ['5 ans de développement'] }
+  const offer = { title: 'Développeur Full Stack', description: 'Développement d\'applications web.' }
+
+  it('demande les mêmes champs à l\'IA, quelle que soit la provenance du candidat', () => {
+    const system = scoringSystemPrompt(criteriaCounts(listed))
+    for (const field of ['"poste"', '"exigences"', '"competences"', '"domaine"', '"niveau"', '"points_forts"', '"vigilances"', '"raison"', '"resume"']) {
+      assert.ok(system.includes(field), field)
+    }
+    assert.ok(system.includes(MATCH_RULES))
+    assert.doesNotMatch(system, /"score"/, 'l\'IA ne donne pas de note')
+    assert.doesNotMatch(system, /competences_vues/, 'compétences listées par l\'offre : déjà jugées une à une')
+    assert.match(scoringSystemPrompt(criteriaCounts({ skills: [], requirements: [] })), /"competences_vues"/)
+  })
+
+  it('n\'envoie ni lettre de motivation ni critère ajouté : l\'offre et le CV seulement', () => {
+    const message = scoringUserMessage(offer, listed, 'CV fictif')
+    assert.match(message, /^=== OFFRE ===\nPoste : Développeur Full Stack\n/)
+    assert.match(message, /1\. Python/)
+    assert.match(message, /=== CV DU CANDIDAT ===\nCV fictif$/)
+    assert.match(scoringUserMessage({ ...offer, details: ['Technologies : Python'] }, listed, 'CV'), /\nTechnologies : Python\nDescription : /)
+  })
+
+  it('lit les notes de l\'IA, bornées ; une réponse sans notes donne des listes vides', () => {
+    const notes = parseScoringNotes({
+      raison: ' Manque le domaine bancaire. ', resume: 'Profil fictif solide.',
+      points_forts: ['Python', 42, 'React', 'API', 'SQL', 'Docker'], vigilances: 'pas une liste',
+      competences_vues: [{ nom: 'Python', jugement: 'oui' }, { nom: 'Go', jugement: 'peut-être' }, { nom: '', jugement: 'oui' }],
+    })
+    assert.equal(notes.reason, 'Manque le domaine bancaire.')
+    assert.equal(notes.summary, 'Profil fictif solide.')
+    assert.deepEqual(notes.strengths, ['Python', 'React', 'API', 'SQL'])
+    assert.deepEqual(notes.concerns, [])
+    assert.deepEqual(notes.namedSkills, [{ name: 'Python', match: 'oui' }])
+    assert.deepEqual(parseScoringNotes(null), { reason: '', summary: '', strengths: [], concerns: [], namedSkills: [] })
+  })
+
+  it('masque les coordonnées du CV et le borne ; les preuves sont vérifiées dans ce même texte', () => {
+    const text = cvTextForScoring(`Marie Fictive\nmarie@exemple.fr · 06 07 08 09 10\nDéveloppeuse Python (2018 - 2024)\n${'x'.repeat(20_000)}`)
+    assert.doesNotMatch(text, /marie@exemple\.fr|06 07 08 09 10/)
+    assert.match(text, /‹e-mail masqué› · ‹téléphone masqué›/)
+    assert.match(text, /\(2018 - 2024\)/, 'une période n\'est pas un téléphone')
+    assert.equal(text.length, CV_CHARS_FOR_SCORING)
+  })
+
+  it('garde les périodes, versions et références : seuls les vrais numéros de téléphone sont masqués', () => {
+    for (const kept of ['Développeur 2016 - 2018 - 2020 Paris', 'Projet 2015 - 2018 2018 - 2020 Lyon', 'Python 3.11 - 3.12 - 2020 2021', 'Avis 2023/S 123-456789', '05.03.2020 - 12.06.2022']) {
+      assert.equal(cvTextForScoring(kept), kept, kept)
+    }
+    for (const phone of ['06 07 08 09 10', '0607080910', '06.07.08.09.10', '+33 6 07 08 09 10', '+33 (0)6 07 08 09 10', '0033 6 07 08 09 10', '+44 20 7946 0958']) {
+      assert.equal(cvTextForScoring(`Tél. ${phone} fin`), 'Tél. ‹téléphone masqué› fin', phone)
+    }
+  })
+
+  it('masque un numéro coupé par un retour à la ligne et les liens (profil, site)', () => {
+    assert.equal(cvTextForScoring('Tel 06 12 34\n56 78 fin'), 'Tel ‹téléphone masqué› fin')
+    assert.equal(cvTextForScoring('linkedin.com/in/marie-fictive-1234 · https://exemple.fr/cv'), '‹lien masqué› · ‹lien masqué›')
+    assert.equal(cvTextForScoring('www.github.com/mfictive'), '‹lien masqué›')
+    assert.equal(cvTextForScoring('Node.js, Vue.js et ASP.NET'), 'Node.js, Vue.js et ASP.NET', 'une technologie n\'est pas un lien')
+  })
+})
+
+describe('candidat ajouté au funnel depuis le Matching IA : son score est repris', () => {
+  it('reprend le score et la raison affichés, et la recommandation qui suit le score', () => {
+    assert.deepEqual(carriedScreening({ score: 78, reason: 'Poste : oui · … — Bon profil.' }), {
+      aiScore: 78, aiSummary: 'Poste : oui · … — Bon profil.', aiRecommendation: recommendationFor(78),
+    })
+  })
+
+  const shown = [
+    { source: 'pool' as const, id: 'row-b', candidateId: 'cand-b', score: 95, reason: 'B' },
+    { source: 'pool' as const, id: 'row-a', candidateId: 'cand-a', score: 30, reason: 'A' },
+    { source: 'vivier' as const, id: 'cv-1', score: 70, reason: 'V' },
+    { source: 'application' as const, id: 'app-1', candidateId: 'cand-c', score: 80, reason: 'C' },
+  ]
+
+  it('base candidats : le score du candidat vérifié par le serveur, jamais celui de la ligne envoyée par le navigateur', () => {
+    assert.equal(matchToCarry(shown, { source: 'pool', id: 'row-a' }, 'cand-a')?.score, 30)
+    // Ligne d'un autre candidat (95) envoyée avec le candidat A : le score de A, pas celui de B.
+    assert.equal(matchToCarry(shown, { source: 'pool', id: 'row-b' }, 'cand-a')?.score, 30)
+    assert.equal(matchToCarry(shown, { source: 'pool', id: 'row-b' }, 'cand-x'), undefined)
+  })
+
+  it('vivier : le CV vérifié par le serveur ; une candidature n\'est jamais reprise', () => {
+    assert.equal(matchToCarry(shown, { source: 'vivier', id: 'cv-1' }, 'cand-y')?.score, 70)
+    assert.equal(matchToCarry(shown, { source: 'vivier', id: 'row-b' }, 'cand-b'), undefined)
+    assert.equal(matchToCarry(shown, { source: 'application', id: 'app-1' }, 'cand-c'), undefined)
+  })
+
+  it('un candidat non noté n\'a pas de score à reprendre', () => {
+    assert.equal(carriedScreening({ score: null, reason: '' }), null)
+  })
+
+  it('borne la raison à la taille de l\'analyse enregistrée', () => {
+    assert.equal(carriedScreening({ score: 50, reason: 'r'.repeat(10_000) })?.aiSummary.length, 3000)
   })
 })
