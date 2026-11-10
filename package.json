@@ -13,6 +13,7 @@
     "ao:setup": "node --network-family-autoselection-attempt-timeout=2000 scripts/setup-ao-collections.mjs",
     "ao:migrate-sources": "tsx --network-family-autoselection-attempt-timeout=2000 scripts/ao-sources-migrate.mts",
     "ao:index": "tsx --network-family-autoselection-attempt-timeout=2000 scripts/ao-offer-index.mts",
+    "ao:deadlines": "tsx --network-family-autoselection-attempt-timeout=2000 scripts/ao-deadlines.mts",
     "vivier:matches": "tsx --network-family-autoselection-attempt-timeout=2000 scripts/vivier-offer-matches.mts",
     "matching:explain": "tsx --network-family-autoselection-attempt-timeout=2000 scripts/matching-explain.mts",
     "ao:poll": "node scripts/ao-poll.mjs",
