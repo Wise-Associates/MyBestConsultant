@@ -86,6 +86,28 @@ describe('renderCv — template Wise Associates', () => {
     find(paras, 'Cloud : Azure, AWS')
   })
 
+  it('rend un sous-titre des réalisations (« ## ») sans puce et en gras, à sa place parmi les puces', () => {
+    const withHeading: CvData = {
+      ...DATA,
+      experiences: [{ ...DATA.experiences[0], realisations: ['## Gouvernance', 'Animation des comités.', '## Pilotage', 'Suivi du budget.'] }],
+    }
+    const headed = paragraphs(renderCv(TEMPLATE, MAP, withHeading, 'fr'))
+    const order = ['Gouvernance', 'Animation des comités.', 'Pilotage', 'Suivi du budget.'].map(text => headed.indexOf(find(headed, text)))
+    assert.deepEqual(order, [order[0], order[0] + 1, order[0] + 2, order[0] + 3])
+    assert.ok(!headed.some(p => p.text.includes('##')), 'marque « ## » restée dans le document')
+    const numId = (el: Element) => el.getElementsByTagNameNS(W_NS, 'numId')[0]?.getAttributeNS(W_NS, 'val')
+    const heading = find(headed, 'Gouvernance').el
+    assert.equal(numId(heading), '0')
+    assert.equal(heading.getElementsByTagNameNS(W_NS, 'numPr').length, 1)
+    for (const run of Array.from(heading.getElementsByTagNameNS(W_NS, 'r'))) {
+      const bold = run.getElementsByTagNameNS(W_NS, 'b')[0]
+      assert.ok(bold && !bold.hasAttributeNS(W_NS, 'val'), 'sous-titre en gras')
+    }
+    // Les puces gardent la numérotation du template.
+    assert.equal(numId(find(headed, 'Animation des comités.').el), numId(find(paras, 'Conception de l\'architecture cible.').el))
+    assert.notEqual(numId(find(headed, 'Animation des comités.').el), '0')
+  })
+
   it('aligne le client à droite sur la marge (taquet du template_map)', () => {
     const header = find(paras, 'Sept 2016 – Déc 2020\tAssureur Fictif')
     const tab = header.el.getElementsByTagNameNS(W_NS, 'tabs')[0]?.getElementsByTagNameNS(W_NS, 'tab')[0]

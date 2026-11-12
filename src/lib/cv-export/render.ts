@@ -11,6 +11,7 @@
 // sur scripts/render_cv.py de la skill, qui sert de référence.
 import { DOMParser, XMLSerializer, onErrorStopParsing, type Document, type Element, type Node } from '@xmldom/xmldom'
 import { strFromU8, strToU8, unzipSync, zipSync, type Unzipped } from 'fflate'
+import { isSubheading, subheadingText } from './cv-data'
 import type { CvData, CvLang, TabStop, TemplateMap } from './types'
 
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
@@ -340,6 +341,52 @@ function keepBlockTogether(els: Element[], spacers: WeakSet<Element>) {
   }
 }
 
+// ---------- sous-titres des réalisations ----------
+
+// Ordre imposé par le schéma de Word : w:numPr vient après ces enfants de w:pPr, w:b après ceux-là dans w:rPr.
+const BEFORE_NUMPR = ['pStyle', 'keepNext', 'keepLines', 'pageBreakBefore', 'framePr', 'widowControl']
+const BEFORE_BOLD = ['rStyle', 'rFonts']
+
+function insertAfterLast(parent: Element, node: Element, before: string[]) {
+  const last = elements(parent).filter(c => before.some(local => isW(c, local))).at(-1)
+  if (last) insertAfter(last, node)
+  else prependChild(parent, node)
+}
+
+/**
+ * Sous-titre parmi les réalisations (« ## … », cv-data.ts), rendu avec le prototype des puces pour en garder la police et
+ * le retrait, mais sans puce (numId 0 : aucune numérotation, même donnée par le style) et en gras. Écart avec
+ * render_cv.py, dont les données n'ont pas de sous-titre.
+ */
+function asSubheading(el: Element): Element {
+  const doc = ownerDoc(el)
+  for (const p of selfAndDescendantsW(el, 'p')) {
+    let pPr = childW(p, 'pPr')
+    if (!pPr) {
+      pPr = newW(doc, 'pPr')
+      prependChild(p, pPr)
+    }
+    const numId = newW(doc, 'numId')
+    numId.setAttributeNS(W_NS, 'w:val', '0')
+    const numPr = newW(doc, 'numPr')
+    numPr.appendChild(numId)
+    const previous = childW(pPr, 'numPr')
+    if (previous) pPr.replaceChild(numPr, previous)
+    else insertAfterLast(pPr, numPr, BEFORE_NUMPR)
+    for (const r of descendantsW(p, 'r')) {
+      let rPr = childW(r, 'rPr')
+      if (!rPr) {
+        rPr = newW(doc, 'rPr')
+        prependChild(r, rPr)
+      }
+      const bold = childW(rPr, 'b')
+      if (bold) bold.removeAttributeNS(W_NS, 'val') // <w:b w:val="0"/> : gras retiré par le modèle
+      else insertAfterLast(rPr, newW(doc, 'b'), BEFORE_BOLD)
+    }
+  }
+  return el
+}
+
 // ---------- construction ----------
 
 // Éléments créés au plus par un rendu : une cartographie (écrite par l'IA, qu'un texte du modèle peut tenter
@@ -406,7 +453,10 @@ class Builder {
           skipSpacer = redundant
           continue
         }
-        for (const item of items) els.push(this.make(name, { ...ctx, text: item }))
+        for (const item of items) {
+          if (typeof item === 'string' && isSubheading(item)) els.push(asSubheading(this.make(name, { ...ctx, text: subheadingText(item) })))
+          else els.push(this.make(name, { ...ctx, text: item }))
+        }
       } else {
         const required = this.map.requires?.[name]
         if (required && !ctx[required]) {
@@ -518,7 +568,7 @@ function buildBody(doc: Document, map: TemplateMap, data: CvData, lang: CvLang) 
           if (typeof v === 'string') ctx[k] = v
           else if (Array.isArray(v)) lists[k] = v
         }
-        for (const [k, v] of Object.entries(lists)) ctx[`${k}_joined`] = v.map(String).join(', ')
+        for (const [k, v] of Object.entries(lists)) ctx[`${k}_joined`] = v.map(x => subheadingText(String(x))).join(', ')
         // alias de listes courants
         lists.exp_role ??= asList(item.role_lignes)
         lists.exp_bullet ??= asList(item.realisations)

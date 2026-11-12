@@ -67,14 +67,34 @@ dans le modèle.
     règle donnée à l'IA pour les modèles déposés. Au dépôt, refus d'une cartographie qui fait disparaître le téléphone
     ou l'e-mail du contact du modèle, ou qui laisse un libellé anglais dans la version française (modèle rédigé en
     anglais). Les cartographies déjà enregistrées ne sont pas revérifiées : redéposer le modèle pour en profiter.
+- **Complément du 2026-11-12** (export d'un CV du vivier qui avait perdu ses trois expériences les plus récentes, les
+  contextes, les sous-titres et la moitié des puces : 31 % des mots du CV repris) :
+  - **PDF dessiné plusieurs fois** : le générateur du CV dessinait chaque page 5 à 7 fois, décalée de 4 pt ; l'extraction
+    rendait toutes les copies (68 000 caractères pour 11 400), le texte était coupé à 40 000 caractères et partait à l'IA
+    page 1 répétée, fin du CV absente. Le texte des PDF est désormais lu sans les morceaux qui chevauchent un morceau
+    identique (`pageTextWithoutCopies`, `src/lib/pdf-text.ts`, testé ; même texte que pdf-parse pour un PDF sans copie),
+    pour tout ce qui passe par `extractTextFromFile` (export de CV, import d'offres).
+  - **Contenu sans champ à soi** : les sous-titres des réalisations (« Pilotage budgétaire et portefeuille ») sont
+    recopiés comme éléments de `realisations` précédés de « ## », rendus avec le prototype des puces sans puce et en
+    gras (`asSubheading`, `render.ts` : écart avec `render_cv.py`), gardés à leur place par la traduction
+    (`withSourceSubheadings`) ; le contexte est repris en entier (toutes ses phrases), le type de contrat écrit à côté
+    des dates reste dans `dates`, l'intitulé écrit sous deux formes donne la plus complète, un mot écrit lettre par
+    lettre (« S K I L L S ») est recopié attaché. Les libellés « Réalisations : » du CV ne sont pas repris : le modèle
+    a les siens.
+  - **Contrôle de la copie** : part des mots du CV (3 caractères ou plus, chaque occurrence) retrouvés dans le dossier
+    (`contentCoverage`, `cv-data.ts`) ; sous 90 % (`MIN_CONTENT_COVERAGE` ; copie fidèle : 98 %, identité et libellés
+    retirés), le compte rendu le signale avec le pourcentage et l'export est journalisé (« dossier incomplet », part
+    seulement). Un signalement, pas un refus : un CV dont des rubriques n'ont pas de place dans le modèle (centres
+    d'intérêt, publications) peut descendre sous le seuil sans erreur de l'IA.
 
 ## Conséquences
 
 - Un CV long donne une réponse de l'IA plus longue qu'avant (plus rien n'est résumé) : la limite de 16 000 jetons peut
   être atteinte plus tôt (« CV trop long pour une seule réponse » : exporter une seule langue).
 - Les versions déjà enregistrées ont été générées avec les anciennes consignes et peuvent être résumées : les régénérer.
-- La fidélité repose sur la consigne : aucun contrôle automatique ne compare le dossier au CV (le texte d'un PDF coupe
-  les lignes, et les rubriques du modèle réordonnent le contenu). Le recruteur relit le document, comme avant.
+- La fidélité repose sur la consigne ; depuis le 2026-11-12, la part des mots du CV repris est mesurée et signalée sous
+  90 %, mot par mot et non ligne par ligne (le texte d'un PDF coupe les lignes, et les rubriques du modèle réordonnent le
+  contenu) : une puce reformulée sans perte de mots n'est pas détectée. Le recruteur relit le document, comme avant.
 - Écart avec la skill `cv-esn-anonymise`, qui demande encore un résumé : à reporter si la skill doit produire la même
   copie.
 - Les cartographies `templates/wise-associates/` et `templates/example/` diffèrent désormais de celle de la skill

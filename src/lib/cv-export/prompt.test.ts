@@ -36,6 +36,17 @@ describe('extractionPrompt', () => {
     assert.match(extractionPrompt('renforcee'), /clients et des employeurs remplacés/)
   })
 
+  it('garde ce qui n\'a pas de champ à soi : sous-titres des réalisations, contexte entier, contrat, intitulé complet (2026-11-12)', () => {
+    for (const mode of MODES) {
+      const prompt = extractionPrompt(mode)
+      assert.match(prompt, /sous-titre qui regroupe les puces suivantes est un élément à part, précédé de « ## »/, mode)
+      assert.match(prompt, /toutes ses phrases/, mode)
+      assert.match(prompt, /type de contrat ou le statut écrit à côté/, mode)
+      assert.match(prompt, /la plus complète/, mode)
+    }
+    assert.match(translationPrompt('en'), /commence par « ## » \(sous-titre\) garde ce début/)
+  })
+
   it('« références » désigne les personnes de référence, pas les références clients', () => {
     for (const mode of MODES) assert.match(extractionPrompt(mode), /personnes de référence et leurs coordonnées/, mode)
   })
