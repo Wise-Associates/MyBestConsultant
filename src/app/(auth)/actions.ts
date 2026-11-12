@@ -12,6 +12,7 @@ import {
   setSessionCookies,
   getOrCreateUserProfile,
 } from '@/lib/appwrite/auth'
+import { dashboardPathFor } from '@/lib/dashboard-routes'
 import type { UserRole } from '@/types'
 
 // ── Schemas ──────────────────────────────────────────────────────
@@ -62,7 +63,7 @@ export async function loginAction(formData: FormData): Promise<ActionResult> {
   }
 
   // Redirect outside try/catch (Next.js redirect throws internally)
-  redirect(getDashboardPath(role))
+  redirect(dashboardPathFor(role))
 }
 
 export async function registerAction(formData: FormData): Promise<ActionResult> {
@@ -107,22 +108,11 @@ export async function registerAction(formData: FormData): Promise<ActionResult> 
     return { error: translateAuthError(err, 'register') }
   }
 
-  redirect(getDashboardPath(parsed.data.role))
+  redirect(dashboardPathFor(parsed.data.role))
 }
 
 export async function logoutAction() {
   await deleteSession()
   redirect('/login')
-}
-
-// ── Helpers ──────────────────────────────────────────────────────
-
-function getDashboardPath(role: UserRole | string | null): string {
-  switch (role) {
-    case 'admin': return '/admin/dashboard'
-    case 'recruiter':   return '/recruiter/dashboard'
-    case 'candidate':   return '/candidate/dashboard'
-    default:            return '/candidate/dashboard'
-  }
 }
 
