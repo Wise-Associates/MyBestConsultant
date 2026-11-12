@@ -18,7 +18,7 @@ import { AiUnavailable, RetryLater, SkipAttachment, formatOf, type Attachment, t
 import { readWithFallback, visionBlockFor, type VisionReader } from './extractors/vision'
 import { openAiContentPart, transcribeWithOpenAI } from './extractors/vision-openai'
 import { batchByLength, nextStepFor } from './repo'
-import { citedClients, companyFromDomain, formatSender, fromVeille, originalSender, parseSender, senderCompany, type Organization, type Sender } from './origin'
+import { citedClients, companyFromDomain, formatSender, fromVeille, mergeCitedClients, originalSender, parseSender, senderCompany, type Organization, type Sender } from './origin'
 
 const WISE: Organization = { name: 'Wise Associates', ownDomains: ['wise-associates.fr'] }
 import { AO_RETRY_DAILY_LIMITS, RETRY_QUOTA_MESSAGE, attemptsAfterFailure, canDeferEmail, manualRetryPatch } from './attempts'
@@ -1040,6 +1040,13 @@ describe('client d\'une offre AO', () => {
     const many = citedClients([offer({ companyName: 'Client', clientAliases: Array.from({ length: 30 }, (_, i) => `Nom ${i}`) })])
     assert.equal(many.length, 20)
     assert.equal(many[0], 'Client')
+  })
+
+  it('garde à la reprise d\'un e-mail les noms masqués de l\'essai précédent (annonce d\'origine non relue)', () => {
+    // Premier essai : le client final n'était connu que par l'annonce d'origine ; la reprise ne la relit pas.
+    assert.deepEqual(mergeCitedClients(['ESN Conseil', 'Banque fictive', 'BF'], ['ESN Conseil']), ['ESN Conseil', 'Banque fictive', 'BF'])
+    assert.deepEqual(mergeCitedClients([], ['A', ' A ', 'B']), ['A', 'B'])
+    assert.equal(mergeCitedClients(Array.from({ length: 15 }, (_, i) => `P${i}`), Array.from({ length: 15 }, (_, i) => `N${i}`)).length, 20)
   })
 
   it('laisse le client lu dans l\'offre quand l\'expéditeur d\'origine est inconnu', () => {

@@ -5,6 +5,7 @@ import { AlertTriangle, Ban, Check, CircleStop, Copy, Download, ExternalLink, Ey
 import { AO_CHANNEL_LABEL, type AoOfferRow } from '@/lib/ao/filters'
 import { findIdentifiers, findNames } from '@/lib/ao/name-match'
 import { PLAIN_EMAIL } from '@/lib/ao/origin'
+import { pageFillText } from '@/lib/ao/source-page/page-fill'
 import type { AoDashboardActions, AoDashboardPaths, PublicationDraft, PublicationMode, SourcedCandidate, SourcingResult } from '@/lib/ao/dashboard-types'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
 import { Skeleton, SkeletonRegion } from '@/components/shared/skeleton'
@@ -465,6 +466,14 @@ function ClientContact({ row }: { row: AoOfferRow }) {
           <a href={row.sourceUrl} target="_blank" rel="noopener noreferrer nofollow" className={`${link} text-sm`} title={row.sourceUrl}>
             <ExternalLink size={13} aria-hidden className="shrink-0" />{hostOf(row.sourceUrl)}
           </a>
+          {/* Lecture de l'annonce par le serveur (ADR 0031) : ce qui a été complété, à vérifier avant de publier, ou pourquoi
+              elle n'a pas été lue. Orange : des champs de l'offre ne viennent pas de l'e-mail. */}
+          {row.pageFill && (
+            <p className="mt-1.5 text-xs" style={{ color: row.pageFill.status === 'filled' ? '#b45309' : 'var(--admin-fg-muted)' }}
+              title={`Le ${formatDay(row.pageFill.at)}`}>
+              {pageFillText(row.pageFill)}
+            </p>
+          )}
         </div>
       )}
     </section>

@@ -1,4 +1,5 @@
 import type { AoChannel, AoContract, AoOffer, AoOfferDetails, AoOfferStatus, AoRemote } from './types'
+import type { PageFill } from './source-page/page-fill'
 
 // Filtres de la page AO Offers, lus dans l'adresse de la page et de l'export Excel : appliqués par le serveur sur l'index
 // de la liste (indexFilterQueries, offer-index.ts), le fichier téléchargé contient exactement les offres filtrées.
@@ -22,6 +23,8 @@ export interface AoOfferRow extends AoOffer, AoOfferDetails {
   channel: AoChannel
   /** Source de la veille qui a apporté l'offre (`boamp`, `csp-dgfip`…) ; '' pour un e-mail ou une offre d'avant le suivi. */
   veilleSource: string
+  /** Lecture de l'annonce d'origine pour compléter l'offre (ADR 0031) ; null si elle n'a pas été tentée. */
+  pageFill: PageFill | null
 }
 
 /** Libellé du canal d'arrivée, dans la colonne « Source » et le panneau de détail. */

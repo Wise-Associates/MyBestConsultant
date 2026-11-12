@@ -6,7 +6,7 @@ import { DUPLICATE_WINDOW_DAYS, offerFingerprint } from './fingerprint'
 import { assertCredentialsKey } from './credentials'
 import { inboxSettingsFor } from './inbox-settings'
 import { withAoInbox, type AoInbox, type AoInboxSettings, type InboxEnvelope } from './imap'
-import { citedClients, formatSender, fromVeille, originalSender, senderCompany } from './origin'
+import { citedClients, formatSender, fromVeille, mergeCitedClients, originalSender, senderCompany } from './origin'
 import { emailDeadline, isPastDeadline } from './dates'
 import { keepCitedAliases, keepCitedContact, TruncatedAnswerError } from './parse'
 import {
@@ -21,6 +21,8 @@ import {
 } from './state'
 import { getAoSource, listEnabledSources, loadOrganizations, recordSourceError, recordSourceSync, type AoOrganization, type AoSource } from './sources'
 import { lockIdFor, PLATFORM_TENANT_ID } from './tenancy'
+import { completeFromSourcePages, type SourcedOffer } from './source-page/complete'
+import type { RobotsCache } from './source-page/fetch-page'
 import type { AoEmail, ExtractedOffer } from './types'
 
 // Lecture planifiée des boîtes AO (route /api/cron/ao-inbox appelée par un planificateur, ou bouton « Synchroniser »)
@@ -156,7 +158,7 @@ export async function syncAoInbox({ now = new Date(), maxEmails = 25, budgetMs =
   const tenantIds = [...new Set(sources.map(s => s.tenantId))]
   const orgs = await loadOrganizations(tenantIds)
   // L'IA est la même pour toutes les boîtes : indisponible pour l'une, elle l'est pour toutes, le passage s'arrête.
-  const pass: SyncPass = { visionUnavailable: null, textUnavailable: false }
+  const pass: SyncPass = { visionUnavailable: null, textUnavailable: false, robots: new Map() }
   let attempted = 0
   let busy = 0
   for (const id of tenantIds) {
@@ -229,7 +231,7 @@ export async function syncAoEmail(
       const [envelope] = (await inbox.listUids([email.uid])).filter(e => e.messageId === email.messageId)
       if (!envelope) throw new Error('E-mail introuvable dans la boîte (supprimé, ou boîte reconstruite) : à traiter à la main.')
       report.pending = 1
-      await processEnvelope(inbox, envelope, report, { visionUnavailable: null, textUnavailable: false }, now, timeLeft, false, { source, org })
+      await processEnvelope(inbox, envelope, report, { visionUnavailable: null, textUnavailable: false, robots: new Map() }, now, timeLeft, false, { source, org })
     })
   } finally {
     await releaseSyncLock(lock)
@@ -337,6 +339,8 @@ async function retryEnvelopes(inbox: AoInbox, sourceId: string, now: Date): Prom
 /** État d'un passage partagé par ses e-mails : ce que l'IA ne peut plus faire jusqu'à la fin du passage. */
 interface SyncPass extends PassState {
   textUnavailable: boolean
+  /** robots.txt des sites d'annonces déjà lus pendant le passage (source-page/fetch-page.ts). */
+  robots: RobotsCache
 }
 
 async function processEnvelope(
@@ -351,7 +355,7 @@ async function processEnvelope(
 ): Promise<void> {
   const claimed = await claim(source.$id, envelope, now, report)
   if (!claimed) return
-  const { emailId } = claimed
+  const { emailId, previousCitedClients } = claimed
   let { attempts } = claimed
 
   try {
@@ -402,7 +406,25 @@ async function processEnvelope(
       fromAi = (await extractOffersFromEmail(content.text, llmWait, aiOrigin, org.name, message.receivedAt)).offers
         .map(o => keepCitedAliases(keepCitedContact(o, content.text, source.ownDomains), content.text))
     }
-    const read = [...content.tableOffers, ...fromAi]
+    // Le client est l'entreprise de l'expéditeur d'origine, pour toutes les offres de l'e-mail (origin.ts). Les noms
+    // lus par l'IA ne comptent que si elle avait la signature sous les yeux (corps de l'e-mail confié).
+    const company = senderCompany(origin, aiOrigin ? fromAi.map(o => o.companyName) : [], { name: org.name, ownDomains: source.ownDomains })
+    const withCompany = (o: ExtractedOffer): ExtractedOffer => (company === null ? o : { ...o, companyName: company })
+    const asIs = (o: ExtractedOffer): SourcedOffer => ({ offer: o, basis: o, pageFill: null })
+    // Offres incomplètes : complétées par leur annonce d'origine, champs vides seulement (ADR 0031). Ni les lignes de
+    // tableau, ni la veille (ses e-mails portent déjà l'avis officiel). Une offre déjà enregistrée n'est pas relue : un
+    // doublon d'un autre e-mail, ou l'offre créée par un essai interrompu de celui-ci, n'est pas modifiée ci-dessous
+    // (ses détails et sa trace sont gardés ; une offre complétée dont la trace n'a pas pu être écrite a été retirée).
+    const since = new Date(now.getTime() - DUPLICATE_WINDOW_DAYS * DAY_MS)
+    const sourced: SourcedOffer[] = [
+      ...content.tableOffers.map(asIs),
+      ...(scraping ? fromAi.map(asIs) : await completeFromSourcePages(fromAi, {
+        tenantId: org.tenantId, orgName: org.name, receivedAt: message.receivedAt, now, timeLeft, robots: pass.robots,
+        isKnown: async o => (await findAoDuplicate(offerFingerprint(withCompany(o), org.tenantId), since)) !== null,
+      })),
+    ]
+    // Offres complétées : les noms et la date limite lus sur l'annonce comptent aussi (masqués, date de l'e-mail).
+    const read = sourced.map(s => s.offer)
     // Veille (scraping) : une offre dont la date limite est déjà passée n'a plus d'intérêt, elle n'est pas créée
     // (décision du 2026-10-23). Seulement si le texte désigne lui-même la date limite : une date sans libellé
     // (publication…) classée en date limite par dates.ts ferait perdre une offre. Les autres e-mails gardent toutes
@@ -411,13 +433,12 @@ async function processEnvelope(
     // Enregistrés avant la création des offres : une offre ne doit jamais exister sans ce qui permet de la publier
     // anonymisée (clients cités), même si la suite du traitement échoue.
     await updateAoEmail(emailId, {
-      citedClients: citedClients(read),
+      citedClients: mergeCitedClients(previousCitedClients, citedClients(read)),
       deadline: emailDeadline(read.filter(o => !isOutdated(o)).map(o => o.deadline), message.receivedAt),
     })
-    // Le client est l'entreprise de l'expéditeur d'origine, pour toutes les offres de l'e-mail (origin.ts). Les noms
-    // lus par l'IA ne comptent que si elle avait la signature sous les yeux (corps de l'e-mail confié).
-    const company = senderCompany(origin, aiOrigin ? fromAi.map(o => o.companyName) : [], { name: org.name, ownDomains: source.ownDomains })
-    const extracted = company === null ? read : read.map(o => ({ ...o, companyName: company }))
+    // Empreinte tirée de l'offre telle que l'e-mail la donne (`basis`) : une reprise de l'e-mail qui lirait l'annonce
+    // autrement retrouve l'offre déjà créée au lieu d'en créer une seconde.
+    const extracted = sourced.map(s => ({ ...s, offer: withCompany(s.offer), basis: withCompany(s.basis) }))
     const offers = extracted.slice(0, MAX_OFFERS_PER_EMAIL)
     let created = 0
     let duplicates = 0
@@ -431,11 +452,11 @@ async function processEnvelope(
       subject: message.subject.slice(0, 500),
       sender: senderOf({ origin: origin ? formatSender(origin) : '', fromName: message.fromName.slice(0, 200), fromAddress: message.fromAddress.slice(0, 320) }),
     }
-    for (const offer of offers) {
-      const fingerprint = offerFingerprint(offer, org.tenantId)
+    for (const { offer, basis, pageFill } of offers) {
+      const fingerprint = offerFingerprint(basis, org.tenantId)
       if (seen.has(fingerprint)) { duplicates++; continue } // même offre dans le corps et une pièce jointe
       seen.add(fingerprint)
-      const duplicate = await findAoDuplicate(fingerprint, new Date(now.getTime() - DUPLICATE_WINDOW_DAYS * DAY_MS))
+      const duplicate = await findAoDuplicate(fingerprint, since)
       // Offre de la veille : détails toujours enregistrés, ils portent le canal affiché dans la colonne « Source ».
       const details = scraping || offer.engagement || offer.technologies.length || offer.contact || offer.sourceUrl
         ? { engagement: offer.engagement, technologies: offer.technologies, contact: offer.contact, sourceUrl: offer.sourceUrl }
@@ -443,10 +464,12 @@ async function processEnvelope(
       const channel = scraping ? 'scraping' : 'email'
       const veilleSource = scraping ? (message.veilleSource ?? '') : ''
       // Créée par un essai interrompu de ce même e-mail : c'est la sienne, pas un doublon (ses détails ont pu manquer).
-      // Vérifié avant l'échéance : une reprise le lendemain de la date limite complète l'offre déjà créée.
+      // Vérifié avant l'échéance : une reprise le lendemain de la date limite complète l'offre déjà créée. Des détails
+      // déjà enregistrés sont gardés : ils vont avec l'offre créée (complétée ou non par son annonce), que cet essai ne
+      // modifie pas.
       if (duplicate?.emailId === emailId) {
         await saveAoOfferIndex(duplicate, indexContext)
-        if (details) await saveAoOfferDetails(duplicate.$id, details, channel, veilleSource)
+        if (details) await saveAoOfferDetails(duplicate.$id, details, channel, veilleSource, pageFill, { keepExisting: true })
         created++
         continue
       }
@@ -462,7 +485,8 @@ async function processEnvelope(
         // Ligne d'index juste après l'offre : sans elle, l'offre n'apparaîtrait nulle part, et une reprise de l'e-mail qui
         // l'extrairait autrement (autre empreinte) ne la retrouverait pas. Échec : l'offre est retirée, l'e-mail repris
         // (ou « Réessayer ») la recrée entière. Les détails viennent ensuite : s'ils échouent, l'offre reste visible et la
-        // reprise du même e-mail les complète (branche ci-dessus).
+        // reprise du même e-mail les complète (branche ci-dessus) — sauf une offre complétée par son annonce : sans sa
+        // trace, rien ne dirait que des champs viennent d'une page tierce (ADR 0031), elle est retirée et recréée entière.
         try {
           await saveAoOfferIndex(saved, indexContext)
         } catch (err) {
@@ -471,7 +495,18 @@ async function processEnvelope(
           })
           throw err
         }
-        if (details) await saveAoOfferDetails(saved.$id, details, channel, veilleSource)
+        if (details) {
+          try {
+            await saveAoOfferDetails(saved.$id, details, channel, veilleSource, pageFill)
+          } catch (err) {
+            if (pageFill?.status === 'filled') {
+              await deleteAoOfferAndDetails(saved.$id).catch(cleanup => {
+                console.error('AO: offre complétée par son annonce restée sans sa trace, à supprimer à la main', saved.$id, cleanup instanceof Error ? cleanup.message : String(cleanup))
+              })
+            }
+            throw err
+          }
+        }
         created++
       }
     }
@@ -521,7 +556,7 @@ async function processEnvelope(
  * Réserve un e-mail pour ce passage : création, ou nouvel essai si son état relu l'autorise.
  * Renvoie null s'il est déjà traité, en cours ailleurs, ou abandonné.
  */
-async function claim(sourceId: string, envelope: InboxEnvelope, now: Date, report: AoSyncReport): Promise<{ emailId: string; attempts: number } | null> {
+async function claim(sourceId: string, envelope: InboxEnvelope, now: Date, report: AoSyncReport): Promise<{ emailId: string; attempts: number; previousCitedClients: string[] } | null> {
   const existing = await findAoEmailByMessageId(sourceId, envelope.messageId)
   if (existing) {
     const step = nextStepFor(existing, now)
@@ -530,11 +565,11 @@ async function claim(sourceId: string, envelope: InboxEnvelope, now: Date, repor
     }
     if (step !== 'retry') return null
     await updateAoEmail(existing.$id, { status: 'processing', attempts: existing.attempts + 1 })
-    return { emailId: existing.$id, attempts: existing.attempts + 1 }
+    return { emailId: existing.$id, attempts: existing.attempts + 1, previousCitedClients: existing.citedClients }
   }
   try {
     const email = await createAoEmail({ sourceId, messageId: envelope.messageId, uid: envelope.uid, receivedAt: envelope.receivedAt.toISOString() })
-    return { emailId: email.$id, attempts: 1 }
+    return { emailId: email.$id, attempts: 1, previousCitedClients: [] }
   } catch (err) {
     // 409 : un autre passage vient de le prendre. Toute autre erreur est signalée.
     if ((err as { code?: number }).code !== 409) report.errors.push(`Enregistrement de l'e-mail impossible : ${err instanceof Error ? err.message : String(err)}`)

@@ -47,7 +47,8 @@ export interface ImapEndpoint {
 type Lookup = (host: string) => Promise<{ address: string; family: number }[]>
 const systemLookup: Lookup = host => dnsLookup(host, { all: true, verbatim: true })
 
-const HOSTNAME = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/
+/** Nom d'hôte DNS (ni adresse IP, ni port) : aussi exigé des liens d'annonce lus par le serveur (source-page/rules.ts). */
+export const HOSTNAME = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/
 
 /** Adresse à laquelle se connecter pour `host` ; ImapHostError si le nom est invalide, inconnu ou non public. */
 export async function resolveImapHost(host: string, lookup: Lookup = systemLookup, timeoutMs = DNS_TIMEOUT_MS): Promise<ImapEndpoint> {
