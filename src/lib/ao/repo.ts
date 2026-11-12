@@ -1,4 +1,5 @@
 import { ID, Query, type Models } from 'node-appwrite'
+import { pageFillJson, parsePageFill, type PageFill } from './source-page/page-fill'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
@@ -357,9 +358,13 @@ async function mirrorAoOfferIndex(offerId: string, patch: Partial<Pick<AoOfferIn
 /**
  * Enregistre les détails d'une offre (document de même identifiant ; mis à jour s'il existe déjà). Le canal n'est écrit
  * que pour la veille : absent, l'offre vient d'un e-mail (et les e-mails ordinaires n'exigent pas l'attribut `channel`).
- * Contact, lien d'origine et source de la veille : écrits seulement s'ils existent (même raison).
+ * Contact, lien d'origine, source de la veille et lecture de l'annonce d'origine (`pageFill`, ADR 0031) : écrits seulement
+ * s'ils existent (même raison : l'attribut n'est exigé qu'une fois la fonction utilisée).
  */
-export async function saveAoOfferDetails(offerId: string, details: AoOfferDetails, channel?: AoChannel, veilleSource = ''): Promise<void> {
+export async function saveAoOfferDetails(
+  offerId: string, details: AoOfferDetails, channel?: AoChannel, veilleSource = '', pageFill: PageFill | null = null,
+  { keepExisting = false }: { keepExisting?: boolean } = {},
+): Promise<void> {
   const { databases } = createAdminClient()
   const data = {
     engagement: details.engagement,
@@ -369,11 +374,14 @@ export async function saveAoOfferDetails(offerId: string, details: AoOfferDetail
     ...(channel === 'scraping' && veilleSource ? { veilleSource } : {}),
     ...(contactJson(offerId, details.contact)),
     ...(details.sourceUrl ? { sourceUrl: details.sourceUrl } : {}),
+    ...(pageFill ? { pageFill: pageFillJson(pageFill) } : {}),
   }
   try {
     await databases.createDocument(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, offerId, data)
   } catch (err) {
     if ((err as { code?: number }).code !== 409) throw err
+    // keepExisting : reprise d'un e-mail dont l'offre et ses détails sont déjà enregistrés (sync.ts) ; ils restent.
+    if (keepExisting) return
     await databases.updateDocument(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, offerId, data)
   }
 }
@@ -423,9 +431,9 @@ export async function saveAoOfferSourcing(offerId: string, record: AoSourcingRec
  * Détails des offres `offerIds` (absents : offre reçue avant ces détails, ou e-mail sans assistance / forfait ni
  * technologie). Canal absent ou inconnu : e-mail.
  */
-export async function listAoOfferDetails(offerIds: string[]): Promise<Map<string, AoOfferDetails & { channel: AoChannel; veilleSource: string }>> {
+export async function listAoOfferDetails(offerIds: string[]): Promise<Map<string, AoOfferDetails & { channel: AoChannel; veilleSource: string; pageFill: PageFill | null }>> {
   const { databases } = createAdminClient()
-  const map = new Map<string, AoOfferDetails & { channel: AoChannel; veilleSource: string }>()
+  const map = new Map<string, AoOfferDetails & { channel: AoChannel; veilleSource: string; pageFill: PageFill | null }>()
   // Lots lus en parallèle : chaque appel à Appwrite coûte un aller-retour réseau.
   const pages = await Promise.all(batchByLength([...new Set(offerIds.filter(Boolean))]).map(batch =>
     databases.listDocuments(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, [Query.equal('$id', batch), Query.limit(batch.length)])))
@@ -437,9 +445,17 @@ export async function listAoOfferDetails(offerIds: string[]): Promise<Map<string
       veilleSource: str(doc.veilleSource),
       contact: storedContact(str(doc.contact), doc.$id),
       sourceUrl: str(doc.sourceUrl),
+      pageFill: storedPageFill(doc.pageFill, doc.$id),
     })
   }
   return map
+}
+
+/** Lecture de l'annonce d'origine enregistrée ; illisible : ignorée et journalisée (la page n'affiche alors rien). */
+function storedPageFill(raw: unknown, offerId: string): PageFill | null {
+  const fill = parsePageFill(raw)
+  if (!fill && typeof raw === 'string' && raw) console.warn('AO: lecture de l\'annonce d\'origine enregistrée illisible, ignorée', offerId)
+  return fill
 }
 
 /** Contact enregistré en JSON, s'il tient dans son attribut (1 000 caractères) ; sinon écarté et journalisé. */
@@ -549,6 +565,7 @@ async function aoOfferRowsOf(offers: AoOffer[], tenantId: string): Promise<AoOff
       receivedAt: email?.receivedAt ?? offer.createdAt,
       channel: details.get(offer.$id)?.channel ?? 'email',
       veilleSource: details.get(offer.$id)?.veilleSource ?? '',
+      pageFill: details.get(offer.$id)?.pageFill ?? null,
     }
   })
 }

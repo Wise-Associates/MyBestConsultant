@@ -49,7 +49,7 @@ describe('organisations', () => {
     for (const id of [
       lockIdFor('t1'), lockIdFor(long), counterIdFor('vision', long, day), counterIdFor('tables', 't1', day), counterIdFor('mailboxTests', 't1', day),
       `${counterIdFor('mailboxTestsAll', 'plateforme', day)}_499`, `${counterIdFor('assistantUser', long, day)}_29`, `${counterIdFor('assistantAll', 'platform', day)}_999`,
-      `${counterIdFor('vivierMatchAll', 'platform', day)}_1999`,
+      `${counterIdFor('vivierMatchAll', 'platform', day)}_1999`, `${counterIdFor('aoPageOrg', long, day)}_29`, `${counterIdFor('aoPageAll', 'platform', day)}_299`,
     ]) {
       assert.match(id, /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,35}$/, id)
     }
@@ -57,7 +57,8 @@ describe('organisations', () => {
       'vision', 'tables', 'mailboxTests', 'mailboxTarget', 'mailboxTestsAll', 'assistantUser', 'assistantAll', 'cvExportOrg', 'cvExportAll',
       'cvTemplateOrg', 'cvTemplatePreview', 'aoSourcingOrg', 'aoSourcingAll', 'aoRetryOrg', 'aoRetryAll', 'aoRewriteOrg', 'aoRewriteAll',
       'vivierMatchOrg', 'vivierMatchAll', 'cvTemplateAll', 'socialScenes', 'socialScenesAll', 'mbcSearchOrg', 'mbcSearchAll', 'mbcRevealOrg', 'mbcRevealAll',
-    ] as const).map(c => counterIdFor(c, 't1', day)[0])
+      'aoPageOrg', 'aoPageAll',
+    ] as const).map(c => counterIdFor(c, 't1', day).split('_')[0])
     assert.equal(new Set(prefixes).size, prefixes.length, 'un préfixe par compteur')
     assert.notEqual(lockIdFor('t1'), lockIdFor('t2'))
     assert.notEqual(counterIdFor('vision', 't1', day), counterIdFor('vision', 't2', day))

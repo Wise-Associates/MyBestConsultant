@@ -180,3 +180,12 @@ export function citedClients(offers: Pick<ExtractedOffer, 'companyName' | 'endCl
     .map(n => n.trim()).filter(Boolean)
   return [...new Set(names)].slice(0, MAX_CITED_CLIENTS)
 }
+
+/**
+ * Noms masqués d'un e-mail repris (nouvel essai, « Réessayer ») : ceux déjà enregistrés d'abord, puis ceux de cet essai.
+ * Les offres créées par l'essai précédent ont pu s'appuyer sur des noms que cet essai ne relit pas (annonce d'origine
+ * non relue, IA qui extrait autrement, ADR 0031) : les retirer laisserait leur client lisible à la publication.
+ */
+export function mergeCitedClients(previous: string[], current: string[]): string[] {
+  return [...new Set([...previous, ...current].map(n => n.trim()).filter(Boolean))].slice(0, MAX_CITED_CLIENTS)
+}

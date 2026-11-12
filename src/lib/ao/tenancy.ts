@@ -44,6 +44,9 @@ const COUNTER_PREFIX = {
   cvExportOrg: 'x', cvExportAll: 'y', cvTemplateOrg: 'u', cvTemplatePreview: 'p', aoSourcingOrg: 's', aoSourcingAll: 'q',
   aoRetryOrg: 'r', aoRetryAll: 'w', aoRewriteOrg: 'd', aoRewriteAll: 'h', vivierMatchOrg: 'n', vivierMatchAll: 'o',
   cvTemplateAll: 'f', socialScenes: 'i', socialScenesAll: 'e', mbcSearchOrg: 'k', mbcSearchAll: 'z', mbcRevealOrg: 'j', mbcRevealAll: 'l',
+  // Lectures d'annonces d'origine (ADR 0031). Toutes les lettres étant prises, deux caractères : l'identifiant d'une
+  // place tient encore dans les 36 caractères d'Appwrite (« pg_<16>_<jour>_<place> »).
+  aoPageOrg: 'pg', aoPageAll: 'pa',
 } as const
 export type DailyCounter = keyof typeof COUNTER_PREFIX
 
