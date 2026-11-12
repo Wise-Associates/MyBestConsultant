@@ -11,6 +11,13 @@ export const TO_COMPLETE: Record<CvLang, string> = { fr: '[À COMPLÉTER]', en: 
 const INVISIBLE = /[\p{Cf}]|[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]|[\uD800-\uDFFF]/gu
 
 export const stripInvisible = (s: string) => s.replace(INVISIBLE, '')
+
+// Sous-titre parmi les réalisations d'une expérience (« Pilotage budgétaire et portefeuille » au-dessus de ses puces,
+// demande du 2026-11-12 : rien du CV ne se perd) : l'IA le recopie comme un élément précédé de « ## » (prompt.ts), le
+// rendu l'affiche sans puce et en gras (render.ts).
+const SUBHEADING_MARK = /^##\s*/
+export const subheadingText = (text: string) => text.replace(SUBHEADING_MARK, '')
+export const isSubheading = (text: string) => SUBHEADING_MARK.test(text) && subheadingText(text) !== ''
 const clean = (v: string | number) => stripInvisible(String(v)).replace(/\s+/g, ' ').trim()
 
 // Validation stricte : une rubrique d'un autre type que prévu (texte au lieu d'une liste, clé renommée…) fait refuser
@@ -194,7 +201,52 @@ export function parseTranslation(raw: string, source: CvContent): CvContent {
   const gap = structureGap(source, parsed.data)
   if (gap) throw new InvalidAnswerError(`Traduction incomplète : « ${gap} » manquant ou vide`)
   if (JSON.stringify(parsed.data) === JSON.stringify(source)) throw new InvalidAnswerError('Traduction absente : texte renvoyé identique à l\'original')
-  return parsed.data
+  return withSourceSubheadings(parsed.data, source)
+}
+
+/** Sous-titres de la traduction repris de l'original, élément par élément : un « ## » perdu ou ajouté par l'IA est corrigé. */
+function withSourceSubheadings(translated: CvContent, source: CvContent): CvContent {
+  return {
+    ...translated,
+    experiences: translated.experiences.map((exp, i) => ({
+      ...exp,
+      realisations: exp.realisations.map((text, j) => (isSubheading(source.experiences[i].realisations[j]) ? `## ${subheadingText(text)}` : subheadingText(text))),
+    })),
+  }
+}
+
+// Seuil du compte rendu : une copie fidèle reprend 98 % des mots du CV (identité, libellés « Réalisations : » et titres
+// de rubrique retirés), le dossier du 2026-11-12, qui avait perdu trois expériences et la moitié des puces, 31 %.
+export const MIN_CONTENT_COVERAGE = 0.9
+
+// Mots de 3 caractères ou plus, sans casse ni accents : ni les mots-outils courts, ni les lettres des titres espacés
+// (« S K I L L S »), que l'IA recopie attachées.
+const coverageWords = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  .split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 3)
+
+const stringsOf = (value: unknown): string[] =>
+  typeof value === 'string' ? [value]
+    : Array.isArray(value) ? value.flatMap(stringsOf)
+      : value !== null && typeof value === 'object' ? Object.values(value).flatMap(stringsOf) : []
+
+/**
+ * Part des mots du CV retrouvés dans le dossier (0 à 1), chaque occurrence comptée : le dossier recopie le CV mot pour
+ * mot (ADR 0024), un écart signale un passage perdu par l'IA, qui sinon passerait inaperçu.
+ */
+export function contentCoverage(cvText: string, content: CvContent): number {
+  const available = new Map<string, number>()
+  for (const word of coverageWords(stringsOf(content).join(' '))) available.set(word, (available.get(word) ?? 0) + 1)
+  const words = coverageWords(cvText)
+  if (words.length === 0) return 1
+  let found = 0
+  for (const word of words) {
+    const left = available.get(word) ?? 0
+    if (left > 0) {
+      found++
+      available.set(word, left - 1)
+    }
+  }
+  return found / words.length
 }
 
 /** Contenu seul (sans langue, termes d'identité ni omissions), tel qu'envoyé à la traduction. */
@@ -248,10 +300,16 @@ export function countToComplete(data: CvData): number {
 /** Compte rendu pour l'admin (fenêtre d'export), en français. */
 export function exportNotes(input: {
   toComplete: number; omitted: string[]; certificationsMerged: boolean; cvTruncated: boolean; untranslated: { lang: CvLang; count: number }[]
+  /** contentCoverage du dossier dans la langue du CV. */
+  coverage: number
 }): string[] {
   const notes: string[] = []
   if (input.cvTruncated) {
     notes.push('CV très long : seul son début a été lu, les expériences les plus anciennes peuvent manquer. Comparez avec le CV d\'origine.')
+  }
+  if (input.coverage < MIN_CONTENT_COVERAGE) {
+    // Arrondi vers le bas : 89,6 % ne s'affiche pas « 90 % », sous le seuil.
+    notes.push(`Le dossier ne reprend qu'environ ${Math.floor(input.coverage * 100)} % du texte du CV : des passages manquent. Comparez-le avec le CV d'origine, ou générez une nouvelle version.`)
   }
   if (input.toComplete > 0) {
     notes.push(`${input.toComplete} champ${input.toComplete > 1 ? 's' : ''} « [À COMPLÉTER] » : information absente du CV, à saisir dans Word.`)

@@ -1,8 +1,9 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  InvalidAnswerError, TruncatedAnswerError, contentOf, countToComplete, cvFileKind, dominantLang, exportBaseName, exportNotes, fitToTemplate,
-  groupRepeatedSkills, initialsOf, parseExtraction, parseTranslation, splitFullName, structureGap, untranslatedCount, zipNameOf,
+  InvalidAnswerError, MIN_CONTENT_COVERAGE, TruncatedAnswerError, contentCoverage, contentOf, countToComplete, cvFileKind, dominantLang,
+  exportBaseName, exportNotes, fitToTemplate, groupRepeatedSkills, initialsOf, isSubheading, parseExtraction, parseTranslation, splitFullName,
+  structureGap, subheadingText, untranslatedCount, zipNameOf,
 } from './cv-data'
 import wiseMap from './templates/wise-associates/template_map.json'
 import type { CvData, TemplateMap } from './types'
@@ -80,6 +81,12 @@ describe('parseTranslation', () => {
     assert.throws(() => parseTranslation(JSON.stringify(emptied), source), /« experiences\.0\.client »/)
   })
 
+  it('garde les sous-titres de l\'original à leur place, même si l\'IA a perdu ou ajouté « ## »', () => {
+    const withHeading = { ...source, experiences: [{ ...source.experiences[0], realisations: ['## Développement', 'API REST.'] }] }
+    const answer = { ...withHeading, titre: 'Java Developer', experiences: [{ ...withHeading.experiences[0], realisations: ['Development', '## REST API.'] }] }
+    assert.deepEqual(parseTranslation(JSON.stringify(answer), withHeading).experiences[0].realisations, ['## Development', 'REST API.'])
+  })
+
   it('refuse une « traduction » identique à l\'original', () => {
     assert.throws(() => parseTranslation(JSON.stringify(source), source), /Traduction absente/)
   })
@@ -116,15 +123,52 @@ describe('règles de l\'export', () => {
     // Une traduction anglaise qui a laissé le marqueur français compte aussi.
     assert.equal(countToComplete({ ...data, titre: '[TO BE COMPLETED]', experience: '[À COMPLÉTER]' }), 2)
     assert.deepEqual(exportNotes({
-      toComplete: 1, omitted: ['Projets personnels'], certificationsMerged: true, cvTruncated: true, untranslated: [{ lang: 'en', count: 2 }],
+      toComplete: 1, omitted: ['Projets personnels'], certificationsMerged: true, cvTruncated: true, untranslated: [{ lang: 'en', count: 2 }], coverage: 0.896,
     }), [
       'CV très long : seul son début a été lu, les expériences les plus anciennes peuvent manquer. Comparez avec le CV d\'origine.',
+      'Le dossier ne reprend qu\'environ 89 % du texte du CV : des passages manquent. Comparez-le avec le CV d\'origine, ou générez une nouvelle version.',
       '1 champ « [À COMPLÉTER] » : information absente du CV, à saisir dans Word.',
       'Version anglaise : 2 passages restés en français, à traduire dans Word.',
       'Certifications ajoutées à la rubrique Formation (le modèle n\'a pas de rubrique dédiée).',
       'Non repris faute de rubrique dans le modèle : Projets personnels.',
     ])
-    assert.deepEqual(exportNotes({ toComplete: 0, omitted: [], certificationsMerged: false, cvTruncated: false, untranslated: [] }), [])
+    assert.deepEqual(exportNotes({ toComplete: 0, omitted: [], certificationsMerged: false, cvTruncated: false, untranslated: [], coverage: 0.9 }), [])
+  })
+
+  it('mesure la part du CV reprise dans le dossier : une expérience perdue se voit, l\'identité retirée non', () => {
+    const cvText = [
+      'Camille FONTAINE', 'C H E F   D E   P R O J E T',
+      'Chef de projet avec douze années de pilotage de programmes bancaires et de portefeuilles de projets.',
+      'Banque Exemple, Paris (Freelance, depuis mars 2026)', 'Réalisations :',
+      '> Pilotage budgétaire', '• Mise en place d\'un reporting budgétaire par domaine.', '• Suivi des écarts et des risques budgétaires.',
+      'Assureur Fictif, Lyon (CDI, 2019-2025)', '• Animation des comités de pilotage mensuels.', '• Rédaction des comptes rendus de comité.',
+    ].join('\n')
+    const faithful = {
+      ...contentOf(parseExtraction(JSON.stringify(ANSWER))),
+      titre: 'CHEF DE PROJET',
+      resume: ['Chef de projet avec douze années de pilotage de programmes bancaires et de portefeuilles de projets.'],
+      experiences: [
+        { dates: 'Freelance, depuis mars 2026', client: 'Banque Exemple, Paris', role_lignes: [], contexte: '', environnement: '',
+          realisations: ['## Pilotage budgétaire', 'Mise en place d\'un reporting budgétaire par domaine.', 'Suivi des écarts et des risques budgétaires.'] },
+        { dates: 'CDI, 2019-2025', client: 'Assureur Fictif, Lyon', role_lignes: [], contexte: '', environnement: '',
+          realisations: ['Animation des comités de pilotage mensuels.', 'Rédaction des comptes rendus de comité.'] },
+      ],
+    }
+    assert.ok(contentCoverage(cvText, faithful) >= MIN_CONTENT_COVERAGE, String(contentCoverage(cvText, faithful)))
+    // Le cas du 2026-11-12 : une expérience entière et un sous-titre absents du dossier.
+    const lost = { ...faithful, experiences: [{ ...faithful.experiences[1] }] }
+    assert.ok(contentCoverage(cvText, lost) < MIN_CONTENT_COVERAGE, String(contentCoverage(cvText, lost)))
+    // Chaque occurrence compte : un mot présent une fois dans le dossier ne couvre pas ses deux occurrences du CV.
+    assert.equal(contentCoverage('budget budget', { ...faithful, titre: 'budget', experiences: [] }) < 1, true)
+  })
+
+  it('sous-titre des réalisations : élément précédé de « ## », texte sans la marque', () => {
+    assert.equal(isSubheading('## Pilotage budgétaire'), true)
+    assert.equal(isSubheading('##Pilotage budgétaire'), true)
+    assert.equal(isSubheading('##'), false)
+    assert.equal(isSubheading('Mise en place du reporting #2.'), false)
+    assert.equal(subheadingText('## Pilotage budgétaire'), 'Pilotage budgétaire')
+    assert.equal(subheadingText('Suivi des risques.'), 'Suivi des risques.')
   })
 
   it('nom de fichier ASCII sans espace ni champ à compléter', () => {

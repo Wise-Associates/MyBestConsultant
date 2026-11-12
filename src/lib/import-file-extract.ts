@@ -1,6 +1,7 @@
 // Shared file-to-text extraction for job import (recruiter and admin flows share this
 // so a fix or a new format only needs to be added once, and both stay in sync).
 import * as XLSX from 'xlsx'
+import { pageTextWithoutCopies, type PdfTextItem } from './pdf-text'
 
 // pdf-parse uses pdfjs-dist which needs browser APIs — polyfill for Node.js
 if (typeof globalThis.DOMMatrix === 'undefined') {
@@ -11,6 +12,15 @@ if (typeof globalThis.DOMMatrix === 'undefined') {
 }
 
 const DEFAULT_MAX_CHARS = 15_000
+
+/** Page telle que pdf-parse la passe à `pagerender` (pdf.js 1.10, sans types). */
+interface PdfPage {
+  getTextContent(options: { normalizeWhitespace: boolean; disableCombineTextItems: boolean }): Promise<{ items: PdfTextItem[] }>
+}
+
+// Mêmes options que le rendu par défaut de pdf-parse.
+const pageWithoutCopies = (page: PdfPage) =>
+  page.getTextContent({ normalizeWhitespace: false, disableCombineTextItems: false }).then(content => pageTextWithoutCopies(content.items))
 
 interface ExtractOptions {
   /** 15 000 caractères suffisent pour une offre ; un CV complet (export au format ESN) en demande davantage. */
@@ -34,9 +44,10 @@ export async function extractTextFromFile(buffer: Buffer, filename: string, { ma
   if (ext === 'pdf') {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParse = require('pdf-parse/lib/pdf-parse.js') as (buf: Buffer, options?: { max?: number }) => Promise<{ text: string }>
+      const pdfParse = require('pdf-parse/lib/pdf-parse.js') as (buf: Buffer, options?: { max?: number; pagerender?: (page: PdfPage) => Promise<string> }) => Promise<{ text: string }>
       // 50 premières pages : le texte est de toute façon tronqué à maxChars, inutile de lire un document entier.
-      const data = await pdfParse(buffer, { max: 50 })
+      // Pages lues sans leurs copies superposées (pdf-text.ts) : un CV dessiné 5 fois dépassait maxChars et perdait sa fin.
+      const data = await pdfParse(buffer, { max: 50, pagerender: pageWithoutCopies })
       return data.text.slice(0, maxChars)
     } catch (err) {
       if (strict) throw err

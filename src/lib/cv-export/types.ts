@@ -12,6 +12,7 @@ export interface CvExperience {
   client: string
   role_lignes: string[]
   contexte: string
+  /** Puces de la mission ; un élément « ## … » est un sous-titre du CV (isSubheading, cv-data.ts), rendu sans puce. */
   realisations: string[]
   environnement: string
 }

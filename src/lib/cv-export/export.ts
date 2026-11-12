@@ -8,8 +8,8 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { BUCKETS, COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { extractTextFromFile } from '@/lib/import-file-extract'
 import {
-  InvalidAnswerError, TruncatedAnswerError, contentOf, countToComplete, cvFileKind, dominantLang, exportBaseName, exportNotes, fitToTemplate,
-  initialsOf, parseExtraction, parseTranslation, splitFullName, untranslatedCount, zipNameOf, type CvContent,
+  InvalidAnswerError, MIN_CONTENT_COVERAGE, TruncatedAnswerError, contentCoverage, contentOf, countToComplete, cvFileKind, dominantLang, exportBaseName,
+  exportNotes, fitToTemplate, initialsOf, parseExtraction, parseTranslation, splitFullName, untranslatedCount, zipNameOf, type CvContent,
 } from './cv-data'
 import { findLeaks, leakMessage, leakTerms } from './leak-check'
 import { extractionPrompt, translationPrompt } from './prompt'
@@ -246,6 +246,9 @@ async function exportCv(logId: string, candidate: Candidate, options: CvExportOp
   const extraction = await askModel(extractionPrompt(options.mode), `${cutNotice}<cv>\n${cv.text}\n</cv>`,
     Math.min(EXTRACTION_TIMEOUT_MS, deadline - Date.now()), parseExtraction)
   const source = contentOf(extraction)
+  const coverage = contentCoverage(cv.text, source)
+  // Journal : la part seulement, jamais le texte du CV.
+  if (coverage < MIN_CONTENT_COVERAGE) console.warn('[cv-export] dossier incomplet', logId, `${Math.round(coverage * 100)} % du CV repris`)
   const sourceLang = dominantLang(source) ?? extraction.langue
   if (sourceLang !== extraction.langue) console.info('[cv-export] langue du CV corrigée', logId, extraction.langue, '→', sourceLang)
   const contents = new Map<CvLang, CvContent>([[sourceLang, source]])
@@ -293,6 +296,7 @@ async function exportCv(logId: string, candidate: Candidate, options: CvExportOp
     certificationsMerged: first.certificationsMerged,
     cvTruncated: cv.truncated,
     untranslated,
+    coverage,
   })
   // Titre de la version rendue et contrôlée (celui de la langue du CV n'est pas rendu si seule l'autre langue est demandée).
   const baseName = exportBaseName(template.map.esn, first.data.identifiant, first.data.titre)

@@ -5,6 +5,8 @@ import type { AnonymizationMode, CvLang } from './types'
 // contient pas d'instructions ; sa réponse est de toute façon validée (cv-data.ts) et contrôlée (leak-check.ts).
 // Contenu recopié mot pour mot, seule l'identité du candidat est anonymisée (ADR 0024) : demander des « paragraphes
 // courts » ou des « phrases courtes » faisait résumer le CV (3 puces gardées sur 8, profil réécrit, rubriques perdues).
+// Sous-titres des réalisations, contexte en plusieurs phrases, type de contrat à côté des dates et intitulé complet :
+// sans place dans le JSON, ils disparaissaient du dossier (2026-11-12).
 
 // Valeurs d'exemple neutres (« … ») : l'IA recopiait celles d'un exemple réaliste (années « 2012 », « 2020 ») dans les
 // CV qui n'en donnent pas ; de même "langue": "fr", qui faisait annoncer en français un CV anglais, livré non traduit.
@@ -37,16 +39,17 @@ ${JSON_SHAPE}
 Copie fidèle :
 - Recopier le texte du CV mot pour mot, dans l'ordre du CV : ni reformulation, ni résumé, ni fusion, ni correction, ni ajout. Rien n'est omis : chaque paragraphe, chaque puce et chaque ligne de compétences du CV se retrouve dans le dossier. Seule exception : l'anonymisation ci-dessous.
 - Ne rien inventer ni déduire : aucune année, aucun établissement, niveau, client ou réalisation absent du CV.
+- Un mot que le texte extrait écrit lettre par lettre (« S K I L L S ») se recopie sans ces espaces (« SKILLS »).
 - Rédiger dans la langue du CV. "langue" : la langue des phrases du CV (profil, réalisations), pas celle des titres de rubrique : "fr" pour le français, "en" pour l'anglais.
-- "titre" : l'intitulé de poste en tête du CV, à l'identique.
+- "titre" : l'intitulé de poste en tête du CV, à l'identique ; écrit sous deux formes (« Architecte Data » et « Architecte Data - Cloud & Big Data »), la plus complète.
 - "experience" : la durée d'expérience telle qu'écrite dans le CV, même au milieu d'une phrase (« 12 ans d'expérience », « 12 years of experience »). Ne jamais la calculer : absente du CV, mettre "[À COMPLÉTER]" (ou "[TO BE COMPLETED]" pour un CV en anglais).
 - "resume" : chaque paragraphe du profil du CV (profil, résumé, à propos) tel quel, un élément par paragraphe, autant que le CV en compte. Liste vide si le CV n'a pas de profil.
 - "experiences" : dans l'ordre du CV, chacune avec tout son texte.
-  - "dates" : telles qu'écrites, durée comprise (« Mars 2021 – Aujourd'hui (3 ans) »).
+  - "dates" : telles qu'écrites, durée comprise (« Mars 2021 – Aujourd'hui (3 ans) »), avec le type de contrat ou le statut écrit à côté (« Freelance, depuis mars 2026 »).
   - "client" : l'entreprise ou le client, tel qu'écrit.
   - "role_lignes" : l'intitulé du poste tel qu'écrit, une ligne par rôle.
-  - "contexte" : la ligne qui présente la mission sous l'intitulé (direction, équipe, programme, projet), telle quelle ; vide si le CV n'en a pas.
-  - "realisations" : chaque puce ou phrase de la mission, telle quelle, une par élément, toutes.
+  - "contexte" : le texte qui présente la mission sous l'intitulé (direction, équipe, programme, projet, périmètre), tel quel, toutes ses phrases ; vide si le CV n'en a pas.
+  - "realisations" : chaque puce ou phrase de la mission, telle quelle, une par élément, toutes, dans l'ordre. Un sous-titre qui regroupe les puces suivantes est un élément à part, précédé de « ## » (« ## Pilotage budgétaire »), à sa place. Les libellés « Réalisations : » ou « Missions : » ne sont pas recopiés : le modèle a les siens.
   - "environnement" : les outils et technologies de la mission tels qu'écrits (ligne « Environnement : », sans ce libellé) ; vide s'ils ne sont pas cités.
 - Une date ou un client absent du CV : "[À COMPLÉTER]" ("[TO BE COMPLETED]" pour un CV en anglais). Tout autre champ absent reste vide.
 - "formations" et "certifications" : dans l'ordre du CV, chacune telle qu'écrite. Une ligne qui en cite plusieurs (« Certifications : A, B, C ») donne un élément par certification. Années, établissement et organisme seulement s'ils sont écrits, sinon vides.
@@ -81,5 +84,6 @@ Réponds UNIQUEMENT avec le JSON traduit, sans markdown ni texte autour : mêmes
 - Niveaux de langue : ${toEnglish ? 'langue maternelle → native, courant → fluent, intermédiaire → intermediate, notions → basic' : 'native → langue maternelle, fluent → courant, intermediate → intermédiaire, basic → notions'}.
 - Diplômes ${toEnglish ? 'français : garder le nom d\'origine quand il n\'a pas d\'équivalent (« Baccalauréat », « Grandes Écoles ») et traduire la mention' : 'étrangers : garder le nom d\'origine quand il n\'a pas d\'équivalent et traduire la mention'}.
 - "titre" : traduire l'intitulé au plus près.
+- Un élément de "realisations" qui commence par « ## » (sous-titre) garde ce début.
 - ${toEnglish ? '"[À COMPLÉTER]" devient "[TO BE COMPLETED]"' : '"[TO BE COMPLETED]" devient "[À COMPLÉTER]"'}.`
 }
