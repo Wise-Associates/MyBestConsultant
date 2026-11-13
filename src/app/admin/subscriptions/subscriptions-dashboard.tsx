@@ -1,22 +1,28 @@
 'use client'
 
-import { useMemo, useState, useTransition, type CSSProperties } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import {
   CreditCard, Users, TrendingUp, Ban, Search, Edit2, Gift, Power, PowerOff,
-  AlertCircle, Loader2, X, Building2,
+  AlertCircle, Loader2, X, Building2, FileSignature,
 } from 'lucide-react'
 import {
   updateSubscription, setSubscriptionStatus, grantFreeMonth,
-  type Subscriber, type PlanId, type SubStatus, type BillingPeriod,
+  type AdminOffer, type Subscriber, type SubStatus, type BillingPeriod,
 } from './actions'
 import { AdminPageHeader } from '@/components/admin/admin-page-header'
+import { PLAN_PRICE_CENTS, planLabel } from '@/lib/plans'
+import { CustomOfferModal } from './custom-offer-modal'
+import { fieldLabel, inputStyle } from './form-styles'
 
-const PLAN_LABELS: Record<PlanId, string> = { free: 'Free', gold: 'Gold', max: 'Max' }
-const PLAN_AMOUNTS: Record<PlanId, { monthly: number; annual: number }> = {
+// Une seule liste de formules (plans.ts, ADR 0034) ; montants pré-remplis : prix des formules payées par carte. Une
+// ancienne formule de l'admin (Gold, Max) reste proposée à l'abonné qui l'a encore.
+const PLAN_CHOICES = ['free', 'essentiel', 'pro', 'custom'] as const
+const PLAN_AMOUNTS: Partial<Record<string, { monthly: number; annual: number }>> = {
   free: { monthly: 0, annual: 0 },
-  gold: { monthly: 42, annual: 42 * 12 },
-  max: { monthly: 120, annual: 120 * 12 },
+  essentiel: { monthly: PLAN_PRICE_CENTS.essentiel / 100, annual: (PLAN_PRICE_CENTS.essentiel / 100) * 12 },
+  pro: { monthly: PLAN_PRICE_CENTS.pro / 100, annual: (PLAN_PRICE_CENTS.pro / 100) * 12 },
 }
+const OFFER_STATE_LABEL: Record<AdminOffer['state'], string> = { proposed: 'proposée', expired: 'expirée', accepted: 'acceptée', withdrawn: 'retirée' }
 const STATUS_CFG: Record<SubStatus, { label: string; color: string }> = {
   active: { label: 'Actif', color: '#34d399' },
   trialing: { label: 'Essai', color: '#60a5fa' },
@@ -26,25 +32,25 @@ const STATUS_CFG: Record<SubStatus, { label: string; color: string }> = {
   refunded: { label: 'Remboursé', color: '#a78bfa' },
 }
 
-const fieldLabel: CSSProperties = { fontSize: 9, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 4 }
-const inputStyle: CSSProperties = { width: '100%', height: 36, borderRadius: 8, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)', fontSize: 13, padding: '0 10px', outline: 'none' }
 
 // ── Edit modal ──────────────────────────────────────────────────────
 function EditModal({ sub, onClose, onSaved }: { sub: Subscriber; onClose: () => void; onSaved: (s: Subscriber) => void }) {
-  const [plan, setPlan] = useState<PlanId | ''>(sub.plan ?? '')
+  const [plan, setPlan] = useState<string>(sub.plan ?? '')
   const [status, setStatus] = useState<SubStatus | ''>(sub.status ?? '')
   const [period, setPeriod] = useState<BillingPeriod>(sub.period ?? 'monthly')
   const [amount, setAmount] = useState<string>(sub.amount != null ? String(sub.amount) : '')
   const [error, setError] = useState('')
   const [isPending, startTransition] = useTransition()
 
-  function applyPlanDefaults(p: PlanId | '') {
+  function applyPlanDefaults(p: string) {
     setPlan(p)
-    if (p) setAmount(String(PLAN_AMOUNTS[p][period]))
+    const amounts = PLAN_AMOUNTS[p]
+    if (amounts) setAmount(String(amounts[period]))
   }
   function applyPeriod(p: BillingPeriod) {
     setPeriod(p)
-    if (plan) setAmount(String(PLAN_AMOUNTS[plan as PlanId][p]))
+    const amounts = PLAN_AMOUNTS[plan]
+    if (amounts) setAmount(String(amounts[p]))
   }
 
   function save() {
@@ -81,10 +87,10 @@ function EditModal({ sub, onClose, onSaved }: { sub: Subscriber; onClose: () => 
         <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
             <p style={fieldLabel}>Formule</p>
-            <select value={plan} onChange={e => applyPlanDefaults(e.target.value as PlanId | '')} style={{ ...inputStyle, cursor: 'pointer' }}>
+            <select value={plan} onChange={e => applyPlanDefaults(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
               <option value="" style={{ background: '#0a0c10' }}>Aucune</option>
-              {(Object.entries(PLAN_LABELS) as [PlanId, string][]).map(([id, label]) => (
-                <option key={id} value={id} style={{ background: '#0a0c10' }}>{label}</option>
+              {[...PLAN_CHOICES, ...(sub.plan && !(PLAN_CHOICES as readonly string[]).includes(sub.plan) ? [sub.plan] : [])].map(id => (
+                <option key={id} value={id} style={{ background: '#0a0c10' }}>{planLabel(id)}</option>
               ))}
             </select>
           </div>
@@ -138,11 +144,12 @@ function EditModal({ sub, onClose, onSaved }: { sub: Subscriber; onClose: () => 
 }
 
 // ── Main dashboard ─────────────────────────────────────────────────
-export function SubscriptionsDashboard({ initialSubscribers, loadError }: { initialSubscribers: Subscriber[]; loadError?: string }) {
+export function SubscriptionsDashboard({ initialSubscribers, offersEnabled, loadError }: { initialSubscribers: Subscriber[]; offersEnabled: boolean; loadError?: string }) {
   const [subs, setSubs] = useState(initialSubscribers)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<SubStatus | 'all'>('all')
   const [editing, setEditing] = useState<Subscriber | null>(null)
+  const [offering, setOffering] = useState<Subscriber | null>(null)
   const [rowError, setRowError] = useState('')
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set())
   const [, startTransition] = useTransition()
@@ -293,7 +300,10 @@ export function SubscriptionsDashboard({ initialSubscribers, loadError }: { init
                       <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>{s.recruiterEmail}</p>
                     </td>
                     <td className="px-4 py-4" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                      {s.plan ? PLAN_LABELS[s.plan] : <span style={{ color: 'rgba(255,255,255,0.2)' }}>—</span>}
+                      {s.plan ? planLabel(s.plan) : <span style={{ color: 'rgba(255,255,255,0.2)' }}>—</span>}
+                      {s.offer && s.offer.state !== 'withdrawn' && (
+                        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>Offre sur mesure {OFFER_STATE_LABEL[s.offer.state]} · {s.offer.priceText}</p>
+                      )}
                     </td>
                     <td className="px-4 py-4">
                       {statusCfg ? (
@@ -316,6 +326,12 @@ export function SubscriptionsDashboard({ initialSubscribers, loadError }: { init
                           style={{ padding: 7, borderRadius: 8, border: 'none', display: 'flex', background: 'rgba(255,255,255,0.05)', color: s.status === 'suspended' ? '#34d399' : '#f59e0b', cursor: isPending ? 'default' : 'pointer', opacity: isPending ? 0.5 : 1 }}>
                           {isPending ? <Loader2 size={14} className="animate-spin" /> : s.status === 'suspended' ? <Power size={14} /> : <PowerOff size={14} />}
                         </button>
+                        {offersEnabled && (
+                          <button onClick={() => setOffering(s)} title="Offre sur mesure" aria-label={`Offre sur mesure — ${s.companyName}`}
+                            style={{ padding: 7, borderRadius: 8, border: 'none', display: 'flex', background: 'rgba(255,255,255,0.05)', color: '#B8860B', cursor: 'pointer' }}>
+                            <FileSignature size={14} />
+                          </button>
+                        )}
                         <button onClick={() => setEditing(s)} title="Modifier l'abonnement"
                           style={{ padding: 7, borderRadius: 8, border: 'none', display: 'flex', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}>
                           <Edit2 size={14} />
@@ -337,6 +353,16 @@ export function SubscriptionsDashboard({ initialSubscribers, loadError }: { init
           onSaved={updated => {
             setSubs(prev => prev.map(s => s.tenantId === updated.tenantId ? updated : s))
             setEditing(null)
+          }}
+        />
+      )}
+      {offering && (
+        <CustomOfferModal
+          sub={offering}
+          onClose={() => setOffering(null)}
+          onChanged={offer => {
+            setSubs(prev => prev.map(s => s.tenantId === offering.tenantId ? { ...s, offer } : s))
+            setOffering(null)
           }}
         />
       )}

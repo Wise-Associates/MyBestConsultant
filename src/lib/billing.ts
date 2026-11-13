@@ -1,5 +1,8 @@
 import { planLabel, type PaidPlanId } from './plans'
 
+/** Formule payée par Stripe : une formule de la page des formules, ou l'offre sur mesure acceptée. */
+export type StripePlanId = PaidPlanId | 'custom'
+
 // Abonnement Stripe d'une organisation (ADR 0034) : que faire quand elle choisit une formule payante, et ce qu'un
 // évènement Stripe change sur l'organisation (`tenants`). Règles pures, testées dans billing.test.ts ; les appels à
 // Stripe sont dans src/app/(public)/abonnement/actions.ts et src/app/api/stripe/webhook/route.ts.
@@ -16,7 +19,7 @@ export type CheckoutStep = { step: 'create' } | { step: 'replace' } | { step: 'u
  * - `update` : abonnement en cours — sa formule change (prorata sur la facture suivante), sans second abonnement : avant
  *   le 2026-11-13, chaque choix en créait un nouveau et l'organisation payait les deux.
  */
-export function checkoutStep(current: CurrentSubscription | null, wanted: PaidPlanId): CheckoutStep {
+export function checkoutStep(current: CurrentSubscription | null, wanted: StripePlanId): CheckoutStep {
   if (!current || current.status === 'canceled' || current.status === 'incomplete_expired') return { step: 'create' }
   if (current.status === 'incomplete') return { step: 'replace' }
   if (current.status === 'past_due' || current.status === 'unpaid' || current.status === 'paused') {
@@ -128,7 +131,10 @@ function patchFor(
       }
     case 'subscription_updated':
       // Repasse aussi « actif » : un paiement relancé réussi peut avoir été lu quand l'abonnement était encore en retard.
-      return OPEN.has(sub.status) ? { ...link, ...priceFields(sub), subscriptionStatus: sub.status === 'trialing' ? 'trialing' : 'active' } : null
+      if (OPEN.has(sub.status)) return { ...link, ...priceFields(sub), subscriptionStatus: sub.status === 'trialing' ? 'trialing' : 'active' }
+      // Facture impayée à l'échéance (offre réglée sur facture : Stripe ne tente aucun paiement, donc pas de « paiement
+      // échoué ») : l'abonnement passe en retard, l'accès se ferme sans dépendre d'invoice.overdue.
+      return sub.status === 'past_due' || sub.status === 'unpaid' ? { subscriptionStatus: 'past_due' } : null
     case 'payment_failed':
     case 'invoice_overdue':
       return IN_FORCE.has(sub.status) && !context.invoicePaid ? { subscriptionStatus: 'past_due' } : null

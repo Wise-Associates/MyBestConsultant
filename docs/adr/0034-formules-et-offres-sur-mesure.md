@@ -1,6 +1,6 @@
 # 0034 — Formules, droits des organisations et offres sur mesure
 
-- Statut : accepté (étape 1 livrée le 2026-11-13 ; étapes 2 et 3 à venir)
+- Statut : accepté (étapes 1 et 2 livrées le 2026-11-13 ; étape 3 à venir)
 - Date : 2026-11-13
 
 ## Contexte
@@ -84,13 +84,47 @@ Choix de l'utilisateur (2026-11-13) :
    l'admin le lève. Revue de sécurité du 2026-11-13 : sans cela, changer de formule rouvrait aussitôt une organisation
    suspendue.
 
-### Étape 2 (à venir) : offres sur mesure
+### Étape 2 (livrée) : offres sur mesure
 
-Collection `plan_offers` (un document par organisation, identifiant = celui de l'organisation, lisible du seul
-serveur), variable `APPWRITE_COLLECTION_PLAN_OFFERS` ; panneau « Offre sur mesure » dans `/admin/subscriptions` (liste
-de formules unique à la place de Free / Gold / Max) ; acceptation par le propriétaire ou un administrateur ; abonnement
-Stripe par carte ou sur facture (`collection_method: send_invoice`). `loadTenantAccess` et le passage planifié des
-boîtes AO (`loadOrganizations`, `sources.ts`) liront ses conditions.
+1. **Stockage** : collection `plan_offers` (`appwrite.config.json`), un document par organisation (identifiant = celui
+   de l'organisation), sans droit côté navigateur ; variable `APPWRITE_COLLECTION_PLAN_OFFERS` (vide : pas d'offre sur
+   mesure). Champs : nom, état (`proposed`, `accepted`, `withdrawn`), prix en centimes, période, paiement (`card`,
+   `invoice`), délai de paiement, utilisateurs, offres actives (vide : sans limite), fonctions, quotas (JSON), fin de
+   validité, dates de proposition et d'acceptation, compte qui l'a acceptée, abonnement Stripe.
+2. **Règles** (`src/lib/plan-offers.ts`, pur, testé) : saisie validée (zod ; date réelle, validité de 3 ans au plus),
+   relue sans jamais deviner un droit (document illisible : aucune offre ; un quota ajouté après l'offre prend la valeur
+   standard, un plafond abaissé ne la rend pas illisible), état affiché (une proposition passée est « expirée »).
+   **Une offre acceptée est figée** tant qu'elle est le contrat de l'organisation (formule `custom`) et pendant les 24 h
+   d'un paiement par carte en cours ; ensuite (paiement abandonné, organisation passée à une autre formule) l'admin peut
+   la remplacer ou la retirer. Une offre acceptée mais impayée ne se paie plus après sa validité. Seules les conditions
+   d'une offre acceptée s'appliquent (`acceptedTerms`) ; **formule `custom` qui n'est plus payée** (retard, résiliation,
+   suspension) : les plus bas de l'offre et des droits standard (`lowerOf`), ni les conditions négociées sans les payer,
+   ni plus de droits que l'offre n'en donnait.
+3. **Admin** (`/admin/subscriptions`) : une seule liste de formules (Gratuite, Essentiel, Pro, Sur mesure ; Gold et Max
+   restent lisibles et proposées à l'abonné qui les a), saisie validée (zod) ; bouton « Offre sur mesure » par
+   organisation (`custom-offer-modal.tsx`) : proposer, modifier ou retirer une proposition (`saveCustomOfferAction`,
+   `withdrawCustomOfferAction`, session admin vérifiée, organisation existante).
+4. **Organisation** (`/recruiter/abonnement`, carte « Votre offre sur mesure ») : conditions, puis acceptation par le
+   propriétaire ou un administrateur après une case « J'accepte… » (`acceptCustomOfferAction` : conditions et prix lus
+   sur l'offre enregistrée, jamais dans la demande ; organisation suspendue refusée). Stripe (produit
+   `mbc-plan-custom`, `metadata.planId: custom`) :
+   - **facture** : abonnement `collection_method: send_invoice` (délai de l'offre), facture envoyée par Stripe ; la
+     formule `custom` s'ouvre tout de suite, une facture impayée à l'échéance la ferme (`invoice.overdue`) ;
+   - **carte** : formulaire de carte ; la formule s'ouvre au paiement confirmé par le webhook ;
+   - abonnement standard déjà payé par carte : changé sur place (prix de l'offre, prorata), sans second abonnement.
+   L'offre est réécrite en entier avec les conditions facturées (`acceptedDocument`), qui a accepté et quand. Une
+   écriture qui échoue après Stripe se refait : un abonnement de l'offre déjà en cours chez Stripe (enregistré, ou
+   retrouvé parmi ceux du client) n'est jamais doublé, et son prix est remis à celui de l'offre ; facture : clé
+   d'idempotence liée à l'offre. Carte sur un abonnement déjà payé : `error_if_incomplete`, l'accès ne s'ouvre que si
+   Stripe accepte le paiement. Organisation et offre relues juste avant d'écrire : une suspension posée entre-temps
+   n'est pas effacée (abonnement Stripe journalisé, à annuler à la main). Une organisation réglée sur facture ne passe
+   pas seule à une formule payée par carte (« contactez-nous »). Webhook : un abonnement que Stripe met « en retard »
+   (`customer.subscription.updated`, facture impayée à l'échéance) ferme l'accès, sans dépendre d'`invoice.overdue`.
+   Erreurs Stripe journalisées par leur type et leur code seulement (leur message peut citer une adresse e-mail).
+5. **Droits** : `loadTenantAccess` et le passage planifié des boîtes AO (`loadOrganizations`, `sources.ts`) lisent
+   l'offre acceptée d'une organisation `custom`. Collection ou base introuvable (variable posée avant la création de la
+   collection) : une panne qui remonte, jamais « aucune offre » ; dans le passage planifié, seules les organisations
+   `custom` du lot sont alors tenues pour non abonnées.
 
 ### Étape 3 (à venir) : pages
 
@@ -102,7 +136,24 @@ boîtes AO (`loadOrganizations`, `sources.ts`) liront ses conditions.
 - **Stripe** : le webhook doit recevoir `invoice.payment_succeeded`, `invoice.payment_failed`, `invoice.overdue`,
   `customer.subscription.updated` et `customer.subscription.deleted` (Développeurs → Webhooks). Sans les deux nouveaux,
   le changement de formule reste affiché (écrit par l'action) et le retard sur facture n'est pas vu.
-- Aucune variable d'environnement ni aucun changement de structure à l'étape 1.
+- Aucune variable d'environnement ni aucun changement de structure à l'étape 1. **Étape 2** : collection `plan_offers`
+  (`npm run schema:push -- dev`, production par un humain : `schema:check -- prod` puis `schema:push -- prod`) et
+  variable `APPWRITE_COLLECTION_PLAN_OFFERS=plan_offers` (`.env.local`, `app.env` du VPS), posée **après** la création
+  de la collection. Dans Stripe : envoi par e-mail des factures finalisées (Paramètres → Facturation), virement bancaire
+  parmi les moyens de paiement des factures, et passage « en retard » d'un abonnement dont la facture n'est pas payée à
+  l'échéance (Paramètres → Abonnements et e-mails), pour les offres réglées sur facture.
 - Organisations qui payent déjà deux abonnements (ancien défaut) : à repérer et résilier dans Stripe à la main ; seul
   celui enregistré sur l'organisation agit sur elle.
 - Les plafonds pour toutes les organisations restent : une offre sur mesure aux quotas élevés reste bornée par eux.
+- **Mise en production de l'étape 2** : déployer le code variable vide (fonction coupée), créer la collection
+  (`schema:check` puis `schema:push`, attributs « available » et aucune permission dans la console), puis seulement
+  poser la variable et redéployer. Retour arrière : vider la variable (les organisations `custom` repassent aux droits
+  standard alors que Stripe facture encore l'offre : les traiter dans Stripe d'abord) ; ne jamais supprimer la
+  collection tant qu'une offre est acceptée (conditions du contrat, lien Stripe) : l'exporter d'abord.
+- **Concurrence** : Appwrite n'a pas d'écriture conditionnelle. Admin et organisation relisent juste avant d'écrire ;
+  il reste un instant où une proposition enregistrée par l'admin pendant une acceptation est remplacée par les
+  conditions acceptées (journalisé).
+- `plan_offers` a 15 attributs sur 16 : une donnée de plus (historique, demande de devis) ira dans une autre collection.
+- **Données personnelles** : `acceptedBy` est l'identifiant du compte qui a accepté (preuve du contrat), gardé avec
+  l'offre ; la suppression d'un compte ne le retire pas (identifiant sans compte). Durée de conservation à fixer avec
+  le responsable des données (proposition : durée du contrat puis 5 ans).

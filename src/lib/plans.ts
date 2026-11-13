@@ -43,6 +43,18 @@ const NOT_INCLUDED: Record<Feature, string> = {
 export const DAILY_QUOTAS = ['mbcSearch', 'mbcReveal', 'cvExport', 'aoSourcing', 'aoRewrite', 'aoRetry', 'vivierMatching', 'interviewAi'] as const
 export type DailyQuota = (typeof DAILY_QUOTAS)[number]
 
+/** Nom affiché de chaque quota du jour (offre sur mesure : page Abonnement, admin). */
+export const DAILY_QUOTA_LABEL: Record<DailyQuota, string> = {
+  mbcSearch: 'Recherches MBC Search',
+  mbcReveal: 'Profils complets MBC Search',
+  cvExport: 'Exports « Format ESN »',
+  aoSourcing: 'Recherches de candidats sur un AO',
+  aoRewrite: 'Rédactions d\'AO par l\'IA',
+  aoRetry: 'Relances d\'e-mails AO',
+  vivierMatching: 'CV du vivier comparés aux offres',
+  interviewAi: 'Analyses IA (entretiens et screening)',
+}
+
 export interface Entitlements {
   /** Comptes de l'organisation, invitations en attente et comptes désactivés compris. */
   maxUsers: number
@@ -74,12 +86,29 @@ export const STANDARD_ENTITLEMENTS: Readonly<Entitlements> = {
   dailyQuotas: STANDARD_DAILY_QUOTAS,
 }
 
+/** Droits les plus bas de `a` et de `b`, limite par limite (null : sans limite) ; une fonction est ouverte si les deux l'ouvrent. */
+export function lowerOf(a: Entitlements, b: Entitlements): Entitlements {
+  const lowerLimit = (x: number | null, y: number | null) => (x === null ? y : y === null ? x : Math.min(x, y))
+  return {
+    maxUsers: Math.min(a.maxUsers, b.maxUsers),
+    maxActiveJobs: lowerLimit(a.maxActiveJobs, b.maxActiveJobs),
+    features: Object.fromEntries(FEATURES.map(f => [f, a.features[f] && b.features[f]])) as Record<Feature, boolean>,
+    dailyQuotas: Object.fromEntries(DAILY_QUOTAS.map(q => [q, Math.min(a.dailyQuotas[q], b.dailyQuotas[q])])) as Record<DailyQuota, number>,
+  }
+}
+
+/** États d'abonnement payé (essai compris). */
+const PAYING = new Set(['active', 'trialing'])
+
 /**
  * Droits en vigueur pour une organisation. `customTerms` : conditions de son offre sur mesure acceptée ; elles ne
- * s'appliquent qu'à la formule « custom ». Sans elles (offre retirée), droits standard.
+ * s'appliquent qu'à la formule « custom ». Sans elles (offre retirée), droits standard. Formule « custom » qui n'est
+ * plus payée (retard, résiliation, suspension) : les plus bas de l'offre et des droits standard — ni les conditions
+ * négociées sans les payer, ni plus de droits que l'offre n'en donnait (revue de sécurité du 2026-11-13).
  */
-export function entitlementsOf(tenant: { plan?: unknown }, customTerms?: Entitlements | null): Entitlements {
-  return tenant.plan === 'custom' && customTerms ? customTerms : STANDARD_ENTITLEMENTS
+export function entitlementsOf(tenant: { plan?: unknown; subscriptionStatus?: unknown }, customTerms?: Entitlements | null): Entitlements {
+  if (tenant.plan !== 'custom' || !customTerms) return STANDARD_ENTITLEMENTS
+  return PAYING.has(String(tenant.subscriptionStatus)) ? customTerms : lowerOf(customTerms, STANDARD_ENTITLEMENTS)
 }
 
 /** Refus d'une fonction que la formule ne comprend pas ; null si elle la comprend. */

@@ -9,6 +9,12 @@ describe('abonnement affiché à l\'organisation', () => {
     })
   })
 
+  it('compte une offre sur mesure payée chez Stripe, pas une formule sur mesure posée par l\'admin', () => {
+    assert.equal(subscriptionView({ plan: 'custom', subscriptionStatus: 'active', stripeCustomerId: 'cus_demo', stripeSubscriptionId: 'sub_1' }).billedByStripe, true)
+    assert.equal(subscriptionView({ plan: 'custom', subscriptionStatus: 'active', stripeCustomerId: 'cus_demo' }).billedByStripe, false)
+    assert.equal(subscriptionView({ plan: 'custom' }).planLabel, 'Sur mesure')
+  })
+
   it('lit une formule de l\'admin, annuelle, sans Stripe', () => {
     const v = subscriptionView({ plan: 'gold', subscriptionStatus: 'trialing', subscriptionAmount: 1200, subscriptionPeriod: 'annual' })
     assert.equal(v.planLabel, 'Gold')

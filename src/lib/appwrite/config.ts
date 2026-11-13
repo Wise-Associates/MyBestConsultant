@@ -36,6 +36,8 @@ export const COLLECTIONS = {
   MBC_SEARCHES: process.env.APPWRITE_COLLECTION_MBC_SEARCHES!,
   MBC_REVEALS: process.env.APPWRITE_COLLECTION_MBC_REVEALS!,
   MBC_SAVED_PEOPLE: process.env.APPWRITE_COLLECTION_MBC_SAVED_PEOPLE!,
+  // Offres sur mesure des organisations (ADR 0034) ; vide : pas d'offre sur mesure, formules standard seulement.
+  PLAN_OFFERS: process.env.APPWRITE_COLLECTION_PLAN_OFFERS ?? '',
   CV_EXPORTS: process.env.APPWRITE_COLLECTION_CV_EXPORTS!,
   CV_TEMPLATES: process.env.APPWRITE_COLLECTION_CV_TEMPLATES!,
   VEILLE_CONFIG: process.env.APPWRITE_COLLECTION_VEILLE_CONFIG!,
