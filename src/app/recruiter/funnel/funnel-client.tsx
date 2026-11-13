@@ -105,19 +105,21 @@ export function FunnelClient({ initial, initialTab, initialPipeline }: { initial
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <div style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)' }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-8">
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(232,163,61,0.15)' }}><GitBranch className="h-6 w-6" style={{ color: '#E8A33D' }} /></div>
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(232,163,61,0.15)' }}><GitBranch className="h-6 w-6" style={{ color: 'var(--hero-accent)' }} /></div>
             <div>
-              <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>Processus de recrutement</h1>
-              <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Vos pipelines, leurs phases et les statuts des candidatures</p>
+              <h1 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.75rem' }}>Processus de recrutement</h1>
+              <p className="text-sm mt-0.5" style={{ color: 'var(--hero-fg-muted)' }}>Vos pipelines, leurs phases et les statuts des candidatures</p>
             </div>
           </div>
+          {/* Bandeau clair depuis le 2026-11-13 : le fond de l'onglet actif ne suffit plus à le distinguer, un trait orange
+              le souligne (même repère que les onglets de « Créer une offre »). */}
           <div className="flex gap-1 overflow-x-auto">
             {TABS.map(t => (
               <button key={t.id} type="button" onClick={() => setTab(t.id)} className="px-4 py-2.5 text-sm font-semibold whitespace-nowrap rounded-t-xl transition-colors"
-                style={tab === t.id ? { background: 'var(--page-bg)', color: 'var(--color-text)' } : { color: 'rgba(255,255,255,0.6)' }}>{t.label}</button>
+                style={tab === t.id ? { background: 'var(--page-bg)', color: 'var(--color-text)', borderBottom: '2px solid var(--hero-accent)' } : { color: 'var(--hero-fg-muted)', borderBottom: '2px solid transparent' }}>{t.label}</button>
             ))}
           </div>
         </div>

@@ -183,11 +183,11 @@ export function ReportingClient({ data }: { data: ReportData }) {
     URL.revokeObjectURL(url)
   }
 
-  const selectStyle = { background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.18)' }
+  const selectStyle = { background: 'var(--hero-control)', color: 'var(--hero-fg)', border: '1px solid var(--hero-line)' }
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <div style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)' }}>
         <div className="max-w-6xl mx-auto px-6 py-8">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-4">
@@ -195,8 +195,8 @@ export function ReportingClient({ data }: { data: ReportData }) {
                 <BarChart3 className="h-6 w-6" style={{ color: 'var(--color-primary)' }} />
               </div>
               <div>
-                <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>Reporting de suivi</h1>
-                <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Performance de vos recrutements, du matching à la décision</p>
+                <h1 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.75rem' }}>Reporting de suivi</h1>
+                <p className="text-sm mt-0.5" style={{ color: 'var(--hero-fg-muted)' }}>Performance de vos recrutements, du matching à la décision</p>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -204,10 +204,10 @@ export function ReportingClient({ data }: { data: ReportData }) {
                 <option value="all" style={{ color: '#000' }}>Toutes les offres</option>
                 {data.jobs.map(j => <option key={j.id} value={j.id} style={{ color: '#000' }}>{j.title}</option>)}
               </select>
-              <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.18)' }}>
+              <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--hero-line)' }}>
                 {PERIODS.map(p => (
                   <button key={p.v} onClick={() => setPeriod(p.v)} className="px-3 py-2 text-xs font-semibold transition-colors"
-                    style={{ background: period === p.v ? 'var(--color-primary)' : 'rgba(255,255,255,0.08)', color: 'white' }}>{p.l}</button>
+                    style={{ background: period === p.v ? 'var(--color-primary)' : 'var(--hero-control)', color: period === p.v ? 'white' : 'var(--hero-fg)' }}>{p.l}</button>
                 ))}
               </div>
               <button onClick={exportCsv} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-opacity hover:opacity-85" style={selectStyle}>

@@ -100,6 +100,16 @@
   /* Shared page background for every recruiter / candidate module (white → warm off-white) */
   --page-bg: linear-gradient(180deg, #FFFFFF 0%, #F8F7F4 45%, #EFEDE8 100%);
   --hero-text: #FFFFFF;
+  /* Contenu des bandeaux de page (background: var(--hero-bg)) : couleurs pour un bandeau sombre par défaut ; l'espace
+     recruteur les redéfinit pour un bandeau clair (.recruiter-shell, plus bas). */
+  --hero-fg: #FFFFFF;                          /* titres, texte principal */
+  --hero-fg-muted: rgba(255, 255, 255, 0.86);  /* sous-titres, méta, liens « Retour » (comme la règle des sous-titres plus bas) */
+  --hero-line: rgba(255, 255, 255, 0.15);      /* bordures et filets */
+  --hero-control: rgba(255, 255, 255, 0.08);   /* fond des boutons et champs secondaires */
+  --hero-accent: #E8A33D;                      /* chiffres ou mots mis en avant */
+  /* Couleur du bandeau du site (modèle), résolue ici : l'espace recruteur redéfinit --hero-bg, mais l'aperçu d'une page
+     publique (marque employeur) doit garder celle du site. */
+  --site-hero-bg: var(--hero-bg);
   /* Orange de marque (AGENTS.md › Design System) — ne dépend pas du template choisi */
   --color-brand-orange: #F97316;
   --border-radius: 6px;
@@ -284,7 +294,7 @@ body { overflow-x: clip; max-width: 100%; }
 .mbc-app { --hero-bg: #1C1C1E; }
 .mbc-app-dark { --hero-bg: #1C1C1E; }
 .mbc-app [style*="var(--hero-bg)"],
-.mbc-app-dark [style*="var(--hero-bg)"] { border-bottom-color: rgba(255,255,255,0.14) !important; }
+.mbc-app-dark [style*="var(--hero-bg)"] { border-bottom-color: var(--hero-line) !important; }
 .mbc-app [style*="var(--hero-bg)"] > [class*="max-w-"][class*=" py-"],
 .mbc-app [style*="var(--hero-bg)"] > [class*="max-w-"][class*=" pt-"],
 .mbc-app-dark [style*="var(--hero-bg)"] > [class*="max-w-"][class*=" py-"],
@@ -308,6 +318,39 @@ body { overflow-x: clip; max-width: 100%; }
 }
 .mbc-app [style*="var(--hero-bg)"] p[style*="rgba(255,255,255,0."],
 .mbc-app-dark [style*="var(--hero-bg)"] p[style*="rgba(255,255,255,0."] { color: rgba(255,255,255,0.86) !important; }
+
+/* ── Menu latéral de l'espace recruteur (recruiter-sidebar.tsx) ─────────────────────────────
+   Sa largeur, que reprennent les barres fixées en bas des pages recruteur (left: var(--recruiter-sidebar-w, 0px)) pour
+   commencer après lui : rien sous 1024 px (barre « Rubriques »), icônes seules de 1024 à 1279 px ou si le recruteur l'a
+   réduit, libellés dès 1280 px. */
+.recruiter-shell { --recruiter-sidebar-w: 0px; }
+@media (min-width: 64rem) { .recruiter-shell { --recruiter-sidebar-w: 4rem; } }
+@media (min-width: 80rem) { .recruiter-shell:not([data-sidebar="collapsed"]) { --recruiter-sidebar-w: 15rem; } }
+
+/* Bandeaux clairs dans l'espace recruteur (demande du 2026-11-13 : plus de bandeau noir, moins de contraste). Les pages
+   gardent background: var(--hero-bg) (le bandeau reste collé sous la barre et garde ses marges, règles plus haut) et
+   écrivent leur contenu avec les variables --hero-* : clair ici, sombre dans les autres espaces (centre de support
+   partagé avec candidats et chasseurs). Les fenêtres ouvertes hors du menu (portails dans <body>) n'en héritent pas :
+   elles utilisent directement les couleurs du thème (--color-surface, --color-text…). */
+.recruiter-shell {
+  --hero-bg: var(--color-surface);
+  --hero-fg: var(--color-text);
+  --hero-fg-muted: var(--color-text-muted);
+  --hero-line: var(--color-border);
+  --hero-control: var(--color-background);
+  /* Orange de marque assombri : lisible sur fond blanc (l'orange pur est trop clair pour du texte). */
+  --hero-accent: color-mix(in srgb, var(--color-brand-orange) 80%, black);
+}
+
+/* Police de l'espace recruteur (menu et pages) : Inter, quel que soit le modèle du site (demande du 2026-11-13, même
+   police que la maquette de MBC Search). Les titres (règle h1…h6 plus haut) et la classe font-sans lisent ces
+   variables. Inter est chargée par le layout racine (GOOGLE_FONTS_URL). Les fenêtres ouvertes hors du menu (portails
+   dans <body>) gardent la police du modèle. */
+.recruiter-shell {
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-heading: 'Inter', system-ui, sans-serif;
+  font-family: var(--font-body);
+}
 
 /* ── Barre de chargement des pages (NavigationProgress, dans le layout racine) ─────────────────
    Fine barre orange (couleur de marque) en haut de l'écran pendant une navigation. Au-dessus de

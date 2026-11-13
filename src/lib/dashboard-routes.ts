@@ -2,7 +2,8 @@ import type { UserRole } from '@/types'
 
 export const DASHBOARD_BY_ROLE: Record<UserRole, string> = {
   candidate: '/candidate/dashboard',
-  recruiter: '/recruiter/dashboard',
+  // Le recruteur arrive sur MBC Search, première rubrique de son menu (demande du 2026-11-13).
+  recruiter: '/recruiter/mbc-search',
   admin: '/admin/dashboard',
   hunter: '/hunter/dashboard',
 }

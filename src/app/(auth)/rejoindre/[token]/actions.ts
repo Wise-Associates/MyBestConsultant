@@ -28,5 +28,5 @@ export async function acceptInviteAction(formData: FormData): Promise<{ error: s
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Impossible d’activer le compte' }
   }
-  redirect('/recruiter/dashboard')
+  redirect('/recruiter/mbc-search')
 }

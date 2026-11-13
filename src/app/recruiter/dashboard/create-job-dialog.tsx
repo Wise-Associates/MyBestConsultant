@@ -11,7 +11,7 @@ import type { Job } from '@/types'
 import { PAY_FIELD_LABEL, payHint, payUnitFor } from '@/lib/job-pay'
 
 /**
- * button : sur fond sombre ; primary : bouton plein aux couleurs du thème, sur fond clair, à la hauteur des champs de la
+ * button : sur un bandeau de page, couleurs --hero-* (bandeau clair dans l'espace recruteur depuis le 2026-11-13) ; primary : bouton plein aux couleurs du thème, sur fond clair, à la hauteur des champs de la
  * barre de filtres du tableau de bord (pleine largeur sur mobile) ; tile : carte.
  */
 export function CreateJobDialog({ tenantId, companyName, variant = 'button' }: { tenantId: string; companyName: string; variant?: 'button' | 'primary' | 'tile' }) {
@@ -155,7 +155,7 @@ export function CreateJobDialog({ tenantId, companyName, variant = 'button' }: {
           className={`flex items-center justify-center gap-2 px-5 rounded-xl text-sm font-semibold whitespace-nowrap transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-(--color-primary) ${variant === 'primary' ? 'w-full sm:w-auto h-11 sm:h-10' : 'py-2.5'}`}
           style={variant === 'primary'
             ? { background: 'var(--color-primary)', color: 'var(--color-primary-fg)', border: '1px solid var(--color-primary)' }
-            : { background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)' }}>
+            : { background: 'var(--hero-control)', color: 'var(--hero-fg)', border: '1px solid var(--hero-line)' }}>
           <Plus className="h-4 w-4" /> Créer une offre
         </button>
       )}
@@ -169,8 +169,8 @@ export function CreateJobDialog({ tenantId, companyName, variant = 'button' }: {
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4"
               style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--hero-bg)' }}>
-              <h2 className="font-semibold text-white">Nouvelle offre</h2>
-              <button onClick={() => setOpen(false)} className="text-white/40 hover:text-white transition-colors">
+              <h2 className="font-semibold text-[var(--hero-fg)]">Nouvelle offre</h2>
+              <button onClick={() => setOpen(false)} className="text-[var(--hero-fg-muted)] hover:text-[var(--hero-fg)] transition-colors">
                 <X className="h-5 w-5" />
               </button>
             </div>

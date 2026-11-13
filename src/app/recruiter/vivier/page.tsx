@@ -84,7 +84,7 @@ export default async function VivierIndexPage({ searchParams }: { searchParams: 
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)' }}>
         <div className="max-w-6xl mx-auto px-6 py-8">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-4">
@@ -92,8 +92,8 @@ export default async function VivierIndexPage({ searchParams }: { searchParams: 
                 <FolderOpen className="h-6 w-6" style={{ color: 'var(--color-primary)' }} />
               </div>
               <div>
-                <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>Mon vivier</h1>
-                <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Importez vos CV sans choisir d&apos;offre, ou dans le vivier d&apos;une offre : chaque CV devient automatiquement un profil</p>
+                <h1 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.75rem' }}>Mon vivier</h1>
+                <p className="text-sm mt-0.5" style={{ color: 'var(--hero-fg-muted)' }}>Importez vos CV sans choisir d&apos;offre, ou dans le vivier d&apos;une offre : chaque CV devient automatiquement un profil</p>
               </div>
             </div>
             {/* Le même bouton que la CV Thèque : un seul modèle par organisation, pour les deux pages. */}

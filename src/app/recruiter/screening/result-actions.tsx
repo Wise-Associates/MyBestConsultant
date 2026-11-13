@@ -94,18 +94,18 @@ function InterviewModal({ props, onClose }: { props: Props; onClose: () => void 
         display: 'flex', flexDirection: 'column',
       }}>
         {/* Header */}
-        <div style={{ padding: '1.5rem 1.75rem', background: 'var(--hero-bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <div style={{ padding: '1.5rem 1.75rem', background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
             <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(124,58,237,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Brain style={{ width: 20, height: 20, color: '#c4b5fd' }} />
+              <Brain style={{ width: 20, height: 20, color: '#7c3aed' }} />
             </div>
             <div>
-              <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Entretien IA</p>
-              <p style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>{props.candidateName}</p>
+              <p style={{ fontSize: 11, color: 'var(--hero-fg-muted)', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Entretien IA</p>
+              <p style={{ color: 'var(--hero-fg)', fontWeight: 700, fontSize: '1rem' }}>{props.candidateName}</p>
             </div>
           </div>
           {step !== 'generating' && (
-            <button onClick={onClose} style={{ padding: 8, borderRadius: 8, color: 'rgba(255,255,255,0.6)', background: 'rgba(255,255,255,0.08)', border: 'none', cursor: 'pointer' }}>
+            <button onClick={onClose} style={{ padding: 8, borderRadius: 8, color: 'var(--hero-fg-muted)', background: 'var(--hero-control)', border: 'none', cursor: 'pointer' }}>
               <X style={{ width: 20, height: 20 }} />
             </button>
           )}
@@ -279,17 +279,17 @@ function MessageModal({ props, onClose }: { props: Props; onClose: () => void })
         boxShadow: '0 30px 80px -20px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06)',
       }}>
         {/* Header */}
-        <div style={{ padding: '1.5rem 1.75rem', background: 'var(--hero-bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '1.5rem 1.75rem', background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
             <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(59,130,246,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <MessageSquare style={{ width: 20, height: 20, color: '#93c5fd' }} />
+              <MessageSquare style={{ width: 20, height: 20, color: '#2563eb' }} />
             </div>
             <div>
-              <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Message personnalisé</p>
-              <p style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>{props.candidateName}</p>
+              <p style={{ fontSize: 11, color: 'var(--hero-fg-muted)', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Message personnalisé</p>
+              <p style={{ color: 'var(--hero-fg)', fontWeight: 700, fontSize: '1rem' }}>{props.candidateName}</p>
             </div>
           </div>
-          <button onClick={onClose} style={{ padding: 8, borderRadius: 8, color: 'rgba(255,255,255,0.6)', background: 'rgba(255,255,255,0.08)', border: 'none', cursor: 'pointer' }}>
+          <button onClick={onClose} style={{ padding: 8, borderRadius: 8, color: 'var(--hero-fg-muted)', background: 'var(--hero-control)', border: 'none', cursor: 'pointer' }}>
             <X style={{ width: 20, height: 20 }} />
           </button>
         </div>

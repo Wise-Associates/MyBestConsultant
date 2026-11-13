@@ -4,7 +4,9 @@ import { z } from 'zod'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { tenantSubscriptionStatus } from '@/lib/ao/offer-actions'
 import { releaseDailySlot, takeDailySlotId } from '@/lib/ao/state'
-import { ApolloSearchError, briefToCriteriaText, outreachDraftText, revealApolloPeople, searchApolloPeople } from '@/lib/mbc-search/apollo'
+import {
+  ApolloSearchError, briefQuestionsText, briefToCriteriaText, outreachDraftText, refineCriteriaText, revealApolloPeople, searchApolloPeople,
+} from '@/lib/mbc-search/apollo'
 import {
   MBC_REVEAL_DAILY_LIMITS, MBC_REVEAL_QUOTA_MESSAGE, MBC_SEARCH_DAILY_LIMITS, MBC_SEARCH_QUOTA_MESSAGE, mbcSearchDenial,
 } from '@/lib/mbc-search/access'
@@ -12,6 +14,9 @@ import {
   APOLLO_PERSON_ID, CRITERIA_LIMITS, MAX_PAGE, REVEAL_BATCH, cleanOutreachDraft, criteriaProblem, criteriaSchema, outreachNeedText,
   outreachPersonSchema, outreachPersonText, parseBriefCriteria, rankProfiles, type MbcCriteria, type MbcRevealed, type ScoredProfile,
 } from '@/lib/mbc-search/rules'
+import {
+  answersSchema, briefForAi, briefWithAnswers, criteriaForAi, parseQuestionsAnswer, parseRefinement, refineMessageSchema, type MbcQuestion,
+} from '@/lib/mbc-search/conversation'
 import { SAVED_SEARCHES_MAX, searchIdSchema, searchNameSchema, type MbcSearchEntry } from '@/lib/mbc-search/history'
 import { deleteMbcSearch, isMbcHistoryConfigured, recordMbcSearch, setMbcSearchPinned } from '@/lib/mbc-search/history-store'
 import { isMbcRevealStoreConfigured, saveReveals, storedReveals, vivierTargetsOf } from '@/lib/mbc-search/reveal-store'
@@ -55,15 +60,41 @@ async function searchSlot(): Promise<{ error: string } | null> {
 
 const briefSchema = z.string().trim().min(20, 'Décrivez le profil en quelques phrases (20 caractères au moins).').max(CRITERIA_LIMITS.brief, `Brief limité à ${CRITERIA_LIMITS.brief} caractères.`)
 
-/** « Analyser le brief » : l'IA propose des critères, que le recruteur relit et corrige avant de chercher. */
-export async function analyseMbcBrief(brief: unknown): Promise<{ criteria?: MbcCriteria; error?: string }> {
+/**
+ * Questions de l'IA avant la recherche (conversation, demande du 2026-11-13) : au plus 3, à choix, sur ce que le brief
+ * laisse ouvert ; aucune si le brief suffit. Même quota que les recherches : un appel à l'IA.
+ */
+export async function askMbcQuestions(brief: unknown): Promise<{ reply?: string; questions?: MbcQuestion[]; error?: string }> {
   const parsed = briefSchema.safeParse(brief)
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Brief invalide.' }
   const refused = await searchSlot()
   if (refused) return refused
   let text: string
   try {
-    text = await briefToCriteriaText(parsed.data)
+    text = await briefQuestionsText(parsed.data)
+  } catch (err) {
+    console.error('[mbc-search] questions sur le brief impossibles', err instanceof Error ? err.name : 'inconnu')
+    return { error: 'L\'IA n\'a pas pu préparer ses questions : réessayez, ou lancez la recherche sans questions.' }
+  }
+  const res = parseQuestionsAnswer(text)
+  if (!res) return { error: 'L\'IA n\'a pas pu préparer ses questions : réessayez, ou lancez la recherche sans questions.' }
+  return res
+}
+
+/**
+ * « Analyser le brief » : l'IA en tire les critères, complétés par les réponses du recruteur à ses questions
+ * (`answers`, facultatif). Le recruteur peut ensuite les corriger.
+ */
+export async function analyseMbcBrief(brief: unknown, answers: unknown = []): Promise<{ criteria?: MbcCriteria; error?: string }> {
+  const parsed = briefSchema.safeParse(brief)
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Brief invalide.' }
+  const replies = answersSchema.safeParse(answers)
+  if (!replies.success) return { error: 'Réponses invalides : rechargez la page.' }
+  const refused = await searchSlot()
+  if (refused) return refused
+  let text: string
+  try {
+    text = await briefToCriteriaText(briefWithAnswers(parsed.data, replies.data))
   } catch (err) {
     console.error('[mbc-search] analyse du brief impossible', err instanceof Error ? err.name : 'inconnu')
     return { error: 'L\'IA n\'a pas pu lire le brief : réessayez, ou renseignez les critères vous-même.' }
@@ -71,6 +102,34 @@ export async function analyseMbcBrief(brief: unknown): Promise<{ criteria?: MbcC
   const criteria = parseBriefCriteria(text)
   if (!criteria) return { error: 'L\'IA n\'a pas trouvé d\'intitulé ni de compétence dans ce brief : précisez-le, ou renseignez les critères vous-même.' }
   return { criteria }
+}
+
+const refineSchema = z.object({
+  brief: z.string().max(CRITERIA_LIMITS.brief),
+  criteria: criteriaSchema,
+  message: refineMessageSchema,
+})
+
+/**
+ * Message du recruteur sous les résultats (« ce qui ne va pas, ce qui manque ») : l'IA ajuste les critères et dit ce
+ * qu'elle a changé ; la page relance ensuite la recherche. Même quota que les recherches : un appel à l'IA.
+ */
+export async function refineMbcSearch(input: unknown): Promise<{ reply?: string; criteria?: MbcCriteria; error?: string }> {
+  const parsed = refineSchema.safeParse(input)
+  if (!parsed.success) return { error: parsed.error.issues.find(i => i.path[0] === 'message')?.message ?? 'Recherche invalide : rechargez la page.' }
+  const refused = await searchSlot()
+  if (refused) return refused
+  const { brief, criteria, message } = parsed.data
+  let text: string
+  try {
+    text = await refineCriteriaText({ brief: briefForAi(brief), criteria: criteriaForAi(criteria), message })
+  } catch (err) {
+    console.error('[mbc-search] ajustement des critères impossible', err instanceof Error ? err.name : 'inconnu')
+    return { error: 'L\'IA n\'a pas pu ajuster la recherche : réessayez, ou modifiez les critères vous-même.' }
+  }
+  const res = parseRefinement(text, criteria)
+  if (!res) return { error: 'L\'IA n\'a pas compris comment ajuster la recherche : reformulez, ou modifiez les critères vous-même.' }
+  return res
 }
 
 const pageSchema = z.number().int().min(1).max(MAX_PAGE)

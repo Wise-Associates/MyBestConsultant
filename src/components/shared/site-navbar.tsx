@@ -14,9 +14,10 @@ const NAV_BY_ROLE: Record<UserRole, { label: string; href: string }[]> = {
     { label: 'Offres', href: '/jobs' },
     { label: 'Mon compte', href: '/candidate/dashboard' },
   ],
+  // « Mon espace » du recruteur : MBC Search, sa page d'arrivée (dashboard-routes.ts, demande du 2026-11-13).
   recruiter: [
     { label: 'Offres', href: '/jobs' },
-    { label: 'Mon espace', href: '/recruiter/dashboard' },
+    { label: 'Mon espace', href: '/recruiter/mbc-search' },
   ],
   admin: [
     { label: 'Offres', href: '/jobs' },

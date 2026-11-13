@@ -62,23 +62,23 @@ export default async function CandidatePreviewPage({ params }: { params: Promise
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)' }}>
         <div className="max-w-2xl mx-auto px-6 py-8">
           <BackLink fallbackHref={parentHref}
             className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80"
-            style={{ color: '#c4b5fd' }} />
-          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            style={{ color: 'var(--hero-fg-muted)' }} />
+          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--hero-fg-muted)' }}>
             {source === 'pool' ? 'Base candidats' : vivierOwner ? `Vivier de ${vivierOwner}` : 'Vivier'}
           </p>
-          <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>{name}</h1>
+          <h1 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.75rem' }}>{name}</h1>
           <div className="flex items-center gap-4 mt-2 flex-wrap">
             {email && (
-              <span className="flex items-center gap-1.5 text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
+              <span className="flex items-center gap-1.5 text-sm" style={{ color: 'var(--hero-fg-muted)' }}>
                 <Mail className="h-3.5 w-3.5" /> {email}
               </span>
             )}
             {phone && (
-              <span className="flex items-center gap-1.5 text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
+              <span className="flex items-center gap-1.5 text-sm" style={{ color: 'var(--hero-fg-muted)' }}>
                 <Phone className="h-3.5 w-3.5" /> {phone}
               </span>
             )}

@@ -24,12 +24,12 @@ import { getSubmittedRecommendations } from '@/lib/appwrite/recommendations'
 import { RELATIONSHIP_LABEL } from '@/lib/recommendation-boost'
 
 const STATUS: Record<string, { label: string; bg: string; text: string }> = {
-  pending:   { label: 'En attente',   bg: 'rgba(107,114,128,0.14)', text: '#9ca3af' },
-  screening: { label: 'Screening IA', bg: 'rgba(139,92,246,0.14)',  text: '#c4b5fd' },
-  interview: { label: 'Entretien',    bg: 'rgba(59,130,246,0.14)',  text: '#93c5fd' },
-  accepted:  { label: 'Accepté ✓',   bg: 'rgba(16,185,129,0.14)',  text: '#6ee7b7' },
-  rejected:  { label: 'Refusé',       bg: 'rgba(239,68,68,0.14)',   text: '#fca5a5' },
-  on_hold:   { label: 'Vivier',       bg: 'rgba(245,158,11,0.14)',  text: '#fcd34d' },
+  pending:   { label: 'En attente',   bg: 'rgba(107,114,128,0.14)', text: '#6b7280' },
+  screening: { label: 'Screening IA', bg: 'rgba(139,92,246,0.14)',  text: '#6d28d9' },
+  interview: { label: 'Entretien',    bg: 'rgba(59,130,246,0.14)',  text: '#1d4ed8' },
+  accepted:  { label: 'Accepté ✓',   bg: 'rgba(16,185,129,0.14)',  text: '#047857' },
+  rejected:  { label: 'Refusé',       bg: 'rgba(239,68,68,0.14)',   text: '#b91c1c' },
+  on_hold:   { label: 'Vivier',       bg: 'rgba(245,158,11,0.14)',  text: '#b45309' },
 }
 
 const SCREEN_RECO: Record<string, { label: string; color: string }> = {
@@ -104,12 +104,13 @@ export default async function CandidateProfilePage({ params, searchParams }: {
   const desiredSector = candidate.desiredSector ? (candidate.desiredSector as string).split(',').map(s => s.trim()).filter(Boolean) : []
   const desiredRoles = candidate.desiredRoles ? (candidate.desiredRoles as string).split(',').map(s => s.trim()).filter(Boolean) : []
   // Libellé/couleur de l'étape depuis le funnel du recruteur (étapes personnalisables) ;
-  // les étapes standard gardent leur style pastel lisible sur le bandeau sombre.
+  // les étapes standard gardent leur couleur, en teinte foncée : le bandeau est clair depuis le 2026-11-13 (contraste
+  // trop fort du bandeau sombre), les pastels d'avant n'y étaient plus lisibles.
   const funnelStage = funnelStages.find(s => s.slug === application.status)
   const known = STATUS[application.status as string]
   const stage = known
     ? { ...known, label: funnelStage?.label ?? known.label }
-    : { label: funnelStage?.label ?? (application.status as string), bg: `${funnelStage?.color ?? '#6b7280'}33`, text: '#ffffff' }
+    : { label: funnelStage?.label ?? (application.status as string), bg: `${funnelStage?.color ?? '#6b7280'}33`, text: 'var(--hero-fg)' }
   const screeningReco = application.aiRecommendation ? SCREEN_RECO[application.aiRecommendation as string] : null
   const hasReports = application.aiScore !== undefined || interviewAnalysis !== null
   // Parcours de recrutement (funnel) : n'apparaît que si le recruteur y a déjà touché (sinon c'est le
@@ -119,24 +120,24 @@ export default async function CandidateProfilePage({ params, searchParams }: {
 
   return (
     <div id="candidate-report" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <div className="sticky top-0 z-20 no-print" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div className="sticky top-0 z-20 no-print" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)' }}>
         <div className="max-w-3xl mx-auto px-6 py-6">
           {/* Sans page précédente dans l'onglet (fiche ouverte directement) : le pipeline de l'offre. */}
           <BackLink fallbackHref={job ? `/recruiter/pipeline/${job.$id}` : '/recruiter/dashboard'}
             className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 no-underline transition-opacity hover:opacity-80"
-            style={{ color: '#c4b5fd' }} />
+            style={{ color: 'var(--hero-fg-muted)' }} />
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-4">
               <CandidateAvatar photoUrl={candidate.photoUrl as string} initials={name[0]?.toUpperCase() ?? '?'} size={56}
                 openToWork={!!candidate.openToWork} bgColor="var(--hero-bg)" />
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.5rem' }}>{name}</h1>
+                  <h1 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.5rem' }}>{name}</h1>
                   <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: stage.bg, color: stage.text }}>
                     {stage.label}
                   </span>
                 </div>
-                {job && <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>A postulé pour : {job.title as string}</p>}
+                {job && <p style={{ color: 'var(--hero-fg-muted)', fontSize: '0.85rem' }}>A postulé pour : {job.title as string}</p>}
               </div>
             </div>
             <ExportPdfButton />

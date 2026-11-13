@@ -693,12 +693,12 @@ function InterviewModal({ jobId, candidate, targetStage, onClose, onSent }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}
       onClick={e => { if (e.target === e.currentTarget && step !== 'generating') handleClose() }}>
       <div className="w-full max-w-lg rounded-2xl overflow-hidden max-h-[85vh] flex flex-col" style={{ background: 'var(--color-background)', border: '1px solid var(--color-border)' }}>
-        <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--hero-bg)' }}>
-          <h2 className="font-semibold text-white text-sm flex items-center gap-2">
+        <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
+          <h2 className="font-semibold text-[var(--color-text)] text-sm flex items-center gap-2">
             <Video className="h-4 w-4" /> Entretien IA — {candidate.candidateName || candidate.candidateEmail}
           </h2>
           {step !== 'generating' && (
-            <button onClick={handleClose} className="text-white/40 hover:text-white transition-colors"><X className="h-5 w-5" /></button>
+            <button onClick={handleClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"><X className="h-5 w-5" /></button>
           )}
         </div>
         <div className="p-6 overflow-y-auto space-y-4">
@@ -806,11 +806,11 @@ function EmailModal({ candidate, jobId, onSent, onClose }: { candidate: Pipeline
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: 'var(--color-background)', border: '1px solid var(--color-border)' }}>
-        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--hero-bg)' }}>
-          <h2 className="font-semibold text-white text-sm flex items-center gap-2">
+        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
+          <h2 className="font-semibold text-[var(--color-text)] text-sm flex items-center gap-2">
             <Mail className="h-4 w-4" /> Email à {candidate.candidateName || candidate.candidateEmail}
           </h2>
-          <button onClick={onClose} className="text-white/40 hover:text-white transition-colors"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"><X className="h-5 w-5" /></button>
         </div>
         {sent ? (
           <div className="p-6 text-center space-y-3">
@@ -1253,49 +1253,49 @@ export function PipelineClient({
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <div className="sticky top-0 z-20 min-[90rem]:static" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div className="sticky top-0 z-20 min-[90rem]:static" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)' }}>
         <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-4 min-[90rem]:py-3">
           <BackLink fallbackHref="/recruiter/dashboard"
             className="inline-flex items-center gap-1.5 text-xs font-semibold mb-2 min-[90rem]:mb-1 no-underline transition-opacity hover:opacity-80"
-            style={{ color: '#c4b5fd' }} />
+            style={{ color: 'var(--hero-fg-muted)' }} />
           <div className="flex items-center justify-between gap-4 flex-wrap min-[90rem]:flex-nowrap">
             <div className="min-w-0">
-              <p className="min-[90rem]:hidden text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              <p className="min-[90rem]:hidden text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--hero-fg-muted)' }}>
                 Pipeline de recrutement
               </p>
-              <h1 className="min-[90rem]:truncate" style={{ color: 'white', fontWeight: 300, fontSize: '1.375rem', lineHeight: 1.3 }}>{jobTitle}</h1>
+              <h1 className="min-[90rem]:truncate" style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.375rem', lineHeight: 1.3 }}>{jobTitle}</h1>
               {/* Offre et colonnes sur une seule ligne (demande du 2026-11-06 : bandeau réduit). */}
-              <p className="flex items-center gap-x-1.5 gap-y-0.5 flex-wrap text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>
+              <p className="flex items-center gap-x-1.5 gap-y-0.5 flex-wrap text-[11px] mt-0.5" style={{ color: 'var(--hero-fg-muted)' }}>
                 <span className="hidden min-[90rem]:inline">{jobMeta}</span>
                 <span aria-hidden className="hidden min-[90rem]:inline">·</span>
-                <Link href={`/recruiter/funnel?tab=phases${pipeline ? `&pipeline=${pipeline.id}` : ''}`} className="font-semibold no-underline transition-opacity hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }}>
-                  Colonnes : <span style={{ color: '#E8A33D' }}>{pipeline?.name ?? 'Pipeline par défaut'}</span> · gérer
+                <Link href={`/recruiter/funnel?tab=phases${pipeline ? `&pipeline=${pipeline.id}` : ''}`} className="font-semibold no-underline transition-opacity hover:opacity-80" style={{ color: 'var(--hero-fg-muted)' }}>
+                  Colonnes : <span style={{ color: 'var(--hero-accent)' }}>{pipeline?.name ?? 'Pipeline par défaut'}</span> · gérer
                 </Link>
               </p>
             </div>
             <JobTabs jobId={jobId} current="pipeline" />
             <div className="flex items-center gap-3 flex-wrap min-[90rem]:shrink-0">
-              <label className="flex min-[90rem]:hidden items-center gap-2 text-xs font-medium" style={{ color: 'rgba(255,255,255,0.6)' }}>
+              <label className="flex min-[90rem]:hidden items-center gap-2 text-xs font-medium" style={{ color: 'var(--hero-fg-muted)' }}>
                 Score min.
                 <input type="range" min={0} max={100} step={5} value={minScore}
                   onChange={e => setMinScore(Number(e.target.value))} />
-                <span style={{ color: 'white', fontWeight: 700, minWidth: 26, display: 'inline-block' }}>{minScore}</span>
+                <span style={{ color: 'var(--hero-fg)', fontWeight: 700, minWidth: 26, display: 'inline-block' }}>{minScore}</span>
               </label>
               <button onClick={() => setSortDir(d => (d === 'desc' ? 'asc' : 'desc'))}
                 className="inline-flex min-[90rem]:hidden items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80"
-                style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.15)' }}>
+                style={{ background: 'var(--hero-control)', color: 'var(--hero-fg)', border: '1px solid var(--hero-line)' }}>
                 {sortDir === 'desc' ? <ArrowDownWideNarrow className="h-3.5 w-3.5" /> : <ArrowUpWideNarrow className="h-3.5 w-3.5" />}
                 Score
               </button>
               <Link href={`/recruiter/pipeline/${jobId}/matching`}
                 className="inline-flex min-[90rem]:hidden items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold no-underline transition-opacity hover:opacity-80"
-                style={{ background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.3)' }}>
+                style={{ background: 'rgba(139,92,246,0.15)', color: '#7c3aed', border: '1px solid rgba(139,92,246,0.3)' }}>
                 <Brain className="h-3.5 w-3.5" /> Matching IA
               </Link>
               <StageStatsButton stats={stageStats} total={candidates.length} />
               <button onClick={() => setConfigOpen(true)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80"
-                style={{ background: 'rgba(232,163,61,0.15)', color: '#E8A33D', border: '1px solid rgba(232,163,61,0.3)' }}>
+                style={{ background: 'rgba(232,163,61,0.15)', color: 'var(--hero-accent)', border: '1px solid rgba(232,163,61,0.3)' }}>
                 <Settings2 className="h-3.5 w-3.5" /> Étapes
               </button>
             </div>
@@ -1481,8 +1481,8 @@ function StagesConfigModal({ jobId, stages, onClose, onSaved }: {
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="w-full max-w-lg rounded-2xl overflow-hidden max-h-[85vh] flex flex-col" style={{ background: 'var(--color-background)', border: '1px solid var(--color-border)' }}>
         <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--hero-bg)' }}>
-          <h2 className="font-semibold text-white text-sm">Configurer les étapes du pipeline</h2>
-          <button onClick={onClose} className="text-white/40 hover:text-white transition-colors"><X className="h-5 w-5" /></button>
+          <h2 className="font-semibold text-[var(--hero-fg)] text-sm">Configurer les étapes du pipeline</h2>
+          <button onClick={onClose} className="text-[var(--hero-fg-muted)] hover:text-[var(--hero-fg)] transition-colors"><X className="h-5 w-5" /></button>
         </div>
         <div className="p-6 space-y-2.5 overflow-y-auto">
           {rows.map((row, i) => (
@@ -1555,8 +1555,8 @@ function EditCardModal({ jobId, candidate, onClose, onSaved }: {
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: 'var(--color-background)', border: '1px solid var(--color-border)' }}>
         <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--hero-bg)' }}>
-          <h2 className="font-semibold text-white text-sm">{candidate.candidateName || candidate.candidateEmail}</h2>
-          <button onClick={onClose} className="text-white/40 hover:text-white transition-colors"><X className="h-5 w-5" /></button>
+          <h2 className="font-semibold text-[var(--hero-fg)] text-sm">{candidate.candidateName || candidate.candidateEmail}</h2>
+          <button onClick={onClose} className="text-[var(--hero-fg-muted)] hover:text-[var(--hero-fg)] transition-colors"><X className="h-5 w-5" /></button>
         </div>
         <div className="p-6 space-y-4">
           <div>
@@ -1711,8 +1711,8 @@ function HistoryModal({ applicationId, stages, onClose }: { applicationId: strin
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="w-full max-w-md rounded-2xl overflow-hidden max-h-[75vh] flex flex-col" style={{ background: 'var(--color-background)', border: '1px solid var(--color-border)' }}>
         <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--hero-bg)' }}>
-          <h2 className="font-semibold text-white text-sm flex items-center gap-2"><History className="h-4 w-4" /> Historique</h2>
-          <button onClick={onClose} className="text-white/40 hover:text-white transition-colors"><X className="h-5 w-5" /></button>
+          <h2 className="font-semibold text-[var(--hero-fg)] text-sm flex items-center gap-2"><History className="h-4 w-4" /> Historique</h2>
+          <button onClick={onClose} className="text-[var(--hero-fg-muted)] hover:text-[var(--hero-fg)] transition-colors"><X className="h-5 w-5" /></button>
         </div>
         <div className="p-6 overflow-y-auto">
           {events === null ? (
@@ -1775,8 +1775,8 @@ function StageStatsButton({ stats, total }: { stats: { stage: FunnelStage; count
         }
       }}>
       <button ref={triggerRef} type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} aria-controls={panelId}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        style={{ background: open ? 'white' : 'rgba(255,255,255,0.1)', color: open ? '#1c1c1e' : 'white', border: '1px solid rgba(255,255,255,0.15)' }}>
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hero-fg)]"
+        style={{ background: open ? 'var(--color-surface)' : 'var(--hero-control)', color: open ? 'var(--color-text)' : 'var(--hero-fg)', border: '1px solid var(--hero-line)' }}>
         <ChartColumn className="h-3.5 w-3.5" aria-hidden /> Statistiques
         <span className="tabular-nums" style={{ opacity: 0.7 }}>{total}</span>
       </button>

@@ -18,8 +18,8 @@ const WIDE = 'min-[90rem]:max-w-[1920px] min-[90rem]:px-8'
 const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2'
 
 /**
- * Rubriques de l'espace Chasseur, sous la barre du site (layout chasseur), comme le sous-menu de l'espace recruteur
- * (recruiter-subnav.tsx) : demande du 2026-11-10, à la place des onglets du grand bandeau sombre. 4 rubriques : une ligne
+ * Rubriques de l'espace Chasseur, sous la barre du site (layout chasseur), comme l'était le sous-menu de l'espace
+ * recruteur avant son menu latéral (2026-11-13) : demande du 2026-11-10, à la place des onglets du grand bandeau sombre. 4 rubriques : une ligne
  * d'onglets à toutes les largeurs (défilement horizontal sur un petit écran, icônes dès 640 px).
  */
 export function HunterSubnav() {

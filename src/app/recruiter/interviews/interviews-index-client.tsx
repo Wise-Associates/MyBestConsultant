@@ -28,8 +28,8 @@ function Pill({ active, onClick, children }: { active: boolean; onClick: () => v
     <button type="button" onClick={onClick}
       className="mbc-search-pill px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap"
       style={active
-        ? { background: 'white', color: 'var(--navbar-bg)', boxShadow: '0 6px 16px rgba(0,0,0,0.18)' }
-        : { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.14)' }}>
+        ? { background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--hero-line)', boxShadow: '0 6px 16px rgba(0,0,0,0.18)' }
+        : { background: 'var(--hero-control)', color: 'var(--hero-fg-muted)', border: '1px solid var(--hero-line)' }}>
       {children}
     </button>
   )
@@ -70,7 +70,7 @@ export function InterviewsIndexClient({ sessions }: { sessions: InterviewSession
       minHeight: '100vh',
       background: 'var(--page-bg)',
     }}>
-            <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
+            <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
         <div className="max-w-4xl mx-auto px-6 py-10">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-4">
@@ -78,20 +78,20 @@ export function InterviewsIndexClient({ sessions }: { sessions: InterviewSession
                 <Brain className="h-6 w-6" style={{ color: 'var(--color-primary)' }} />
               </div>
               <div>
-                <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>Entretiens IA</h1>
-                <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Agent autonome · Questions générées · Analyse automatique</p>
+                <h1 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.75rem' }}>Entretiens IA</h1>
+                <p className="text-sm mt-0.5" style={{ color: 'var(--hero-fg-muted)' }}>Agent autonome · Questions générées · Analyse automatique</p>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               {/* Le screening des CV est rangé avec les entretiens (rubrique « Entretiens IA » du sous-menu). */}
               <Link href="/recruiter/screening"
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold no-underline transition-all"
-                style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.16)', color: 'rgba(255,255,255,0.8)' }}>
+                style={{ background: 'var(--hero-control)', border: '1px solid var(--hero-line)', color: 'var(--hero-fg-muted)' }}>
                 <ScanSearch className="h-4 w-4" />Screening CV
               </Link>
               <Link href="/recruiter/interviews/questions"
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold no-underline transition-all"
-                style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.16)', color: 'rgba(255,255,255,0.8)' }}>
+                style={{ background: 'var(--hero-control)', border: '1px solid var(--hero-line)', color: 'var(--hero-fg-muted)' }}>
                 <ListChecks className="h-4 w-4" />Questions génériques
               </Link>
               <Link href="/recruiter/interviews/new"
@@ -105,11 +105,11 @@ export function InterviewsIndexClient({ sessions }: { sessions: InterviewSession
           {sessions.length > 5 && (
             <div className="flex items-center gap-3 mt-6 flex-wrap">
               <div className="flex items-center gap-2 px-4 rounded-xl flex-1 min-w-[200px]"
-                style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.16)' }}>
-                <Search className="h-4 w-4 shrink-0" style={{ color: 'rgba(255,255,255,0.4)' }} />
+                style={{ background: 'var(--hero-control)', border: '1px solid var(--hero-line)' }}>
+                <Search className="h-4 w-4 shrink-0" style={{ color: 'var(--hero-fg-muted)' }} />
                 <input value={search} onChange={e => setSearch(e.target.value)}
                   placeholder="Candidat, poste…"
-                  style={{ background: 'transparent', border: 'none', outline: 'none', color: 'white', width: '100%', padding: '0.7rem 0', fontSize: '0.85rem' }} />
+                  style={{ background: 'transparent', border: 'none', outline: 'none', color: 'var(--hero-fg)', width: '100%', padding: '0.7rem 0', fontSize: '0.85rem' }} />
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
                 {(Object.keys(STATUS_STYLE) as Status[]).map(s => (

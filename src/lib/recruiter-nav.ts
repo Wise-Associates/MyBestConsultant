@@ -1,35 +1,53 @@
-// Sous-menu de l'espace recruteur (src/components/recruiter/recruiter-subnav.tsx, dans le layout recruteur) : les
-// rubriques, dans l'ordre affiché, et la rubrique d'une page. Demande du 2026-10-30 : un sous-menu à la place des
-// cartes du tableau de bord. Règles pures, testées dans recruiter-nav.test.ts.
+// Menu latéral de l'espace recruteur (src/components/recruiter/recruiter-sidebar.tsx, dans le layout recruteur) : les
+// rubriques, leurs groupes, dans l'ordre affiché, et la rubrique d'une page. Demande du 2026-11-13 : un menu à gauche à la
+// place du sous-menu horizontal (2026-10-30), MBC Search en premier, rubriques rangées en trois groupes.
+// Règles pures, testées dans recruiter-nav.test.ts.
 
 export type RecruiterSectionKey = 'dashboard' | 'funnel' | 'ao' | 'reporting' | 'vivier' | 'cvtheque' | 'mbcsearch' | 'equipe' | 'interviews'
+
+export type RecruiterGroupKey = 'recherche' | 'recrutement' | 'pilotage'
 
 export interface RecruiterSection {
   key: RecruiterSectionKey
   label: string
   href: string
+  group: RecruiterGroupKey
   /** Autres pages de la rubrique : la rubrique reste en surbrillance sur elles (et leurs sous-pages). */
   also: string[]
 }
 
+/** Groupes du menu, dans l'ordre affiché. */
+export const RECRUITER_GROUPS: { key: RecruiterGroupKey; label: string }[] = [
+  { key: 'recherche', label: 'Recherche' },
+  { key: 'recrutement', label: 'Recrutement' },
+  { key: 'pilotage', label: 'Pilotage' },
+]
+
+/** Rubriques dans l'ordre du menu : celles d'un même groupe se suivent. */
 export const RECRUITER_SECTIONS: RecruiterSection[] = [
+  // Recherche de profils hors de la plateforme, via Apollo.io (ADR 0018) ; page d'arrivée du recruteur (dashboard-routes.ts).
+  { key: 'mbcsearch', label: 'MBC Search', href: '/recruiter/mbc-search', group: 'recherche', also: [] },
+  { key: 'cvtheque', label: 'CV Thèque', href: '/recruiter/cvtheque', group: 'recherche', also: [] },
+  { key: 'vivier', label: 'Mon vivier', href: '/recruiter/vivier', group: 'recherche', also: [] },
   // Pipeline d'une offre, fiche candidat, import et suivi des annonces (lien « Suivi & rapports » de « Mes offres », sans
   // rubrique depuis le 2026-10-30) partent des offres du tableau de bord.
-  { key: 'dashboard', label: 'Tableau de bord', href: '/recruiter/dashboard', also: ['/recruiter/pipeline', '/recruiter/candidates', '/recruiter/candidate-preview', '/recruiter/import', '/recruiter/annonces'] },
-  // Processus de recrutement : pipelines, phases et statuts de l'organisation (retiré du sous-menu le 2026-10-30, remis
-  // le 2026-11-02 ; libellé court pour que les onglets tiennent sur une ligne).
-  { key: 'funnel', label: 'Pipelines', href: '/recruiter/funnel', also: [] },
-  { key: 'ao', label: 'Appels d’offres', href: '/recruiter/parametres/boites-ao', also: [] },
-  { key: 'reporting', label: 'Reporting', href: '/recruiter/reporting', also: [] },
-  { key: 'vivier', label: 'Mon vivier', href: '/recruiter/vivier', also: [] },
-  { key: 'cvtheque', label: 'CV Thèque', href: '/recruiter/cvtheque', also: [] },
-  // Recherche de profils hors de la plateforme, via Apollo.io (ADR 0018).
-  { key: 'mbcsearch', label: 'MBC Search', href: '/recruiter/mbc-search', also: [] },
-  // La marque employeur se gère depuis la page de l'équipe.
-  { key: 'equipe', label: 'Mon équipe', href: '/recruiter/equipe', also: ['/recruiter/marque-employeur'] },
+  { key: 'dashboard', label: 'Tableau de bord', href: '/recruiter/dashboard', group: 'recrutement', also: ['/recruiter/pipeline', '/recruiter/candidates', '/recruiter/candidate-preview', '/recruiter/import', '/recruiter/annonces'] },
+  // Processus de recrutement : pipelines, phases et statuts de l'organisation.
+  { key: 'funnel', label: 'Pipelines', href: '/recruiter/funnel', group: 'recrutement', also: [] },
+  { key: 'ao', label: 'Appels d’offres', href: '/recruiter/parametres/boites-ao', group: 'recrutement', also: [] },
   // Le screening des CV n'a pas de rubrique : il est rangé avec les entretiens IA (lien sur leur page).
-  { key: 'interviews', label: 'Entretiens IA', href: '/recruiter/interviews', also: ['/recruiter/screening'] },
+  { key: 'interviews', label: 'Entretiens IA', href: '/recruiter/interviews', group: 'recrutement', also: ['/recruiter/screening'] },
+  { key: 'reporting', label: 'Reporting', href: '/recruiter/reporting', group: 'pilotage', also: [] },
+  // La marque employeur se gère depuis la page de l'équipe.
+  { key: 'equipe', label: 'Mon équipe', href: '/recruiter/equipe', group: 'pilotage', also: ['/recruiter/marque-employeur'] },
 ]
+
+/** Groupes du menu avec leurs rubriques, dans l'ordre affiché ; un groupe sans rubrique n'est pas affiché. */
+export function recruiterNavGroups(): { key: RecruiterGroupKey; label: string; sections: RecruiterSection[] }[] {
+  return RECRUITER_GROUPS
+    .map(group => ({ ...group, sections: RECRUITER_SECTIONS.filter(section => section.group === group.key) }))
+    .filter(group => group.sections.length > 0)
+}
 
 /** `path` est `base` ou une de ses sous-pages (« /recruiter/vivier/abc », pas « /recruiter/viviers »). */
 const isUnder = (path: string, base: string) => path === base || path.startsWith(`${base}/`)
@@ -40,11 +58,5 @@ export function recruiterSectionOf(pathname: string): RecruiterSectionKey | null
   return RECRUITER_SECTIONS.find(section => [section.href, ...section.also].some(base => isUnder(path, base)))?.key ?? null
 }
 
-/**
- * Pages de l'espace recruteur dont le sous-menu (RecruiterSubnav) s'élargit à partir de 1440 px (jusqu'à 1920 px) pour
- * s'aligner sur leur contenu en pleine largeur (2026-11-10) : pipeline et Matching IA d'une offre. Le tableau de bord,
- * lui aussi en pleine largeur, garde le sous-menu centré (demande du 2026-11-10, comme l'espace chasseur).
- */
-export function isWideRecruiterPage(pathname: string): boolean {
-  return /^\/recruiter\/pipeline\/[^/]+(\/matching)?$/.test(pathname)
-}
+/** Cookie qui garde le menu latéral réduit à ses icônes (choix du recruteur, lu par le layout pour éviter un saut). */
+export const SIDEBAR_COOKIE = 'mbc-recruiter-sidebar'
