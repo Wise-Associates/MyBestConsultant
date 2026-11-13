@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { getStripe, PLAN_PRICE_CENTS, ensurePlanProduct, type PaidPlanId } from '@/lib/stripe'
+import { canManageTeam, roleOf } from '@/lib/team-roles'
 
 /**
  * Crée (ou récupère) l'abonnement Stripe du recruteur connecté pour le plan choisi, et renvoie le
@@ -18,6 +19,10 @@ export async function startSubscriptionCheckout(planId: PaidPlanId): Promise<{ c
 
   const { databases } = createAdminClient()
   const tenant = await databases.getDocument(DB_ID, COLLECTIONS.TENANTS, user.tenantId)
+  // Choisir la formule de l'organisation : propriétaire et administrateurs (ADR 0033), comme la page « Abonnement ».
+  if (!canManageTeam(roleOf(user.userId, tenant as unknown as Record<string, unknown>))) {
+    return { error: 'Seuls le propriétaire et les administrateurs de votre organisation peuvent choisir une formule.' }
+  }
   const stripe = getStripe()
 
   try {

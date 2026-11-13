@@ -342,13 +342,13 @@ body { overflow-x: clip; max-width: 100%; }
   --hero-accent: color-mix(in srgb, var(--color-brand-orange) 80%, black);
 }
 
-/* Police de l'espace recruteur (menu et pages) : Inter, quel que soit le modèle du site (demande du 2026-11-13, même
-   police que la maquette de MBC Search). Les titres (règle h1…h6 plus haut) et la classe font-sans lisent ces
-   variables. Inter est chargée par le layout racine (GOOGLE_FONTS_URL). Les fenêtres ouvertes hors du menu (portails
-   dans <body>) gardent la police du modèle. */
+/* Police de l'espace recruteur (menu et pages) : Poppins, quel que soit le modèle du site (demande du 2026-11-13, essai
+   après Inter et Open Sans le même jour). Les titres (règle h1…h6 plus haut) et la classe font-sans lisent ces variables.
+   Poppins est chargée par le layout racine (GOOGLE_FONTS_URL, graisses 300 à 800). Les fenêtres ouvertes hors du menu
+   (portails dans <body>) gardent la police du modèle. */
 .recruiter-shell {
-  --font-body: 'Inter', system-ui, sans-serif;
-  --font-heading: 'Inter', system-ui, sans-serif;
+  --font-body: 'Poppins', system-ui, sans-serif;
+  --font-heading: 'Poppins', system-ui, sans-serif;
   font-family: var(--font-body);
 }
 

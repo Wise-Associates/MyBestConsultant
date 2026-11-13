@@ -1,19 +1,26 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { RECRUITER_SECTIONS, recruiterNavGroups, recruiterSectionOf } from './recruiter-nav'
+import { RECRUITER_SECTIONS, recruiterAccountSections, recruiterNavGroups, recruiterSectionOf } from './recruiter-nav'
 
 describe('menu latéral de l\'espace recruteur', () => {
   it('range les rubriques en trois groupes, MBC Search en premier', () => {
     assert.deepEqual(recruiterNavGroups().map(g => [g.label, g.sections.map(s => s.label)]), [
       ['Recherche', ['MBC Search', 'CV Thèque', 'Mon vivier']],
-      ['Recrutement', ['Tableau de bord', 'Pipelines', 'Appels d’offres', 'Entretiens IA']],
+      ['Recrutement', ['Job board', 'Pipelines', 'Appels d’offres', 'Entretiens IA']],
       ['Pilotage', ['Reporting', 'Mon équipe']],
     ])
   })
 
-  it('n\'oublie aucune rubrique dans les groupes', () => {
-    const grouped = recruiterNavGroups().flatMap(g => g.sections.map(s => s.key))
-    assert.deepEqual(grouped, RECRUITER_SECTIONS.map(s => s.key))
+  it('met utilisateurs, abonnement et organisation en bas du menu', () => {
+    assert.deepEqual(recruiterAccountSections().map(s => s.label), ['Organisation', 'Utilisateurs', 'Abonnement'])
+    assert.equal(recruiterSectionOf('/recruiter/utilisateurs'), 'utilisateurs')
+    assert.equal(recruiterSectionOf('/recruiter/abonnement'), 'abonnement')
+    assert.equal(recruiterSectionOf('/recruiter/organisation'), 'organisation')
+  })
+
+  it('n\'oublie aucune rubrique : groupes du haut puis bas du menu', () => {
+    const shown = [...recruiterNavGroups().flatMap(g => g.sections), ...recruiterAccountSections()].map(s => s.key)
+    assert.deepEqual(shown, RECRUITER_SECTIONS.map(s => s.key))
   })
 
   it('met en surbrillance la rubrique de la page et de ses sous-pages', () => {

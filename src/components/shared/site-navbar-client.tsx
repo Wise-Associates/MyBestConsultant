@@ -157,6 +157,8 @@ function UserDropdown({ user }: { user: NonNullable<Props['user']> }) {
 export function SiteNavbarClient({ siteName, logoUrl, navLinks, user, supportUnread = 0 }: Props) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
+  // « Demander une présentation » : visiteurs et candidats seulement (admins, recruteurs et chasseurs utilisent déjà la plateforme).
+  const showCta = !user || user.role === 'candidate'
 
   // Fond noir uniforme sur toutes les pages, y compris l'accueil : plus de variation
   // d'opacité au scroll (c'est ce qui donnait l'impression d'un header qui "change de
@@ -177,7 +179,9 @@ export function SiteNavbarClient({ siteName, logoUrl, navLinks, user, supportUnr
       <div style={{ height: 68, background: navbarStyle.background }} />
 
       <header style={navbarStyle}>
-        <div style={{ maxWidth: 1280, margin: '0 auto', padding: '0 24px', height: '100%', display: 'flex', alignItems: 'center', gap: 32 }}>
+        {/* Toute la largeur de l'écran sur tout le site (demande du 2026-11-13, avant : colonne centrée de 1280 px) ; à 20 px
+            des bords, le logo s'aligne sur le menu latéral de l'espace recruteur. */}
+        <div style={{ padding: '0 20px', height: '100%', display: 'flex', alignItems: 'center', gap: 32 }}>
 
           {/* Logo — the file already has "MY BEST CONSULTANT" built into the artwork,
               no separate text needed next to it. */}
@@ -186,7 +190,7 @@ export function SiteNavbarClient({ siteName, logoUrl, navLinks, user, supportUnr
             <img
               src={logoUrl || '/logo.png'}
               alt={siteName || 'MyBestConsultant'}
-              style={{ height: 60, width: 'auto', objectFit: 'contain' }}
+              style={{ height: 44, width: 'auto', objectFit: 'contain' }}
             />
           </Link>
 
@@ -247,8 +251,10 @@ export function SiteNavbarClient({ siteName, logoUrl, navLinks, user, supportUnr
           </div>
 
           {/* Mobile : support, menu et « Demander une présentation » groupés à droite de la barre (margin-left: auto ; les
-              liens du bureau, qui prennent la place libre sur grand écran, y sont masqués). Sur grand écran, rien ne bouge. */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto', flexShrink: 0 }}>
+              liens du bureau, qui prennent la place libre sur grand écran, y sont masqués). Sur grand écran, seul le bouton
+              « Demander une présentation » y reste : sans lui, le groupe est masqué (nav-mobile-only), sinon son espacement
+              de 32 px décale les boutons du bord droit (visible depuis la barre pleine largeur, 2026-11-13). */}
+          <div className={showCta ? undefined : 'nav-mobile-only'} style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto', flexShrink: 0 }}>
           {/* Support Helpdesk — version compacte visible sur mobile */}
           {user && user.role !== 'admin' && <SupportButton role={user.role} unread={supportUnread} variant="mobile" />}
 
@@ -263,7 +269,7 @@ export function SiteNavbarClient({ siteName, logoUrl, navLinks, user, supportUnr
               mobile too, at the far right of the bar, instead of being hidden inside the
               menu until opened. Shown to visitors and candidates only: admins, recruiters and hunters (chasseurs,
               removed 2026-11-05) already use the platform. */}
-          {(!user || user.role === 'candidate') && (
+          {showCta && (
             <Link href={CALENDLY_URL} target="_blank" rel="noreferrer" className="mbc-nav-cta"
               style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', borderRadius: 10, fontSize: 13, fontWeight: 700, color: '#1a1305', textDecoration: 'none', background: 'linear-gradient(135deg,#E8A33D,#F0B860)', boxShadow: '0 4px 16px rgba(232,163,61,0.25)', transition: 'transform 0.15s, box-shadow 0.2s', flexShrink: 0 }}
               onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(-1px)'; el.style.boxShadow = '0 6px 20px rgba(232,163,61,0.4)' }}
@@ -352,6 +358,7 @@ export function SiteNavbarClient({ siteName, logoUrl, navLinks, user, supportUnr
         @media (min-width: 768px) {
           .nav-desktop { display: flex !important; }
           .nav-mobile-btn { display: none !important; }
+          .nav-mobile-only { display: none !important; }
         }
         @media (max-width: 767px) {
           .nav-desktop { display: none !important; }

@@ -572,7 +572,7 @@ export function CvthequeSkeleton() {
               <Skeleton className="h-4 w-56" />
               {Array.from({ length: 3 }, (_, i) => (
                 <div key={i} className="rounded-3xl p-6 flex gap-4" style={card}>
-                  <Skeleton className="w-14 h-14 rounded-full shrink-0" />
+                  <Skeleton className="w-14 h-14 shrink-0" style={{ borderRadius: '9999px' }} />
                   <div className="flex-1 space-y-2">
                     <Skeleton className="h-4 w-48" />
                     <Skeleton className="h-3 w-64" />
@@ -582,6 +582,134 @@ export function CvthequeSkeleton() {
               ))}
             </div>
           </div>
+        </div>
+      </div>
+    </SkeletonRegion>
+  )
+}
+
+// ── Pages du bas du menu : Utilisateurs, Abonnement, Organisation (ADR 0033) ─────────────────────────────────────
+// Même structure que les pages : ligne de titre, puis le contenu centré (deux cartes côte à côte dès 1024 px pour
+// l'abonnement et l'organisation). À changer avec elles.
+
+const line = '1px solid var(--color-border)'
+
+/** Ligne de titre des pages de compte : icône, titre, bouton à droite (« Inviter un utilisateur »). */
+function AccountHeaderSkeleton({ action }: { action?: boolean }) {
+  return (
+    <div className="flex items-center gap-3 min-h-16 px-4 sm:px-6 py-3" style={{ borderBottom: line }}>
+      <Skeleton className="h-5 w-5 rounded shrink-0" />
+      <Skeleton className="h-5 w-32" />
+      <span className="flex-1" />
+      {action && <Skeleton className="h-10 w-44 rounded-xl" />}
+    </div>
+  )
+}
+
+const accountPage = { minHeight: 'calc(100vh - 68px)', background: 'var(--color-surface)' }
+
+export function UsersSkeleton() {
+  return (
+    <SkeletonRegion label="Chargement des utilisateurs" style={accountPage}>
+      <AccountHeaderSkeleton action />
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="rounded-2xl p-4 flex items-center gap-3" style={card}>
+              <Skeleton className="w-9 h-9 rounded-xl shrink-0" />
+              <div className="flex-1 min-w-0 space-y-2">
+                <Skeleton className="h-5 w-8" />
+                <Skeleton className="h-3 w-32 max-w-full" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-2xl overflow-hidden" style={card}>
+          <div className="flex items-center gap-2 flex-wrap px-4 py-3" style={{ borderBottom: line }}>
+            <Skeleton className="h-10 flex-1 min-w-[14rem] rounded-lg" />
+            <Skeleton className="h-9 w-72 max-w-full rounded-lg" />
+            <Skeleton className="h-10 w-36 rounded-lg" />
+          </div>
+          {Array.from({ length: 5 }, (_, i) => (
+            <div key={i} className="flex items-center gap-3 flex-wrap px-4 py-3.5" style={i > 0 ? { borderTop: line } : undefined}>
+              {/* Cercle forcé en style : la classe rounded-md de Skeleton l'emporte sur rounded-full. */}
+              <Skeleton className="w-9 h-9 shrink-0" style={{ borderRadius: '9999px' }} />
+              <div className="flex-1 min-w-[10rem] space-y-1.5">
+                <Skeleton className="h-4 w-36" />
+                <Skeleton className="h-3 w-48 max-w-full" />
+              </div>
+              <Skeleton className="h-7 w-28 rounded-lg" />
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="hidden md:block h-8 w-56 rounded-lg" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </SkeletonRegion>
+  )
+}
+
+export function SubscriptionSkeleton() {
+  return (
+    <SkeletonRegion label="Chargement de l’abonnement" style={accountPage}>
+      <AccountHeaderSkeleton />
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 grid gap-5 lg:grid-cols-2 items-start">
+        <div className="rounded-2xl p-5 sm:p-6 space-y-5" style={card}>
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-2">
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="h-8 w-40" />
+              <Skeleton className="h-4 w-28" />
+            </div>
+            <Skeleton className="h-7 w-24 rounded-full" />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {Array.from({ length: 2 }, (_, i) => (
+              <div key={i} className="space-y-1.5"><Skeleton className="h-3 w-20" /><Skeleton className="h-4 w-40 max-w-full" /></div>
+            ))}
+          </div>
+          <Skeleton className="h-16 w-full rounded-xl" />
+        </div>
+        <div className="rounded-2xl p-5 sm:p-6 space-y-4" style={card}>
+          <Skeleton className="h-5 w-44" />
+          <Skeleton className="h-4 w-36" />
+          <Skeleton className="h-10 w-60 max-w-full rounded-lg" />
+        </div>
+      </div>
+    </SkeletonRegion>
+  )
+}
+
+export function OrganisationSkeleton() {
+  return (
+    <SkeletonRegion label="Chargement de l’organisation" style={accountPage}>
+      <AccountHeaderSkeleton />
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 grid gap-5 lg:grid-cols-2 items-start">
+        <div className="rounded-2xl p-5 sm:p-6" style={card}>
+          <div className="flex items-center gap-4 mb-5">
+            <Skeleton className="w-14 h-14 rounded-xl shrink-0" />
+            <div className="flex-1 min-w-0 space-y-2">
+              <Skeleton className="h-6 w-48 max-w-full" />
+              <Skeleton className="h-4 w-56 max-w-full" />
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {Array.from({ length: 5 }, (_, i) => (
+              <div key={i} className="space-y-1.5"><Skeleton className="h-3 w-20" /><Skeleton className="h-4 w-32 max-w-full" /></div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-2xl p-5 sm:p-6 space-y-4" style={card}>
+          <div className="space-y-2">
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-3 w-full" />
+          </div>
+          <div className="space-y-1.5"><Skeleton className="h-3 w-40" /><Skeleton className="h-10 w-full rounded-lg" /></div>
+          <div className="flex items-center gap-3">
+            <Skeleton className="w-14 h-14 rounded-xl shrink-0" />
+            <Skeleton className="h-9 w-36 rounded-lg" />
+          </div>
+          <Skeleton className="h-10 w-32 rounded-lg" />
         </div>
       </div>
     </SkeletonRegion>

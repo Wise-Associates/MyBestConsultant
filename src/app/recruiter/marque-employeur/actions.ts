@@ -6,10 +6,13 @@ import { InputFile } from 'node-appwrite/file'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
-import { canPublish, cleanUrl, LIMITS, sanitizeBrand, type BrandProfile } from '@/lib/brand'
+import { canPublish, cleanUrl, isLogoFileUrl, LIMITS, sanitizeBrand, type BrandProfile } from '@/lib/brand'
+import { roleOf, teamActionDenial } from '@/lib/team-roles'
 
 // Toute l'équipe du recruteur (propriétaire + collaborateurs invités) peut éditer la page
-// employeur : c'est un contenu de communication partagé, pas un réglage de compte.
+// employeur : c'est un contenu de communication partagé, pas un réglage de compte. Sauf le nom et le
+// logo, identité de l'organisation : propriétaire et administrateurs seulement (ADR 0033, comme la page
+// Organisation).
 async function requireTeamMember() {
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) throw new Error('Non autorisé')
@@ -39,6 +42,14 @@ export async function saveBrandAction(input: {
     }
 
     const { databases } = createAdminClient()
+    const current = await databases.getDocument(DB_ID, COLLECTIONS.TENANTS, user.tenantId) as unknown as Record<string, unknown>
+    const identityChanged = name !== current.name || logoUrl !== cleanUrl(current.logoUrl)
+    if (identityChanged && teamActionDenial(roleOf(user.userId, current), 'editOrganisation')) {
+      return { error: 'Le nom et le logo de l’organisation sont réservés au propriétaire et aux administrateurs.' }
+    }
+    if (identityChanged && logoUrl && !isLogoFileUrl(logoUrl, process.env.APPWRITE_ENDPOINT ?? '', BUCKETS.LOGOS)) {
+      return { error: 'Logo invalide : envoyez de nouveau l’image.' }
+    }
     const doc = await databases.updateDocument(DB_ID, COLLECTIONS.TENANTS, user.tenantId, {
       name, logoUrl, brandJson: JSON.stringify(brand), brandPublished: published,
     })
