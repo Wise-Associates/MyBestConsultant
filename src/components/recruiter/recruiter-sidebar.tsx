@@ -73,7 +73,7 @@ export function RecruiterShell({ initialCollapsed, organisationName, children }:
   }
 
   // Libellés : lus par les lecteurs d'écran à toutes les largeurs, affichés dès 1280 px quand le menu n'est pas réduit.
-  const labelClass = collapsed ? 'sr-only' : 'sr-only xl:not-sr-only xl:truncate text-[14px]'
+  const labelClass = collapsed ? 'sr-only' : 'sr-only xl:not-sr-only xl:truncate text-[13px]'
   const linkLayout = collapsed ? 'justify-center' : 'justify-center xl:justify-start'
 
   const sidebarLink = (section: RecruiterSection) => {
