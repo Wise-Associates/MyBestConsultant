@@ -268,6 +268,10 @@ body { overflow-x: clip; max-width: 100%; }
 .mbc-range-thumb:hover { transform:translate(-50%,-50%) scale(1.2); box-shadow:0 4px 14px rgba(0,0,0,.35); }
 .mbc-range-thumb:active { cursor:grabbing; }
 .mbc-sticky-aside { scrollbar-width:thin; scrollbar-color:var(--color-border) transparent; }
+/* Ligne d'offre de /jobs (job-row.tsx) : fond au survol, contour au clavier. */
+.mbc-job-row { transition:background-color .15s ease; }
+.mbc-job-row:hover { background:color-mix(in srgb, var(--color-text) 2.5%, transparent); }
+.mbc-job-row:focus-visible { outline:2px solid var(--color-primary); outline-offset:-2px; }
 .mbc-sticky-aside::-webkit-scrollbar { width:6px; }
 .mbc-sticky-aside::-webkit-scrollbar-track { background:transparent; }
 .mbc-sticky-aside::-webkit-scrollbar-thumb { background:var(--color-border); border-radius:3px; }
@@ -327,12 +331,14 @@ body { overflow-x: clip; max-width: 100%; }
 @media (min-width: 64rem) { .recruiter-shell { --recruiter-sidebar-w: 4rem; } }
 @media (min-width: 80rem) { .recruiter-shell:not([data-sidebar="collapsed"]) { --recruiter-sidebar-w: 15rem; } }
 
-/* Bandeaux clairs dans l'espace recruteur (demande du 2026-11-13 : plus de bandeau noir, moins de contraste). Les pages
+/* Bandeaux clairs dans l'espace recruteur (demande du 2026-11-13 : plus de bandeau noir, moins de contraste), et sur
+   les pages publiques qui en prennent la charte (.mbc-light-banners : liste des offres /jobs). Les pages
    gardent background: var(--hero-bg) (le bandeau reste collé sous la barre et garde ses marges, règles plus haut) et
    écrivent leur contenu avec les variables --hero-* : clair ici, sombre dans les autres espaces (centre de support
    partagé avec candidats et chasseurs). Les fenêtres ouvertes hors du menu (portails dans <body>) n'en héritent pas :
    elles utilisent directement les couleurs du thème (--color-surface, --color-text…). */
-.recruiter-shell {
+.recruiter-shell,
+.mbc-light-banners {
   --hero-bg: var(--color-surface);
   --hero-fg: var(--color-text);
   --hero-fg-muted: var(--color-text-muted);

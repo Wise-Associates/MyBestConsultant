@@ -13,6 +13,7 @@ import type { FunnelStage } from '@/types'
 import type { RecruiterOption } from '@/lib/recruiter-assignment'
 import { startNavigationProgress } from '@/components/shared/navigation-progress'
 import { PREVIEW_MEDIA } from './dashboard-layout'
+import { amberBadge, badge, neutralBadge } from '@/components/shared/list-styles'
 
 const CONTRACT_LABELS: Record<string, string> = {
   cdi: 'CDI', cdd: 'CDD', freelance: 'Freelance', mission: 'Mission',
@@ -25,9 +26,6 @@ const CONTRACT_LABELS: Record<string, string> = {
  */
 export const ROW_GRID = 'grid grid-cols-2 lg:grid-cols-[minmax(0,1fr)_124px_200px_180px_88px] min-[90rem]:grid-cols-[minmax(0,1fr)_156px_176px_200px_88px] min-[112.5rem]:grid-cols-[minmax(0,1fr)_156px_176px_200px_132px] gap-x-5'
 
-const badge = 'inline-flex items-center gap-1 text-[11px] font-semibold rounded-md px-[7px] py-0.5'
-const neutralBadge = { background: 'color-mix(in srgb, var(--color-text) 7%, transparent)', color: 'var(--color-text)' }
-const amberBadge = { background: '#b4530914', color: '#b45309' }
 
 export function JobRow({ row, apps, stages, canPublish, recruiters, first, focused, focusRef, onOpenApplications, previewed, onPreview }: {
   row: DashboardJobRow; apps: CandidateApp[]; stages: FunnelStage[]; canPublish: boolean

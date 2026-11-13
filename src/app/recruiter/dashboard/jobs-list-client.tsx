@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Inbox, Users, AlertTriangle, Clock, ArrowRight, Layers, Search, X } from 'lucide-react'
@@ -18,6 +18,7 @@ import {
   type JobFilters, type JobFocus, type JobSort, type JobStatusFilter,
 } from '@/lib/recruiter-job-filters'
 import { initialUrlListSync, noteListWrite, syncFromUrl } from '@/lib/url-list-state'
+import { field, fieldStyle, listCardStyle, muted, railCard, railHeading, railHeadingStyle } from '@/components/shared/list-styles'
 
 /** Une ligne de « Mes offres », préparée par la page (faits et dates calculés sur le serveur). */
 export interface DashboardJobRow {
@@ -45,15 +46,8 @@ const FOCUS_CHIPS: Record<JobFocus, string> = {
  */
 const PAGE_SIZE = 50
 
-const muted: CSSProperties = { color: 'var(--color-text-muted)' }
-const field = 'h-11 sm:h-10 px-3 rounded-xl text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-text)'
-const fieldStyle: CSSProperties = { background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }
 const plural = (n: number, one: string, many: string) => (n > 1 ? many : one)
-const railCard = 'rounded-[20px] p-3.5'
-const railCardStyle: CSSProperties = { background: 'var(--color-surface)', border: '1px solid var(--color-border)' }
-const railHeading = 'font-semibold uppercase mb-2 px-0.5'
-// En style : les règles h1–h6 de globals.css (hors couche Tailwind) l'emportent sur les classes de taille.
-const railHeadingStyle: CSSProperties = { ...muted, fontSize: 11, letterSpacing: '0.06em', lineHeight: 1.4 }
+const railCardStyle = listCardStyle
 
 export function JobsListClient({
   rows, appsByJob, funnelStages, socialEnabled, socialUnavailable, recruiters, jobsWithNew, focusJobId, action, recruiterFilter, recruiterFiltered, header,
