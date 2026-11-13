@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, FileSignature, Loader2, Minus } from 'lucide-react'
-import { CheckoutModal } from '@/app/(public)/abonnement/checkout-modal'
+import { CheckoutModal } from './checkout-modal'
 import { acceptCustomOfferAction } from './actions'
 
 /** Offre sur mesure telle que la page la montre (préparée côté serveur, page.tsx). */
