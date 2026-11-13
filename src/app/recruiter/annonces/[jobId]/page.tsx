@@ -84,17 +84,17 @@ export default async function JobReportPage({ params }: { params: Promise<{ jobI
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <div className="no-print" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div className="no-print" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)' }}>
         <div className="max-w-4xl mx-auto px-6 py-7">
-          <BackLink fallbackHref="/recruiter/annonces" className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }} />
+          <BackLink fallbackHref="/recruiter/annonces" className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80" style={{ color: 'var(--hero-fg-muted)' }} />
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(232,163,61,0.15)' }}>
                 <FileText className="h-6 w-6" style={{ color: 'var(--color-primary)' }} />
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.4)' }}>Rapport d&apos;annonce</p>
-                <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.6rem' }}>{job.title}</h1>
+                <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--hero-fg-muted)' }}>Rapport d&apos;annonce</p>
+                <h1 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.6rem' }}>{job.title}</h1>
               </div>
             </div>
             <PrintButton />

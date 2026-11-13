@@ -117,11 +117,11 @@ export function BrandEditor({ initial }: { initial: EmployerBrand }) {
     })
   }
 
-  const heroBtn = { background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.18)' }
+  const heroBtn = { background: 'var(--hero-control)', color: 'var(--hero-fg)', border: '1px solid var(--hero-line)' }
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)', paddingBottom: 96 }}>
-      <div style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)' }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-4">
@@ -129,12 +129,12 @@ export function BrandEditor({ initial }: { initial: EmployerBrand }) {
                 <Building2 className="h-6 w-6" style={{ color: 'var(--color-primary)' }} />
               </div>
               <div>
-                <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>Marque employeur</h1>
-                <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Votre page publique pour attirer les meilleurs profils</p>
+                <h1 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.75rem' }}>Marque employeur</h1>
+                <p className="text-sm mt-0.5" style={{ color: 'var(--hero-fg-muted)' }}>Votre page publique pour attirer les meilleurs profils</p>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] font-bold px-3 py-1.5 rounded-full" style={{ background: published ? 'rgba(16,185,129,0.18)' : 'rgba(255,255,255,0.1)', color: published ? '#6ee7b7' : 'rgba(255,255,255,0.7)' }}>
+              <span className="text-[11px] font-bold px-3 py-1.5 rounded-full" style={{ background: published ? 'rgba(16,185,129,0.18)' : 'var(--hero-control)', color: published ? '#047857' : 'var(--hero-fg-muted)' }}>
                 {published ? '● Publiée' : '○ Brouillon'}
               </span>
               <Link href={publicPath} target="_blank" className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold no-underline transition-opacity hover:opacity-85" style={heroBtn}>
@@ -157,7 +157,7 @@ export function BrandEditor({ initial }: { initial: EmployerBrand }) {
                   : <Building2 className="h-7 w-7" style={{ color: 'var(--color-text-muted)' }} />}
               </div>
               <div>
-                <label className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold cursor-pointer transition-opacity hover:opacity-85" style={{ background: 'var(--hero-bg)', color: 'white' }}>
+                <label className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold cursor-pointer transition-opacity hover:opacity-85" style={{ background: 'var(--color-text)', color: 'var(--color-surface)' }}>
                   {uploading === 'logo' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
                   {logoUrl ? 'Changer le logo' : 'Ajouter un logo'}
                   <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={e => { upload('logo', e.target.files?.[0], 512, true, setLogoUrl); e.target.value = '' }} />
@@ -196,7 +196,7 @@ export function BrandEditor({ initial }: { initial: EmployerBrand }) {
                 : <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Aucune image</p>}
             </div>
             <div className="flex items-center gap-2 mt-3">
-              <label className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold cursor-pointer transition-opacity hover:opacity-85" style={{ background: 'var(--hero-bg)', color: 'white' }}>
+              <label className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold cursor-pointer transition-opacity hover:opacity-85" style={{ background: 'var(--color-text)', color: 'var(--color-surface)' }}>
                 {uploading === 'cover' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
                 {brand.coverUrl ? 'Remplacer' : 'Ajouter une image'}
                 <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={e => { upload('cover', e.target.files?.[0], 1920, false, u => set('coverUrl', u)); e.target.value = '' }} />
@@ -256,7 +256,7 @@ export function BrandEditor({ initial }: { initial: EmployerBrand }) {
                     <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5 mt-3">
                       {Object.entries(BENEFIT_ICONS).map(([key, { label }]) => (
                         <button key={key} type="button" title={label} onClick={() => { set('benefits', brand.benefits.map((x, j) => j === i ? { ...x, icon: key } : x)); setOpenIcon(null) }}
-                          className="h-10 rounded-lg flex items-center justify-center" style={{ background: b.icon === key ? 'var(--hero-bg)' : 'var(--color-surface)', color: b.icon === key ? 'white' : 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}>
+                          className="h-10 rounded-lg flex items-center justify-center" style={{ background: b.icon === key ? 'var(--color-text)' : 'var(--color-surface)', color: b.icon === key ? 'var(--color-surface)' : 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}>
                           <BenefitIcon name={key} className="h-4 w-4" />
                         </button>
                       ))}
@@ -356,7 +356,7 @@ export function BrandEditor({ initial }: { initial: EmployerBrand }) {
             <p className="text-[11px] font-bold uppercase tracking-widest px-5 pt-4" style={{ color: 'var(--color-text-muted)' }}>Aperçu</p>
             <div className="p-4">
               <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--color-border)' }}>
-                <div className="relative h-24" style={{ background: brand.coverUrl ? undefined : 'var(--hero-bg)' }}>
+                <div className="relative h-24" style={{ background: brand.coverUrl ? undefined : 'var(--site-hero-bg)' }}>
                   {brand.coverUrl && (/* eslint-disable-next-line @next/next/no-img-element */ <img src={brand.coverUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />)}
                 </div>
                 <div className="px-4 pb-4">
@@ -381,8 +381,8 @@ export function BrandEditor({ initial }: { initial: EmployerBrand }) {
         </aside>
       </div>
 
-      {/* ── Barre d'enregistrement ── */}
-      <div className="fixed inset-x-0 bottom-0 z-40" style={{ background: 'rgba(255,255,255,0.94)', backdropFilter: 'blur(10px)', borderTop: '1px solid var(--color-border)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      {/* ── Barre d'enregistrement ── (commence après le menu latéral de l'espace recruteur : --recruiter-sidebar-w, globals.css) */}
+      <div className="fixed right-0 bottom-0 z-40" style={{ left: 'var(--recruiter-sidebar-w, 0px)', background: 'rgba(255,255,255,0.94)', backdropFilter: 'blur(10px)', borderTop: '1px solid var(--color-border)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
           <p className="text-xs font-medium min-w-0" style={{ color: error ? '#dc2626' : (notice || publishBlocker) ? '#b45309' : justSaved ? '#059669' : 'var(--color-text-muted)' }}>
             {error ? error : justSaved ? (notice ? '✓ Enregistré — mais la page n’est pas encore publiée (voir l’encadré orange)' : published ? '✓ Enregistré — votre page est publiée' : '✓ Modifications enregistrées') : publishBlocker ? 'La publication est bloquée : voir l’encadré orange' : dirty ? 'Modifications non enregistrées' : 'Tout est à jour'}

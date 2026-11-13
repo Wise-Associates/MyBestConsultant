@@ -23,13 +23,15 @@ export function JobTabs({ jobId, current }: { jobId: string; current: 'pipeline'
     { key: 'pipeline', label: 'Pipeline', href: `/recruiter/pipeline/${jobId}`, Icon: Kanban },
   ] as const
   return (
-    <nav aria-label="Vues de l’offre" className="hidden min-[90rem]:flex gap-0.5 p-0.75 rounded-xl shrink-0 mr-auto" style={{ background: 'rgba(255,255,255,0.08)' }}>
+    // Couleurs du bandeau (--hero-*, globals.css) : clair dans l'espace recruteur (2026-11-13).
+    <nav aria-label="Vues de l’offre" className="hidden min-[90rem]:flex gap-0.5 p-0.75 rounded-xl shrink-0 mr-auto"
+      style={{ background: 'var(--hero-control)', border: '1px solid var(--hero-line)' }}>
       {tabs.map(({ key, label, href, Icon }) => {
         const on = key === current
         return (
           <Link key={key} href={href} aria-current={on ? 'page' : undefined}
-            className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-lg text-xs font-semibold no-underline transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-            style={on ? { background: 'white', color: '#1c1c1e' } : { color: 'rgba(255,255,255,0.7)' }}>
+            className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-lg text-xs font-semibold no-underline transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hero-fg)]"
+            style={on ? { background: 'var(--color-surface)', color: 'var(--color-text)', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' } : { color: 'var(--hero-fg-muted)' }}>
             <Icon className="h-3.5 w-3.5" aria-hidden />{label}
           </Link>
         )

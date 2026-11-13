@@ -149,9 +149,10 @@ export function CvTemplateManager({ kind, template, storage, uploadDenied, save,
 
   return (
     <>
+      {/* Bouton posé dans le bandeau de page : couleurs du bandeau (--hero-*), claires dans l'espace recruteur (2026-11-13). */}
       <button type="button" onClick={() => setOpen(true)}
         className="inline-flex max-w-full items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-opacity hover:opacity-85"
-        style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)', color: 'white' }}>
+        style={{ background: 'var(--hero-control)', border: '1px solid var(--hero-line)', color: 'var(--hero-fg)' }}>
         <FileText className="h-4 w-4 shrink-0" aria-hidden />
         <span className="truncate">
           {template ? `Modèle CV : ${template.esn}${template.builtIn ? ' (par défaut)' : ''}` : 'Ajouter votre modèle CV'}

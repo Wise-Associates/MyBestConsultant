@@ -24,13 +24,13 @@ export default async function VivierPage({ params }: { params: Promise<{ jobId: 
       minHeight: '100vh',
       background: 'var(--page-bg)',
     }}>
-            <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
+            <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
         <div className="max-w-6xl mx-auto px-6 py-8">
           <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
-            <BackLink fallbackHref="/recruiter/vivier" className="inline-flex items-center gap-1.5 text-xs font-semibold no-underline transition-opacity hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }} />
+            <BackLink fallbackHref="/recruiter/vivier" className="inline-flex items-center gap-1.5 text-xs font-semibold no-underline transition-opacity hover:opacity-80" style={{ color: 'var(--hero-fg-muted)' }} />
             <Link href={`/recruiter/pipeline/${jobId}/matching`}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold no-underline transition-opacity hover:opacity-80"
-              style={{ background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.3)' }}>
+              style={{ background: 'var(--hero-control)', color: 'var(--hero-fg)', border: '1px solid var(--hero-line)' }}>
               <Brain className="h-3.5 w-3.5" /> Voir le Matching IA
             </Link>
           </div>
@@ -39,8 +39,8 @@ export default async function VivierPage({ params }: { params: Promise<{ jobId: 
               <FolderOpen className="h-6 w-6" style={{ color: 'var(--color-primary)' }} />
             </div>
             <div>
-              <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>Mon vivier de CV</h1>
-              <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>{job.title} · visible uniquement par vous{user.role === 'admin' ? ' (et les administrateurs)' : ''}</p>
+              <h1 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.75rem' }}>Mon vivier de CV</h1>
+              <p className="text-sm mt-0.5" style={{ color: 'var(--hero-fg-muted)' }}>{job.title} · visible uniquement par vous{user.role === 'admin' ? ' (et les administrateurs)' : ''}</p>
             </div>
           </div>
         </div>

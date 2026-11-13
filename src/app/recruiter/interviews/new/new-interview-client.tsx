@@ -193,15 +193,15 @@ export function NewInterviewClient({ initialForm, prefilled, appId, jobId }: { i
       minHeight: '100vh',
       background: 'var(--page-bg)',
     }}>
-      <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
+      <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
         <div className="max-w-xl mx-auto px-6 py-10">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(124,58,237,0.18)' }}>
-            <Brain className="h-6 w-6" style={{ color: '#a78bfa' }} />
+            <Brain className="h-6 w-6" style={{ color: '#7c3aed' }} />
           </div>
           <div>
-            <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>Nouvel entretien IA</h1>
-            <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>L&apos;IA génère les questions et analyse les réponses</p>
+            <h1 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.75rem' }}>Nouvel entretien IA</h1>
+            <p className="text-sm mt-0.5" style={{ color: 'var(--hero-fg-muted)' }}>L&apos;IA génère les questions et analyse les réponses</p>
           </div>
         </div>
         </div>

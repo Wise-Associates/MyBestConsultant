@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   APOLLO_PERSON_ID, EMPTY_CRITERIA, apolloKeywords, cleanOutreachDraft, outreachNeedText, outreachPersonText, savedSearchName, PAGE_SIZE, criteriaProblem, criteriaSchema, parseApolloMatches, parseApolloPeople, parseBriefCriteria,
-  rankProfiles, scoreProfile, toApolloQuery, toRevealRequest, type MbcProfile,
+  rankProfiles, readCriteria, scoreProfile, toApolloQuery, toRevealRequest, type MbcProfile,
 } from './rules'
 import { MBC_SEARCH_DAILY_LIMITS, MBC_SEARCH_QUOTA_MESSAGE, mbcSearchDenial } from './access'
 
@@ -125,6 +125,15 @@ describe('MBC Search : critères tirés du brief par l\'IA', () => {
     assert.equal(parseBriefCriteria('Je ne peux pas'), null)
     assert.equal(parseBriefCriteria('{ pas du json }'), null)
     assert.equal(parseBriefCriteria('{"titles":[],"skills":[]}'), null)
+  })
+
+  it('ne garde aucune compétence obligatoire tirée du brief : le recruteur les marque lui-même', () => {
+    assert.deepEqual(parseBriefCriteria('{"titles":["Dev"],"skills":["Java"],"requiredSkills":["Java"]}')?.requiredSkills, [])
+  })
+
+  it('garde une compétence obligatoire seulement si elle est dans les compétences, à la casse et aux accents près', () => {
+    const c = readCriteria({ titles: ['Dev'], skills: ['Java', 'Sécurité'], requiredSkills: ['JAVA', 'securite', 'Go'] })
+    assert.deepEqual(c?.requiredSkills, ['JAVA', 'securite'])
   })
 })
 

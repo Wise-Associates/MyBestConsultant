@@ -60,9 +60,11 @@ export function SupportCenter({ tickets, basePath, backHref, now }: { tickets: T
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <div style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      {/* Couleurs du bandeau en variables --hero-* (globals.css) : composant partagé, bandeau clair dans l'espace
+          recruteur depuis le 2026-11-13, sombre pour les candidats et les chasseurs. */}
+      <div style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)' }}>
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-          <Link href={backHref} className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }}>
+          <Link href={backHref} className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80" style={{ color: 'var(--hero-fg-muted)' }}>
             <ArrowLeft className="h-3.5 w-3.5" /> Retour à mon espace
           </Link>
           <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -71,8 +73,8 @@ export function SupportCenter({ tickets, basePath, backHref, now }: { tickets: T
                 <LifeBuoy className="h-6 w-6" style={{ color: 'var(--color-primary)' }} />
               </div>
               <div>
-                <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>Aide &amp; support</h1>
-                <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Une question, un problème ? Notre équipe vous répond ici et par email.</p>
+                <h1 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.75rem' }}>Aide &amp; support</h1>
+                <p className="text-sm mt-0.5" style={{ color: 'var(--hero-fg-muted)' }}>Une question, un problème ? Notre équipe vous répond ici et par email.</p>
               </div>
             </div>
             {!composing && (
@@ -154,7 +156,7 @@ export function SupportCenter({ tickets, basePath, backHref, now }: { tickets: T
               </h2>
               <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
                 {([['all', 'Toutes'], ['open', 'En cours'], ['done', 'Terminées']] as const).map(([k, l]) => (
-                  <button key={k} type="button" onClick={() => setFilter(k)} className="px-3.5 py-2 text-xs font-semibold" style={{ background: filter === k ? 'var(--hero-bg)' : 'transparent', color: filter === k ? 'white' : 'var(--color-text-muted)' }}>{l}</button>
+                  <button key={k} type="button" onClick={() => setFilter(k)} className="px-3.5 py-2 text-xs font-semibold" style={{ background: filter === k ? 'var(--color-text)' : 'transparent', color: filter === k ? 'var(--color-surface)' : 'var(--color-text-muted)' }}>{l}</button>
                 ))}
               </div>
             </div>

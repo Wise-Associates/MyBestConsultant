@@ -1,12 +1,19 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { RECRUITER_SECTIONS, isWideRecruiterPage, recruiterSectionOf } from './recruiter-nav'
+import { RECRUITER_SECTIONS, recruiterNavGroups, recruiterSectionOf } from './recruiter-nav'
 
-describe('sous-menu de l\'espace recruteur', () => {
-  it('garde les rubriques dans l\'ordre demandé', () => {
-    assert.deepEqual(RECRUITER_SECTIONS.map(s => s.label), [
-      'Tableau de bord', 'Pipelines', 'Appels d’offres', 'Reporting', 'Mon vivier', 'CV Thèque', 'MBC Search', 'Mon équipe', 'Entretiens IA',
+describe('menu latéral de l\'espace recruteur', () => {
+  it('range les rubriques en trois groupes, MBC Search en premier', () => {
+    assert.deepEqual(recruiterNavGroups().map(g => [g.label, g.sections.map(s => s.label)]), [
+      ['Recherche', ['MBC Search', 'CV Thèque', 'Mon vivier']],
+      ['Recrutement', ['Tableau de bord', 'Pipelines', 'Appels d’offres', 'Entretiens IA']],
+      ['Pilotage', ['Reporting', 'Mon équipe']],
     ])
+  })
+
+  it('n\'oublie aucune rubrique dans les groupes', () => {
+    const grouped = recruiterNavGroups().flatMap(g => g.sections.map(s => s.key))
+    assert.deepEqual(grouped, RECRUITER_SECTIONS.map(s => s.key))
   })
 
   it('met en surbrillance la rubrique de la page et de ses sous-pages', () => {
@@ -31,18 +38,5 @@ describe('sous-menu de l\'espace recruteur', () => {
     assert.equal(recruiterSectionOf('/recruiter/viviers'), null)
     assert.equal(recruiterSectionOf('/recruiter/support'), null)
     assert.equal(recruiterSectionOf('/recruiter/parametres'), null)
-  })
-})
-
-describe('pages dont le sous-menu s\'élargit à partir de 1440 px', () => {
-  it('pipeline et Matching IA d\'une offre', () => {
-    assert.equal(isWideRecruiterPage('/recruiter/pipeline/ao123'), true)
-    assert.equal(isWideRecruiterPage('/recruiter/pipeline/ao123/matching'), true)
-  })
-
-  it('les autres pages gardent le sous-menu centré, tableau de bord compris', () => {
-    for (const path of ['/recruiter/dashboard', '/recruiter/vivier', '/recruiter/pipeline', '/recruiter/dashboardx', '/recruiter/funnel', '/recruiter/candidates/a1']) {
-      assert.equal(isWideRecruiterPage(path), false, path)
-    }
   })
 })

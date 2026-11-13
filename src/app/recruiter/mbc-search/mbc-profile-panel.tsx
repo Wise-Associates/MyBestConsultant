@@ -144,7 +144,7 @@ export function ProfilePanel({ profile, reveal, criteria, brief, jobs, save, add
           )}
           {full?.location && <p className="text-xs mt-1 inline-flex items-center gap-1" style={{ color: 'var(--color-text-muted)' }}><MapPin className="h-3 w-3" />{full.location}</p>}
         </div>
-        <button type="button" onClick={onClose} aria-label="Fermer le profil" className="lg:hidden rounded-lg p-1.5" style={{ color: 'var(--color-text)' }}>
+        <button type="button" onClick={onClose} aria-label="Fermer le profil" className="rounded-lg p-1.5" style={{ color: 'var(--color-text)' }}>
           <X className="h-5 w-5" />
         </button>
       </div>

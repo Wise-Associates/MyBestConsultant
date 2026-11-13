@@ -38,6 +38,7 @@ export default async function MbcSearchPage() {
 
   return (
     <MbcSearchClient
+      firstName={user.firstName ?? ''}
       configured={isApolloConfigured()}
       revealUsage={used === null ? null : { used, limit: MBC_REVEAL_DAILY_LIMITS.perOrganisation }}
       jobs={jobs?.map(j => ({ id: j.$id, title: j.title || 'Offre sans intitulé' })) ?? null}

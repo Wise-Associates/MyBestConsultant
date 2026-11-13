@@ -76,37 +76,37 @@ export function CandidateProfileModal({ candidate: c, onClose, vivier = false, m
               <CandidateAvatar photoUrl={c.photoUrl} initials={(c.name || c.email)[0]?.toUpperCase() ?? '?'} size={56} openToWork={c.openToWork} bgColor="var(--hero-bg)" />
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h2 style={{ color: 'white', fontWeight: 300, fontSize: '1.4rem' }}>{c.name || '—'}</h2>
+                  <h2 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.4rem' }}>{c.name || '—'}</h2>
                   {!vivier && (
                   <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0"
-                    style={{ background: c.openToWork ? 'rgba(16,185,129,0.18)' : 'rgba(107,114,128,0.18)', color: c.openToWork ? '#34d399' : '#9ca3af' }}>
-                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: c.openToWork ? '#34d399' : '#9ca3af' }} />
+                    style={{ background: c.openToWork ? 'rgba(16,185,129,0.18)' : 'rgba(107,114,128,0.18)', color: c.openToWork ? '#10b981' : '#6b7280' }}>
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: c.openToWork ? '#10b981' : '#6b7280' }} />
                     {c.openToWork ? 'En recherche' : 'Non disponible'}
                   </span>
                   )}
                 </div>
                 {c.desiredRoles.length > 0 && (
-                  <p className="text-sm font-semibold mt-0.5" style={{ color: '#fdba74' }}>{c.desiredRoles.join(' · ')}</p>
+                  <p className="text-sm font-semibold mt-0.5" style={{ color: 'var(--hero-accent)' }}>{c.desiredRoles.join(' · ')}</p>
                 )}
               </div>
             </div>
             <button onClick={onClose}
               className="p-2.5 rounded-xl shrink-0 transition-all hover:opacity-80"
-              style={{ background: 'rgba(124,58,237,0.18)', border: '1px solid rgba(124,58,237,0.4)', color: '#c4b5fd' }}>
+              style={{ background: 'var(--hero-control)', border: '1px solid var(--hero-line)', color: 'var(--hero-fg-muted)' }}>
               <X className="h-5 w-5" />
             </button>
           </div>
 
-          <div className="flex items-center gap-4 flex-wrap text-xs mt-4" style={{ color: 'rgba(255,255,255,0.55)' }}>
+          <div className="flex items-center gap-4 flex-wrap text-xs mt-4" style={{ color: 'var(--hero-fg-muted)' }}>
             {c.email && <span className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" />{c.email}</span>}
             {c.phone && <span className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5" />{c.phone}</span>}
             {c.city && <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />{c.city}{c.mobilityRadiusKm != null ? ` (± ${c.mobilityRadiusKm} km)` : ''}</span>}
             {c.desiredSector.length > 0 && <span className="flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5" />{c.desiredSector.join(', ')}</span>}
             {matchScore != null && (
-              <span className="flex items-center gap-1.5 font-bold" style={{ color: '#c4b5fd' }}>Matching IA : {matchScore}/100</span>
+              <span className="flex items-center gap-1.5 font-bold" style={{ color: 'var(--hero-fg-muted)' }}>Matching IA : {matchScore}/100</span>
             )}
             {c.yearsOfExperience != null && (
-              <span className="flex items-center gap-1.5 font-semibold" style={{ color: '#fbd090' }}>
+              <span className="flex items-center gap-1.5 font-semibold" style={{ color: 'var(--hero-accent)' }}>
                 {c.yearsOfExperience} an{c.yearsOfExperience > 1 ? 's' : ''} d&apos;expérience
               </span>
             )}

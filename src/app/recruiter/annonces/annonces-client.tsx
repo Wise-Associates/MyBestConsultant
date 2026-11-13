@@ -173,13 +173,13 @@ export function AnnoncesClient({ data }: { data: AnnoncesData }) {
     URL.revokeObjectURL(url)
   }
 
-  const heroBtn = { background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.18)' }
+  const heroBtn = { background: 'var(--hero-control)', color: 'var(--hero-fg)', border: '1px solid var(--hero-line)' }
   const generated = new Date(data.generatedAt).toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' })
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       {/* ── En-tête écran ── */}
-      <div className="no-print" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div className="no-print" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)' }}>
         <div className="max-w-6xl mx-auto px-6 py-8">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-4">
@@ -187,8 +187,8 @@ export function AnnoncesClient({ data }: { data: AnnoncesData }) {
                 <Layers className="h-6 w-6" style={{ color: 'var(--color-primary)' }} />
               </div>
               <div>
-                <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>Suivi des annonces</h1>
-                <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Toutes vos offres et leur avancement, au même endroit</p>
+                <h1 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.75rem' }}>Suivi des annonces</h1>
+                <p className="text-sm mt-0.5" style={{ color: 'var(--hero-fg-muted)' }}>Toutes vos offres et leur avancement, au même endroit</p>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -231,7 +231,7 @@ export function AnnoncesClient({ data }: { data: AnnoncesData }) {
             <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
               {([['all', 'Toutes'], ['active', 'Actives'], ['archived', 'Archivées']] as [AnnoncesStatus, string][]).map(([v, l]) => (
                 <button key={v} onClick={() => change({ status: v })} className="px-3.5 py-2 text-xs font-semibold transition-colors"
-                  style={{ background: filter === v ? 'var(--hero-bg)' : 'transparent', color: filter === v ? 'white' : 'var(--color-text-muted)' }}>{l}</button>
+                  style={{ background: filter === v ? 'var(--color-text)' : 'transparent', color: filter === v ? 'var(--color-surface)' : 'var(--color-text-muted)' }}>{l}</button>
               ))}
             </div>
             <select value={sort} onChange={e => change({ sort: e.target.value as AnnoncesSort })} className="px-3 py-2 rounded-xl text-xs font-semibold outline-none"
@@ -290,7 +290,7 @@ export function AnnoncesClient({ data }: { data: AnnoncesData }) {
                         </div>
                       </div>
                       <div className="no-print flex items-center gap-2 flex-wrap">
-                        <Link href={`/recruiter/pipeline/${r.job.id}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold no-underline transition-opacity hover:opacity-90" style={{ background: 'var(--hero-bg)', color: 'white' }}>
+                        <Link href={`/recruiter/pipeline/${r.job.id}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold no-underline transition-opacity hover:opacity-90" style={{ background: 'var(--color-text)', color: 'var(--color-surface)' }}>
                           <Kanban className="h-3.5 w-3.5" /> Pipeline
                         </Link>
                         <Link href={`/recruiter/pipeline/${r.job.id}/matching`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold no-underline transition-opacity hover:opacity-90" style={{ background: 'rgba(139,92,246,0.1)', color: '#7c3aed' }}>
@@ -418,7 +418,7 @@ export function AnnoncesClient({ data }: { data: AnnoncesData }) {
                   <button key={p} onClick={() => goTo(p)} aria-current={p === currentPage ? 'page' : undefined}
                     className="min-w-9 h-9 px-2 rounded-lg text-xs font-bold transition-colors"
                     style={p === currentPage
-                      ? { background: 'var(--hero-bg)', color: 'white', border: '1px solid var(--hero-bg)' }
+                      ? { background: 'var(--color-text)', color: 'var(--color-surface)', border: '1px solid var(--color-text)' }
                       : { background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}>{p}</button>
                 ))}
               <button onClick={() => goTo(currentPage + 1)} disabled={currentPage === totalPages} aria-label="Page suivante"

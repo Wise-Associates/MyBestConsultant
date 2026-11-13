@@ -1,10 +1,11 @@
 'use client'
 
+import Link from 'next/link'
 import { WhatsAppContact } from '@/components/recruiter/whatsapp-contact'
 import { useMemo, useState } from 'react'
 import {
-  Users, Sparkles, ExternalLink, AlertCircle, Mail, Phone,
-  MapPin, Navigation, Building2, FolderSearch, Maximize2, FileDown,
+  Users, ExternalLink, AlertCircle, Mail, Phone, MapPin, Navigation, Building2, FolderSearch, Maximize2, FileDown, Search, Info,
+  SlidersHorizontal, ArrowRight,
 } from 'lucide-react'
 import { deleteRecruiterCvTemplate, getRecruiterCvExportVersions, saveRecruiterCvTemplate, type CvThequeCandidate } from './actions'
 import { EsnExportDialog } from '@/components/cv-export/esn-export-dialog'
@@ -13,35 +14,18 @@ import type { CvExportAccess } from '@/lib/cv-export/recruiter'
 import { SECTORS } from '@/lib/candidate-taxonomy'
 import { Pagination } from '@/components/shared/pagination'
 import { CandidateAvatar } from '@/components/shared/candidate-avatar'
-import { RangeSlider } from '@/components/shared/range-slider'
-import { expandLocationSearch, normalizeLocation } from '@/lib/regions'
-import { KeywordQueryBuilder, matchesKeywordRows, isExcludedByKeywordRows, emptyKeywordRows, type KeywordRow } from '@/components/shared/keyword-query-builder'
+import { EMPTY_FILTERS, activeFilterCount, filterCandidates, valuesByFrequency, type CvthequeFilters } from '@/lib/cvtheque-search'
+import { CvthequeFiltersPanel } from './cvtheque-filters'
 import { CandidateProfileModal } from './candidate-profile-modal'
 
+// CV Thèque du recruteur (refonte du 2026-11-13, à la manière des outils de recherche de profils) : plus de bandeau,
+// une ligne de titre (« Modèle CV » à droite), la barre de recherche, puis les filtres dans une colonne à gauche
+// (cvtheque-filters.tsx) et les profils à droite. Mobile : la barre, puis les filtres repliés derrière « Filtres », puis
+// les profils. Règles de recherche pures : src/lib/cvtheque-search.ts.
+
 const PAGE_SIZE = 50
-const RECENT_COUNT = 20
-const RADIUS_MAX = 100
-const SENIORITY_MAX = 15
 
-function Pill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button type="button" onClick={onClick}
-      className="mbc-search-pill flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap"
-      style={active
-        ? { background: 'var(--navbar-bg)', color: 'white', boxShadow: '0 6px 16px rgba(0,0,0,0.18)' }
-        : { background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}>
-      {children}
-    </button>
-  )
-}
-
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <label className="text-sm font-bold mb-2 block" style={{ color: 'var(--color-text)' }}>
-      {children}
-    </label>
-  )
-}
+const SEARCH_HELP = 'Tous les mots sont requis ; OR entre deux mots pour l\'un ou l\'autre ; guillemets pour une expression : java "react native" OR kotlin'
 
 export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExportError }: {
   initialCandidates: CvThequeCandidate[]
@@ -50,187 +34,98 @@ export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExpor
   cvExportError?: string
 }) {
   const [exportFor, setExportFor] = useState<CvThequeCandidate | null>(null)
-  const [includeRows, setIncludeRows] = useState<KeywordRow[]>(emptyKeywordRows())
-  const [excludeRows, setExcludeRows] = useState<KeywordRow[]>(emptyKeywordRows())
-  const [radiusRange, setRadiusRange] = useState<[number, number]>([0, RADIUS_MAX])
-  const [seniorityRange, setSeniorityRange] = useState<[number, number]>([0, SENIORITY_MAX])
-  const [locationFilter, setLocationFilter] = useState('')
-  const [sectorFilter, setSectorFilter] = useState('')
-  const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'available' | 'unavailable'>('all')
-  const [recentOnly, setRecentOnly] = useState(false)
+  const [filters, setFilters] = useState<CvthequeFilters>(EMPTY_FILTERS)
+  // Texte de la barre : appliqué par Entrée ou « Rechercher », pour que la liste ne saute pas pendant la frappe d'une
+  // expression entre guillemets.
+  const [draft, setDraft] = useState('')
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [page, setPage] = useState(1)
   const [openProfile, setOpenProfile] = useState<CvThequeCandidate | null>(null)
-  const filterKey = JSON.stringify([includeRows, excludeRows, radiusRange, seniorityRange, locationFilter, sectorFilter, availabilityFilter, recentOnly])
+  // « Ajouté depuis » se mesure à l'ouverture de la page.
+  const [openedAt] = useState(() => new Date())
+  const filterKey = JSON.stringify(filters)
   const [lastFilterKey, setLastFilterKey] = useState(filterKey)
   if (filterKey !== lastFilterKey) {
     setLastFilterKey(filterKey)
     setPage(1)
   }
 
-  const stats = useMemo(() => ({
-    total: initialCandidates.length,
-    available: initialCandidates.filter(c => c.openToWork).length,
+  const options = useMemo(() => ({
+    skills: valuesByFrequency(initialCandidates.map(c => c.skills)),
+    sectors: valuesByFrequency([[...SECTORS], ...initialCandidates.map(c => c.desiredSector)]),
+    languages: valuesByFrequency(initialCandidates.map(c => c.languages.map(l => l.name))),
   }), [initialCandidates])
 
-  const recentIds = useMemo(() => {
-    return new Set(
-      [...initialCandidates]
-        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-        .slice(0, RECENT_COUNT)
-        .map(c => c.$id)
-    )
-  }, [initialCandidates])
-
-  const filtered = useMemo(() => {
-    const locationCandidates = locationFilter.trim() ? expandLocationSearch(locationFilter) : null
-    return initialCandidates.filter(c => {
-      if (sectorFilter && !c.desiredSector.includes(sectorFilter)) return false
-      if (availabilityFilter === 'available' && !c.openToWork) return false
-      if (availabilityFilter === 'unavailable' && c.openToWork) return false
-      if (recentOnly && !recentIds.has(c.$id)) return false
-      if (c.mobilityRadiusKm != null && (c.mobilityRadiusKm < radiusRange[0] || c.mobilityRadiusKm > radiusRange[1])) return false
-      if (c.yearsOfExperience != null && (c.yearsOfExperience < seniorityRange[0] || (seniorityRange[1] < SENIORITY_MAX && c.yearsOfExperience > seniorityRange[1]))) return false
-      if (locationCandidates) {
-        const loc = normalizeLocation(c.city)
-        if (!locationCandidates.some(lc => loc.includes(lc) || lc.includes(loc))) return false
-      }
-      // Le haystack doit couvrir tout ce qu'un mot-clé peut raisonnablement viser — pas
-      // seulement les compétences/secteur, mais aussi le contenu réel du CV (expériences,
-      // missions, formation, langues) et la localisation étendue par pays (chercher/exclure
-      // "Tunisie" doit aussi trouver un candidat dont la ville est juste "Sousse").
-      const locationTerms = expandLocationSearch(c.city).join(' ')
-      const experienceText = c.experiences.map(e => `${e.title} ${e.company} ${e.missions.join(' ')}`).join(' ')
-      const educationText = c.education.map(e => `${e.degree} ${e.school}`).join(' ')
-      const languageText = c.languages.map(l => l.name).join(' ')
-      const haystack = `${c.name} ${c.city} ${locationTerms} ${c.skills.join(' ')} ${c.desiredSector.join(' ')} ${c.desiredRoles.join(' ')} ${c.experienceSummary} ${experienceText} ${educationText} ${languageText}`
-      if (isExcludedByKeywordRows(haystack, excludeRows)) return false
-      return matchesKeywordRows(haystack, includeRows)
-    })
-  }, [initialCandidates, includeRows, excludeRows, radiusRange, seniorityRange, locationFilter, sectorFilter, availabilityFilter, recentOnly, recentIds])
-
+  const filtered = useMemo(() => filterCandidates(initialCandidates, filters, openedAt), [initialCandidates, filters, openedAt])
+  const available = filtered.filter(c => c.openToWork).length
+  const activeCount = activeFilterCount(filters)
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const narrowed = activeCount > 0 || filters.query.trim() !== ''
 
   return (
-    <div className="relative" style={{
-      minHeight: '100vh',
-      background: 'var(--page-bg)',
-    }}>
-            {/* Header */}
-      <div style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
-        <div className="max-w-6xl mx-auto px-6 py-8">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <FolderSearch className="h-5 w-5" style={{ color: 'var(--color-primary)' }} />
-                <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>CV Thèque</h1>
-              </div>
-              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
-                Recherchez des profils par compétence, secteur ou mission recherchée
-              </p>
+    <div className="min-h-[calc(100vh-68px)]" style={{ background: 'var(--color-surface)' }}>
+      <header className="flex items-center gap-3 flex-wrap min-h-16 px-4 sm:px-6 py-3" style={{ borderBottom: '1px solid var(--color-border)' }}>
+        <FolderSearch className="h-5 w-5 shrink-0" style={{ color: 'var(--color-brand-orange)' }} aria-hidden />
+        {/* Taille écrite ici : la règle globale des titres (globals.css, modèle du site) l'emporte sur les classes. */}
+        <h1 style={{ color: 'var(--color-text)', fontSize: '1.125rem', fontWeight: 600, lineHeight: 1.4 }}>CV Thèque</h1>
+        <span className="flex-1" />
+        {cvExport && (
+          <CvTemplateManager kind="organisation" template={cvExport.template} storage uploadDenied={cvExport.uploadDenied}
+            save={saveRecruiterCvTemplate} remove={deleteRecruiterCvTemplate} />
+        )}
+      </header>
+
+      {/* Grille dès 1024 px : filtres à gauche sur toute la hauteur, barre puis profils à droite. L'ordre du code est celui
+          du mobile (barre, filtres, profils). Deuxième ligne en 1fr : la hauteur de la colonne des filtres s'ajoute sous
+          les profils, pas entre la barre et les profils quand il y en a peu. */}
+      <div className="lg:grid lg:grid-cols-[18rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:items-start">
+        <div className="lg:col-start-2 lg:row-start-1">
+          <form className="flex items-center gap-2 px-4 sm:px-6 py-4" role="search" aria-label="Rechercher dans la CV Thèque"
+            onSubmit={e => { e.preventDefault(); setFilters(f => ({ ...f, query: draft })) }}>
+            <div className="flex-1 min-w-0 flex items-center gap-2 h-11 pl-3 pr-1.5 rounded-xl transition-colors focus-within:border-[var(--color-brand-orange)]"
+              style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+              <Search className="h-4 w-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} aria-hidden />
+              <label htmlFor="cvt-query" className="sr-only">Recherche</label>
+              <input id="cvt-query" value={draft} onChange={e => setDraft(e.target.value)} maxLength={300}
+                placeholder={'Rechercher : Java, "chef de projet", Lyon…'}
+                className="flex-1 min-w-0 bg-transparent text-sm outline-none" style={{ color: 'var(--color-text)' }} />
+              <button type="submit" className="h-8 px-3 rounded-lg text-xs font-semibold shrink-0"
+                style={{ background: 'var(--color-background)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}>
+                Rechercher
+              </button>
             </div>
-            {cvExport && (
-              <CvTemplateManager kind="organisation" template={cvExport.template} storage uploadDenied={cvExport.uploadDenied}
-                save={saveRecruiterCvTemplate} remove={deleteRecruiterCvTemplate} />
-            )}
-          </div>
+            <span className="hidden sm:inline-flex shrink-0" title={SEARCH_HELP} style={{ color: 'var(--color-text-muted)' }}>
+              <Info className="h-4 w-4" aria-hidden />
+              <span className="sr-only">{SEARCH_HELP}</span>
+            </span>
+            <button type="button" onClick={() => setFiltersOpen(v => !v)} aria-expanded={filtersOpen} aria-controls="cvt-filters"
+              className="lg:hidden inline-flex items-center gap-1.5 h-11 px-3 rounded-xl text-sm font-semibold shrink-0"
+              style={{ background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}>
+              <SlidersHorizontal className="h-4 w-4" aria-hidden /> Filtres{activeCount > 0 ? ` · ${activeCount}` : ''}
+            </button>
+          </form>
+          <p className="flex items-center gap-x-3 gap-y-1 flex-wrap px-4 sm:px-6 py-3 text-sm"
+            style={{ background: 'color-mix(in srgb, var(--color-brand-orange) 7%, transparent)', color: 'var(--color-text)' }}>
+            Vous ne trouvez pas le bon profil ?
+            <Link href="/recruiter/mbc-search" className="inline-flex items-center gap-1 font-semibold no-underline hover:underline"
+              style={{ color: 'var(--color-brand-orange)' }}>
+              Cherchez hors de votre base avec MBC Search <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+            </Link>
+          </p>
         </div>
-      </div>
 
-      <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col lg:flex-row gap-8 items-start">
-        {/* ── Mes critères de recherche — fixe au scroll côté desktop ── */}
-        <aside className="mbc-sticky-aside w-full lg:w-96 shrink-0 lg:sticky lg:top-[84px] lg:max-h-[calc(100vh-104px)] lg:overflow-y-auto space-y-4">
-          <h2 className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>
-            Mes critères de recherche
-          </h2>
-
-          <div className="mbc-search-panel rounded-3xl p-6 sm:p-8 space-y-7" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 30px 70px -20px rgba(0,0,0,0.35)' }}>
-            <div>
-              <FieldLabel>Nom / Compétences / Mots-clés</FieldLabel>
-              <KeywordQueryBuilder rows={includeRows} onChange={setIncludeRows}
-                placeholder="ex : React, Lyon, Lead Dev…" addLabel="Ajouter un mot-clé" />
-            </div>
-
-            <div>
-              <FieldLabel>Exclure les profils contenant les mots</FieldLabel>
-              <KeywordQueryBuilder rows={excludeRows} onChange={setExcludeRows}
-                placeholder="ex : Junior, Stage…" addLabel="Ajouter une exclusion" />
-            </div>
-
-            <div>
-              <FieldLabel>Rayon de mobilité</FieldLabel>
-              <RangeSlider min={0} max={RADIUS_MAX} step={5} value={radiusRange} onChange={setRadiusRange}
-                formatLabel={v => v >= RADIUS_MAX ? `${RADIUS_MAX}+ km` : `${v} km`} />
-            </div>
-
-            <div>
-              <FieldLabel>Séniorité (années d&apos;expérience)</FieldLabel>
-              <RangeSlider min={0} max={SENIORITY_MAX} step={1} value={seniorityRange} onChange={setSeniorityRange}
-                formatLabel={v => v >= SENIORITY_MAX ? `${SENIORITY_MAX}+ ans` : `${v} an${v > 1 ? 's' : ''}`} />
-            </div>
-
-            <div>
-              <FieldLabel>Localisation</FieldLabel>
-              <div className="flex items-center gap-2 px-4 rounded-xl" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-                <MapPin className="h-4 w-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
-                <input value={locationFilter} onChange={e => setLocationFilter(e.target.value)}
-                  placeholder="Ville, région…"
-                  className="mbc-search-input w-full py-2.5 text-sm outline-none bg-transparent border-0"
-                  style={{ color: 'var(--color-text)' }} />
-              </div>
-            </div>
-
-            <div>
-              <FieldLabel>Secteur</FieldLabel>
-              <select value={sectorFilter} onChange={e => setSectorFilter(e.target.value)}
-                className="mbc-search-input w-full px-4 py-2.5 rounded-xl text-sm outline-none"
-                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
-                <option value="">Tous secteurs</option>
-                {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <FieldLabel>Disponibilité</FieldLabel>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <Pill active={availabilityFilter === 'all'} onClick={() => setAvailabilityFilter('all')}>Tous les profils</Pill>
-                <Pill active={availabilityFilter === 'available'} onClick={() => setAvailabilityFilter('available')}>Actuellement disponible</Pill>
-                <Pill active={availabilityFilter === 'unavailable'} onClick={() => setAvailabilityFilter('unavailable')}>Non disponible</Pill>
-              </div>
-            </div>
-
-            <div className="pt-1" style={{ borderTop: '1px solid var(--color-border)' }}>
-              <label className="flex items-center gap-3 pt-5 cursor-pointer select-none">
-                <button type="button" role="switch" aria-checked={recentOnly} onClick={() => setRecentOnly(v => !v)}
-                  className="relative w-10 h-6 rounded-full shrink-0 transition-colors"
-                  style={{ background: recentOnly ? 'var(--navbar-bg)' : 'var(--color-border)' }}>
-                  <span className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform"
-                    style={{ transform: recentOnly ? 'translateX(16px)' : 'translateX(0)' }} />
-                </button>
-                <span className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
-                  Afficher uniquement les {RECENT_COUNT} profils les plus récents
-                </span>
-              </label>
-            </div>
-
-            <p className="text-xs pt-2" style={{ color: 'var(--color-text-muted)', borderTop: '1px solid var(--color-border)' }}>
-              <span key={filtered.length} className="mbc-count-pop font-bold" style={{ color: 'var(--color-primary)' }}>{filtered.length}</span> profil{filtered.length > 1 ? 's' : ''} correspond{filtered.length > 1 ? 'ent' : ''} à ces critères
-            </p>
-          </div>
+        <aside id="cvt-filters" aria-label="Filtres de la CV Thèque"
+          className={`${filtersOpen ? 'block' : 'hidden'} lg:block lg:col-start-1 lg:row-start-1 lg:row-span-2 lg:self-start lg:sticky lg:top-[68px] lg:h-[calc(100vh-68px)] lg:overflow-y-auto px-4 sm:px-6 lg:px-5 py-5`}
+          style={{ borderRight: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }}>
+          <CvthequeFiltersPanel filters={filters} onChange={setFilters} activeCount={activeCount} options={options} />
         </aside>
 
-        {/* ── Résultats — c'est cette colonne qui scrolle ── */}
-        <main className="flex-1 min-w-0 space-y-6">
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            <StatCard icon={Users} label="Profils avec CV" value={stats.total} color="#2563eb" />
-            <StatCard icon={Sparkles} label="Disponibles" value={stats.available} color="#10b981" />
-            <StatCard icon={FolderSearch} label="Résultats" value={filtered.length} color="var(--color-primary)" />
-          </div>
-
+        <main className="lg:col-start-2 lg:row-start-2 min-w-0 px-4 sm:px-6 py-5 space-y-4">
           {loadError && (
-            <div className="flex items-center gap-3 p-4 rounded-2xl" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}>
-              <AlertCircle className="h-4 w-4 shrink-0" style={{ color: '#ef4444' }} />
-              <p className="text-sm" style={{ color: '#ef4444' }}>{loadError}</p>
+            <div role="alert" className="flex items-center gap-3 p-4 rounded-2xl" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              <AlertCircle className="h-4 w-4 shrink-0" style={{ color: '#b91c1c' }} />
+              <p className="text-sm" style={{ color: '#b91c1c' }}>{loadError}</p>
             </div>
           )}
           {cvExportError && (
@@ -240,17 +135,28 @@ export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExpor
             </div>
           )}
 
+          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }} aria-live="polite">
+            <strong style={{ color: 'var(--color-text)' }}>{filtered.length} profil{filtered.length > 1 ? 's' : ''}</strong>
+            {' '}· dont {available} disponible{available > 1 ? 's' : ''}
+            {narrowed && <> · sur {initialCandidates.length} avec CV</>}
+            {filtered.length > PAGE_SIZE && <> · {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} affichés</>}
+          </p>
+
           {filtered.length === 0 ? (
-            <div className="rounded-3xl py-20 text-center"
-              style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 20px 50px -12px rgba(11,29,81,0.14)' }}>
-              <Users className="h-10 w-10 mx-auto mb-3 opacity-20" style={{ color: 'var(--color-text-muted)' }} />
-              <p style={{ color: 'var(--color-text-muted)' }}>Aucun profil ne correspond à cette recherche</p>
+            <div className="rounded-2xl py-16 px-6 text-center space-y-3" style={{ border: '1px solid var(--color-border)' }}>
+              <Users className="h-9 w-9 mx-auto opacity-30" style={{ color: 'var(--color-text-muted)' }} aria-hidden />
+              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                {initialCandidates.length === 0 ? 'Aucun profil avec CV dans la CV Thèque pour le moment.' : 'Aucun profil ne correspond à cette recherche.'}
+              </p>
+              {narrowed && (
+                <button type="button" onClick={() => { setDraft(''); setFilters(EMPTY_FILTERS) }}
+                  className="text-sm font-semibold" style={{ color: 'var(--color-brand-orange)' }}>
+                  Effacer la recherche et les filtres
+                </button>
+              )}
             </div>
           ) : (
             <>
-              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} sur {filtered.length} profil{filtered.length > 1 ? 's' : ''}
-              </p>
               <div className="space-y-4">
                 {paged.map(c => (
                   <CandidateCard key={c.$id} candidate={c} onOpenProfile={() => setOpenProfile(c)}
@@ -271,26 +177,6 @@ export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExpor
           onClose={() => setExportFor(null)} endpoint="/api/recruiter/cv-export" loadVersions={getRecruiterCvExportVersions}
           esn={cvExport.template.esn} generationDenied={cvExport.generationDenied} quotaLimited />
       )}
-
-      <style>{`
-        @keyframes mbc-float { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(30px, -20px) scale(1.08); } }
-        @keyframes mbc-float-slow { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-24px, 24px) scale(1.05); } }
-        .mbc-orb { animation: mbc-float 14s ease-in-out infinite; }
-        .mbc-orb-slow { animation: mbc-float-slow 18s ease-in-out infinite; }
-      `}</style>
-    </div>
-  )
-}
-
-function StatCard({ icon: Icon, label, value, color }: { icon: React.ElementType; label: string; value: number; color: string }) {
-  return (
-    <div className="p-4 rounded-2xl transition-transform duration-300 hover:-translate-y-0.5"
-      style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '0 8px 24px rgba(11,29,81,0.06)' }}>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>{label}</span>
-        <Icon className="h-4 w-4" style={{ color }} />
-      </div>
-      <p className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>{value}</p>
     </div>
   )
 }

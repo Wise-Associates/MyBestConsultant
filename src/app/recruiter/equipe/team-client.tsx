@@ -98,15 +98,15 @@ export function TeamClient({ members: initialMembers, activity, currentUserId, i
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <div style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)' }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(232,163,61,0.15)' }}>
               <Users className="h-6 w-6" style={{ color: 'var(--color-primary)' }} />
             </div>
             <div>
-              <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>Mon équipe</h1>
-              <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Invitez vos collaborateurs : ils partagent vos annonces, rapports et historique</p>
+              <h1 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.75rem' }}>Mon équipe</h1>
+              <p className="text-sm mt-0.5" style={{ color: 'var(--hero-fg-muted)' }}>Invitez vos collaborateurs : ils partagent vos annonces, rapports et historique</p>
             </div>
           </div>
         </div>
@@ -188,7 +188,7 @@ export function TeamClient({ members: initialMembers, activity, currentUserId, i
                   {notice.link && (
                     <div className="flex items-center gap-2 mt-2">
                       <input readOnly value={notice.link} onFocus={e => e.currentTarget.select()} className="flex-1 min-w-0 px-3 py-2 rounded-lg text-xs outline-none" style={{ background: 'white', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
-                      <button type="button" onClick={() => copy(notice.link!, 'notice')} className="inline-flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-bold" style={{ background: 'var(--hero-bg)', color: 'white' }}>
+                      <button type="button" onClick={() => copy(notice.link!, 'notice')} className="inline-flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-bold" style={{ background: 'var(--color-text)', color: 'var(--color-surface)' }}>
                         {copied === 'notice' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}{copied === 'notice' ? 'Copié' : 'Copier'}
                       </button>
                     </div>

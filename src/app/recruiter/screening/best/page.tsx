@@ -78,18 +78,18 @@ export default async function BestCandidatesPage({
       minHeight: '100vh',
       background: 'var(--page-bg)',
     }}>
-            <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
+            <div className="sticky top-0 z-20" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)', boxShadow: '0 12px 30px rgba(0,0,0,0.15)' }}>
         <div className="max-w-4xl mx-auto px-6 py-10">
           <BackLink fallbackHref="/recruiter/screening"
             className="inline-flex items-center gap-1.5 text-xs font-semibold mb-4 no-underline transition-opacity hover:opacity-80"
-            style={{ color: '#c4b5fd' }} />
+            style={{ color: 'var(--hero-fg-muted)' }} />
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(184,134,11,0.2)' }}>
-              <Trophy className="h-6 w-6" style={{ color: '#f0c95a' }} />
+              <Trophy className="h-6 w-6" style={{ color: '#B8860B' }} />
             </div>
             <div>
-              <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.75rem' }}>Meilleurs candidats</h1>
-              <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Classement toutes offres confondues, par score de screening IA</p>
+              <h1 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.75rem' }}>Meilleurs candidats</h1>
+              <p className="text-sm mt-0.5" style={{ color: 'var(--hero-fg-muted)' }}>Classement toutes offres confondues, par score de screening IA</p>
             </div>
           </div>
         </div>

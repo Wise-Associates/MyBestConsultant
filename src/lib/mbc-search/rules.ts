@@ -230,12 +230,8 @@ export function rankProfiles(profiles: MbcProfile[], criteria: MbcCriteria, now:
     .map(x => x.scored)
 }
 
-/**
- * Lit les critères rendus par l'IA à partir du brief (JSON, éventuellement entouré de texte ou d'un bloc ```json).
- * Fail closed : null si rien d'exploitable. Les valeurs inconnues (séniorité hors liste) et les doublons sont écartés,
- * les listes tronquées aux limites du formulaire.
- */
-export function parseBriefCriteria(text: string): MbcCriteria | null {
+/** Premier objet JSON d'une réponse de l'IA (éventuellement entouré de texte ou d'un bloc ```json) ; null sinon. */
+export function jsonObjectIn(text: string): Record<string, unknown> | null {
   const start = text.indexOf('{')
   const end = text.lastIndexOf('}')
   if (start < 0 || end <= start) return null
@@ -245,30 +241,54 @@ export function parseBriefCriteria(text: string): MbcCriteria | null {
   } catch {
     return null
   }
-  if (!raw || typeof raw !== 'object') return null
-  const obj = raw as Record<string, unknown>
-  const list = (v: unknown) => {
-    if (!Array.isArray(v)) return []
-    const seen = new Set<string>()
-    const out: string[] = []
-    for (const x of v) {
-      if (typeof x !== 'string') continue
-      const s = x.trim().slice(0, CRITERIA_LIMITS.item)
-      if (!s || seen.has(normalize(s))) continue
-      seen.add(normalize(s))
-      out.push(s)
-    }
-    return out.slice(0, CRITERIA_LIMITS.items)
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : null
+}
+
+/** Liste de textes d'une réponse de l'IA : textes seulement, coupés à `max` caractères, sans vide ni doublon, `count` au plus. */
+export function textList(v: unknown, max: number = CRITERIA_LIMITS.item, count: number = CRITERIA_LIMITS.items): string[] {
+  if (!Array.isArray(v)) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const x of v) {
+    if (typeof x !== 'string') continue
+    const s = x.trim().slice(0, max)
+    if (!s || seen.has(normalize(s))) continue
+    seen.add(normalize(s))
+    out.push(s)
   }
+  return out.slice(0, count)
+}
+
+/**
+ * Critères d'un objet rendu par l'IA. Les valeurs inconnues (séniorité hors liste) et les doublons sont écartés, les
+ * listes tronquées aux limites du formulaire ; compétences obligatoires gardées seulement si elles sont dans `skills`.
+ * Fail closed : null sans intitulé ni compétence, ou si le résultat ne passe pas `criteriaSchema` (le schéma de la
+ * recherche) — la réponse de l'IA peut être dictée par un texte collé dans le brief.
+ */
+export function readCriteria(obj: Record<string, unknown>): MbcCriteria | null {
+  const skills = textList(obj.skills)
   const criteria: MbcCriteria = {
-    titles: list(obj.titles),
-    locations: list(obj.locations),
-    seniorities: list(obj.seniorities).filter((s): s is Seniority => s in SENIORITIES),
-    skills: list(obj.skills),
-    requiredSkills: [],
-    sectors: list(obj.sectors),
+    titles: textList(obj.titles),
+    locations: textList(obj.locations),
+    // Clés propres seulement : « __proto__ » ou « toString » passeraient un test `in`.
+    seniorities: textList(obj.seniorities).filter((s): s is Seniority => Object.hasOwn(SENIORITIES, s)),
+    skills,
+    requiredSkills: textList(obj.requiredSkills).filter(r => skills.some(s => same(s, r))),
+    sectors: textList(obj.sectors),
   }
-  return criteriaProblem(criteria) ? null : criteria
+  const checked = criteriaSchema.safeParse(criteria)
+  return checked.success && !criteriaProblem(checked.data) ? checked.data : null
+}
+
+/**
+ * Lit les critères rendus par l'IA à partir du brief (JSON, éventuellement entouré de texte ou d'un bloc ```json).
+ * Fail closed : null si rien d'exploitable. Aucune compétence obligatoire : le recruteur les marque lui-même (★) ou
+ * les demande dans la conversation.
+ */
+export function parseBriefCriteria(text: string): MbcCriteria | null {
+  const obj = jsonObjectIn(text)
+  const criteria = obj ? readCriteria(obj) : null
+  return criteria ? { ...criteria, requiredSkills: [] } : null
 }
 
 /** Identifiant d'une personne chez Apollo (24 caractères hexadécimaux), seul élément envoyé pour l'enrichir. */

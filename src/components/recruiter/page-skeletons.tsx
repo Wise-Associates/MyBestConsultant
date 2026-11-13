@@ -1,27 +1,30 @@
 import { Skeleton, SkeletonRegion } from '@/components/shared/skeleton'
 
 // Formes de chargement des pages de l'espace recruteur (loading.tsx des routes) : la page en gris, à la place du voile
-// plein écran d'avant. Même structure que les pages (en-tête sombre, cartes, listes, tableaux) pour que rien ne saute à
-// l'arrivée du contenu. Le sous-menu de l'espace, dans le layout, reste affiché. `SectionPageSkeleton` sert aussi aux
+// plein écran d'avant. Même structure que les pages (bandeau, cartes, listes, tableaux) pour que rien ne saute à
+// l'arrivée du contenu. Le menu de l'espace, dans le layout, reste affiché. `SectionPageSkeleton` sert aussi aux
 // pages d'aide de l'espace candidat (src/app/candidate/loading.tsx), qui sont les mêmes que celles du recruteur.
 
 const card = { background: 'var(--color-surface)', border: '1px solid var(--color-border)' }
+// Formes posées sur un bandeau de page : teinte de son texte (--hero-fg, globals.css), donc grises sur le bandeau clair de
+// l'espace recruteur (2026-11-13) et blanches translucides sur le bandeau sombre des pages d'aide candidat.
+const onHero = { background: 'color-mix(in srgb, var(--hero-fg) 11%, transparent)' }
 
-/** En-tête sombre des rubriques (Reporting, Vivier, CV Thèque, Annonces, Équipe, Entretiens…). */
+/** Bandeau des rubriques (Reporting, Vivier, Annonces, Équipe, Entretiens…), clair dans l'espace recruteur. */
 function HeroSkeleton() {
   return (
     <div style={{ background: 'var(--hero-bg)' }}>
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
-        <Skeleton tone="dark" className="h-3 w-40 mb-5" />
+        <Skeleton style={onHero} className="h-3 w-40 mb-5" />
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4">
-            <Skeleton tone="dark" className="w-12 h-12 rounded-2xl shrink-0" />
+            <Skeleton style={onHero} className="w-12 h-12 rounded-2xl shrink-0" />
             <div className="space-y-2">
-              <Skeleton tone="dark" className="h-7 w-48 sm:w-64" />
-              <Skeleton tone="dark" className="h-3.5 w-56 sm:w-80" />
+              <Skeleton style={onHero} className="h-7 w-48 sm:w-64" />
+              <Skeleton style={onHero} className="h-3.5 w-56 sm:w-80" />
             </div>
           </div>
-          <Skeleton tone="dark" className="h-10 w-40 rounded-xl" />
+          <Skeleton style={onHero} className="h-10 w-40 rounded-xl" />
         </div>
       </div>
     </div>
@@ -86,7 +89,7 @@ function FilterBar({ selects, action }: { selects: number; action?: boolean }) {
 }
 
 /**
- * Page d'une rubrique : en-tête sombre, puis le contenu le plus proche de la page — liste (vivier, annonces, équipe,
+ * Page d'une rubrique : bandeau, puis le contenu le plus proche de la page — liste (vivier, annonces, équipe,
  * entretiens…), chiffres et graphiques (reporting), ou grille de profils (CV Thèque).
  */
 export function SectionPageSkeleton({ content = 'list' }: { content?: 'list' | 'stats' | 'grid' }) {
@@ -333,24 +336,24 @@ export function AoOfferSkeleton() {
 }
 
 /**
- * Bandeau sombre du Pipeline et du Matching IA d'une offre : retour, surtitre, titre, ligne de l'offre, puis à partir de
+ * Bandeau du Pipeline et du Matching IA d'une offre : retour, surtitre, titre, ligne de l'offre, puis à partir de
  * 1440 px les onglets « Matching IA / Pipeline ». Le Pipeline a un bandeau réduit (sans surtitre au-delà de 1440 px).
  */
 function JobHeroSkeleton({ narrow, compact }: { narrow: string; compact?: boolean }) {
   return (
     <div style={{ background: 'var(--hero-bg)' }}>
       <div className={`${narrow} min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 ${compact ? 'py-4 min-[90rem]:py-3' : 'py-6 min-[90rem]:py-4'}`}>
-        <Skeleton tone="dark" className="h-3 w-36 mb-3 min-[90rem]:mb-2" />
+        <Skeleton style={onHero} className="h-3 w-36 mb-3 min-[90rem]:mb-2" />
         <div className="flex items-center justify-between gap-4 flex-wrap min-[90rem]:flex-nowrap">
           <div className="space-y-2 min-w-0">
-            <Skeleton tone="dark" className={`h-3 w-28 ${compact ? 'min-[90rem]:hidden' : ''}`} />
-            <Skeleton tone="dark" className="h-7 w-64 sm:w-md min-[90rem]:w-xl max-w-full" />
-            <Skeleton tone="dark" className="h-3 w-56 min-[90rem]:w-72" />
+            <Skeleton style={onHero} className={`h-3 w-28 ${compact ? 'min-[90rem]:hidden' : ''}`} />
+            <Skeleton style={onHero} className="h-7 w-64 sm:w-md min-[90rem]:w-xl max-w-full" />
+            <Skeleton style={onHero} className="h-3 w-56 min-[90rem]:w-72" />
           </div>
-          <Skeleton tone="dark" className="hidden min-[90rem]:block h-10 w-54 rounded-xl shrink-0 mr-auto" />
+          <Skeleton style={onHero} className="hidden min-[90rem]:block h-10 w-54 rounded-xl shrink-0 mr-auto" />
           <div className="flex gap-2">
-            <Skeleton tone="dark" className="h-8 w-28 rounded-lg" />
-            <Skeleton tone="dark" className="h-8 w-36 rounded-lg" />
+            <Skeleton style={onHero} className="h-8 w-28 rounded-lg" />
+            <Skeleton style={onHero} className="h-8 w-36 rounded-lg" />
           </div>
         </div>
       </div>
@@ -479,8 +482,8 @@ export function MatchingSkeleton() {
             </div>
           </div>
           <div className="rounded-[20px] p-4 space-y-2" style={{ background: 'var(--hero-bg)' }}>
-            <Skeleton tone="dark" className="h-3 w-full" />
-            <Skeleton tone="dark" className="h-3 w-3/5" />
+            <Skeleton style={onHero} className="h-3 w-full" />
+            <Skeleton style={onHero} className="h-3 w-3/5" />
           </div>
         </div>
       </div>
@@ -535,6 +538,50 @@ export function PipelineSkeleton() {
           <Skeleton className="h-3 w-full" />
           <Skeleton className="h-3 w-4/5" />
           <Skeleton className="h-3 w-3/5" />
+        </div>
+      </div>
+    </SkeletonRegion>
+  )
+}
+
+/**
+ * CV Thèque (refonte du 2026-11-13) : ligne de titre, barre de recherche, filtres à gauche dès 1024 px, profils à droite.
+ */
+export function CvthequeSkeleton() {
+  return (
+    <SkeletonRegion label="Chargement de la CV Thèque">
+      <div className="min-h-[calc(100vh-68px)]" style={{ background: 'var(--color-surface)' }}>
+        <div className="flex items-center gap-3 h-16 px-4 sm:px-6" style={{ borderBottom: '1px solid var(--color-border)' }}>
+          <Skeleton className="h-5 w-5 rounded" />
+          <Skeleton className="h-5 w-32" />
+          <span className="flex-1" />
+          <Skeleton className="h-9 w-44 rounded-xl" />
+        </div>
+        <div className="lg:grid lg:grid-cols-[18rem_minmax(0,1fr)]">
+          <div className="hidden lg:block px-5 py-5 space-y-6" style={{ borderRight: '1px solid var(--color-border)' }}>
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="space-y-2">
+                <Skeleton className="h-3 w-28" />
+                <Skeleton className="h-9 w-full rounded-lg" />
+              </div>
+            ))}
+          </div>
+          <div>
+            <div className="px-4 sm:px-6 py-4"><Skeleton className="h-11 w-full rounded-xl" /></div>
+            <div className="px-4 sm:px-6 py-5 space-y-4">
+              <Skeleton className="h-4 w-56" />
+              {Array.from({ length: 3 }, (_, i) => (
+                <div key={i} className="rounded-3xl p-6 flex gap-4" style={card}>
+                  <Skeleton className="w-14 h-14 rounded-full shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-3 w-64" />
+                    <Skeleton className="h-3 w-full" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </SkeletonRegion>

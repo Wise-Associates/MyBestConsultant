@@ -5,7 +5,7 @@ import { dashboardPathFor } from './dashboard-routes'
 describe('tableau de bord d\'arrivée après connexion', () => {
   it('envoie chaque rôle vers son propre espace', () => {
     assert.equal(dashboardPathFor('hunter'), '/hunter/dashboard')
-    assert.equal(dashboardPathFor('recruiter'), '/recruiter/dashboard')
+    assert.equal(dashboardPathFor('recruiter'), '/recruiter/mbc-search')
     assert.equal(dashboardPathFor('admin'), '/admin/dashboard')
     assert.equal(dashboardPathFor('candidate'), '/candidate/dashboard')
   })

@@ -143,34 +143,36 @@ export function FunnelModal({ jobId, candidate, stages, pipelineName, onClose, o
       <div className={`w-full ${mode === 'edit' ? 'sm:max-w-3xl' : 'sm:max-w-2xl'} max-h-[94dvh] flex flex-col rounded-t-3xl sm:rounded-3xl overflow-hidden transition-[max-width] duration-200`}
         style={{ background: 'var(--page-bg, var(--color-background))', boxShadow: '0 30px 90px rgba(0,0,0,0.45)' }} onClick={e => e.stopPropagation()}>
 
-        {/* En-tête */}
-        <div className="px-5 sm:px-6 pt-5 pb-4 shrink-0" style={{ background: 'var(--hero-bg)' }}>
+        {/* En-tête clair depuis le 2026-11-13 (bandeaux sombres retirés de l'espace recruteur, contraste trop fort). Fenêtre
+            rendue dans <body>, hors de .recruiter-shell : couleurs du thème, pas les variables --hero-*. Pas de filet en bas :
+            l'onglet actif, de la couleur du corps, s'y raccorde. */}
+        <div className="px-5 sm:px-6 pt-5 pb-4 shrink-0" style={{ background: 'var(--color-surface)' }}>
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(232,163,61,0.16)' }}><GitBranch className="h-5 w-5" style={{ color: '#E8A33D' }} /></div>
               <div className="min-w-0">
-                <h3 className="font-bold text-white truncate" style={{ fontSize: '1.05rem' }}>Funnel de recrutement</h3>
-                <p className="text-xs truncate" style={{ color: 'rgba(255,255,255,0.55)' }}>{name} · {pipelineName}</p>
+                <h3 className="font-bold text-[var(--color-text)] truncate" style={{ fontSize: '1.05rem' }}>Funnel de recrutement</h3>
+                <p className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{name} · {pipelineName}</p>
               </div>
             </div>
-            <button type="button" onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg" style={{ color: 'rgba(255,255,255,0.6)' }}><X className="h-5 w-5" /></button>
+            <button type="button" onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg" style={{ color: 'var(--color-text-muted)' }}><X className="h-5 w-5" /></button>
           </div>
           <div className="mt-4">
-            <div className="flex items-center justify-between text-[11px] font-semibold mb-1.5" style={{ color: 'rgba(255,255,255,0.6)' }}>
+            <div className="flex items-center justify-between text-[11px] font-semibold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
               <span>{prog.current ? `Étape en cours : ${prog.current.label}` : 'Parcours terminé'}</span><span>{prog.done} / {steps.length} étapes</span>
             </div>
             <div className="flex gap-1">
               {(mode === 'edit' ? draft : steps).map((s, i) => {
                 const done = s.status === 'validated' || s.status === 'skipped'
                 const isCur = mode === 'track' && i === cur
-                return <span key={s.id} className="h-1.5 flex-1 rounded-full transition-colors" style={{ background: done ? STEP_TYPES[s.type].color : isCur ? `${STEP_TYPES[s.type].color}99` : 'rgba(255,255,255,0.14)' }} title={s.label} />
+                return <span key={s.id} className="h-1.5 flex-1 rounded-full transition-colors" style={{ background: done ? STEP_TYPES[s.type].color : isCur ? `${STEP_TYPES[s.type].color}99` : 'var(--color-border)' }} title={s.label} />
               })}
             </div>
           </div>
           <div className="flex gap-1 mt-4 -mb-4">
             {([['track', 'Suivi'], ['edit', 'Personnaliser le funnel']] as const).map(([id, label]) => (
               <button key={id} type="button" onClick={() => (id === 'edit' ? startEdit() : setMode('track'))} className="px-4 py-2.5 text-sm font-semibold rounded-t-xl transition-colors"
-                style={mode === id ? { background: 'var(--page-bg, var(--color-background))', color: 'var(--color-text)' } : { color: 'rgba(255,255,255,0.6)' }}>{label}</button>
+                style={mode === id ? { background: 'var(--page-bg, var(--color-background))', color: 'var(--color-text)' } : { color: 'var(--color-text-muted)' }}>{label}</button>
             ))}
           </div>
         </div>

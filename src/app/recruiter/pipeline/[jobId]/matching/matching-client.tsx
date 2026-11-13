@@ -424,17 +424,17 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
         </section>
       )}
       {/* Sélection : à la place de la barre fixe du bas, qui masquait les dernières lignes. */}
-      <section aria-label="Sélection" className="rounded-[20px] p-4" style={{ background: 'var(--hero-bg)', color: 'white' }}>
+      <section aria-label="Sélection" className="rounded-[20px] p-4" style={{ background: 'var(--hero-bg)', color: 'var(--hero-fg)', border: '1px solid var(--hero-line)' }}>
         {selected.size > 0 ? (
           <>
-            <p className="text-sm"><b className="text-xl tabular-nums" style={{ color: '#E8A33D' }}>{selected.size}</b> candidat{selected.size > 1 ? 's' : ''} sélectionné{selected.size > 1 ? 's' : ''}</p>
-            <p className="text-xs mt-1 truncate" style={{ color: 'rgba(255,255,255,0.6)' }}>{selectedMatches.map(m => m.name).join(', ')}</p>
+            <p className="text-sm"><b className="text-xl tabular-nums" style={{ color: 'var(--hero-accent)' }}>{selected.size}</b> candidat{selected.size > 1 ? 's' : ''} sélectionné{selected.size > 1 ? 's' : ''}</p>
+            <p className="text-xs mt-1 truncate" style={{ color: 'var(--hero-fg-muted)' }}>{selectedMatches.map(m => m.name).join(', ')}</p>
             <div className="flex gap-2 mt-3">
               <button type="button" onClick={addToFunnel} disabled={isAdding}
                 className={`${panelButton} flex-1 border-0 cursor-pointer disabled:opacity-50`} style={{ background: 'var(--color-primary)', color: 'var(--color-primary-fg)' }}>
                 {isAdding ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Ajout…</> : <><UserPlus className="h-4 w-4" aria-hidden /> Ajouter dans le funnel</>}
               </button>
-              <button type="button" onClick={() => setSelected(new Set())} className={`${panelButton} bg-transparent cursor-pointer`} style={{ border: '1px solid rgba(255,255,255,0.2)', color: 'white' }}>Vider</button>
+              <button type="button" onClick={() => setSelected(new Set())} className={`${panelButton} bg-transparent cursor-pointer`} style={{ border: '1px solid var(--hero-line)', color: 'var(--hero-fg)' }}>Vider</button>
             </div>
           </>
         ) : justAdded ? (
@@ -443,7 +443,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
             <Link href={`/recruiter/pipeline/${jobId}`} className={panelButton} style={{ background: '#10b981', color: 'white' }}><Kanban className="h-4 w-4" aria-hidden /> Passer au pipeline</Link>
           </div>
         ) : (
-          <p className="text-[13px]" style={{ color: 'rgba(255,255,255,0.7)' }}>Cochez des candidats dans la liste pour les ajouter au funnel de l’offre.</p>
+          <p className="text-[13px]" style={{ color: 'var(--hero-fg-muted)' }}>Cochez des candidats dans la liste pour les ajouter au funnel de l’offre.</p>
         )}
       </section>
     </aside>
@@ -451,18 +451,18 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
 
   return (
     <div className={selected.size > 0 || justAdded ? 'pb-[88px] min-[90rem]:pb-0' : undefined} style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <div className="sticky top-0 z-20 min-[90rem]:static" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div className="sticky top-0 z-20 min-[90rem]:static" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)' }}>
         <div className="max-w-[1000px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-6 min-[90rem]:py-4">
           <BackLink fallbackHref={`/recruiter/pipeline/${jobId}`}
             className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 min-[90rem]:mb-1.5 no-underline transition-opacity hover:opacity-80"
-            style={{ color: '#c4b5fd' }} />
+            style={{ color: 'var(--hero-fg-muted)' }} />
           <div className="flex items-center justify-between gap-4 flex-wrap min-[90rem]:flex-nowrap">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-widest mb-1 flex items-center gap-1.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              <p className="text-xs font-semibold uppercase tracking-widest mb-1 flex items-center gap-1.5" style={{ color: 'var(--hero-fg-muted)' }}>
                 <Brain className="h-3.5 w-3.5" /> Matching IA
               </p>
-              <h1 style={{ color: 'white', fontWeight: 300, fontSize: '1.5rem' }}>{jobTitle}</h1>
-              <p className="hidden min-[90rem]:block text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>{jobMeta}</p>
+              <h1 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.5rem' }}>{jobTitle}</h1>
+              <p className="hidden min-[90rem]:block text-xs mt-0.5" style={{ color: 'var(--hero-fg-muted)' }}>{jobMeta}</p>
             </div>
             <JobTabs jobId={jobId} current="matching" />
             <span aria-hidden className="hidden min-[90rem]:block flex-1" />
@@ -470,7 +470,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
               <button type="button" onClick={refresh} disabled={isRefreshing}
                 title="Recalcule les scores de la base candidats pour cette offre, puis note les nouveaux candidats. Une candidature se recalcule sur sa carte (« Relancer »)."
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-50"
-                style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.15)' }}>
+                style={{ background: 'var(--hero-control)', color: 'var(--hero-fg)', border: '1px solid var(--hero-line)' }}>
                 {isRefreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
                 Rafraîchir
               </button>
@@ -689,7 +689,8 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
       </div>
 
       {(selected.size > 0 || justAdded) && (
-        <div className="fixed bottom-0 left-0 right-0 px-6 py-4 z-30 min-[90rem]:hidden" style={{ background: 'var(--color-surface)', borderTop: '1px solid var(--color-border)', boxShadow: '0 -8px 24px rgba(11,29,81,0.1)' }}>
+        // Commence après le menu latéral de l'espace recruteur (--recruiter-sidebar-w, globals.css).
+        <div className="fixed bottom-0 right-0 px-6 py-4 z-30 min-[90rem]:hidden" style={{ left: 'var(--recruiter-sidebar-w, 0px)', background: 'var(--color-surface)', borderTop: '1px solid var(--color-border)', boxShadow: '0 -8px 24px rgba(11,29,81,0.1)' }}>
           <div className="max-w-[1000px] mx-auto flex items-center justify-between gap-3 flex-wrap">
             <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
               {selected.size > 0
