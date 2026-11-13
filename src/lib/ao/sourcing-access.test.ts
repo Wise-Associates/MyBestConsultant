@@ -19,7 +19,7 @@ describe('« Trouver des candidats » depuis un appel d\'offres, côté recruteu
 
   it('annonce les plafonds du jour dans ses messages', () => {
     assert.ok(AO_SOURCING_DAILY_LIMITS.perOrganisation < AO_SOURCING_DAILY_LIMITS.allOrganisations)
-    assert.match(SOURCING_QUOTA_MESSAGE.organisation, new RegExp(`${AO_SOURCING_DAILY_LIMITS.perOrganisation} recherches`))
+    assert.match(SOURCING_QUOTA_MESSAGE.organisation(AO_SOURCING_DAILY_LIMITS.perOrganisation), new RegExp(`${AO_SOURCING_DAILY_LIMITS.perOrganisation} recherches`))
     assert.match(SOURCING_QUOTA_MESSAGE.platform, /demain/)
   })
 })

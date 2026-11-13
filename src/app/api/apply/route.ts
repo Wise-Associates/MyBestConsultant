@@ -4,7 +4,7 @@ import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
 import { ID, Query } from 'node-appwrite'
 import { InputFile } from 'node-appwrite/file'
 import { getCurrentUser } from '@/lib/appwrite/auth'
-import { autoScreenApplication } from '@/app/recruiter/screening/actions'
+import { autoScreenApplication } from '@/lib/screening-core'
 
 export async function POST(req: NextRequest) {
   try {

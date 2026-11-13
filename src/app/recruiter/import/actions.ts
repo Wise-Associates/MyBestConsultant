@@ -11,6 +11,7 @@ import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 import { extractTextFromFile } from '@/lib/import-file-extract'
 import { parseSpreadsheetJobs } from '@/lib/job-import'
+import { activeJobsLimitDenial } from '@/lib/tenant-access'
 
 export interface ExtractedJob {
   id: string            // temp client-side id
@@ -202,6 +203,11 @@ export async function confirmImport(jobs: ExtractedJob[]): Promise<{ imported: n
     const { tryAutoSourceCandidates } = await import('@/lib/auto-source-candidates')
 
     const tenantId = user.tenantId ?? ''
+    // Limite d'offres actives de la formule (plans.ts), pour toutes les offres de l'import.
+    if (tenantId) {
+      const limited = await activeJobsLimitDenial(tenantId, Array.isArray(jobs) ? jobs.length : 0)
+      if (limited) return { imported: 0, error: limited }
+    }
 
     let imported = 0
     for (const job of jobs) {
@@ -256,6 +262,17 @@ export async function importJobsChunk(
 
   const { databases } = createAdminClient()
   const tenantId = user.tenantId ?? ''
+  // Limite d'offres actives de la formule (plans.ts) : chaque lot est compté avec les offres déjà actives, lots
+  // précédents compris (l'écran les envoie l'un après l'autre).
+  if (tenantId) {
+    try {
+      const limited = await activeJobsLimitDenial(tenantId, jobs.length)
+      if (limited) return { created: 0, failed: [], error: limited }
+    } catch (err) {
+      console.error('[import] limite d\'offres actives illisible', tenantId, err instanceof Error ? err.message : String(err))
+      return { created: 0, failed: [], error: 'Import impossible pour le moment : réessayez dans quelques instants.' }
+    }
+  }
   const ownership = jobOwnership(user)
   let created = 0
   const failed: { title: string; error: string }[] = []

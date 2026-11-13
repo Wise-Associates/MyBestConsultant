@@ -9,6 +9,9 @@ const callLLM = callLLMForModule('interview')
 import { ID, Query } from 'node-appwrite'
 import { InputFile } from 'node-appwrite/file'
 import type { InterviewQuestion, TranscriptEntry } from '@/app/recruiter/interviews/actions'
+import { ROOM_LIMITS } from '@/lib/interview-room'
+import { roomSession, takeRoomSlot } from '@/lib/interview-room-access'
+import { transcriptTurnsSchema } from '@/lib/interview-rules'
 import { EdgeTTS } from 'node-edge-tts'
 import { mkdtemp, readFile, rm } from 'fs/promises'
 import { tmpdir } from 'os'
@@ -21,14 +24,25 @@ import path from 'path'
 // for a new column — see the MariaDB row-size limit noted elsewhere in this codebase) means
 // a failure can be found the same way everything else here has been verified: by listing
 // files in Appwrite Storage.
+//
+// Contrôles de la salle (revue de sécurité du 2026-11-13, src/lib/interview-room.ts) : le candidat n'a pas de session,
+// l'identifiant de l'entretien sert de clé ; chaque action vérifie qu'il désigne un entretien en cours (ou terminé depuis
+// peu, pour l'enregistrement et les signalements), borne ses textes et prend une place sur le plafond de la session
+// (et, pour l'IA, sur le quota du jour de l'organisation). Refus : l'entretien continue sans IA, sans rien casser.
 export async function reportRecordingFailure(sessionId: string, reason: string): Promise<void> {
-  console.error(`[interview ${sessionId}] Échec enregistrement côté candidat : ${reason}`)
   try {
+    // Chaque signalement crée un fichier : entretien du lien, peu après la fin au plus, dans le plafond de la session.
+    const session = await roomSession(sessionId, 'after')
+    if (!session || typeof reason !== 'string' || !(await takeRoomSlot(session, false))) return
+    const text = reason.slice(0, ROOM_LIMITS.report)
+    console.error(`[interview ${session.$id}] Échec enregistrement côté candidat : ${text}`)
     const { storage } = createAdminClient()
-    const content = `${new Date().toISOString()} — ${reason}`
-    const inputFile = InputFile.fromBuffer(Buffer.from(content, 'utf-8'), `interview-${sessionId}-ERROR.txt`)
+    const content = `${new Date().toISOString()} — ${text}`
+    const inputFile = InputFile.fromBuffer(Buffer.from(content, 'utf-8'), `interview-${session.$id}-ERROR.txt`)
     await storage.createFile(BUCKETS.RECORDINGS, ID.unique(), inputFile)
-  } catch { /* best-effort — the console.error above is the fallback trail */ }
+  } catch (err) {
+    console.error('[interview] signalement d\'échec non enregistré', err instanceof Error ? err.message : String(err))
+  }
 }
 
 // For the closing slot ("avez-vous des questions pour nous ?") — a real question from the
@@ -36,39 +50,54 @@ export async function reportRecordingFailure(sessionId: string, reason: string):
 // another prompt inviting a further reply (that's what produced the "why do you keep asking
 // ME questions" loop when this went through the generic follow-up-if-incomplete check).
 export async function answerClosingQuestion(
-  jobTitle: string,
+  sessionId: string,
   candidateMessage: string,
 ): Promise<{ answer: string | null }> {
   try {
+    const session = await roomSession(sessionId, 'live')
+    if (!session || typeof candidateMessage !== 'string' || !(await takeRoomSlot(session, true))) return { answer: null }
+    // Poste lu sur l'entretien, jamais dans la demande.
+    const jobTitle = String(session.jobTitle ?? '').slice(0, 200)
+    const message = candidateMessage.slice(0, ROOM_LIMITS.answer)
     const { content } = await callLLM([{
       role: 'user',
-      content: `Message du candidat en réponse à "Avez-vous des questions ?" : "${candidateMessage}"`,
+      content: `Message du candidat en réponse à "Avez-vous des questions ?" : "${message}"`,
     }], `Tu es Alex, un recruteur IA bienveillant pour le poste de "${jobTitle}".
 Si le message contient une vraie question du candidat, réponds-y brièvement et utilement (2-3 phrases maximum), sans poser de nouvelle question en retour.
 Si le candidat n'a pas de question (ex: "non merci", "pas de question"), réponds exactement : null.
 Réponds uniquement avec la réponse à donner au candidat (texte simple, sans guillemets), ou le mot "null".`)
     const text = content.trim()
     return { answer: text === 'null' || text === '' ? null : text }
-  } catch {
+  } catch (err) {
+    console.error('[interview] réponse de l\'IA à la question du candidat impossible', err instanceof Error ? err.message : String(err))
     return { answer: null }
   }
 }
 
 export async function getCandidateAIFollowUp(
+  sessionId: string,
   currentQuestion: InterviewQuestion,
   candidateAnswer: string,
 ): Promise<{ followUp: string | null }> {
   try {
+    const session = await roomSession(sessionId, 'live')
+    if (!session || typeof candidateAnswer !== 'string') return { followUp: null }
+    // Question lue dans celles de l'entretien (par son identifiant), jamais un texte envoyé par le navigateur.
+    let questions: InterviewQuestion[] = []
+    try { questions = JSON.parse(String(session.questions ?? '[]')) } catch { questions = [] }
+    const question = Array.isArray(questions) ? questions.find(q => q?.id === currentQuestion?.id) : undefined
+    if (!question || !(await takeRoomSlot(session, true))) return { followUp: null }
     const { content } = await callLLM([{
       role: 'user',
-      content: `Question posée : "${currentQuestion.text}"\nRéponse du candidat : "${candidateAnswer}"`,
+      content: `Question posée : "${String(question.text).slice(0, 1000)}"\nRéponse du candidat : "${candidateAnswer.slice(0, ROOM_LIMITS.answer)}"`,
     }], `Tu es un interviewer IA expert et bienveillant. Analyse la réponse du candidat.
 Si la réponse est incomplète ou mérite d'être approfondie, génère UNE courte question de relance.
 Si la réponse est complète, réponds exactement : null
 Réponds soit avec la question de relance (texte simple, sans guillemets), soit avec le mot "null".`)
     const text = content.trim()
     return { followUp: text === 'null' || text === '' ? null : text }
-  } catch {
+  } catch (err) {
+    console.error('[interview] relance de l\'IA impossible', err instanceof Error ? err.message : String(err))
     return { followUp: null }
   }
 }
@@ -99,14 +128,18 @@ export async function attachRecordingToInterview(
   mediaType: 'audio' | 'video',
 ): Promise<{ error?: string }> {
   try {
+    // Envoyé juste après la fin de l'entretien : accepté pendant l'entretien et dans les 2 h qui suivent.
+    if (typeof fileId !== 'string' || !/^[\w-]{1,36}$/.test(fileId) || (mediaType !== 'audio' && mediaType !== 'video')) return { error: 'Enregistrement invalide' }
+    const doc = await roomSession(sessionId, 'after')
+    if (!doc) return { error: 'Entretien introuvable ou terminé depuis trop longtemps' }
+    if (!(await takeRoomSlot(doc, false))) return { error: 'Trop de demandes pour cet entretien' }
     const { databases } = createAdminClient()
-    const doc = await databases.getDocument(DB_ID, COLLECTIONS.INTERVIEWS, sessionId)
     let recordings: InterviewRecording[] = []
     try { recordings = JSON.parse((doc.recordings as string) ?? '[]') } catch { /* */ }
     // Retire d'éventuels anciens fragments candidat (retest, reprise) avant d'ajouter la piste complète.
     recordings = recordings.filter(r => r.role !== 'candidate')
     recordings.push({ questionIdx: -1, fileId, role: 'candidate', mediaType })
-    await databases.updateDocument(DB_ID, COLLECTIONS.INTERVIEWS, sessionId, { recordings: JSON.stringify(recordings) })
+    await databases.updateDocument(DB_ID, COLLECTIONS.INTERVIEWS, doc.$id, { recordings: JSON.stringify(recordings) })
     return {}
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur rattachement enregistrement' }
@@ -145,10 +178,15 @@ async function synthesizeFreeVoice(text: string): Promise<Buffer> {
 // Tries the free Edge neural voice first (always French, no cost), then falls back to
 // OpenAI TTS if a real API key is configured, then to the browser voice client-side.
 export async function generateInterviewSpeech(
+  sessionId: string,
   text: string,
 ): Promise<{ audioBase64?: string; error?: string }> {
   try {
-    const input = text.slice(0, 4000)
+    // Voix de l'entretien du lien seulement (le message de fin est dit juste après la fin), dans le plafond de la session.
+    const session = await roomSession(sessionId, 'after')
+    if (!session || typeof text !== 'string') return { error: 'Entretien introuvable' }
+    if (!(await takeRoomSlot(session, false))) return { error: 'Trop de demandes pour cet entretien' }
+    const input = text.slice(0, ROOM_LIMITS.speech)
     let buffer: Buffer | null = null
     let lastError = ''
 
@@ -190,14 +228,37 @@ export async function saveInterviewProgress(
   transcript: TranscriptEntry[],
   status: 'in_progress' | 'completed',
 ): Promise<void> {
+  if (status !== 'in_progress' && status !== 'completed') return
+  const turns = transcriptTurnsSchema.safeParse(transcript)
+  if (!turns.success) {
+    console.warn('[interview] retranscription invalide, progression non enregistrée')
+    return
+  }
+  // Entretien en cours seulement : terminé, il ne repasse plus ici (avant, chaque appel relançait l'analyse et les e-mails).
+  let session
   try {
-    const { databases } = createAdminClient()
-    await databases.updateDocument(DB_ID, COLLECTIONS.INTERVIEWS, sessionId, {
-      transcript: JSON.stringify(transcript),
-      status,
-      ...(status === 'completed' ? { completedAt: new Date().toISOString() } : {}),
-    })
-  } catch { /* ignore */ }
+    session = await roomSession(sessionId, 'live')
+    if (!session || !(await takeRoomSlot(session, false))) return
+  } catch (err) {
+    console.error('[interview] entretien illisible, progression non enregistrée', err instanceof Error ? err.message : String(err))
+    return
+  }
+  sessionId = session.$id
+  const { databases } = createAdminClient()
+  const progress = { status, ...(status === 'completed' ? { completedAt: new Date().toISOString() } : {}) }
+  try {
+    await databases.updateDocument(DB_ID, COLLECTIONS.INTERVIEWS, sessionId, { transcript: JSON.stringify(turns.data), ...progress })
+  } catch (err) {
+    // Retranscription trop longue pour la base (67 000 caractères) : l'état est quand même enregistré, pour que la fin
+    // de l'entretien soit connue ; la panne est journalisée (avant : avalée, l'entretien restait « en cours »).
+    console.error('[interview] retranscription non enregistrée', sessionId, err instanceof Error ? err.message : String(err))
+    try {
+      await databases.updateDocument(DB_ID, COLLECTIONS.INTERVIEWS, sessionId, progress)
+    } catch (statusErr) {
+      console.error('[interview] état de l\'entretien non enregistré', sessionId, statusErr instanceof Error ? statusErr.message : String(statusErr))
+      return
+    }
+  }
 
   // Analyse automatiquement dès la fin de l'entretien, plutôt que d'attendre qu'un admin
   // clique sur "Analyser" — le recruteur n'a de toute façon aucun moyen de le déclencher

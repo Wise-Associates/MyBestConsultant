@@ -206,6 +206,13 @@ export async function createJob(data: {
   return docToJob(doc as unknown as Record<string, unknown>)
 }
 
+/** Offres actives (publiées, non expirées) d'une organisation : limite d'offres actives de sa formule (plans.ts). */
+export async function countActiveJobs(tenantId: string): Promise<number> {
+  const { databases } = createAdminClient()
+  const docs = await listAllDocuments(databases, DB_ID, COLLECTIONS.JOBS, [Query.equal('tenantId', tenantId), Query.equal('isActive', true)])
+  return docs.filter(doc => !isExpired(docToJob(doc as unknown as Record<string, unknown>))).length
+}
+
 export async function updateJobStatus(jobId: string, isActive: boolean): Promise<void> {
   const { databases } = createAdminClient()
   await databases.updateDocument(DB_ID, COLLECTIONS.JOBS, jobId, { isActive })

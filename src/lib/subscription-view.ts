@@ -1,3 +1,5 @@
+import { planLabel } from './plans'
+
 // Abonnement de l'organisation tel que la page « Abonnement » de l'espace recruteur le montre (demande du 2026-11-13,
 // ADR 0033). Lit les champs de `tenants` écrits par le webhook Stripe et par l'admin (/admin/subscriptions), qui
 // n'emploient pas les mêmes noms de formule. Règles pures, testées dans subscription-view.test.ts.
@@ -20,9 +22,8 @@ export interface SubscriptionView {
   billedByStripe: boolean
 }
 
-// Formules de la page /abonnement (Stripe) et de l'admin.
+// Formules payées par carte depuis la page des formules (Stripe).
 const STRIPE_PLANS = new Set(['essentiel', 'pro'])
-const PLAN_LABELS: Record<string, string> = { essentiel: 'Essentiel', pro: 'Pro', free: 'Gratuite', gold: 'Gold', max: 'Max' }
 
 const STATUS: Record<string, { label: string; tone: SubscriptionTone }> = {
   active: { label: 'Actif', tone: 'ok' },
@@ -42,7 +43,7 @@ export function subscriptionView(tenant: Record<string, unknown>): SubscriptionV
   const period = text(tenant.subscriptionPeriod) === 'annual' ? 'an' : 'mois'
   const known = STATUS[status]
   return {
-    planLabel: plan ? PLAN_LABELS[plan] ?? plan : 'Aucune formule',
+    planLabel: plan ? planLabel(plan) : 'Aucune formule',
     statusLabel: known?.label ?? (status || 'Aucun abonnement'),
     tone: known?.tone ?? 'muted',
     entitled: status === 'active' || status === 'trialing',

@@ -164,10 +164,12 @@ const UNAVAILABLE = '« CV format cabinet » momentanément indisponible : rées
 export async function recruiterGenerationScope(current: { user: UserProfile; tenantId: string }): Promise<{ denied: NextResponse } | { scope: GenerationScope }> {
   const { tenantId } = current
   let template: EsnTemplate | null
+  let dailyLimit: number
   try {
     const state = await recruiterExportState(current.user)
     if (state?.generationDenied) return { denied: deny(403, state.generationDenied) }
     if (!state?.template) return { denied: deny(404, NO_TEMPLATE) }
+    dailyLimit = state.dailyLimit
     template = await loadEsnTemplate(tenantId)
   } catch (err) {
     // Cartographie enregistrée illisible (TemplateError) : à redéposer ; sinon panne passagère du stockage.
@@ -183,7 +185,7 @@ export async function recruiterGenerationScope(current: { user: UserProfile; ten
       // Juste avant l'IA, une fois la demande et le CV validés : places du jour, puis rendu fictif du modèle (jusqu'à
       // environ 2 s), qui ne coûte ainsi pas plus que le quota. Un modèle devenu inutilisable rend les places, sans frais.
       reserve: async () => {
-        const slot = await takeRecruiterGenerationSlot(tenantId, new Date())
+        const slot = await takeRecruiterGenerationSlot(tenantId, new Date(), dailyLimit)
         if ('refused' in slot) return slot
         try {
           checkTemplate(checked.bytes, checked.map)

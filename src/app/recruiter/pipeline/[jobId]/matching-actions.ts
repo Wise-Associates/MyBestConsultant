@@ -10,7 +10,8 @@ import { carriedScreening, matchToCarry } from '@/lib/match-scoring'
 import { recruiterCanOpenJob } from '@/lib/job-ownership'
 import { revalidatePath } from 'next/cache'
 import { requireRecruiter } from './actions'
-import { autoScreenApplication } from '@/app/recruiter/screening/actions'
+import { aiInterviewRecruiter, takeInterviewAiSlot } from '@/lib/interview-access'
+import { autoScreenApplication } from '@/lib/screening-core'
 
 // Server Actions appelables avec n'importe quel identifiant d'offre (publics : liens /jobs/<id>) : l'offre doit être de
 // l'organisation du recruteur ou partagée par la plateforme (tenantId ''), comme pour la page. `profileId` : le
@@ -36,6 +37,11 @@ export async function runApplicationMatchingAction(jobId: string, applicationId:
     const { databases } = createAdminClient()
     const app = await databases.getDocument(DB_ID, COLLECTIONS.APPLICATIONS, applicationId)
     if (app.jobId !== jobId || (app.tenantId !== tenantId && app.tenantId !== '')) return { error: 'Non autorisé' }
+    // Relance à la demande : comptée comme un screening manuel (formule, adresse vérifiée, quota du jour de l'IA).
+    const me = await aiInterviewRecruiter()
+    if ('error' in me) return { error: me.error }
+    const refused = await takeInterviewAiSlot(me)
+    if (refused) return { error: refused }
     const { error } = await autoScreenApplication(applicationId)
     revalidatePath(`/recruiter/pipeline/${jobId}/matching`)
     return { matches: (await getJobMatches(jobId, tenantId, profileId)).matches, error }

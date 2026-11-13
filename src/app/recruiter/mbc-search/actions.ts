@@ -2,7 +2,6 @@
 
 import { z } from 'zod'
 import { getCurrentUser } from '@/lib/appwrite/auth'
-import { tenantSubscriptionStatus } from '@/lib/ao/offer-actions'
 import { releaseDailySlot, takeDailySlotId } from '@/lib/ao/state'
 import {
   ApolloSearchError, briefQuestionsText, briefToCriteriaText, outreachDraftText, refineCriteriaText, revealApolloPeople, searchApolloPeople,
@@ -10,6 +9,8 @@ import {
 import {
   MBC_REVEAL_DAILY_LIMITS, MBC_REVEAL_QUOTA_MESSAGE, MBC_SEARCH_DAILY_LIMITS, MBC_SEARCH_QUOTA_MESSAGE, mbcSearchDenial,
 } from '@/lib/mbc-search/access'
+import { featureDenial } from '@/lib/plans'
+import { loadTenantAccess } from '@/lib/tenant-access'
 import {
   APOLLO_PERSON_ID, CRITERIA_LIMITS, MAX_PAGE, REVEAL_BATCH, cleanOutreachDraft, criteriaProblem, criteriaSchema, outreachNeedText,
   outreachPersonSchema, outreachPersonText, parseBriefCriteria, rankProfiles, type MbcCriteria, type MbcRevealed, type ScoredProfile,
@@ -32,19 +33,23 @@ import { countSavedPeople, deleteSavedPerson, isMbcSavedStoreConfigured, saveSav
 const SESSION_EXPIRED = 'Session expirée : rechargez la page et reconnectez-vous.'
 
 /**
- * Recruteur de la session, abonnement actif et adresse vérifiée, puis une place sur les quotas du jour (organisation,
- * puis toutes). Une demande qui échoue ensuite compte quand même (l'IA a pu être facturée, Apollo limite le débit).
+ * Recruteur de la session, formule qui comprend MBC Search, abonnement actif et adresse vérifiée, puis une place sur
+ * les quotas du jour (celui de la formule de l'organisation, puis celui de toutes). Une demande qui échoue ensuite
+ * compte quand même (l'IA a pu être facturée, Apollo limite le débit).
  */
 async function searchSlot(): Promise<{ error: string } | null> {
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) return { error: SESSION_EXPIRED }
   const tenantId = user.tenantId
   try {
-    const denial = mbcSearchDenial({ tenantId, subscriptionStatus: await tenantSubscriptionStatus(tenantId), emailVerified: user.emailVerification })
+    const access = await loadTenantAccess(tenantId)
+    const denial = featureDenial(access.entitlements, 'mbcSearch')
+      ?? mbcSearchDenial({ tenantId, subscriptionStatus: access.subscriptionStatus, emailVerified: user.emailVerification })
     if (denial) return { error: denial }
     const now = new Date()
-    const own = await takeDailySlotId('mbcSearchOrg', tenantId, now, MBC_SEARCH_DAILY_LIMITS.perOrganisation)
-    if (!own) return { error: MBC_SEARCH_QUOTA_MESSAGE.organisation }
+    const limit = access.entitlements.dailyQuotas.mbcSearch
+    const own = await takeDailySlotId('mbcSearchOrg', tenantId, now, limit)
+    if (!own) return { error: MBC_SEARCH_QUOTA_MESSAGE.organisation(limit) }
     if (!(await takeDailySlotId('mbcSearchAll', 'platform', now, MBC_SEARCH_DAILY_LIMITS.allOrganisations))) {
       console.warn('[mbc-search] plafond quotidien atteint pour toutes les organisations')
       // La place de l'organisation n'a pas servi : rendue, pour ne pas compter un refus de la plateforme contre elle.
@@ -257,8 +262,11 @@ async function revealForRecruiter(user: { userId: string; tenantId: string; emai
   let known: MbcRevealed[] = []
   let wanted = unique
   try {
-    const denial = mbcSearchDenial({ tenantId, subscriptionStatus: await tenantSubscriptionStatus(tenantId), emailVerified: user.emailVerified })
+    const access = await loadTenantAccess(tenantId)
+    const denial = featureDenial(access.entitlements, 'mbcSearch')
+      ?? mbcSearchDenial({ tenantId, subscriptionStatus: access.subscriptionStatus, emailVerified: user.emailVerified })
     if (denial) return { error: denial }
+    const limit = access.entitlements.dailyQuotas.mbcReveal
     try {
       known = await storedReveals(tenantId, unique, now)
       wanted = unique.filter(id => !known.some(k => k.id === id))
@@ -268,10 +276,10 @@ async function revealForRecruiter(user: { userId: string; tenantId: string; emai
     }
     if (wanted.length === 0) return { profiles: known, charged: 0 }
     for (let i = 0; i < wanted.length; i++) {
-      const own = await takeDailySlotId('mbcRevealOrg', tenantId, now, MBC_REVEAL_DAILY_LIMITS.perOrganisation)
+      const own = await takeDailySlotId('mbcRevealOrg', tenantId, now, limit)
       if (!own) {
         await Promise.all(taken.map(releaseDailySlot))
-        return { error: MBC_REVEAL_QUOTA_MESSAGE.organisation }
+        return { error: MBC_REVEAL_QUOTA_MESSAGE.organisation(limit) }
       }
       taken.push(own)
       const all = await takeDailySlotId('mbcRevealAll', 'platform', now, MBC_REVEAL_DAILY_LIMITS.allOrganisations)

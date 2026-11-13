@@ -2,6 +2,8 @@ import 'server-only'
 import { releaseDailySlot, takeDailySlotId } from '@/lib/ao/state'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
+import { featureDenial } from '@/lib/plans'
+import { loadTenantAccess } from '@/lib/tenant-access'
 import type { UserProfile } from '@/types'
 import { CV_EXPORT_DAILY_LIMITS, CV_TEMPLATE_DAILY_LIMITS, QUOTA_MESSAGE, TEMPLATE_MESSAGE, generationDenial, templateUploadDenial } from './access'
 import { cvExportErrorName } from './store'
@@ -15,8 +17,10 @@ export interface RecruiterExportState {
   tenantId: string
   /** Modèle de l'organisation ; null : pas de modèle, donc pas de « Format ESN ». */
   template: EsnTemplateInfo | null
-  /** Raison du refus de générer (abonnement, adresse e-mail) ; null : permis, sous réserve du quota du jour. */
+  /** Raison du refus de générer (formule, abonnement, adresse e-mail) ; null : permis, sous réserve du quota du jour. */
   generationDenied: string | null
+  /** Générations par jour de l'organisation : quota de sa formule (plans.ts). */
+  dailyLimit: number
   /** Raison du refus de déposer un modèle (adresse e-mail) ; null : permis, sous réserve du quota du jour. */
   uploadDenied: string | null
 }
@@ -25,16 +29,14 @@ export interface RecruiterExportState {
 export async function recruiterExportState(user: UserProfile): Promise<RecruiterExportState | null> {
   if (user.role !== 'recruiter' || !user.tenantId) return null
   const tenantId = user.tenantId
-  const [template, tenant] = await Promise.all([
-    getEsnTemplateInfo(tenantId),
-    createAdminClient().databases.getDocument(DB_ID, COLLECTIONS.TENANTS, tenantId),
-  ])
-  const subscriptionStatus = typeof tenant.subscriptionStatus === 'string' ? tenant.subscriptionStatus : null
+  const [template, access] = await Promise.all([getEsnTemplateInfo(tenantId), loadTenantAccess(tenantId)])
   return {
     tenantId,
     template,
-    generationDenied: generationDenial({ tenantId, subscriptionStatus, emailVerified: user.emailVerification }),
-    uploadDenied: templateUploadDenial({ emailVerified: user.emailVerification }),
+    generationDenied: featureDenial(access.entitlements, 'cvExport')
+      ?? generationDenial({ tenantId, subscriptionStatus: access.subscriptionStatus, emailVerified: user.emailVerification }),
+    dailyLimit: access.entitlements.dailyQuotas.cvExport,
+    uploadDenied: featureDenial(access.entitlements, 'cvExport') ?? templateUploadDenial({ emailVerified: user.emailVerification }),
   }
 }
 
@@ -67,6 +69,9 @@ export async function recruiterCvExportAccess(user: UserProfile): Promise<{ acce
  * l'IA, sur celui de toutes les organisations) : message de refus, ou null si permis. Un dépôt refusé ensuite compte.
  */
 export async function takeTemplateSlot(use: 'upload' | 'preview', tenantId: string, now: Date): Promise<string | null> {
+  // Dépôt (cartographié par l'IA) et aperçu font partie de l'export « Format ESN » : formule qui le comprend (plans.ts).
+  const notIncluded = featureDenial((await loadTenantAccess(tenantId)).entitlements, 'cvExport')
+  if (notIncluded) return notIncluded
   if (use === 'preview') {
     return (await takeDailySlotId('cvTemplatePreview', tenantId, now, CV_TEMPLATE_DAILY_LIMITS.previews)) ? null : TEMPLATE_MESSAGE.previewQuota
   }
@@ -95,9 +100,9 @@ export type GenerationSlot = { refused: string; status?: number } | { release: (
  * Prend une génération sur les quotas du jour (organisation, puis toutes) : refus avec son message, ou `release` pour
  * rendre les places si la génération échoue sans frais (CV illisible, IA non configurée ou indisponible).
  */
-export async function takeRecruiterGenerationSlot(tenantId: string, now: Date): Promise<GenerationSlot> {
-  const own = await takeDailySlotId('cvExportOrg', tenantId, now, CV_EXPORT_DAILY_LIMITS.perOrganisation)
-  if (!own) return { refused: QUOTA_MESSAGE.organisation }
+export async function takeRecruiterGenerationSlot(tenantId: string, now: Date, limit: number): Promise<GenerationSlot> {
+  const own = await takeDailySlotId('cvExportOrg', tenantId, now, limit)
+  if (!own) return { refused: QUOTA_MESSAGE.organisation(limit) }
   const all = await takeDailySlotId('cvExportAll', 'platform', now, CV_EXPORT_DAILY_LIMITS.allOrganisations)
   if (!all) {
     console.warn('[cv-export] plafond quotidien de toutes les organisations atteint')

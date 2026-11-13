@@ -3,7 +3,8 @@ import { Query, type Models } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { batchByLength } from './repo'
-import { canUseAoSourcing, PLATFORM_NAME, PLATFORM_TENANT_ID } from './tenancy'
+import { entitlementsOf } from '@/lib/plans'
+import { aoRefusal, PLATFORM_NAME, PLATFORM_TENANT_ID } from './tenancy'
 
 // Boîtes de réception lues par AO Offers (collection AO_SOURCES, sans permission client) : celles de la plateforme
 // (aujourd'hui ao@wise-associates.fr) et celles que chaque organisation configure, à n'importe quelle adresse
@@ -133,7 +134,7 @@ export async function recordSourceError(id: string, error: string): Promise<void
 export interface AoOrganization {
   tenantId: string
   name: string
-  /** Abonnement actif (ou plateforme) : ses boîtes sont lues (tenancy.ts : canUseAoSourcing). */
+  /** Abonnement actif et formule qui comprend le suivi des appels d'offres (ou plateforme) : ses boîtes sont lues (tenancy.ts : aoRefusal). */
   entitled: boolean
 }
 
@@ -145,7 +146,7 @@ export async function loadOrganizations(tenantIds: string[]): Promise<Map<string
   for (const batch of batchByLength([...new Set(tenantIds.filter(id => id && id !== PLATFORM_TENANT_ID))])) {
     const res = await databases.listDocuments(DB_ID, COLLECTIONS.TENANTS, [Query.equal('$id', batch), Query.limit(batch.length)])
     for (const doc of res.documents) {
-      orgs.set(doc.$id, { tenantId: doc.$id, name: str(doc.name), entitled: canUseAoSourcing(doc.$id, str(doc.subscriptionStatus)) })
+      orgs.set(doc.$id, { tenantId: doc.$id, name: str(doc.name), entitled: aoRefusal(doc.$id, str(doc.subscriptionStatus), entitlementsOf({ plan: doc.plan })) === null })
     }
   }
   return orgs

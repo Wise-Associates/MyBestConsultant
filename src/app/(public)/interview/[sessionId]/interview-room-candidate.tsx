@@ -213,7 +213,7 @@ export function InterviewRoomCandidate({ sessionId, candidateName, jobTitle, que
   const speak = useCallback((text: string, onEnd?: () => void) => {
     if (!voiceEnabled) { onEnd?.(); return }
     setIsThinking(true)
-    generateInterviewSpeech(text).then(res => {
+    generateInterviewSpeech(sessionId, text).then(res => {
       setIsThinking(false)
       if (res.error || !res.audioBase64) {
         speakBrowserFallback(text, onEnd)
@@ -241,7 +241,7 @@ export function InterviewRoomCandidate({ sessionId, candidateName, jobTitle, que
       setIsThinking(false)
       speakBrowserFallback(text, onEnd)
     })
-  }, [voiceEnabled, speakBrowserFallback])
+  }, [voiceEnabled, speakBrowserFallback, sessionId])
 
   const stopSpeaking = useCallback(() => {
     ttsAudioRef.current?.pause()
@@ -533,7 +533,7 @@ export function InterviewRoomCandidate({ sessionId, candidateName, jobTitle, que
     if (currentQ.category === 'closing') {
       setIsThinking(true)
       startTransition(async () => {
-        const { answer } = await answerClosingQuestion(jobTitle, full)
+        const { answer } = await answerClosingQuestion(sessionId, full)
         setIsThinking(false)
         if (answer) {
           const wi = [...newT, { role: 'interviewer' as const, content: answer, timestamp: new Date().toISOString() }]
@@ -550,7 +550,7 @@ export function InterviewRoomCandidate({ sessionId, candidateName, jobTitle, que
 
     setIsThinking(true)
     startTransition(async () => {
-      const { followUp: fu } = await getCandidateAIFollowUp(currentQ, full)
+      const { followUp: fu } = await getCandidateAIFollowUp(sessionId, currentQ, full)
       setIsThinking(false)
       if (fu) {
         setFollowUp(fu)

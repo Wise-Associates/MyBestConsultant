@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { jobOwnership, planJobRecruiter, recruiterCanOpenJob, type UserRef } from './job-ownership'
+import { jobOwnership, planJobRecruiter, recruiterCanOpenJob, recruiterCanSeeApplication, type UserRef } from './job-ownership'
 
 const author: UserRef = { $id: 'profil1', userId: 'auth1', tenantId: 'org1', role: 'recruiter' }
 const colleague: UserRef = { $id: 'profil2', userId: 'auth2', tenantId: 'org1', role: 'recruiter' }
@@ -51,5 +51,19 @@ describe('offre ouverte par un recruteur (pipeline, Matching IA)', () => {
     assert.equal(recruiterCanOpenJob('org2', 'org1'), false)
     assert.equal(recruiterCanOpenJob('', ''), false)
     assert.equal(recruiterCanOpenJob('', null), false)
+  })
+})
+
+describe('candidature vue par un recruteur (screening, entretiens, pipeline)', () => {
+  it('voit toutes les candidatures des offres de son organisation', () => {
+    assert.equal(recruiterCanSeeApplication('org1', 'org1', 'org1'), true)
+    assert.equal(recruiterCanSeeApplication('org2', 'org2', 'org1'), false)
+  })
+
+  it('sur une offre partagée, voit les siennes et les candidatures directes, jamais celles d\'une autre organisation', () => {
+    assert.equal(recruiterCanSeeApplication('', 'org1', 'org1'), true)
+    assert.equal(recruiterCanSeeApplication('', '', 'org1'), true)
+    assert.equal(recruiterCanSeeApplication('', 'org2', 'org1'), false)
+    assert.equal(recruiterCanSeeApplication('', '', null), false)
   })
 })

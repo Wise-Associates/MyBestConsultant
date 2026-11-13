@@ -17,6 +17,7 @@ import {
 import { vivierExportKey } from '@/lib/cv-export/stored'
 import { getEsnTemplateInfo } from '@/lib/cv-export/templates'
 import { APOLLO_PERSON_ID as MBC_APOLLO_PERSON_ID, PLAIN_EMAIL as MBC_PLAIN_EMAIL } from '@/lib/mbc-search/rules'
+import { loadTenantAccess } from '@/lib/tenant-access'
 import type { UserProfile } from '@/types'
 import {
   VIVIER_MATCHING_DAILY_LIMITS, VIVIER_MATCHING_REFUSAL, matchingOffers, mergeOfferScores, offersToCompare, parseOfferScores,
@@ -358,8 +359,10 @@ async function compareWithNewOffers(user: UserProfile, tenantId: string, docId: 
 async function matchingSlot(user: UserProfile, tenantId: string): Promise<string | null> {
   if (!user.emailVerification) return VIVIER_MATCHING_REFUSAL.unverified
   const now = new Date()
-  const own = await takeDailySlotId('vivierMatchOrg', tenantId, now, VIVIER_MATCHING_DAILY_LIMITS.perOrganisation)
-  if (!own) return VIVIER_MATCHING_REFUSAL.organisation
+  // Quota de la formule de l'organisation (plans.ts).
+  const limit = (await loadTenantAccess(tenantId)).entitlements.dailyQuotas.vivierMatching
+  const own = await takeDailySlotId('vivierMatchOrg', tenantId, now, limit)
+  if (!own) return VIVIER_MATCHING_REFUSAL.organisation(limit)
   if (!(await takeDailySlotId('vivierMatchAll', 'platform', now, VIVIER_MATCHING_DAILY_LIMITS.allOrganisations))) {
     console.warn('Vivier : plafond quotidien des comparaisons CV / offres atteint pour toutes les organisations')
     // La place de l'organisation n'a pas servi : rendue, pour ne pas compter un refus de la plateforme contre elle.

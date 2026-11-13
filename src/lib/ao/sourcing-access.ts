@@ -1,3 +1,4 @@
+import { STANDARD_DAILY_QUOTAS } from '@/lib/plans'
 import { canUseAoSourcing } from './tenancy'
 
 // Qui peut lancer « Trouver des candidats » / « Recalculer » sur une offre AO depuis l'espace recruteur (décision du
@@ -6,7 +7,8 @@ import { canUseAoSourcing } from './tenancy'
 // Règles pures, testées dans sourcing-access.test.ts.
 
 /** Recherches par jour (UTC) : par organisation, et pour toutes les organisations ensemble (l'admin n'est pas compté). */
-export const AO_SOURCING_DAILY_LIMITS = { perOrganisation: 20, allOrganisations: 300 } as const
+// `perOrganisation` : quota des formules standard (plans.ts) ; une offre sur mesure peut le changer (Entitlements.dailyQuotas).
+export const AO_SOURCING_DAILY_LIMITS = { perOrganisation: STANDARD_DAILY_QUOTAS.aoSourcing, allOrganisations: 300 } as const
 
 export interface SourcingRequester {
   tenantId: string
@@ -24,6 +26,6 @@ export function sourcingDenial(requester: SourcingRequester): string | null {
 }
 
 export const SOURCING_QUOTA_MESSAGE = {
-  organisation: `Limite de ${AO_SOURCING_DAILY_LIMITS.perOrganisation} recherches de candidats par jour atteinte pour votre organisation : réessayez demain.`,
+  organisation: (limit: number) => `Limite de ${limit} recherches de candidats par jour atteinte pour votre organisation : réessayez demain.`,
   platform: 'Trop de recherches de candidats aujourd\'hui sur la plateforme : réessayez demain.',
 } as const

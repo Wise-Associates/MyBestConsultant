@@ -1,13 +1,13 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/appwrite/auth'
-import { createAdminClient } from '@/lib/appwrite/client'
-import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import type { AoPageView } from '@/lib/ao/dashboard-types'
 import { filtersFromSearchParams, listSizeFromSearchParams } from '@/lib/ao/filters'
 import { emptyAoView, loadAoView, searchParamsOf } from '@/lib/ao/platform-view'
 import type { TrackingStep } from '@/lib/ao/tracking'
 import { loadAoTracking } from '@/lib/ao/tracking-store'
-import { canUseAoSourcing } from '@/lib/ao/tenancy'
+import { aoRefusal } from '@/lib/ao/tenancy'
+import { featureDenial } from '@/lib/plans'
+import { loadTenantAccess } from '@/lib/tenant-access'
 import { AoOffersDashboard, type MailboxIssue } from '@/components/ao/ao-offers-dashboard'
 import {
   addRecruiterAoOfferComment, deleteRecruiterAoOffer, deleteRecruiterAoOfferComment, deleteRecruiterAoOffers, listRecruiterAoOfferComments,
@@ -35,10 +35,12 @@ export default async function RecruiterAoOffersPage({ searchParams }: { searchPa
   let accessAlert: string | undefined
   let loadError = ''
   try {
-    const { databases } = createAdminClient()
-    const [tenant, loaded] = await Promise.all([databases.getDocument(DB_ID, COLLECTIONS.TENANTS, user.tenantId), loadAoView(user.tenantId, filters, size)])
-    if (!canUseAoSourcing(tenant.$id, typeof tenant.subscriptionStatus === 'string' ? tenant.subscriptionStatus : null)) {
+    const [access, loaded] = await Promise.all([loadTenantAccess(user.tenantId), loadAoView(user.tenantId, filters, size)])
+    const refusal = aoRefusal(user.tenantId, access.subscriptionStatus, access.entitlements)
+    if (refusal === 'inactive') {
       accessAlert = 'Votre abonnement n’est pas actif : vos boîtes ne sont pas lues. Elles le seront dès sa réactivation (page « Abonnement »).'
+    } else if (refusal === 'not_included') {
+      accessAlert = `${featureDenial(access.entitlements, 'aoSourcing')} Vos boîtes ne sont pas lues.`
     }
     const { sources, ...pageView } = loaded
     view = pageView

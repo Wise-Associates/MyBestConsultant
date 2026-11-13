@@ -1,3 +1,4 @@
+import { STANDARD_DAILY_QUOTAS } from '@/lib/plans'
 import type { AoEmail } from './types'
 
 // Règle des essais d'un e-mail AO, partagée par le traitement (sync.ts, repo.ts) et la page admin.
@@ -33,10 +34,11 @@ export function manualRetryPatch(email: Pick<AoEmail, 'status'>): Pick<AoEmail, 
  * sans plafond, un même e-mail pourrait être refacturé sans fin (ADR 0002). Décision du 2026-10-26 : plus de limite par
  * e-mail, ce plafond quotidien à la place.
  */
-export const AO_RETRY_DAILY_LIMITS = { perOrganisation: 30, allOrganisations: 300 } as const
+// `perOrganisation` : quota des formules standard (plans.ts) ; une offre sur mesure peut le changer (Entitlements.dailyQuotas).
+export const AO_RETRY_DAILY_LIMITS = { perOrganisation: STANDARD_DAILY_QUOTAS.aoRetry, allOrganisations: 300 } as const
 
 export const RETRY_QUOTA_MESSAGE = {
-  organisation: `Limite de ${AO_RETRY_DAILY_LIMITS.perOrganisation} relances d'e-mails par jour atteinte pour votre organisation : réessayez demain.`,
+  organisation: (limit: number) => `Limite de ${limit} relances d'e-mails par jour atteinte pour votre organisation : réessayez demain.`,
   platform: 'Trop de relances d\'e-mails aujourd\'hui sur la plateforme : réessayez demain.',
 } as const
 

@@ -7,8 +7,8 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { formatDateFr } from '@/lib/format-date'
 import { subscriptionView } from '@/lib/subscription-view'
-import { MAX_TEAM_SIZE } from '@/lib/team'
 import { TEAM_ROLE_LABEL, canManageTeam, roleOf } from '@/lib/team-roles'
+import { loadTenantAccess } from '@/lib/tenant-access'
 import { OrganisationForm } from './organisation-form'
 
 export const metadata = { title: 'Organisation' }
@@ -26,13 +26,15 @@ export default async function OrganisationPage() {
   const tenant = await databases.getDocument(DB_ID, COLLECTIONS.TENANTS, user.tenantId) as unknown as Record<string, unknown>
   const ownerId = typeof tenant.recruiterId === 'string' ? tenant.recruiterId : ''
   // Propriétaire et nombre d'utilisateurs : facultatifs, la page s'affiche sans.
-  const [owner, team] = await Promise.all([
+  const [owner, team, maxUsers] = await Promise.all([
     ownerId
       ? databases.listDocuments(DB_ID, COLLECTIONS.USERS, [Query.equal('userId', ownerId), Query.limit(1)]).then(r => r.documents[0])
         .catch(err => { console.error('[organisation] propriétaire illisible', err instanceof Error ? err.message : String(err)); return undefined })
       : undefined,
     databases.listDocuments(DB_ID, COLLECTIONS.USERS, [Query.equal('tenantId', user.tenantId), Query.equal('role', 'recruiter'), Query.limit(1)]).then(r => r.total)
       .catch(err => { console.error('[organisation] équipe illisible', err instanceof Error ? err.message : String(err)); return null }),
+    loadTenantAccess(user.tenantId).then(a => a.entitlements.maxUsers)
+      .catch(err => { console.error('[organisation] droits de la formule illisibles', err instanceof Error ? err.message : String(err)); return null }),
   ])
 
   const name = typeof tenant.name === 'string' ? tenant.name : ''
@@ -85,7 +87,7 @@ export default async function OrganisationPage() {
             <div>
               <dt className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Utilisateurs</dt>
               <dd><Link href="/recruiter/utilisateurs" className="inline-flex items-center gap-1 no-underline hover:underline" style={{ color: 'var(--color-text)' }}>
-                {team === null ? 'Voir les utilisateurs' : `${team} / ${MAX_TEAM_SIZE}`} <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+                {team === null ? 'Voir les utilisateurs' : maxUsers === null ? String(team) : `${team} / ${maxUsers}`} <ArrowRight className="h-3.5 w-3.5" aria-hidden />
               </Link></dd>
             </div>
             <div>

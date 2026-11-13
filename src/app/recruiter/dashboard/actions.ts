@@ -9,6 +9,7 @@ import { shouldNotifyAssignee } from '@/lib/assignment-email'
 import { jobOwnership } from '@/lib/job-ownership'
 import { PAY_NEEDS_CONTRACT } from '@/lib/job-pay'
 import { aoAccessFor } from '@/lib/ao/platform-view'
+import { activeJobsLimitDenial } from '@/lib/tenant-access'
 import type { ApplicationStatus } from '@/types'
 import type { Job } from '@/types'
 
@@ -42,6 +43,9 @@ export async function createJobAction(formData: FormData): Promise<{ error?: str
   // à Appwrite) remontait telle quelle et affichait l'écran d'erreur générique de Next.js au lieu
   // du message propre du formulaire, alors que l'offre pouvait déjà être créée.
   try {
+    // Limite d'offres actives de la formule de l'organisation (plans.ts) ; aucune pour les formules standard.
+    const limited = await activeJobsLimitDenial(user.tenantId)
+    if (limited) return { error: limited }
     const job = await createJob({
       tenantId: user.tenantId,
       title,
@@ -81,13 +85,13 @@ export async function listMyJobsForLibrary(): Promise<Job[]> {
 
 // Archiver, remettre en ligne ou supprimer : seulement une offre de l'organisation du recruteur (les offres partagées
 // de la plateforme, tenantId '', sont gérées par l'admin). Avant, toute offre était modifiable par son identifiant.
-async function ownJobOrError(jobId: unknown): Promise<{ jobId: string } | { error: string }> {
+async function ownJobOrError(jobId: unknown): Promise<{ jobId: string; job: Job } | { error: string }> {
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) return { error: 'Non autorisé.' }
   if (typeof jobId !== 'string' || !jobId) return { error: 'Offre introuvable.' }
   const job = await getJobById(jobId)
   if (!job || job.tenantId !== user.tenantId) return { error: 'Offre introuvable.' }
-  return { jobId }
+  return { jobId, job }
 }
 
 export async function toggleJobStatusAction(jobId: string, isActive: boolean): Promise<{ error?: string }> {
@@ -95,6 +99,11 @@ export async function toggleJobStatusAction(jobId: string, isActive: boolean): P
   if ('error' in own) return own
   if (typeof isActive !== 'boolean') return { error: 'Demande invalide.' }
   try {
+    // Remettre en ligne une offre archivée compte dans la limite d'offres actives de la formule (plans.ts).
+    if (isActive && !own.job.isActive) {
+      const limited = await activeJobsLimitDenial(own.job.tenantId)
+      if (limited) return { error: limited }
+    }
     await updateJobStatus(own.jobId, isActive)
   } catch (e) {
     console.error('[dashboard] statut de l’offre non modifié', own.jobId, e instanceof Error ? e.message : e)

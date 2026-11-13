@@ -6,7 +6,9 @@ import { wrapEmailHtml } from '@/lib/email-template'
 import { deleteAssistantTurnsForUser, isAssistantStorageConfigured } from '@/lib/assistant/host'
 import { deleteMbcSearchesForUser } from '@/lib/mbc-search/history-store'
 import { deleteSavedPeopleForUser } from '@/lib/mbc-search/saved-store'
+import { usersDenial } from '@/lib/plans'
 import { adminUserIdsOf, roleOf, withRole, type TeamRole, type TeamStatus } from '@/lib/team-roles'
+import { loadTenantAccess } from '@/lib/tenant-access'
 
 // Équipe d'un recruteur. Modèle : toutes les données (offres, candidatures, pipeline, rapports,
 // historique) sont déjà rattachées au tenant ; un collaborateur est donc simplement un compte
@@ -19,7 +21,6 @@ import { adminUserIdsOf, roleOf, withRole, type TeamRole, type TeamStatus } from
 // avec un jeton à usage unique dans ses préférences ; le collaborateur choisit son mot de passe
 // depuis le lien reçu par email (/rejoindre/<jeton>). Aucune collection supplémentaire.
 
-export const MAX_TEAM_SIZE = 15
 const INVITE_TTL_MS = 7 * 86_400_000
 
 export interface TeamMember {
@@ -162,8 +163,10 @@ export async function inviteMember(params: {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return { error: 'Adresse email invalide.' }
 
   const { databases, users } = createAdminClient()
-  const team = await listTeam(params.tenantId)
-  if (team.length >= MAX_TEAM_SIZE) return { error: `Votre équipe est limitée à ${MAX_TEAM_SIZE} membres.` }
+  // Nombre de comptes de la formule de l'organisation (plans.ts), invitations en attente et comptes désactivés compris.
+  const [team, access] = await Promise.all([listTeam(params.tenantId), loadTenantAccess(params.tenantId)])
+  const full = usersDenial(access.entitlements, team.length)
+  if (full) return { error: full }
 
   const existing = await users.list([Query.equal('email', [email]), Query.limit(1)])
   if (existing.total > 0) return { error: 'Un compte existe déjà avec cette adresse email.' }

@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { Check, Sparkles, ShieldCheck } from 'lucide-react'
 import type { UserRole } from '@/types'
 import { CheckoutModal } from './checkout-modal'
-import type { PaidPlanId } from '@/lib/stripe'
+import type { PaidPlanId } from '@/lib/plans'
 
 interface Plan {
   id: string

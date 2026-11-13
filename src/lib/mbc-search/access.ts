@@ -1,12 +1,14 @@
 import { canUseAoSourcing } from '@/lib/ao/tenancy'
+import { STANDARD_DAILY_QUOTAS } from '@/lib/plans'
 
 // Accès à MBC Search (ADR 0018) et quotas du jour. Règles pures, testées dans rules.test.ts.
 
 /** Recherches et analyses de brief par jour (UTC) : par organisation, et pour toutes les organisations ensemble. */
-export const MBC_SEARCH_DAILY_LIMITS = { perOrganisation: 60, allOrganisations: 600 } as const
+// `perOrganisation` : quota des formules standard (plans.ts) ; une offre sur mesure peut le changer (Entitlements.dailyQuotas).
+export const MBC_SEARCH_DAILY_LIMITS = { perOrganisation: STANDARD_DAILY_QUOTAS.mbcSearch, allOrganisations: 600 } as const
 
 export const MBC_SEARCH_QUOTA_MESSAGE = {
-  organisation: `Limite de ${MBC_SEARCH_DAILY_LIMITS.perOrganisation} recherches MBC Search par jour atteinte pour votre organisation : réessayez demain.`,
+  organisation: (limit: number) => `Limite de ${limit} recherches MBC Search par jour atteinte pour votre organisation : réessayez demain.`,
   platform: 'Trop de recherches MBC Search aujourd\'hui sur la plateforme : réessayez demain.',
 } as const
 
@@ -26,9 +28,9 @@ export function mbcSearchDenial(requester: { tenantId: string; subscriptionStatu
  * Profils révélés par jour (UTC) : chaque profil trouvé coûte au moins un crédit Apollo à la plateforme (nom, e-mail
  * professionnel). Par organisation, et pour toutes ensemble.
  */
-export const MBC_REVEAL_DAILY_LIMITS = { perOrganisation: 100, allOrganisations: 1000 } as const
+export const MBC_REVEAL_DAILY_LIMITS = { perOrganisation: STANDARD_DAILY_QUOTAS.mbcReveal, allOrganisations: 1000 } as const
 
 export const MBC_REVEAL_QUOTA_MESSAGE = {
-  organisation: `Limite de ${MBC_REVEAL_DAILY_LIMITS.perOrganisation} profils complets par jour atteinte pour votre organisation : réessayez demain.`,
+  organisation: (limit: number) => `Limite de ${limit} profils complets par jour atteinte pour votre organisation : réessayez demain.`,
   platform: 'Trop de profils complets demandés aujourd\'hui sur la plateforme : réessayez demain.',
 } as const

@@ -154,7 +154,8 @@ describe('MBC Search : accès', () => {
 
   it('annonce le plafond du jour', () => {
     assert.ok(MBC_SEARCH_DAILY_LIMITS.perOrganisation < MBC_SEARCH_DAILY_LIMITS.allOrganisations)
-    assert.match(MBC_SEARCH_QUOTA_MESSAGE.organisation, new RegExp(`${MBC_SEARCH_DAILY_LIMITS.perOrganisation} recherches`))
+    assert.match(MBC_SEARCH_QUOTA_MESSAGE.organisation(7), /Limite de 7 recherches/)
+    assert.match(MBC_SEARCH_QUOTA_MESSAGE.organisation(MBC_SEARCH_DAILY_LIMITS.perOrganisation), new RegExp(`${MBC_SEARCH_DAILY_LIMITS.perOrganisation} recherches`))
   })
 })
 

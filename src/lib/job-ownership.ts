@@ -69,3 +69,14 @@ export function planJobRecruiter(job: { tenantId: string; postedBy: string; recr
 export function recruiterCanOpenJob(jobTenantId: string, tenantId: string | null | undefined): boolean {
   return !!tenantId && (jobTenantId === tenantId || jobTenantId === '')
 }
+
+/**
+ * Un recruteur de l'organisation `tenantId` voit et gère une candidature : sur une offre de son organisation, toutes ;
+ * sur une offre partagée par la plateforme (tenantId ''), les siennes (« Ajouter dans le funnel ») et les candidatures
+ * directes (tenantId ''), jamais celles qu'une autre organisation y a ajoutées (même règle que le Matching IA,
+ * matching-core.ts). Revue de sécurité du 2026-11-13.
+ */
+export function recruiterCanSeeApplication(jobTenantId: string, applicationTenantId: string, tenantId: string | null | undefined): boolean {
+  if (!recruiterCanOpenJob(jobTenantId, tenantId)) return false
+  return jobTenantId !== '' || applicationTenantId === tenantId || applicationTenantId === ''
+}
