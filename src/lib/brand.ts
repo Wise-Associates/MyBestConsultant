@@ -4,6 +4,26 @@
 
 export const BRAND_SIZES = ['1-10', '11-50', '51-200', '201-500', '501-1000', '1000+'] as const
 
+/**
+ * Le logo d'une organisation est un fichier du bucket des logos du projet (envoyé par l'éditeur), jamais une adresse
+ * tierce (une image d'un autre site suivrait chaque visiteur de la page publique). Comparé sur l'adresse lue par le
+ * navigateur (origine, chemin résolu : « %2e%2e » compte comme « .. »), pas sur le texte.
+ */
+export function isLogoFileUrl(url: string, endpoint: string, bucketId: string): boolean {
+  let u: URL
+  let base: URL
+  try {
+    u = new URL(url)
+    base = new URL(endpoint)
+  } catch {
+    return false
+  }
+  const prefix = `${base.pathname.replace(/\/+$/, '')}/storage/buckets/${bucketId}/files/`
+  return u.origin === base.origin && !u.username && !u.password && u.hash === ''
+    && u.pathname.startsWith(prefix) && /^[\w-]{1,36}\/view$/.test(u.pathname.slice(prefix.length))
+    && (u.search === '' || /^\?project=[\w-]{1,64}$/.test(u.search))
+}
+
 export interface BrandValue { title: string; text: string }
 export interface BrandBenefit { icon: string; title: string; text: string }
 

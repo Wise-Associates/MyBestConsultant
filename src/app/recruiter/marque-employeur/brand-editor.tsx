@@ -59,7 +59,7 @@ function Field({ label, count, children }: { label: string; count?: string; chil
   )
 }
 
-export function BrandEditor({ initial }: { initial: EmployerBrand }) {
+export function BrandEditor({ initial, canEditIdentity }: { initial: EmployerBrand; canEditIdentity: boolean }) {
   const [name, setName] = useState(initial.name)
   const [logoUrl, setLogoUrl] = useState(initial.logoUrl)
   const [brand, setBrand] = useState<BrandProfile>(initial.profile)
@@ -156,7 +156,7 @@ export function BrandEditor({ initial }: { initial: EmployerBrand }) {
                   ? <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
                   : <Building2 className="h-7 w-7" style={{ color: 'var(--color-text-muted)' }} />}
               </div>
-              <div>
+              {canEditIdentity ? <div>
                 <label className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold cursor-pointer transition-opacity hover:opacity-85" style={{ background: 'var(--color-text)', color: 'var(--color-surface)' }}>
                   {uploading === 'logo' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
                   {logoUrl ? 'Changer le logo' : 'Ajouter un logo'}
@@ -164,10 +164,15 @@ export function BrandEditor({ initial }: { initial: EmployerBrand }) {
                 </label>
                 {logoUrl && <button type="button" onClick={() => setLogoUrl('')} className="ml-2 text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Retirer</button>}
                 <p className="text-[11px] mt-1.5" style={{ color: 'var(--color-text-muted)' }}>PNG, JPG ou WebP · carré de préférence</p>
-              </div>
+              </div> : (
+                // Nom et logo de l'organisation : réservés au propriétaire et aux administrateurs (ADR 0033).
+                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                  Le nom et le logo de l’organisation sont modifiés par le propriétaire ou un administrateur (page Organisation).
+                </p>
+              )}
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2"><Field label="Nom de l'entreprise"><input className={inputCls} style={inputStyle} value={name} maxLength={LIMITS.name} onChange={e => setName(e.target.value)} /></Field></div>
+              <div className="sm:col-span-2"><Field label="Nom de l'entreprise"><input className={inputCls} style={inputStyle} value={name} maxLength={LIMITS.name} readOnly={!canEditIdentity} aria-readonly={!canEditIdentity} onChange={e => setName(e.target.value)} /></Field></div>
               <div className="sm:col-span-2">
                 <Field label="Accroche" count={`${brand.tagline.length}/${LIMITS.tagline}`}>
                   <input className={inputCls} style={inputStyle} value={brand.tagline} maxLength={LIMITS.tagline} placeholder="Une phrase qui donne envie de vous rejoindre" onChange={e => set('tagline', e.target.value)} />

@@ -47,7 +47,7 @@ export default async function RecruiterLayout({ children }: { children: React.Re
           </Suspense>
           {/* Rubriques de l'espace recruteur dans un menu à gauche, sur toutes ses pages (demande du 2026-11-13 : à la place
               du sous-menu horizontal). */}
-          <RecruiterShell initialCollapsed={sidebarCollapsed}>
+          <RecruiterShell initialCollapsed={sidebarCollapsed} organisationName={company}>
             {/* « Synchroniser maintenant » des appels d'offres continue d'une page de l'espace recruteur à l'autre. */}
             <AoSyncProvider endpoint="/api/recruiter/ao/sync" pagePath="/recruiter/parametres/boites-ao" scope="de votre organisation">
               {children}

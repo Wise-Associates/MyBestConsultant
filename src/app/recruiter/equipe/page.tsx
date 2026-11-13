@@ -9,7 +9,6 @@ export default async function TeamPage() {
   if (!user || user.role !== 'recruiter' || !user.tenantId) redirect('/login')
 
   const [members, activity] = await Promise.all([listTeam(user.tenantId), getTeamActivity(user.tenantId)])
-  const me = members.find(m => m.userId === user.userId)
 
-  return <TeamClient members={members} activity={activity} currentUserId={user.userId} isOwner={!!me?.isOwner} now={new Date().toISOString()} />
+  return <TeamClient members={members} activity={activity} currentUserId={user.userId} now={new Date().toISOString()} />
 }

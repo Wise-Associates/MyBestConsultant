@@ -353,6 +353,15 @@
                     "size": 100,
                     "default": null,
                     "encrypt": false
+                },
+                {
+                    "key": "adminUserIds",
+                    "type": "string",
+                    "required": false,
+                    "array": true,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
                 }
             ],
             "indexes": [

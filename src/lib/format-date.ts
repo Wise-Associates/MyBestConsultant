@@ -6,3 +6,16 @@
 export function formatDateFr(iso: string): string {
   return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/Paris' })
 }
+
+/**
+ * Durée écoulée pour une activité récente (« il y a 3 h », dernière connexion, historique de l'équipe) — pas pour une
+ * date de publication (voir plus haut). Au-delà d'une semaine : la date, jour de Paris.
+ */
+export function timeAgoFr(iso: string, nowMs: number): string {
+  const s = Math.max(0, Math.round((nowMs - new Date(iso).getTime()) / 1000))
+  if (s < 60) return 'à l’instant'
+  if (s < 3600) return `il y a ${Math.floor(s / 60)} min`
+  if (s < 86400) return `il y a ${Math.floor(s / 3600)} h`
+  if (s < 86400 * 7) return `il y a ${Math.floor(s / 86400)} j`
+  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', timeZone: 'Europe/Paris' })
+}
