@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { PAY_FIELD_LABEL, PAY_NEEDS_CONTRACT, payHint, payLooksWrong, payShort, payText, payUnitFor, payUnitOf } from './job-pay'
+import { PAY_FIELD_LABEL, PAY_NEEDS_CONTRACT, payHint, payListText, payLooksWrong, payShort, payText, payUnitFor, payUnitOf } from './job-pay'
 
 describe('unité du montant d\'une offre', () => {
   it('salaire annuel pour un CDI ou un CDD, TJM sinon (freelance, mission, contrat non précisé)', () => {
@@ -60,6 +60,11 @@ describe('unité affichée pour un montant enregistré', () => {
     assert.equal(payText(60000, 'freelance'), 'Salaire : 60 000 €/an')
     assert.equal(payShort(60000, 'mission'), '60 000 €/an', 'offre de production : mission à 60 000 €, affichée « €/j »')
     assert.equal(payShort(650, 'cdi'), '650 €/j')
+  })
+
+  it('écrit l\'unité en entier dans la liste des offres', () => {
+    assert.equal(payListText(620, 'mission'), '620 €/jour')
+    assert.equal(payListText(58000, 'cdi'), '58 000 €/an')
   })
 
   it('n\'invente aucune unité pour un montant entre les deux (salaire mensuel ?)', () => {

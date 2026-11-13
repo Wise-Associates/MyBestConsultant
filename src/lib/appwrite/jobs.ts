@@ -7,6 +7,7 @@ import { expandLocationSearch, normalizeLocation } from '@/lib/regions'
 import { matchesKeywordRows, isExcludedByKeywordRows, type KeywordRow } from '@/lib/keyword-match'
 import { estimateJobSeniorityYears, SENIORITY_MAX } from '@/lib/job-seniority'
 import type { RecruiterSelection } from '@/lib/recruiter-job-filters'
+import { valuesByFrequency } from '@/lib/cvtheque-search'
 
 /**
  * Offres par requête quand on lit les candidatures d'une liste d'offres : Appwrite refuse plus de 100 valeurs dans un
@@ -204,6 +205,19 @@ export async function createJob(data: {
     isActive: true,
   })
   return docToJob(doc as unknown as Record<string, unknown>)
+}
+
+/**
+ * Compétences les plus demandées par toutes les offres actives (non expirées), la plus fréquente d'abord : chips de la
+ * page /jobs, chargées à part de la liste (Suspense). Seuls les champs utiles sont lus ; une compétence compte une fois
+ * par offre, quelle que soit sa casse.
+ */
+export async function getTopJobSkills(limit: number): Promise<string[]> {
+  const { databases } = createAdminClient()
+  const docs = await listAllDocuments(databases, DB_ID, COLLECTIONS.JOBS, [Query.equal('isActive', true), Query.select(['$id', 'skills', 'expiresAt'])])
+  const now = Date.now()
+  const open = docs.filter(d => typeof d.expiresAt !== 'string' || !d.expiresAt || Date.parse(d.expiresAt) >= now)
+  return valuesByFrequency(open.map(d => (Array.isArray(d.skills) ? d.skills : []).filter((s): s is string => typeof s === 'string')), limit)
 }
 
 /** Offres actives (publiées, non expirées) d'une organisation : limite d'offres actives de sa formule (plans.ts). */

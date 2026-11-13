@@ -45,6 +45,12 @@ export function payText(salary: number, contractType: string | null | undefined)
   return `Rémunération : ${amountOf(salary)} €`
 }
 
+/** Montant de la liste des offres (/jobs) : « 650 €/jour », « 55 000 €/an », « 4 500 € » (unité invraisemblable). */
+export function payListText(salary: number, contractType: string | null | undefined): string {
+  const unit = payUnitOf(salary, contractType)
+  return `${amountOf(salary)} €${unit === 'an' ? '/an' : unit === 'jour' ? '/jour' : ''}`
+}
+
 /** Montant court des pages et listes : « 650 €/j », « 55 000 €/an », « 4 500 € » (unité invraisemblable). */
 export function payShort(salary: number, contractType: string | null | undefined): string {
   const unit = payUnitOf(salary, contractType)

@@ -11,13 +11,15 @@ export { emptyKeywordRows, matchesKeywordRows, isExcludedByKeywordRows } from '@
 // is given, each row also renders real form fields (visible term input + hidden op input)
 // so a native <form method="GET"> submission carries the rows as repeated query params.
 export function KeywordQueryBuilder({
-  rows, onChange, placeholder, addLabel, formNames,
+  rows, onChange, placeholder, addLabel, formNames, label,
 }: {
   rows: KeywordRow[]
   onChange: (rows: KeywordRow[]) => void
   placeholder?: string
   addLabel: string
   formNames?: { term: string; op: string }
+  /** Nom accessible des champs (le titre de la section qui les contient). */
+  label?: string
 }) {
   function updateTerm(i: number, term: string) {
     onChange(rows.map((r, idx) => idx === i ? { ...r, term } : r))
@@ -55,10 +57,11 @@ export function KeywordQueryBuilder({
             onChange={e => updateTerm(i, e.target.value)}
             placeholder={placeholder}
             name={formNames?.term}
+            aria-label={label ? `${label}${rows.length > 1 ? ` (${i + 1})` : ''}` : undefined}
             className="mbc-search-input flex-1 min-w-0 px-4 py-2.5 rounded-xl text-sm outline-none"
             style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           />
-          <button type="button" onClick={() => removeRow(i)}
+          <button type="button" onClick={() => removeRow(i)} aria-label={row.term ? `Retirer « ${row.term} »` : 'Vider le champ'}
             className="mbc-search-toggle shrink-0 p-2 rounded-lg hover:opacity-70"
             style={{ color: 'var(--color-text-muted)' }}>
             <X className="h-4 w-4" />
