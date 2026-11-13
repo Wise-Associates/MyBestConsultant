@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { STANDARD_DAILY_QUOTAS } from '@/lib/plans'
 import { words } from './name-match'
 import type { AoOfferFields } from './types'
 
@@ -12,11 +13,12 @@ import type { AoOfferFields } from './types'
  * Rédactions par l'IA demandées par les recruteurs, par jour (UTC) : par organisation, et pour toutes ensemble (l'admin
  * n'est pas compté). L'IA est aux frais de la plateforme et l'inscription est libre.
  */
-export const AO_PUBLICATION_AI_DAILY_LIMITS = { perOrganisation: 30, allOrganisations: 300 } as const
+// `perOrganisation` : quota des formules standard (plans.ts) ; une offre sur mesure peut le changer (Entitlements.dailyQuotas).
+export const AO_PUBLICATION_AI_DAILY_LIMITS = { perOrganisation: STANDARD_DAILY_QUOTAS.aoRewrite, allOrganisations: 300 } as const
 
 /** Raisons affichées dans la phrase « L'IA n'a pas rédigé cette version (…) » du panneau. */
 export const PUBLICATION_AI_QUOTA_MESSAGE = {
-  organisation: `limite de ${AO_PUBLICATION_AI_DAILY_LIMITS.perOrganisation} rédactions par l'IA par jour atteinte pour votre organisation`,
+  organisation: (limit: number) => `limite de ${limit} rédactions par l'IA par jour atteinte pour votre organisation`,
   platform: 'trop de rédactions par l\'IA aujourd\'hui sur la plateforme',
 } as const
 

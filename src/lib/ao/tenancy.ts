@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type { Entitlements } from '@/lib/plans'
 
 // Organisations du module AO Offers (docs/adr/0005-ao-boites-par-organisation.md) : chaque organisation lit ses
 // propres boîtes ; ses e-mails, offres, verrou de synchronisation et quotas d'IA lui sont propres.
@@ -13,6 +14,18 @@ const ENTITLED_STATUSES = new Set(['active', 'trialing'])
 /** L'IA est à nos frais : seules les organisations abonnées (et la plateforme) ont leurs boîtes lues. */
 export function canUseAoSourcing(tenantId: string, subscriptionStatus: string | null | undefined): boolean {
   return tenantId === PLATFORM_TENANT_ID || ENTITLED_STATUSES.has(subscriptionStatus ?? '')
+}
+
+export type AoRefusal = 'inactive' | 'not_included'
+
+/**
+ * Suivi des appels d'offres d'une organisation (boîtes lues, tableau AO, IA du tableau) : refusé si l'abonnement est
+ * inactif (`inactive`) ou si sa formule ne le comprend pas (`not_included`, offre sur mesure, ADR 0034) ; null s'il est
+ * ouvert. Toujours ouvert pour la plateforme.
+ */
+export function aoRefusal(tenantId: string, subscriptionStatus: string | null | undefined, entitlements: Entitlements): AoRefusal | null {
+  if (!canUseAoSourcing(tenantId, subscriptionStatus)) return 'inactive'
+  return tenantId === PLATFORM_TENANT_ID || entitlements.features.aoSourcing ? null : 'not_included'
 }
 
 // Identifiants de documents de ao_sync_state : 36 caractères au plus. Un identifiant d'organisation peut en avoir 36 :
@@ -37,7 +50,9 @@ export function lockIdFor(tenantId: string): string {
  * affiches des publications sur les réseaux (src/lib/social.ts, payées par la clé OpenAI de Config IA) : par
  * organisation (i), pour toute la plateforme (e). Recherches et analyses de brief de MBC Search (src/lib/mbc-search) : par
  * organisation (k), pour toutes les organisations (z) ; profils complets révélés (crédits Apollo) : par organisation (j), pour
- * toutes (l).
+ * toutes (l). Appels à l'IA des entretiens et du screening manuel (src/lib/interview-rules.ts) : par organisation (ia), pour
+ * toutes (ib) ; invitations à un entretien, par organisation (ic) ; appels de la salle d'entretien d'un candidat, par
+ * session (id, src/lib/interview-room.ts).
  */
 const COUNTER_PREFIX = {
   vision: 'v', tables: 't', mailboxTests: 'c', mailboxTarget: 'm', mailboxTestsAll: 'g', assistantUser: 'a', assistantAll: 'b',
@@ -47,6 +62,7 @@ const COUNTER_PREFIX = {
   // Lectures d'annonces d'origine (ADR 0031). Toutes les lettres étant prises, deux caractères : l'identifiant d'une
   // place tient encore dans les 36 caractères d'Appwrite (« pg_<16>_<jour>_<place> »).
   aoPageOrg: 'pg', aoPageAll: 'pa',
+  interviewAiOrg: 'ia', interviewAiAll: 'ib', interviewInviteOrg: 'ic', interviewRoom: 'id',
 } as const
 export type DailyCounter = keyof typeof COUNTER_PREFIX
 

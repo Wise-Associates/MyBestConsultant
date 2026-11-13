@@ -1,10 +1,13 @@
+import { STANDARD_DAILY_QUOTAS } from '@/lib/plans'
+
 // Qui peut générer un export « Format ESN » depuis la CV Thèque des recruteurs, et y déposer le modèle de son
 // organisation (ADR 0010). L'IA est aux frais de la plateforme et l'inscription est libre : génération réservée aux
 // organisations abonnées, à l'adresse e-mail vérifiée, dans un quota quotidien. Retélécharger une version enregistrée ne
 // coûte rien et reste permis. Règles pures, testées dans access.test.ts.
 
 /** Générations par jour (UTC) : par organisation, et pour toutes les organisations ensemble (l'admin n'est pas compté). */
-export const CV_EXPORT_DAILY_LIMITS = { perOrganisation: 20, allOrganisations: 300 } as const
+// `perOrganisation` : quota des formules standard (plans.ts) ; une offre sur mesure peut le changer (Entitlements.dailyQuotas).
+export const CV_EXPORT_DAILY_LIMITS = { perOrganisation: STANDARD_DAILY_QUOTAS.cvExport, allOrganisations: 300 } as const
 
 // Même règle que canUseAoSourcing (src/lib/ao/tenancy.ts, décision du 2026-10-21) : tout abonnement actif, essai compris.
 const ENTITLED_STATUSES = new Set(['active', 'trialing'])
@@ -46,6 +49,6 @@ export function templateUploadDenial(requester: { emailVerified: boolean }): str
 }
 
 export const QUOTA_MESSAGE = {
-  organisation: `Limite de ${CV_EXPORT_DAILY_LIMITS.perOrganisation} générations par jour atteinte pour votre organisation : réessayez demain, ou téléchargez une version déjà enregistrée.`,
+  organisation: (limit: number) => `Limite de ${limit} générations par jour atteinte pour votre organisation : réessayez demain, ou téléchargez une version déjà enregistrée.`,
   platform: 'Trop de générations aujourd\'hui sur la plateforme : réessayez demain, ou téléchargez une version déjà enregistrée.',
 } as const

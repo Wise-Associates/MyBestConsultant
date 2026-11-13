@@ -2,8 +2,6 @@ import 'server-only'
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 import { parsePublishInput } from './publication-input'
-import { createAdminClient } from '@/lib/appwrite/client'
-import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { createJob, getActiveJobs, getJobById, oneMonthFromNow } from '@/lib/appwrite/jobs'
 import { descriptionForPublication } from '@/lib/description-sections'
 import type { Job, UserProfile } from '@/types'
@@ -45,13 +43,6 @@ import type { AoOffer } from './types'
 
 const errorOf = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
-
-/** Statut d'abonnement d'une organisation (null : aucun), pour les droits qui en dépendent (tenancy.ts, sourcing-access.ts). */
-export async function tenantSubscriptionStatus(tenantId: string): Promise<string | null> {
-  const { databases } = createAdminClient()
-  const tenant = await databases.getDocument(DB_ID, COLLECTIONS.TENANTS, tenantId)
-  return typeof tenant.subscriptionStatus === 'string' ? tenant.subscriptionStatus : null
-}
 
 /**
  * Noms à masquer : client de l'offre et clients cités par l'appel d'offres (avec leurs sigles), nom et domaine de

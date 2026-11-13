@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { STANDARD_DAILY_QUOTAS } from '@/lib/plans'
 import { SOURCING_MIN_SCORE } from './sourcing-rules'
 import {
   CV_CHARS_FOR_SCORING, MATCH_RULES, criteriaBlock, judgedScore, judgementSummary, offerCriteria, offerTextForAi, parseJudgements,
@@ -30,11 +31,12 @@ export const REASON_MAX = 300
  * Comparaisons d'un CV aux offres par jour (UTC), une par CV comparé quel que soit le nombre d'offres : par
  * organisation, et pour toutes les organisations ensemble. L'IA est aux frais de la plateforme et l'inscription libre.
  */
-export const VIVIER_MATCHING_DAILY_LIMITS = { perOrganisation: 200, allOrganisations: 2000 } as const
+// `perOrganisation` : quota des formules standard (plans.ts) ; une offre sur mesure peut le changer (Entitlements.dailyQuotas).
+export const VIVIER_MATCHING_DAILY_LIMITS = { perOrganisation: STANDARD_DAILY_QUOTAS.vivierMatching, allOrganisations: 2000 } as const
 
 export const VIVIER_MATCHING_REFUSAL = {
   unverified: 'Vérifiez votre adresse e-mail (lien reçu à l\'inscription) pour comparer vos CV à vos offres.',
-  organisation: `Limite de ${VIVIER_MATCHING_DAILY_LIMITS.perOrganisation} CV comparés à vos offres par jour atteinte pour votre organisation : réessayez demain avec « Synchroniser ».`,
+  organisation: (limit: number) => `Limite de ${limit} CV comparés à vos offres par jour atteinte pour votre organisation : réessayez demain avec « Synchroniser ».`,
   platform: 'Trop de comparaisons de CV aujourd\'hui sur la plateforme : réessayez demain avec « Synchroniser ».',
   failed: 'La comparaison aux offres n\'a pas abouti (service IA indisponible) : réessayez avec « Synchroniser ».',
   // « Synchroniser » ne reprend que les CV sans offre correspondante : rien à proposer pour celui-ci.

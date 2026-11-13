@@ -371,7 +371,7 @@ describe('robustesse de la lecture', () => {
       assert.equal(nextStepFor(failed, now), 'skip', 'le passage planifié ne le reprend plus : seul le bouton le relance')
     }
     assert.ok(AO_RETRY_DAILY_LIMITS.perOrganisation < AO_RETRY_DAILY_LIMITS.allOrganisations)
-    assert.match(RETRY_QUOTA_MESSAGE.organisation, new RegExp(`${AO_RETRY_DAILY_LIMITS.perOrganisation} relances`))
+    assert.match(RETRY_QUOTA_MESSAGE.organisation(AO_RETRY_DAILY_LIMITS.perOrganisation), new RegExp(`${AO_RETRY_DAILY_LIMITS.perOrganisation} relances`))
     assert.match(RETRY_QUOTA_MESSAGE.platform, /demain/)
   })
 

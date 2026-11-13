@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/appwrite/auth'
-import { MAX_TEAM_SIZE, loadTeam } from '@/lib/team'
+import { loadTeam } from '@/lib/team'
 import { adminUserIdsOf, roleOf } from '@/lib/team-roles'
+import { loadTenantAccess } from '@/lib/tenant-access'
 import { UsersClient } from './users-client'
 
 export const metadata = { title: 'Utilisateurs' }
@@ -12,9 +13,9 @@ export default async function UsersPage() {
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) redirect('/login')
 
-  const { members, tenant } = await loadTeam(user.tenantId)
+  const [{ members, tenant }, access] = await Promise.all([loadTeam(user.tenantId), loadTenantAccess(user.tenantId)])
   return (
     <UsersClient members={members} currentUserId={user.userId} myRole={roleOf(user.userId, tenant)}
-      rolesAvailable={adminUserIdsOf(tenant) !== null} maxTeamSize={MAX_TEAM_SIZE} now={new Date().toISOString()} />
+      rolesAvailable={adminUserIdsOf(tenant) !== null} maxTeamSize={access.entitlements.maxUsers} now={new Date().toISOString()} />
   )
 }

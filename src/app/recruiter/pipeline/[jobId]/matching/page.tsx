@@ -3,7 +3,7 @@ import { after } from 'next/server'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { getJobById } from '@/lib/appwrite/jobs'
 import { getJobMatches, unmatchedApplicationIds } from '@/lib/matching-core'
-import { autoScreenApplication } from '@/app/recruiter/screening/actions'
+import { autoScreenApplication } from '@/lib/screening-core'
 import { MatchingClient } from './matching-client'
 import { jobMetaLine } from '@/components/recruiter/job-tabs'
 

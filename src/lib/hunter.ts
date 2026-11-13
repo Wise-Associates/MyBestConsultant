@@ -7,7 +7,7 @@ import { wrapEmailHtml } from '@/lib/email-template'
 import { extractCvProfile, type CvProfile } from '@/lib/cv-profile-extract'
 import { HUNTER_PROFILE_ROLE } from '@/lib/candidate-identity'
 import { getJobById, hasApplied } from '@/lib/appwrite/jobs'
-import { autoScreenApplication } from '@/app/recruiter/screening/actions'
+import { autoScreenApplication } from '@/lib/screening-core'
 import { after } from 'next/server'
 
 // Profil Chasseur de têtes (Module 14).

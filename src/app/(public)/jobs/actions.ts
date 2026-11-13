@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { after } from 'next/server'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createApplication, hasApplied } from '@/lib/appwrite/jobs'
-import { autoScreenApplication } from '@/app/recruiter/screening/actions'
+import { autoScreenApplication } from '@/lib/screening-core'
 
 export async function applyToJob(jobId: string, tenantId: string): Promise<void> {
   const user = await getCurrentUser()

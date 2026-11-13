@@ -3,10 +3,10 @@ import { BackLink } from '@/components/recruiter/back-link'
 import { redirect } from 'next/navigation'
 import { Inbox } from 'lucide-react'
 import { getCurrentUser } from '@/lib/appwrite/auth'
-import { createAdminClient } from '@/lib/appwrite/client'
-import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { listMailboxes } from '@/lib/ao/mailboxes'
-import { canUseAoSourcing } from '@/lib/ao/tenancy'
+import { aoRefusal } from '@/lib/ao/tenancy'
+import { featureDenial } from '@/lib/plans'
+import { loadTenantAccess } from '@/lib/tenant-access'
 import { MailboxesManager } from '@/components/ao/mailboxes-manager'
 import { deleteMailboxAction, saveMailboxAction, setMailboxEnabledAction, testMailboxAction } from './actions'
 
@@ -15,12 +15,8 @@ export default async function MailboxesPage() {
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) redirect('/login')
 
-  const { databases } = createAdminClient()
-  const [tenant, mailboxes] = await Promise.all([
-    databases.getDocument(DB_ID, COLLECTIONS.TENANTS, user.tenantId),
-    listMailboxes(user.tenantId),
-  ])
-  const entitled = canUseAoSourcing(tenant.$id, typeof tenant.subscriptionStatus === 'string' ? tenant.subscriptionStatus : null)
+  const [access, mailboxes] = await Promise.all([loadTenantAccess(user.tenantId), listMailboxes(user.tenantId)])
+  const refusal = aoRefusal(user.tenantId, access.subscriptionStatus, access.entitlements)
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
@@ -42,9 +38,11 @@ export default async function MailboxesPage() {
       </div>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-4">
-        {!entitled && (
+        {refusal && (
           <p role="status" className="text-sm p-4 rounded-2xl" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
-            Votre abonnement n&apos;est pas actif : vos boîtes ne sont pas lues. Elles le seront dès sa réactivation (<Link href="/abonnement">voir les offres</Link>).
+            {refusal === 'inactive'
+              ? <>Votre abonnement n&apos;est pas actif : vos boîtes ne sont pas lues. Elles le seront dès sa réactivation (<Link href="/abonnement">voir les offres</Link>).</>
+              : <>{featureDenial(access.entitlements, 'aoSourcing')} Vos boîtes ne sont pas lues.</>}
           </p>
         )}
         <MailboxesManager

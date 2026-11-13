@@ -5,7 +5,7 @@ import { loadStripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { X, Loader2, CheckCircle2, AlertCircle, ShieldCheck } from 'lucide-react'
 import { startSubscriptionCheckout } from './actions'
-import type { PaidPlanId } from '@/lib/stripe'
+import type { PaidPlanId } from '@/lib/plans'
 
 const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
   ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
@@ -65,13 +65,19 @@ function CardForm({ planId, onDone }: { planId: PaidPlanId; onDone: () => void }
 export function CheckoutModal({ planId, onClose }: { planId: PaidPlanId; onClose: () => void }) {
   const [clientSecret, setClientSecret] = useState('')
   const [error, setError] = useState('')
+  // Abonnement déjà en cours : la formule a changé sans nouveau paiement par carte (prorata sur la facture suivante).
+  const [changed, setChanged] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     startSubscriptionCheckout(planId).then(res => {
       if (cancelled) return
       if (res.error) setError(res.error)
+      else if (res.changed) setChanged(true)
       else if (res.clientSecret) setClientSecret(res.clientSecret)
+      else setError('Paiement impossible à préparer pour le moment : réessayez dans quelques instants.')
+    }, () => {
+      if (!cancelled) setError('Connexion perdue : vérifiez votre connexion puis réessayez.')
     })
     return () => { cancelled = true }
   }, [planId])
@@ -90,6 +96,14 @@ export function CheckoutModal({ planId, onClose }: { planId: PaidPlanId; onClose
             <p style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#f87171', background: 'rgba(239,68,68,0.1)', padding: '10px 14px', borderRadius: 10 }}>
               <AlertCircle className="h-4 w-4 shrink-0" /> {error}
             </p>
+          ) : changed ? (
+            <div role="status" style={{ textAlign: 'center', padding: '32px 8px' }}>
+              <CheckCircle2 style={{ width: 48, height: 48, color: '#34d399', margin: '0 auto 16px' }} />
+              <p style={{ color: 'white', fontWeight: 700, fontSize: '1.05rem', margin: '0 0 6px' }}>Formule changée</p>
+              <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.85rem' }}>
+                Votre abonnement passe à {PLAN_LABEL[planId]}. La différence au prorata figurera sur votre prochaine facture.
+              </p>
+            </div>
           ) : !clientSecret || !stripePromise ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '32px 0', color: 'rgba(255,255,255,0.5)' }}>
               <Loader2 className="h-5 w-5 animate-spin" /> Préparation du paiement…

@@ -4,13 +4,15 @@ import { getCurrentUser } from '@/lib/appwrite/auth'
 import type { PublicationDraft, PublicationMode } from '@/lib/ao/dashboard-types'
 import {
   addAoOfferCommentOf, aoOfferSourcingOf, assignAoOfferOf, deleteAoOfferCommentOf, deleteAoOfferOf, deleteAoOffersOf, listAoOfferCommentsOf, previewAoPublicationOf,
-  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, stopAoPublicationTasksOf, tenantSubscriptionStatus,
+  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, stopAoPublicationTasksOf,
 } from '@/lib/ao/offer-actions'
 import { AO_RETRY_DAILY_LIMITS, RETRY_QUOTA_MESSAGE } from '@/lib/ao/attempts'
 import { AO_PUBLICATION_AI_DAILY_LIMITS, PUBLICATION_AI_QUOTA_MESSAGE } from '@/lib/ao/publication-copy'
 import { AO_SOURCING_DAILY_LIMITS, SOURCING_QUOTA_MESSAGE, sourcingDenial } from '@/lib/ao/sourcing-access'
 import { releaseDailySlot, takeDailySlotId } from '@/lib/ao/state'
-import { canUseAoSourcing } from '@/lib/ao/tenancy'
+import { aoRefusal } from '@/lib/ao/tenancy'
+import { featureDenial } from '@/lib/plans'
+import { activeJobsLimitDenial, loadTenantAccess, type TenantAccess } from '@/lib/tenant-access'
 import type { UserProfile } from '@/types'
 
 // Actions du tableau des appels d'offres d'une organisation (/recruiter/parametres/boites-ao). Chacune vérifie
@@ -28,22 +30,30 @@ async function recruiter(): Promise<{ user: UserProfile; tenantId: string } | nu
   return user && user.role === 'recruiter' && user.tenantId ? { user, tenantId: user.tenantId } : null
 }
 
-/** L'IA qui lit les e-mails est à nos frais : seules les organisations abonnées font lire leurs boîtes (tenancy.ts). */
-async function entitled(tenantId: string): Promise<boolean> {
-  return canUseAoSourcing(tenantId, await tenantSubscriptionStatus(tenantId))
+/**
+ * L'IA qui lit les e-mails est à nos frais : seules les organisations abonnées dont la formule comprend le suivi des
+ * appels d'offres font lire leurs boîtes (tenancy.ts). Message du refus ; null si le suivi est ouvert.
+ */
+function aoDenial(tenantId: string, access: TenantAccess): string | null {
+  const refusal = aoRefusal(tenantId, access.subscriptionStatus, access.entitlements)
+  if (refusal === 'inactive') return NOT_ENTITLED
+  return refusal === 'not_included' ? featureDenial(access.entitlements, 'aoSourcing') : null
 }
 
 /**
- * Avant chaque recherche de candidats par l'IA : abonnement actif, adresse vérifiée, puis une place sur les quotas du
- * jour (organisation, puis toutes). Une recherche qui échoue compte quand même (l'IA a pu être facturée), comme les
- * messages de l'assistant.
+ * Avant chaque recherche de candidats par l'IA : formule qui comprend le suivi des appels d'offres, abonnement actif,
+ * adresse vérifiée, puis une place sur les quotas du jour (celui de la formule de l'organisation, puis celui de
+ * toutes). Une recherche qui échoue compte quand même (l'IA a pu être facturée), comme les messages de l'assistant.
  */
 async function sourcingSlot(user: UserProfile, tenantId: string): Promise<string | null> {
-  const denial = sourcingDenial({ tenantId, subscriptionStatus: await tenantSubscriptionStatus(tenantId), emailVerified: user.emailVerification })
+  const access = await loadTenantAccess(tenantId)
+  const denial = featureDenial(access.entitlements, 'aoSourcing')
+    ?? sourcingDenial({ tenantId, subscriptionStatus: access.subscriptionStatus, emailVerified: user.emailVerification })
   if (denial) return denial
   const now = new Date()
-  const own = await takeDailySlotId('aoSourcingOrg', tenantId, now, AO_SOURCING_DAILY_LIMITS.perOrganisation)
-  if (!own) return SOURCING_QUOTA_MESSAGE.organisation
+  const limit = access.entitlements.dailyQuotas.aoSourcing
+  const own = await takeDailySlotId('aoSourcingOrg', tenantId, now, limit)
+  if (!own) return SOURCING_QUOTA_MESSAGE.organisation(limit)
   if (!(await takeDailySlotId('aoSourcingAll', 'platform', now, AO_SOURCING_DAILY_LIMITS.allOrganisations))) {
     console.warn('AO: plafond quotidien des recherches de candidats atteint pour toutes les organisations')
     // La place de l'organisation n'a pas servi : rendue, pour ne pas compter un refus de la plateforme contre elle.
@@ -65,11 +75,11 @@ export async function recruiterAoOfferSourcing(id: string, recompute = false) {
  * puis une place sur les quotas du jour (organisation, puis toutes). Une relance dont le traitement échoue compte quand
  * même (l'IA a pu être facturée).
  */
-async function retrySlot(user: UserProfile, tenantId: string): Promise<string | null> {
+async function retrySlot(user: UserProfile, tenantId: string, limit: number): Promise<string | null> {
   if (!user.emailVerification) return 'Vérifiez votre adresse e-mail (lien reçu à l\'inscription) pour relancer un e-mail.'
   const now = new Date()
-  const own = await takeDailySlotId('aoRetryOrg', tenantId, now, AO_RETRY_DAILY_LIMITS.perOrganisation)
-  if (!own) return RETRY_QUOTA_MESSAGE.organisation
+  const own = await takeDailySlotId('aoRetryOrg', tenantId, now, limit)
+  if (!own) return RETRY_QUOTA_MESSAGE.organisation(limit)
   if (!(await takeDailySlotId('aoRetryAll', 'platform', now, AO_RETRY_DAILY_LIMITS.allOrganisations))) {
     console.warn('AO: plafond quotidien des relances d\'e-mails atteint pour toutes les organisations')
     // La place de l'organisation n'a pas servi : rendue, pour ne pas compter un refus de la plateforme contre elle.
@@ -82,8 +92,11 @@ async function retrySlot(user: UserProfile, tenantId: string): Promise<string | 
 export async function retryRecruiterAoEmail(id: string) {
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
-  if (!(await entitled(me.tenantId))) return { error: NOT_ENTITLED }
-  return retryAoEmailOf(me.tenantId, id, { holder: 'recruiter', path: PATH, beforeRetry: () => retrySlot(me.user, me.tenantId) })
+  const access = await loadTenantAccess(me.tenantId)
+  const denial = aoDenial(me.tenantId, access)
+  if (denial) return { error: denial }
+  const limit = access.entitlements.dailyQuotas.aoRetry
+  return retryAoEmailOf(me.tenantId, id, { holder: 'recruiter', path: PATH, beforeRetry: () => retrySlot(me.user, me.tenantId, limit) })
 }
 
 /**
@@ -92,11 +105,16 @@ export async function retryRecruiterAoEmail(id: string) {
  * est proposée à la place, avec ce message.
  */
 async function rewriteSlot(user: UserProfile, tenantId: string): Promise<string | null> {
-  if (!(await entitled(tenantId))) return 'rédaction par l\'IA réservée aux organisations dont l\'abonnement est actif'
+  const access = await loadTenantAccess(tenantId)
+  const refusal = aoRefusal(tenantId, access.subscriptionStatus, access.entitlements)
+  // Phrases insérées dans « L'IA n'a pas rédigé cette version (…) » du panneau.
+  if (refusal === 'inactive') return 'rédaction par l\'IA réservée aux organisations dont l\'abonnement est actif'
+  if (refusal === 'not_included') return 'suivi des appels d\'offres non compris dans la formule de votre organisation'
   if (!user.emailVerification) return 'vérifiez votre adresse e-mail (lien reçu à l\'inscription) pour faire rédiger cette version par l\'IA'
   const now = new Date()
-  const own = await takeDailySlotId('aoRewriteOrg', tenantId, now, AO_PUBLICATION_AI_DAILY_LIMITS.perOrganisation)
-  if (!own) return PUBLICATION_AI_QUOTA_MESSAGE.organisation
+  const limit = access.entitlements.dailyQuotas.aoRewrite
+  const own = await takeDailySlotId('aoRewriteOrg', tenantId, now, limit)
+  if (!own) return PUBLICATION_AI_QUOTA_MESSAGE.organisation(limit)
   if (!(await takeDailySlotId('aoRewriteAll', 'platform', now, AO_PUBLICATION_AI_DAILY_LIMITS.allOrganisations))) {
     console.warn('AO: plafond quotidien des rédactions de publications par l\'IA atteint pour toutes les organisations')
     // La place de l'organisation n'a pas servi : rendue, pour ne pas compter un refus de la plateforme contre elle.
@@ -117,10 +135,15 @@ export async function previewRecruiterAoPublication(id: string, mode?: Publicati
   })
 }
 
-/** Offre publique de l'organisation, diffusée et sourcée comme une offre créée par ses recruteurs (publishAoOfferOf). */
+/**
+ * Offre publique de l'organisation, diffusée et sourcée comme une offre créée par ses recruteurs (publishAoOfferOf),
+ * dans la limite d'offres actives de sa formule.
+ */
 export async function publishRecruiterAoOffer(id: string, input: PublicationDraft) {
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
+  const limited = await activeJobsLimitDenial(me.tenantId)
+  if (limited) return { error: limited }
   return publishAoOfferOf(me.tenantId, id, input, me.tenantId, [PATH, '/recruiter/annonces', '/recruiter/dashboard'], me.user)
 }
 

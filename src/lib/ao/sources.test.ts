@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { ImapHostError, isPublicAddress, resolveImapHost } from './imap-host'
-import { canUseAoSourcing, counterIdFor, lockIdFor, PLATFORM_TENANT_ID } from './tenancy'
+import { STANDARD_ENTITLEMENTS } from '@/lib/plans'
+import { aoRefusal, canUseAoSourcing, counterIdFor, lockIdFor, PLATFORM_TENANT_ID } from './tenancy'
 import { offerFingerprint } from './fingerprint'
 import { originalSender, senderCompany } from './origin'
 
@@ -43,6 +44,14 @@ describe('organisations', () => {
     for (const status of ['past_due', 'suspended', 'cancelled', 'refunded', '', null]) assert.equal(canUseAoSourcing('t1', status), false, String(status))
   })
 
+  it('ferme aussi le suivi des appels d\'offres quand la formule sur mesure ne le comprend pas', () => {
+    const without = { ...STANDARD_ENTITLEMENTS, features: { ...STANDARD_ENTITLEMENTS.features, aoSourcing: false } }
+    assert.equal(aoRefusal('t1', 'active', STANDARD_ENTITLEMENTS), null)
+    assert.equal(aoRefusal('t1', 'cancelled', STANDARD_ENTITLEMENTS), 'inactive')
+    assert.equal(aoRefusal('t1', 'active', without), 'not_included')
+    assert.equal(aoRefusal(PLATFORM_TENANT_ID, null, without), null)
+  })
+
   it('donne à chaque organisation son verrou et ses compteurs, en identifiants Appwrite valides', () => {
     const day = new Date('2026-10-21T23:30:00Z')
     const long = 'x'.repeat(36)
@@ -50,6 +59,8 @@ describe('organisations', () => {
       lockIdFor('t1'), lockIdFor(long), counterIdFor('vision', long, day), counterIdFor('tables', 't1', day), counterIdFor('mailboxTests', 't1', day),
       `${counterIdFor('mailboxTestsAll', 'plateforme', day)}_499`, `${counterIdFor('assistantUser', long, day)}_29`, `${counterIdFor('assistantAll', 'platform', day)}_999`,
       `${counterIdFor('vivierMatchAll', 'platform', day)}_1999`, `${counterIdFor('aoPageOrg', long, day)}_29`, `${counterIdFor('aoPageAll', 'platform', day)}_299`,
+      `${counterIdFor('interviewAiOrg', long, day)}_9999`, `${counterIdFor('interviewAiAll', 'platform', day)}_4999`,
+      `${counterIdFor('interviewInviteOrg', long, day)}_99`, `${counterIdFor('interviewRoom', long, day)}_199`,
     ]) {
       assert.match(id, /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,35}$/, id)
     }
@@ -57,7 +68,7 @@ describe('organisations', () => {
       'vision', 'tables', 'mailboxTests', 'mailboxTarget', 'mailboxTestsAll', 'assistantUser', 'assistantAll', 'cvExportOrg', 'cvExportAll',
       'cvTemplateOrg', 'cvTemplatePreview', 'aoSourcingOrg', 'aoSourcingAll', 'aoRetryOrg', 'aoRetryAll', 'aoRewriteOrg', 'aoRewriteAll',
       'vivierMatchOrg', 'vivierMatchAll', 'cvTemplateAll', 'socialScenes', 'socialScenesAll', 'mbcSearchOrg', 'mbcSearchAll', 'mbcRevealOrg', 'mbcRevealAll',
-      'aoPageOrg', 'aoPageAll',
+      'aoPageOrg', 'aoPageAll', 'interviewAiOrg', 'interviewAiAll', 'interviewInviteOrg', 'interviewRoom',
     ] as const).map(c => counterIdFor(c, 't1', day).split('_')[0])
     assert.equal(new Set(prefixes).size, prefixes.length, 'un préfixe par compteur')
     assert.notEqual(lockIdFor('t1'), lockIdFor('t2'))
