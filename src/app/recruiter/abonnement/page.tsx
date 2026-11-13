@@ -6,9 +6,13 @@ import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { formatDateFr } from '@/lib/format-date'
+import { offerPriceText, offerState, type PlanOffer } from '@/lib/plan-offers'
+import { isPlanOffersConfigured, loadOffer } from '@/lib/plan-offers-store'
+import { DAILY_QUOTAS, DAILY_QUOTA_LABEL, FEATURES, FEATURE_LABEL } from '@/lib/plans'
 import { subscriptionView, type SubscriptionTone } from '@/lib/subscription-view'
 import { canManageTeam, roleOf } from '@/lib/team-roles'
 import { BillingPortalButton } from './billing-portal-button'
+import { CustomOfferCard, type CustomOfferView } from './custom-offer-card'
 
 export const metadata = { title: 'Abonnement' }
 
@@ -25,6 +29,29 @@ const TONE: Record<SubscriptionTone, { background: string; color: string }> = {
 
 const surface = { background: 'var(--color-surface)', border: '1px solid var(--color-border)' } as const
 
+/** Offre sur mesure à montrer (ADR 0034) ; null si aucune ou retirée. */
+function offerView(offer: PlanOffer | null, tenantPlan: unknown, now: Date): CustomOfferView | null {
+  if (!offer) return null
+  const state = offerState(offer, now)
+  if (state === 'withdrawn') return null
+  const { terms } = offer
+  return {
+    name: offer.name,
+    priceText: offerPriceText(offer),
+    paymentMethod: offer.paymentMethod,
+    paymentText: offer.paymentMethod === 'card' ? 'Carte bancaire' : `Facture Stripe, à régler sous ${offer.daysUntilDue} jours`,
+    state: state === 'accepted' ? (tenantPlan === 'custom' ? 'active' : 'unpaid') : state,
+    validUntil: formatDateFr(offer.validUntil),
+    acceptedAt: offer.acceptedAt ? formatDateFr(offer.acceptedAt) : null,
+    limits: [
+      `${terms.maxUsers} utilisateurs`,
+      terms.maxActiveJobs === null ? 'Offres actives sans limite' : `${terms.maxActiveJobs} ${terms.maxActiveJobs > 1 ? 'offres actives' : 'offre active'} à la fois`,
+    ],
+    features: FEATURES.map(f => ({ label: FEATURE_LABEL[f], included: terms.features[f] })),
+    quotas: DAILY_QUOTAS.map(q => ({ label: DAILY_QUOTA_LABEL[q], value: terms.dailyQuotas[q] })),
+  }
+}
+
 export default async function SubscriptionPage() {
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) redirect('/login')
@@ -39,6 +66,18 @@ export default async function SubscriptionPage() {
       .catch(err => { console.error('[abonnement] propriétaire illisible', err instanceof Error ? err.message : String(err)); return undefined })
     : undefined
   const ownerName = owner ? `${owner.firstName ?? ''} ${owner.lastName ?? ''}`.trim() : ''
+  // Offre sur mesure : illisible, la page s'affiche avec un message.
+  let offer: PlanOffer | null = null
+  let offerError = ''
+  if (isPlanOffersConfigured()) {
+    try {
+      offer = await loadOffer(user.tenantId)
+    } catch (err) {
+      console.error('[abonnement] offre sur mesure illisible', err instanceof Error ? err.message : String(err))
+      offerError = 'Votre offre sur mesure est momentanément illisible : rechargez la page dans quelques instants.'
+    }
+  }
+  const customOffer = offerView(offer, tenant.plan, new Date())
 
   const role = roleOf(user.userId, tenant)
   const view = subscriptionView(tenant)
@@ -54,6 +93,8 @@ export default async function SubscriptionPage() {
 
       {/* Deux cartes côte à côte dès 1024 px, centrées : la page ne laisse plus la moitié droite vide. */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 grid gap-5 lg:grid-cols-2 items-start">
+        {offerError && <p role="alert" className="text-sm lg:col-span-2" style={{ color: '#b91c1c' }}>{offerError}</p>}
+        {customOffer && <CustomOfferCard offer={customOffer} canAccept={canManageTeam(role)} />}
         <section className="rounded-2xl p-5 sm:p-6 space-y-5" style={surface} aria-labelledby="sub-plan">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
@@ -70,7 +111,10 @@ export default async function SubscriptionPage() {
             </div>
             <div>
               <dt className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Paiement</dt>
-              <dd style={{ color: 'var(--color-text)' }}>{view.billedByStripe ? 'Carte bancaire (Stripe)' : 'Réglé avec l’équipe MyBestConsultant'}</dd>
+              <dd style={{ color: 'var(--color-text)' }}>
+                {!view.billedByStripe ? 'Réglé avec l’équipe MyBestConsultant'
+                  : tenant.plan === 'custom' && offer?.paymentMethod === 'invoice' ? 'Facture Stripe (virement)' : 'Carte bancaire (Stripe)'}
+              </dd>
             </div>
           </dl>
           <p className="flex items-start gap-2 text-sm rounded-xl p-3" style={{ background: 'var(--color-background)', color: 'var(--color-text)' }}>

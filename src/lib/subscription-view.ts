@@ -48,6 +48,7 @@ export function subscriptionView(tenant: Record<string, unknown>): SubscriptionV
     tone: known?.tone ?? 'muted',
     entitled: status === 'active' || status === 'trialing',
     amountText: amount === null ? null : `${amount.toLocaleString('fr-FR')} € / ${period}`,
-    billedByStripe: text(tenant.stripeCustomerId) !== '' && STRIPE_PLANS.has(plan),
+    // Offre sur mesure : payée chez Stripe si un abonnement Stripe y est rattaché (sinon réglée avec l'équipe).
+    billedByStripe: text(tenant.stripeCustomerId) !== '' && (STRIPE_PLANS.has(plan) || (plan === 'custom' && text(tenant.stripeSubscriptionId) !== '')),
   }
 }

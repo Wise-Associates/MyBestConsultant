@@ -5,7 +5,11 @@ import { useState } from 'react'
 import { Check, Sparkles, ShieldCheck } from 'lucide-react'
 import type { UserRole } from '@/types'
 import { CheckoutModal } from './checkout-modal'
+import { startSubscriptionCheckout } from './actions'
 import type { PaidPlanId } from '@/lib/plans'
+
+// Titres de la fenêtre de paiement par carte (prix de PLAN_PRICE_CENTS, plans.ts).
+const CHECKOUT_LABEL: Record<PaidPlanId, string> = { essentiel: 'Essentiel — 99 €/mois', pro: 'Pro — 199 €/mois' }
 
 interface Plan {
   id: string
@@ -156,7 +160,16 @@ export function PricingClient({ userRole }: { userRole: UserRole | null }) {
         </div>
       </div>
 
-      {payingPlan && <CheckoutModal planId={payingPlan} onClose={() => setPayingPlan(null)} />}
+      {payingPlan && (
+        <CheckoutModal
+          title={`Abonnement — ${CHECKOUT_LABEL[payingPlan]}`}
+          payLabel={`Payer ${CHECKOUT_LABEL[payingPlan].split(' — ')[1]}`}
+          paidText={`Votre abonnement ${CHECKOUT_LABEL[payingPlan]} est actif.`}
+          doneText={`Votre abonnement passe à ${CHECKOUT_LABEL[payingPlan]}. La différence au prorata figurera sur votre prochaine facture.`}
+          start={() => startSubscriptionCheckout(payingPlan)}
+          onClose={() => setPayingPlan(null)}
+        />
+      )}
 
       {/* Trust strip */}
       <div className="px-4 lg:px-8 pb-24">

@@ -105,4 +105,11 @@ describe('évènements Stripe appliqués à l\'organisation', () => {
     assert.equal(tenantPatchFor('subscription_updated', sub({ status: 'incomplete' }), tenant, NOW), null)
     assert.equal(tenantPatchFor('subscription_updated', sub({ status: 'canceled' }), tenant, NOW), null)
   })
+
+  it('ferme l\'accès quand Stripe met l\'abonnement en retard (facture impayée à l\'échéance)', () => {
+    assert.deepEqual(tenantPatchFor('subscription_updated', sub({ status: 'past_due' }), tenant, NOW), { subscriptionStatus: 'past_due' })
+    assert.deepEqual(tenantPatchFor('subscription_updated', sub({ status: 'unpaid' }), tenant, NOW), { subscriptionStatus: 'past_due' })
+    // Jamais pour un autre abonnement que celui de l'organisation.
+    assert.equal(tenantPatchFor('subscription_updated', sub({ id: 'sub_old', status: 'past_due' }), tenant, NOW), null)
+  })
 })

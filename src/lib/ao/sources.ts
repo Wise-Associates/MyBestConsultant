@@ -3,6 +3,8 @@ import { Query, type Models } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { batchByLength } from './repo'
+import { acceptedTerms, type PlanOffer } from '@/lib/plan-offers'
+import { loadOffers } from '@/lib/plan-offers-store'
 import { entitlementsOf } from '@/lib/plans'
 import { aoRefusal, PLATFORM_NAME, PLATFORM_TENANT_ID } from './tenancy'
 
@@ -145,8 +147,21 @@ export async function loadOrganizations(tenantIds: string[]): Promise<Map<string
   if (tenantIds.includes(PLATFORM_TENANT_ID)) orgs.set(PLATFORM_TENANT_ID, { tenantId: PLATFORM_TENANT_ID, name: PLATFORM_NAME, entitled: true })
   for (const batch of batchByLength([...new Set(tenantIds.filter(id => id && id !== PLATFORM_TENANT_ID))])) {
     const res = await databases.listDocuments(DB_ID, COLLECTIONS.TENANTS, [Query.equal('$id', batch), Query.limit(batch.length)])
+    // Formule « custom » : droits de l'offre sur mesure acceptée (ADR 0034), comme loadTenantAccess. Offres illisibles :
+    // seules les organisations « custom » du lot sont tenues pour non abonnées (jamais des droits devinés), les autres
+    // sont lues normalement.
+    const custom = res.documents.filter(doc => doc.plan === 'custom').map(doc => doc.$id)
+    let offers: Map<string, PlanOffer> | null
+    try {
+      offers = await loadOffers(custom)
+    } catch (err) {
+      console.error('AO: offres sur mesure illisibles, boîtes des organisations « custom » non lues', err instanceof Error ? err.message : String(err))
+      offers = null
+    }
     for (const doc of res.documents) {
-      orgs.set(doc.$id, { tenantId: doc.$id, name: str(doc.name), entitled: aoRefusal(doc.$id, str(doc.subscriptionStatus), entitlementsOf({ plan: doc.plan })) === null })
+      const unreadable = doc.plan === 'custom' && offers === null
+      const entitlements = entitlementsOf({ plan: doc.plan, subscriptionStatus: doc.subscriptionStatus }, acceptedTerms(offers?.get(doc.$id) ?? null))
+      orgs.set(doc.$id, { tenantId: doc.$id, name: str(doc.name), entitled: !unreadable && aoRefusal(doc.$id, str(doc.subscriptionStatus), entitlements) === null })
     }
   }
   return orgs
