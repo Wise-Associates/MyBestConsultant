@@ -1,6 +1,7 @@
 import type { AoOfferStatus } from './types'
+import { addDays, dayOf, dayOfInstant, inPeriod, type StatsPeriod } from './stats-filters'
 
-// Statistiques de la page AO Offers (règles pures, testées) : offres par mois, séniorité, compétences et
+// Statistiques de la page AO Offers (règles pures, testées) : offres reçues dans le temps, séniorité, compétences et
 // technologies, TJM, clients, villes, assistance technique ou forfait.
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
@@ -35,27 +36,57 @@ export function seniorityOf(experience: string): Seniority {
   return 'unknown'
 }
 
-export interface MonthCount {
-  /** AAAA-MM */
-  month: string
+/** Graphique des offres reçues : une barre par jour, par semaine (du lundi) ou par mois. */
+export type TimeGrain = 'day' | 'week' | 'month'
+
+export interface TimeBucket {
+  /** Premier jour de la tranche (AAAA-MM-JJ, UTC) ; une semaine peut commencer avant la période. */
+  start: string
   to_review: number
   published: number
   ignored: number
 }
 
-/** Offres par mois de réception, sur les 12 mois qui finissent au mois de `now` (UTC), par statut. */
-export function offersByMonth(rows: { receivedAt: string; status: AoOfferStatus }[], now: Date): MonthCount[] {
-  const months: MonthCount[] = []
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1))
-    months.push({ month: d.toISOString().slice(0, 7), to_review: 0, published: 0, ignored: 0 })
+/** Barres lisibles : par jour jusqu'à 31 jours, par semaine jusqu'à 120 jours (17 barres), par mois au-delà. */
+export function grainOf(period: StatsPeriod): TimeGrain {
+  const days = (Date.parse(`${period.to}T00:00:00Z`) - Date.parse(`${period.from}T00:00:00Z`)) / 86_400_000 + 1
+  return days <= 31 ? 'day' : days <= 120 ? 'week' : 'month'
+}
+
+function bucketStart(day: string, grain: TimeGrain): string {
+  if (grain === 'day') return day
+  if (grain === 'month') return `${day.slice(0, 7)}-01`
+  const weekday = (new Date(`${day}T00:00:00Z`).getUTCDay() + 6) % 7 // lundi : 0
+  return addDays(day, -weekday)
+}
+
+function nextBucket(start: string, grain: TimeGrain): string {
+  if (grain === 'day') return addDays(start, 1)
+  if (grain === 'week') return addDays(start, 7)
+  const date = new Date(`${start}T00:00:00Z`)
+  date.setUTCMonth(date.getUTCMonth() + 1)
+  return dayOf(date)
+}
+
+/** Offres reçues sur la période, par jour, semaine ou mois de réception (UTC) et par statut ; hors période : ignorées. */
+export function offersOverTime(rows: { receivedAt: string; status: AoOfferStatus }[], period: StatsPeriod): { grain: TimeGrain; buckets: TimeBucket[] } {
+  const grain = grainOf(period)
+  const buckets: TimeBucket[] = []
+  for (let start = bucketStart(period.from, grain); start <= period.to; start = nextBucket(start, grain)) {
+    buckets.push({ start, to_review: 0, published: 0, ignored: 0 })
   }
-  const byMonth = new Map(months.map(m => [m.month, m]))
+  const byStart = new Map(buckets.map(b => [b.start, b]))
   for (const row of rows) {
-    const month = byMonth.get(row.receivedAt.slice(0, 7))
-    if (month) month[row.status]++
+    if (!inPeriod(row.receivedAt, period)) continue
+    const bucket = byStart.get(bucketStart(dayOfInstant(row.receivedAt), grain))
+    if (bucket) bucket[row.status]++
   }
-  return months
+  return { grain, buckets }
+}
+
+/** Les 12 mois qui finissent au mois de `now` (UTC) : période des statistiques d'une organisation (page recruteur). */
+export function lastTwelveMonths(now: Date): StatsPeriod {
+  return { from: dayOf(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1))), to: dayOf(now) }
 }
 
 export interface LabelCount {

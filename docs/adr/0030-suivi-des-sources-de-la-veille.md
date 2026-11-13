@@ -70,8 +70,27 @@ de statistiques des recruteurs (choix de l'utilisateur, 2026-11-10).
 - **Retour arrière** : revenir sur le code de MyBestConsultant ou du scanner suffit ; l'attribut et la collection
   restent (`schema:push` ne supprime rien), `veille_runs` ne contient aucune donnée personnelle et est bornée à 120
   documents.
-- Sans la variable, la section affiche « Suivi des sources non configuré » et la route répond 503.
+- Sans la variable, le tableau affiche « État des sites de la veille non suivi » (les offres restent comptées par site) et
+  la route répond 503.
 - Les offres de la veille dédoublonnées avec une offre déjà reçue n'ont pas de source à elles : le suivi compte les
   offres créées, comme les statistiques de la page.
 - Un passage interrompu avant l'enregistrement de son état n'envoie pas de rapport : l'alerte « aucun rapport depuis
   13 heures » le révèle, en plus de l'alerte e-mail du scanner.
+
+## Évolution du 2026-11-13 : par site source, filtres de période et de sites
+
+Demande de l'utilisateur : le suivi par site source, pas par organisme, clair, filtrable par date, avec « Tout
+sélectionner ». Choix validés le même jour : les filtres s'appliquent à toute la page, BOAMP et TED sont réunis avec leur
+recherche chez tous les acheteurs, « E-mails AO » est une source à part entière, la page s'ouvre sur 30 jours.
+
+- **Une ligne par site** (`siteOfSource`, `src/lib/veille/monitoring.ts`) : BOAMP, TED, « Choisir le service public »
+  (toutes ses recherches, une par organisme, en détail repliable), chaque site carrières, « E-mails AO », « Veille,
+  source non enregistrée ». État du site : le plus grave de ses recherches lues par le scanner (« En échec : 1 sur 7 »),
+  avec le message de la recherche en cause. Une recherche retirée des réglages garde son site quand on le connaît
+  (identifiant `csp-…` de /admin/veille, sites intégrés), sinon une ligne à son nom.
+- **Filtres** (`src/lib/ao/stats-filters.ts`, formulaire GET `src/components/ao/stats-filters.tsx`) : période
+  (7 jours, 30 jours, 12 mois glissants, ou dates ; jours UTC comme la liste AO ; 731 jours au plus) et sites. Les
+  offres de la période sont lues par l'index de la liste (filtre de dates existant), puis filtrées par site ; chiffres,
+  graphique dans le temps (jour, semaine ou mois selon la durée) et tableau les suivent.
+- Les totaux « sur 30 jours » deviennent ceux **de la période**. Les chiffres de lecture ne remontent pas avant le plus
+  ancien des 120 passages gardés : la page l'indique au lieu de laisser croire à zéro.
