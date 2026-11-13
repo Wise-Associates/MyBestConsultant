@@ -46,9 +46,10 @@ export function PlanChoice({ currentPlan, canChoose, blockedReason, hasCustomOff
               </div>
               <p style={{ color: 'var(--color-text)' }}>
                 <span className="text-2xl font-semibold">{card.priceLabel}</span>
-                <span className="text-sm ml-1" style={{ color: 'var(--color-text-muted)' }}>{card.period}</span>
+                <span className="text-sm ml-1" style={{ color: 'var(--color-text-muted)' }}>{card.unit}</span>
               </p>
               <ul className="space-y-1.5 text-sm flex-1">
+                {card.featuresIntro && <li className="font-semibold" style={{ color: 'var(--color-text)' }}>{card.featuresIntro}</li>}
                 {card.features.map(f => (
                   <li key={f} className="flex items-start gap-2" style={{ color: 'var(--color-text)' }}>
                     <Check className="h-4 w-4 mt-0.5 shrink-0" style={{ color: 'var(--color-brand-orange)' }} aria-hidden />{f}
