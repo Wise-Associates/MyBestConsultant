@@ -41,7 +41,7 @@ export default async function MailboxesPage() {
         {refusal && (
           <p role="status" className="text-sm p-4 rounded-2xl" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
             {refusal === 'inactive'
-              ? <>Votre abonnement n&apos;est pas actif : vos boîtes ne sont pas lues. Elles le seront dès sa réactivation (<Link href="/abonnement">voir les offres</Link>).</>
+              ? <>Votre abonnement n&apos;est pas actif : vos boîtes ne sont pas lues. Elles le seront dès sa réactivation (<Link href="/recruiter/abonnement#formules">voir les formules</Link>).</>
               : <>{featureDenial(access.entitlements, 'aoSourcing')} Vos boîtes ne sont pas lues.</>}
           </p>
         )}

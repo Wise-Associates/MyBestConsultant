@@ -1,6 +1,6 @@
 # 0034 — Formules, droits des organisations et offres sur mesure
 
-- Statut : accepté (étapes 1 et 2 livrées le 2026-11-13 ; étape 3 à venir)
+- Statut : accepté (étapes 1, 2 et 3 livrées le 2026-11-13)
 - Date : 2026-11-13
 
 ## Contexte
@@ -126,10 +126,19 @@ Choix de l'utilisateur (2026-11-13) :
    collection) : une panne qui remonte, jamais « aucune offre » ; dans le passage planifié, seules les organisations
    `custom` du lot sont alors tenues pour non abonnées.
 
-### Étape 3 (à venir) : pages
+### Étape 3 (livrée) : pages
 
-`/recruiter/abonnement` : formule actuelle, cartes des formules, paiement, offre sur mesure. `/abonnement` : carte
-« Sur mesure » (devis), « Gérer mon abonnement » pour un recruteur connecté.
+1. **Textes des formules** : une liste (`src/lib/plan-catalog.ts`, testée) pour les deux pages ; prix lus dans
+   `PLAN_PRICE_CENTS` (ceux que Stripe facture), jamais écrits deux fois.
+2. **`/recruiter/abonnement`** : section « Formules » (`plan-choice.tsx`) — Essentiel, Pro et Sur mesure ; « Choisir »
+   pour le propriétaire et les administrateurs ouvre le paiement par carte (`startSubscriptionCheckout`, déplacée dans
+   `src/app/recruiter/abonnement/actions.ts`, avec la fenêtre `checkout-modal.tsx`) ; formule actuelle signalée ;
+   changement refusé d'avance si l'organisation est suspendue ou sous contrat sur mesure (« contactez-nous ») — le
+   serveur le revérifie. « Sur mesure » : l'offre préparée par l'équipe, sinon « Demander un devis ».
+3. **`/abonnement`** (page publique, sans paiement) : Essai, Essentiel, Pro et une carte « Sur mesure » → « Demander un
+   devis » (`/contact?sujet=devis`, sujet prérempli parmi des valeurs connues seulement). Recruteur connecté :
+   « Gérer mon abonnement » → `/recruiter/abonnement` ; visiteur : inscription ; candidat ou chasseur : contact.
+4. Liens de l'espace recruteur vers les formules : `/recruiter/abonnement#formules`.
 
 ## Conséquences
 

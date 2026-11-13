@@ -1,10 +1,10 @@
-import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { Query } from 'node-appwrite'
 import { ArrowRight, CreditCard, ShieldCheck } from 'lucide-react'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
+import { isAdminHold } from '@/lib/billing'
 import { formatDateFr } from '@/lib/format-date'
 import { offerPriceText, offerState, type PlanOffer } from '@/lib/plan-offers'
 import { isPlanOffersConfigured, loadOffer } from '@/lib/plan-offers-store'
@@ -13,12 +13,14 @@ import { subscriptionView, type SubscriptionTone } from '@/lib/subscription-view
 import { canManageTeam, roleOf } from '@/lib/team-roles'
 import { BillingPortalButton } from './billing-portal-button'
 import { CustomOfferCard, type CustomOfferView } from './custom-offer-card'
+import { PlanChoice } from './plan-choice'
 
 export const metadata = { title: 'Abonnement' }
 
-// Abonnement de l'organisation (ADR 0033) : formule, état, montant, depuis quand ; « Changer de formule » (page
-// /abonnement) pour le propriétaire et les administrateurs ; factures, moyen de paiement et résiliation dans le portail
-// Stripe pour le propriétaire seul. Les notes de l'admin (`subscriptionNotes`) ne sont pas montrées.
+// Abonnement de l'organisation (ADR 0033, 0034) : formule, état, montant, depuis quand ; offre sur mesure ; choix et
+// paiement d'une formule (section « Formules ») pour le propriétaire et les administrateurs ; factures, moyen de
+// paiement et résiliation dans le portail Stripe pour le propriétaire seul. Les notes de l'admin (`subscriptionNotes`)
+// ne sont pas montrées.
 
 const TONE: Record<SubscriptionTone, { background: string; color: string }> = {
   ok: { background: 'rgba(16,185,129,0.1)', color: '#047857' },
@@ -78,6 +80,12 @@ export default async function SubscriptionPage() {
     }
   }
   const customOffer = offerView(offer, tenant.plan, new Date())
+  const currentPlan = typeof tenant.plan === 'string' && tenant.plan ? tenant.plan : null
+  // Changement de formule refusé d'avance (le serveur le revérifie) : organisation suspendue par l'admin, ou contrat sur
+  // mesure en cours (ses conditions et son mode de paiement se changent avec l'équipe).
+  const planBlocked = isAdminHold(tenant.subscriptionStatus)
+    ? 'L’abonnement de votre organisation est suspendu : contactez-nous pour le rétablir.'
+    : currentPlan === 'custom' ? 'Votre offre sur mesure est en cours : contactez-nous pour changer de formule.' : null
 
   const role = roleOf(user.userId, tenant)
   const view = subscriptionView(tenant)
@@ -128,9 +136,9 @@ export default async function SubscriptionPage() {
         <section className="rounded-2xl p-5 sm:p-6 space-y-4" style={surface} aria-labelledby="sub-manage">
           <h2 id="sub-manage" style={{ color: 'var(--color-text)', fontSize: '1rem', fontWeight: 600, lineHeight: 1.4 }}>Gérer l’abonnement</h2>
           {canManageTeam(role) ? (
-            <Link href="/abonnement" className="inline-flex items-center gap-1.5 text-sm font-semibold no-underline hover:underline" style={{ color: 'var(--color-brand-orange)' }}>
+            <a href="#formules" className="inline-flex items-center gap-1.5 text-sm font-semibold no-underline hover:underline" style={{ color: 'var(--color-brand-orange)' }}>
               Changer de formule <ArrowRight className="h-4 w-4" aria-hidden />
-            </Link>
+            </a>
           ) : (
             <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Le propriétaire et les administrateurs de l’organisation peuvent changer de formule.</p>
           )}
@@ -144,6 +152,8 @@ export default async function SubscriptionPage() {
             </p>
           )}
         </section>
+
+        <PlanChoice currentPlan={currentPlan} canChoose={canManageTeam(role)} blockedReason={planBlocked} hasCustomOffer={!!customOffer} />
       </div>
     </div>
   )

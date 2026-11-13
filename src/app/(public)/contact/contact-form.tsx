@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import { Loader2, CheckCircle2, Send } from 'lucide-react'
 import { submitContactForm } from './actions'
 
-export function ContactForm() {
+export function ContactForm({ defaultSubject = '' }: { defaultSubject?: string }) {
   const [sent, setSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -51,7 +51,7 @@ export function ContactForm() {
       </div>
       <div>
         <label className="block text-xs font-semibold mb-1.5 uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>Sujet</label>
-        <input name="subject" className={inp} style={inpStyle} />
+        <input name="subject" defaultValue={defaultSubject} className={inp} style={inpStyle} />
       </div>
       <div>
         <label className="block text-xs font-semibold mb-1.5 uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>Message</label>

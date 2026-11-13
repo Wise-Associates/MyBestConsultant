@@ -4,7 +4,12 @@ import { ContactForm } from './contact-form'
 
 export const metadata = { title: 'Contact — MyBestConsultant' }
 
-export default function ContactPage() {
+// Sujets préremplis par un lien (« Demander un devis » de /abonnement) ; seule une valeur connue est reprise.
+const SUBJECTS: Record<string, string> = { devis: 'Demande de devis — offre sur mesure' }
+
+export default async function ContactPage({ searchParams }: { searchParams: Promise<{ sujet?: string | string[] }> }) {
+  const { sujet } = await searchParams
+  const defaultSubject = typeof sujet === 'string' && Object.hasOwn(SUBJECTS, sujet) ? SUBJECTS[sujet] : ''
   return (
     <div className="px-4 lg:px-8 py-16 lg:py-24" style={{ background: 'var(--color-background)' }}>
       <div className="max-w-5xl mx-auto">
@@ -38,7 +43,7 @@ export default function ContactPage() {
           </div>
 
           <div className="lg:col-span-3">
-            <ContactForm />
+            <ContactForm defaultSubject={defaultSubject} />
           </div>
         </div>
       </div>
