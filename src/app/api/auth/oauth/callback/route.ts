@@ -8,11 +8,17 @@ import type { UserRole } from '@/types'
 // Landing point after a Google/LinkedIn OAuth2 token flow (see getOAuthUrl). Appwrite
 // appends userId+secret on success; we exchange them for a real session server-side —
 // same pattern as email/password login — so mbc-session/mbc-role get set consistently.
+// Redirections construites sur l'adresse publique du site (celle que la page de connexion donne à Appwrite comme
+// retour), jamais sur req.url : derrière Caddy, le serveur standalone écoute sur HOSTNAME=0.0.0.0 (Dockerfile) et
+// req.url vaut http://0.0.0.0:3000/… — après une inscription Google, compte et session étaient créés mais le
+// navigateur partait vers 0.0.0.0 (retour d'un utilisateur du 2026-11-14).
+const APP_ORIGIN = process.env.NEXT_PUBLIC_APP_URL ?? 'https://mybestconsultant.fr'
+
 export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get('userId')
   const secret = req.nextUrl.searchParams.get('secret')
   if (!userId || !secret) {
-    return NextResponse.redirect(new URL('/login?error=oauth', req.url))
+    return NextResponse.redirect(new URL('/login?error=oauth', APP_ORIGIN))
   }
 
   try {
@@ -35,7 +41,7 @@ export async function GET(req: NextRequest) {
     // NextResponse.redirect() in a Route Handler, which was silently dropping the
     // session cookie (login "succeeded" but the very next request came back
     // unauthenticated).
-    const dashboardUrl = new URL(DASHBOARD_BY_ROLE[role] ?? '/candidate/dashboard', req.url)
+    const dashboardUrl = new URL(DASHBOARD_BY_ROLE[role] ?? '/candidate/dashboard', APP_ORIGIN)
     // Temporary: shows exactly why the LinkedIn/Google photo import did or didn't
     // run, visible right in the address bar after login — remove once confirmed.
     if (enrichDiag) dashboardUrl.searchParams.set('_enrich', enrichDiag)
@@ -60,7 +66,7 @@ export async function GET(req: NextRequest) {
     // Temporary: surface the real reason in the redirect so we can tell apart a
     // rejected token exchange from a profile/cookie failure during live testing.
     const reason = err instanceof Error ? err.message : 'unknown'
-    const failUrl = new URL('/login', req.url)
+    const failUrl = new URL('/login', APP_ORIGIN)
     failUrl.searchParams.set('error', 'oauth')
     failUrl.searchParams.set('reason', reason.slice(0, 200))
     return NextResponse.redirect(failUrl)

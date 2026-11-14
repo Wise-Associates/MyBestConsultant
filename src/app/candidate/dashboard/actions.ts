@@ -1,6 +1,6 @@
 'use server'
 
-import { normalizeWhatsApp } from '@/lib/whatsapp'
+import { cvProfileJsonError, parseCandidateProfileInput, type ProfileField, type ProfileInput } from '@/lib/candidate-profile-input'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
@@ -31,38 +31,28 @@ export async function saveCvFileId(fileId: string): Promise<void> {
   revalidatePath('/candidate/dashboard')
 }
 
-export async function updateCandidateProfile(data: {
-  phone: string
-  /** Numéro WhatsApp saisi librement ; vide = ne pas être contacté sur WhatsApp. */
-  whatsapp?: string
-  city: string
-  mobilityRadiusKm: number | null
-  skills: string[]
-  experienceSummary: string
-  openToWork: boolean
-  desiredSector: string[]
-  desiredRoles: string[]
-  photoUrl: string
-  linkedinUrl: string
-}): Promise<{ ok?: boolean; error?: string }> {
+export async function updateCandidateProfile(input: ProfileInput): Promise<{ ok?: boolean; error?: string; field?: ProfileField }> {
   const user = await getCurrentUser()
-  if (!user) return { error: 'Non connecté' }
+  if (!user) return { error: 'Session expirée : reconnectez-vous puis réessayez.' }
 
-  // Numéro WhatsApp : normalisé au format international, ou refusé avec un message clair.
-  const wa = normalizeWhatsApp(data.whatsapp ?? '')
-  if (wa.error) return { error: wa.error }
+  const parsed = parseCandidateProfileInput(input)
+  if (!parsed.ok) return { error: parsed.error, field: parsed.field }
+  const data = parsed.values
 
   try {
     const { databases } = createAdminClient()
     const doc = await databases.getDocument(DB_ID, COLLECTIONS.USERS, user.$id)
     const existing: Partial<CvProfile> = doc.cvProfileJson ? JSON.parse(doc.cvProfileJson as string) : {}
+    const cvProfileJson = JSON.stringify({ ...existing, skills: data.skills, experienceSummary: data.experienceSummary })
+    const tooLong = cvProfileJsonError(cvProfileJson)
+    if (tooLong) return { error: tooLong, field: 'experienceSummary' }
 
     await databases.updateDocument(DB_ID, COLLECTIONS.USERS, user.$id, {
       phone: data.phone || null,
-      whatsapp: wa.e164 || null,
+      whatsapp: data.whatsapp || null,
       city: data.city || null,
       mobilityRadiusKm: data.mobilityRadiusKm,
-      cvProfileJson: JSON.stringify({ ...existing, skills: data.skills, experienceSummary: data.experienceSummary }),
+      cvProfileJson,
       openToWork: data.openToWork,
       desiredSector: data.desiredSector.length > 0 ? data.desiredSector.join(', ') : null,
       desiredRoles: data.desiredRoles.join(', '),
@@ -72,7 +62,9 @@ export async function updateCandidateProfile(data: {
     revalidatePath('/candidate/dashboard')
     return { ok: true }
   } catch (e) {
-    return { error: e instanceof Error ? e.message : 'Erreur lors de l\'enregistrement' }
+    // Message d'Appwrite (anglais, technique) gardé pour le journal, pas montré au candidat.
+    console.error('[candidate-profile] enregistrement refusé', { userDocId: user.$id, cause: e instanceof Error ? e.message : String(e) })
+    return { error: 'L’enregistrement de votre profil a échoué. Réessayez dans un instant ; si le problème persiste, signalez-le au support.' }
   }
 }
 
