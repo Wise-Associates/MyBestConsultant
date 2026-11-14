@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { ROOM_AFTER_COMPLETION_MS, roomAccepts, roomCallCap } from './interview-room'
+import { ROOM_AFTER_COMPLETION_MS, roomAccepts, roomCallCap, roomTranscriptionCap } from './interview-room'
 
 const NOW = new Date('2026-11-13T12:00:00.000Z')
 
@@ -26,5 +26,11 @@ describe('salle d\'entretien du candidat', () => {
     assert.equal(roomCallCap(JSON.stringify(Array(500).fill({}))), 200)
     assert.equal(roomCallCap('pas du json'), 20)
     assert.equal(roomCallCap(undefined), 20)
+  })
+
+  it('plafonne à part les transcriptions de l\'entretien vocal', () => {
+    assert.equal(roomTranscriptionCap(JSON.stringify(Array(8).fill({}))), 42)
+    assert.equal(roomTranscriptionCap(JSON.stringify(Array(500).fill({}))), 130)
+    assert.equal(roomTranscriptionCap('pas du json'), 10)
   })
 })

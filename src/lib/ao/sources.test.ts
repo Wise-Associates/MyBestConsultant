@@ -60,7 +60,8 @@ describe('organisations', () => {
       `${counterIdFor('mailboxTestsAll', 'plateforme', day)}_499`, `${counterIdFor('assistantUser', long, day)}_29`, `${counterIdFor('assistantAll', 'platform', day)}_999`,
       `${counterIdFor('vivierMatchAll', 'platform', day)}_1999`, `${counterIdFor('aoPageOrg', long, day)}_29`, `${counterIdFor('aoPageAll', 'platform', day)}_299`,
       `${counterIdFor('interviewAiOrg', long, day)}_9999`, `${counterIdFor('interviewAiAll', 'platform', day)}_4999`,
-      `${counterIdFor('interviewInviteOrg', long, day)}_99`, `${counterIdFor('interviewRoom', long, day)}_199`,
+      `${counterIdFor('interviewInviteOrg', long, day)}_99`, `${counterIdFor('interviewRoom', long, day)}_199`, `${counterIdFor('interviewRoomStt', long, day)}_99`,
+      `${counterIdFor('interviewSttOrg', long, day)}_299`, `${counterIdFor('interviewSttAll', 'platform', day)}_2999`,
     ]) {
       assert.match(id, /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,35}$/, id)
     }
@@ -68,7 +69,7 @@ describe('organisations', () => {
       'vision', 'tables', 'mailboxTests', 'mailboxTarget', 'mailboxTestsAll', 'assistantUser', 'assistantAll', 'cvExportOrg', 'cvExportAll',
       'cvTemplateOrg', 'cvTemplatePreview', 'aoSourcingOrg', 'aoSourcingAll', 'aoRetryOrg', 'aoRetryAll', 'aoRewriteOrg', 'aoRewriteAll',
       'vivierMatchOrg', 'vivierMatchAll', 'cvTemplateAll', 'socialScenes', 'socialScenesAll', 'mbcSearchOrg', 'mbcSearchAll', 'mbcRevealOrg', 'mbcRevealAll',
-      'aoPageOrg', 'aoPageAll', 'interviewAiOrg', 'interviewAiAll', 'interviewInviteOrg', 'interviewRoom',
+      'aoPageOrg', 'aoPageAll', 'interviewAiOrg', 'interviewAiAll', 'interviewInviteOrg', 'interviewRoom', 'interviewRoomStt', 'interviewSttOrg', 'interviewSttAll',
     ] as const).map(c => counterIdFor(c, 't1', day).split('_')[0])
     assert.equal(new Set(prefixes).size, prefixes.length, 'un préfixe par compteur')
     assert.notEqual(lockIdFor('t1'), lockIdFor('t2'))
