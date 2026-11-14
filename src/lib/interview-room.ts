@@ -24,12 +24,29 @@ export function roomAccepts(session: { status?: unknown; completedAt?: unknown }
  * de quoi poser chaque question, sa relance, les lire à voix haute et enregistrer chaque réponse.
  */
 export function roomCallCap(questionsJson: unknown): number {
-  let count = 0
+  return 6 * questionCount(questionsJson) + 20
+}
+
+/**
+ * Transcriptions de réponses orales par jour pour une session de l'entretien vocal (/v2, ADR 0035), comptées à part des
+ * appels ci-dessus : 4 par question (la réponse et celle à la relance, chacune pouvant être réécoutée une fois après un
+ * bruit transcrit pour rien) et 10 de marge.
+ */
+export function roomTranscriptionCap(questionsJson: unknown): number {
+  return 4 * questionCount(questionsJson) + 10
+}
+
+/**
+ * Transcriptions de l'entretien vocal par jour, par organisation et pour toutes : à part du quota d'IA des recruteurs
+ * (interviewAi), qu'un candidat ne doit pas pouvoir épuiser. 300 = 15 entretiens complets de 10 questions par jour.
+ */
+export const TRANSCRIPTION_DAILY_LIMITS = { organisation: 300, allOrganisations: 3000 } as const
+
+function questionCount(questionsJson: unknown): number {
   try {
     const parsed = JSON.parse(typeof questionsJson === 'string' ? questionsJson : '[]')
-    count = Array.isArray(parsed) ? Math.min(parsed.length, 30) : 0
+    return Array.isArray(parsed) ? Math.min(parsed.length, 30) : 0
   } catch {
-    count = 0 // questions illisibles : la marge seule
+    return 0 // questions illisibles : la marge seule
   }
-  return 6 * count + 20
 }
