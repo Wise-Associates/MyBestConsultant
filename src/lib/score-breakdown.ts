@@ -1,14 +1,17 @@
 import {
-  DOMAIN_CAP, MAX_REQUIRED_SKILLS, MAX_REQUIREMENTS, POINTS, ROLE_CAP, SCORE_WEIGHTS, type DomainFit, type Judgement, type LevelFit,
+  DOMAIN_CAP, LIST_MISSING_BELOW, MAX_REQUIRED_SKILLS, MAX_REQUIREMENTS, MISSING_CAP, NEUTRAL, POINTS, ROLE_CAP, SCALES, fitLevel,
+  labelOf, listLevel, meanPoints, scaleKeys, scoreOf, worstJudgement,
+  type ActiveScale, type CriterionKey, type CriterionResult, type Fit, type Judgement, type ScaleName,
 } from './match-scoring'
 
 // Détail d'un score du Matching IA, en pourcentage (demande du 2026-11-05 : rendre le score transparent). Il est relu
-// dans le résumé des jugements qui commence la raison enregistrée de chaque score, pour les quatre notations
-// (judgementSummary, match-scoring.ts) : ce résumé détermine entièrement le score — part de chaque critère, ses points,
-// le plafond. Un score enregistré avant la notation par jugements (ADR 0028) n'a pas de résumé : pas de détail.
+// dans le résumé des jugements qui commence la raison enregistrée de chaque score (judgementSummary, match-scoring.ts) :
+// ce résumé détermine entièrement le score — part de chaque critère, ses points, le plafond. Trois barèmes (ADR 0036) :
+// matching, score final, et celui d'avant le 2026-11-15 pour les scores encore enregistrés avec lui, reconnus aux noms
+// de leurs critères. Un score enregistré avant la notation par jugements (ADR 0028) n'a pas de résumé : pas de détail.
 // Pur, testé (score-breakdown.test.ts : le détail redonne exactement judgedScore).
 
-export type CriterionKey = keyof typeof SCORE_WEIGHTS
+export type { CriterionKey }
 
 export interface CriterionPart {
   key: CriterionKey
@@ -23,10 +26,11 @@ export interface CriterionPart {
 }
 
 export interface ScoreBreakdown {
+  scale: ScaleName
   parts: CriterionPart[]
   /** Somme des points, arrondie, avant plafond. */
   total: number
-  /** Plafond appliqué quand il abaisse le total (poste non exercé ou voisin, domaine absent ou voisin), sinon null. */
+  /** Plafond appliqué quand il abaisse le total (critère rouge qui manque ou seulement voisin), sinon null. */
   cap: { value: number; reason: string } | null
   /** Score des jugements : le total plafonné (judgedScore). */
   score: number
@@ -34,36 +38,70 @@ export interface ScoreBreakdown {
   rest: string
 }
 
-const LABELS: Record<CriterionKey, string> = {
-  poste: 'Poste', exigences: 'Exigences', competences: 'Compétences', domaine: 'Domaine', niveau: 'Niveau',
+/** Ce qui fait jouer le plafond d'un critère rouge, pour le recruteur. */
+const CAP_REASONS: Partial<Record<CriterionKey, { non: string; partiel?: string }>> = {
+  poste: { non: 'un métier du titre de l’offre n’a pas été exercé', partiel: 'métier du titre seulement voisin' },
+  competences: { non: 'moins d’un tiers des technologies et outils demandés' },
+  client: { non: 'aucune expérience de l’environnement du client' },
+  localisation: { non: 'lieu éloigné, sans mobilité indiquée' },
+  niveau: { non: 'séniorité demandée non atteinte' },
+  formation: { non: 'diplôme ou certification exigés absents' },
+  domaine: { non: 'secteur exigé absent du parcours', partiel: 'secteur exigé seulement voisin' },
+  langue: { non: 'langue exigée absente' },
 }
 
 /**
  * Ce que mesure chaque critère, pour le recruteur (demande du 2026-11-05 : expliquer « poste », « exigences »…).
- * Reprend les consignes données à l'IA (MATCH_RULES, match-scoring.ts) : à modifier avec elles.
+ * Reprend les consignes données à l'IA (RULES, match-scoring.ts) : à modifier avec elles.
  */
 export const CRITERION_HELP: Record<CriterionKey, string> = {
   poste: 'Le candidat a-t-il exercé le métier du titre de l’offre ? Comparé aux intitulés des postes de son CV, puis '
     + 'vérifié par une seconde question à l’IA. Oui : le même métier ; partiel : un métier voisin de la même famille, ou '
     + 'exercé peu de temps ; non : un autre métier, même exercé dans la même équipe ou avec les mêmes outils. Titre à '
     + 'plusieurs métiers : chacun est jugé, la part est leur moyenne.',
-  exigences: `Les exigences de la description de l’offre (profil recherché, puis missions ; ${MAX_REQUIREMENTS} au plus, les `
-    + 'mêmes pour tous les candidats), comparées une à une aux expériences du CV. « 4 sur 6, 1 partielle » : 4 remplies '
-    + 'et 1 en partie, qui compte pour moitié. Sans liste dans l’offre : un jugement d’ensemble.',
-  competences: `Les compétences demandées par l’offre (${MAX_REQUIRED_SKILLS} au plus). Oui : pratiquée dans une expérience `
-    + 'du CV ; partiel : seulement listée dans le CV, ou voisine ; non : absente.',
+  exigences: `Le contexte et la description de l’offre : ses exigences (profil recherché, puis missions ; ${MAX_REQUIREMENTS} au `
+    + 'plus, les mêmes pour tous les candidats), comparées une à une aux expériences du CV. « 4 sur 6, 1 partielle » : 4 '
+    + 'remplies et 1 en partie, qui compte pour moitié. Sans liste dans l’offre : un jugement d’ensemble.',
+  projet: 'Le type de projet décrit par l’offre (création ou refonte, migration, intégration d’un progiciel, maintenance, '
+    + 'exploitation, transformation…) : le candidat a-t-il mené des projets de ce type ? « non précisé » : l’offre ne le '
+    + 'décrit pas, la part est complète.',
+  competences: `Les technologies, outils et expertises demandés par l’offre (${MAX_REQUIRED_SKILLS} au plus). Oui : pratiqué dans `
+    + 'une expérience du CV ; partiel : seulement listé dans le CV, ou voisin ; non : absent.',
+  client: 'L’environnement du client de l’offre (pour un AO, le client et les clients cités par l’appel d’offres). Oui : '
+    + 'le candidat a travaillé pour ce client ou son groupe ; partiel : pour un client comparable du même secteur ; non : '
+    + 'jamais dans ce type d’environnement. « non précisé » : aucun client connu, la part est complète.',
+  localisation: 'Le lieu de l’offre (télétravail compris) comparé à celui du candidat (ville du CV, mobilité indiquée). '
+    + '« non précisé » : l’offre ou le CV ne donne pas de lieu, la part est complète.',
+  niveau: 'La séniorité demandée (années, niveau, responsabilités), comptée sur les expériences du même métier et non sur '
+    + 'toute la carrière. « non précisé » : l’offre n’en demande pas, la part est complète.',
+  formation: 'Les diplômes et certifications que l’offre exige. « non requis » : l’offre n’en exige aucun, la part est '
+    + 'complète. Seulement pour le matching : le score final juge l’expérience, jamais les diplômes.',
   domaine: 'L’expérience du secteur ou du métier fonctionnel exigé (banque, assurance, santé, secteur public…), prouvée '
     + 'par le parcours : employeurs, clients, missions. Une compétence ou un outil ne la prouve pas. « non requis » : '
     + 'l’offre n’en exige aucun, la part est complète.',
-  niveau: 'Le niveau d’expérience demandé (années, séniorité, responsabilités), compté sur les expériences du même '
-    + 'métier et non sur toute la carrière. « non précisé » : l’offre n’en demande pas, la part est complète.',
+  langue: 'Les langues que l’offre exige et leur niveau. « non requis » : l’offre n’en exige aucune, la part est complète.',
+  tjm: 'Le TJM ou la rémunération de l’offre comparé à celui que le CV indique. « non précisé » : l’un des deux ne le dit '
+    + 'pas, la part est complète.',
 }
 
-/** Critères dans l'ordre du barème, avec leur nom, leur poids et ce qu'ils mesurent. */
-export const CRITERIA = (Object.keys(SCORE_WEIGHTS) as CriterionKey[])
-  .map(key => ({ key, label: LABELS[key], weight: SCORE_WEIGHTS[key], help: CRITERION_HELP[key] }))
+/** Critères d'un barème, dans son ordre, avec leur nom, leur poids, leur plafond éventuel et ce qu'ils mesurent. */
+export const criteriaOf = (scale: ActiveScale) => scaleKeys(scale).map(key => ({
+  key, label: labelOf(scale, key), weight: SCALES[scale].weights[key] ?? 0, capped: key in SCALES[scale].caps, help: CRITERION_HELP[key],
+}))
 
-const SUMMARY = /^Poste : (.+?) · Exigences : (.+?) · Compétences : (.+?) · Domaine : (oui|partiel|non requis|non) · Niveau : (oui|partiel|non précisé|non)(?= — |$)/
+/** Plafonds, en clair (guide « Comment le score est calculé »). */
+export const CAP_RULES = {
+  role: ROLE_CAP, domain: DOMAIN_CAP, missing: MISSING_CAP, listMissingPercent: Math.round(LIST_MISSING_BELOW * 100),
+}
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** Résumé de chaque barème : « Poste : (…) · Contexte : (…) · … », suivi de la raison (« — … ») ou de rien. */
+const SUMMARIES = (Object.keys(SCALES) as ScaleName[]).map(scale => ({
+  scale,
+  pattern: new RegExp(`^${scaleKeys(scale).map(key => `${escapeRegExp(labelOf(scale, key))} : (.+?)`).join(' · ')}(?= — |$)`),
+}))
+
 const JUDGEMENTS: Judgement[] = ['oui', 'partiel', 'non']
 const isJudgement = (v: string): v is Judgement => (JUDGEMENTS as string[]).includes(v)
 
@@ -90,43 +128,44 @@ function listRatio(text: string): number | null {
   return (yes * POINTS.oui + partial * POINTS.partiel) / count
 }
 
-/** Détail du score résumé au début de `reason` ; null si la raison n'a pas de résumé (score d'avant, texte coupé). */
-export function scoreBreakdown(reason: string): ScoreBreakdown | null {
-  const m = reason.match(SUMMARY)
-  if (!m) return null
-  const fits = roleFits(m[1])
-  const requirements = listRatio(m[2])
-  const skills = listRatio(m[3])
-  if (!fits || requirements === null || skills === null) return null
-  const domain = m[4] as DomainFit
-  const level = m[5] as LevelFit
-
-  // Mêmes opérations que judgedScore : la moyenne des métiers, puis chaque critère pondéré, dans le même ordre.
-  const ratios: Record<CriterionKey, number> = {
-    poste: fits.reduce((sum, f) => sum + POINTS[f], 0) / fits.length,
-    exigences: requirements,
-    competences: skills,
-    domaine: POINTS[domain],
-    niveau: POINTS[level],
+/** Critère relu dans son résumé, comme criterionResults (match-scoring.ts) le calcule ; null si illisible. */
+function resultOf(key: CriterionKey, detail: string): CriterionResult | null {
+  if (key === 'poste') {
+    const fits = roleFits(detail)
+    return fits && { key, ratio: meanPoints(fits), level: worstJudgement(fits), detail }
   }
-  const details: Record<CriterionKey, string> = { poste: m[1], exigences: m[2], competences: m[3], domaine: m[4], niveau: m[5] }
-  const keys = Object.keys(SCORE_WEIGHTS) as CriterionKey[]
-  const parts = keys.map(key => ({
-    key, label: LABELS[key], percent: Math.round(ratios[key] * 100),
-    points: SCORE_WEIGHTS[key] * ratios[key], max: SCORE_WEIGHTS[key], detail: details[key],
-  }))
-  const total = Math.round(parts.reduce((sum, p) => sum + p.points, 0))
+  if (key === 'exigences' || key === 'competences') {
+    const ratio = listRatio(detail)
+    return ratio === null ? null : { key, ratio, level: listLevel(ratio), detail }
+  }
+  if (!isJudgement(detail) && detail !== NEUTRAL[key]) return null
+  const fit = detail as Fit
+  return { key, ratio: POINTS[fit], level: fitLevel(fit), detail }
+}
 
-  // Plafonds de capFor, le plus bas l'emporte.
-  const caps: { value: number; reason: string }[] = []
-  if (fits.includes('non')) caps.push({ value: ROLE_CAP.non, reason: 'un métier du titre de l’offre n’a pas été exercé' })
-  else if (fits.includes('partiel')) caps.push({ value: ROLE_CAP.partiel, reason: 'métier du titre seulement voisin' })
-  if (domain === 'non') caps.push({ value: DOMAIN_CAP.non, reason: 'domaine exigé absent du parcours' })
-  else if (domain === 'partiel') caps.push({ value: DOMAIN_CAP.partiel, reason: 'domaine exigé seulement voisin' })
-  const lowest = caps.sort((a, b) => a.value - b.value)[0]
-  const cap = lowest && lowest.value < total ? lowest : null
-
-  return { parts, total, cap, score: cap ? cap.value : total, rest: reason.slice(m[0].length).replace(/^ — /, '') }
+/** Détail du score résumé au début de `reason` ; null si la raison n'a pas de résumé lisible (score d'avant, texte coupé). */
+export function scoreBreakdown(reason: string): ScoreBreakdown | null {
+  for (const { scale, pattern } of SUMMARIES) {
+    const m = reason.match(pattern)
+    if (!m) continue
+    const keys = scaleKeys(scale)
+    const results = keys.map((key, i) => resultOf(key, m[i + 1]))
+    if (results.some(r => r === null)) return null
+    const read = results as CriterionResult[]
+    const { weights } = SCALES[scale]
+    const { total, cap, score } = scoreOf(scale, read)
+    const parts = read.map(r => {
+      const max = weights[r.key] ?? 0
+      return { key: r.key, label: labelOf(scale, r.key), percent: Math.round(r.ratio * 100), points: max * r.ratio, max, detail: r.detail }
+    })
+    const capReason = cap && CAP_REASONS[cap.key]?.[cap.level === 'non' ? 'non' : 'partiel']
+    return {
+      scale, parts, total, score,
+      cap: cap ? { value: cap.value, reason: capReason ?? labelOf(scale, cap.key) } : null,
+      rest: reason.slice(m[0].length).replace(/^ — /, ''),
+    }
+  }
+  return null
 }
 
 /**

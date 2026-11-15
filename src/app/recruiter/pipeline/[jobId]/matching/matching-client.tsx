@@ -180,7 +180,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
       setFlash(
         result.errors.length > 0
           ? `${result.added} candidat(s) ajouté(s), ${result.errors.length} erreur(s) : ${result.errors[0]}`
-          : `${result.added} candidat(s) ajouté(s) au funnel avec succès`
+          : `${result.added} candidat(s) ajouté(s) au funnel, avec leur score final`
       )
       setJustAdded(result.added > 0)
       setSelected(new Set())
@@ -277,7 +277,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
             <th scope="col" className="py-2 px-3 font-semibold">Candidat</th>
             <th scope="col" className="w-[140px] min-[112.5rem]:w-[150px] py-2 px-3 font-semibold">Type</th>
             <th scope="col" className="w-[124px] py-2 px-3 font-semibold">Score</th>
-            <th scope="col" className="w-[118px] py-2 px-3 font-semibold" title="Poste · Exigences · Compétences · Domaine · Niveau">Critères</th>
+            <th scope="col" className="w-[118px] py-2 px-3 font-semibold" title="Critères du barème : matching ou score final">Critères</th>
             <th scope="col" className="hidden min-[112.5rem]:table-cell py-2 px-3 font-semibold">Pourquoi</th>
             <th scope="col" className="w-[64px] py-2 pr-4 font-semibold"><span className="sr-only">CV</span></th>
           </tr>
@@ -337,8 +337,8 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                 </td>
                 <td className="py-2.5 px-3">
                   {breakdown ? (
-                    <span className="flex gap-0.75" title={breakdown.parts.map(p => `${p.label} : ${p.percent} %`).join(' · ')}>
-                      {breakdown.parts.map(p => <span key={p.key} aria-hidden className="w-4 h-2 rounded-[2px]" style={{ background: criterionTone(p.percent) }} />)}
+                    <span className="flex w-full gap-0.5" title={breakdown.parts.map(p => `${p.label} : ${p.percent} %`).join(' · ')}>
+                      {breakdown.parts.map(p => <span key={p.key} aria-hidden className="flex-1 max-w-4 h-2 rounded-[2px]" style={{ background: criterionTone(p.percent) }} />)}
                       <span className="sr-only">{breakdown.parts.map(p => `${p.label} ${p.percent} %`).join(', ')}</span>
                     </span>
                   ) : <span className="text-[11px]" style={muted}>—</span>}

@@ -9,8 +9,8 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
 import { Query, ID, type Models } from 'node-appwrite'
 import {
-  CV_CHARS_FOR_SCORING, criteriaCounts, cvTextForScoring, judgedScore, judgementSummary, offerCriteria, parseJudgements, parseScoringNotes,
-  scoringSystemPrompt, scoringUserMessage, type MatchJudgements, type OfferCriteria, type ScoringNotes,
+  CV_CHARS_FOR_SCORING, criteriaCounts, cvTextForScoring, judgedScore, judgementSummary, offerCriteria, offerDetails, parseJudgements,
+  parseScoringNotes, scoringSystemPrompt, scoringUserMessage, type ActiveScale, type MatchJudgements, type OfferCriteria, type ScoringNotes,
 } from '@/lib/match-scoring'
 import { listAllByValues, listAllDocuments } from '@/lib/appwrite/list-all'
 import { mapLimit } from '@/lib/concurrency'
@@ -135,7 +135,7 @@ export async function matchCandidatesForJob(jobId: string, { exclude: alsoExclud
     ])
     const exclude = new Set([...applicants.map(a => a.candidateId as string), ...alsoExclude])
     return await matchCandidatesForOffer(
-      { title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? '') },
+      { title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? ''), details: offerDetails(job) },
       exclude,
       only,
     )
@@ -159,7 +159,7 @@ export interface OfferForMatching {
   title: string
   skills: string[]
   description: string
-  /** Précisions ajoutées à l'offre envoyée à l'IA (« Technologies : … », « Expérience : … ») ; aucune pour une offre publiée. */
+  /** Précisions ajoutées à l'offre envoyée à l'IA : lieu, télétravail, rémunération (offerDetails), « Technologies : … » d'un AO. */
   details?: string[]
 }
 
@@ -198,6 +198,35 @@ async function candidatesToScore(exclude: Set<string>, count: number): Promise<M
   }
 }
 
+const isNotFound = (err: unknown) => (err as { code?: unknown } | null)?.code === 404
+/** Document ou null s'il n'existe pas (toute autre erreur est remontée). */
+async function documentOrNull(collection: string, id: string): Promise<Models.Document | null> {
+  return createAdminClient().databases.getDocument(DB_ID, collection, id).catch(err => {
+    if (isNotFound(err)) return null
+    throw err
+  })
+}
+
+/**
+ * Précisions de l'offre pour le score final (ADR 0036) : lieu, télétravail, rémunération et clients. Offre publiée depuis
+ * un appel d'offres (`ao<offre AO>`) : son client et les clients que cite l'e-mail (client final d'un intermédiaire,
+ * « AO BNP ») — noms réels, lus par l'IA de la notation, jamais publiés ; sinon l'entreprise de l'offre. Lecture
+ * impossible : lève (pas de score final sans le client).
+ */
+export async function finalOfferDetails(job: Models.Document): Promise<string[]> {
+  const clients = [typeof job.companyName === 'string' ? job.companyName : '']
+  // Identifiant d'une offre ordinaire : hexadécimal (ID.unique()), il ne commence jamais par « ao ».
+  if (job.$id.startsWith('ao')) {
+    const aoOffer = await documentOrNull(COLLECTIONS.AO_OFFERS, job.$id.slice(2))
+    if (aoOffer) {
+      const email = typeof aoOffer.emailId === 'string' && aoOffer.emailId ? await documentOrNull(COLLECTIONS.AO_EMAILS, aoOffer.emailId) : null
+      const cited = Array.isArray(email?.citedClients) ? email.citedClients.filter((c): c is string => typeof c === 'string') : []
+      clients.unshift(typeof aoOffer.companyName === 'string' ? aoOffer.companyName : '', ...cited)
+    }
+  }
+  return offerDetails(job, clients)
+}
+
 /** Note d'un CV pour une offre : jugements de l'IA (`answer` : sa réponse, preuves comprises), score calculé par le code. */
 export interface CvScore {
   score: number
@@ -213,14 +242,15 @@ export interface CvScore {
 
 /**
  * La notation d'un CV pour une offre (ADR 0029), la même pour une candidature (screening), la base candidats, le vivier
- * de l'offre et `npm run matching:explain` : consignes et listes de l'offre préparées une fois, puis un appel d'IA par
- * CV. `cvText` : readCvForScoring (ou le profil d'un CV du vivier sans fichier). null : réponse sans jugement lisible
- * (journalisé par l'appelant) ; une erreur de l'IA est levée.
+ * de l'offre et `npm run matching:explain` ; seul le barème change (ADR 0036) : `matching` pour les CV disponibles,
+ * `final` pour une candidature. Consignes et listes de l'offre préparées une fois, puis un appel d'IA par CV. `cvText` :
+ * readCvForScoring (ou le profil d'un CV du vivier sans fichier). null : réponse sans jugement lisible (journalisé par
+ * l'appelant) ; une erreur de l'IA est levée.
  */
-export function cvScorer(offer: OfferForMatching): (cvText: string) => Promise<CvScore | null> {
+export function cvScorer(offer: OfferForMatching, scale: ActiveScale): (cvText: string) => Promise<CvScore | null> {
   // Exigences tirées de la description et compétences : les mêmes listes pour tous les CV notés pour cette offre.
   const criteria = offerCriteria(offer.skills, offer.description)
-  const system = scoringSystemPrompt(criteriaCounts(criteria))
+  const system = scoringSystemPrompt(scale, criteriaCounts(criteria))
   return async cvText => {
     // Une preuve par élément jugé : réponse plus longue qu'une note (et la réflexion du modèle compte dans la limite).
     const { content, provider } = await callLLM([{ role: 'user', content: scoringUserMessage(offer, criteria, cvText) }], system, { ...SCORING_AI, maxTokens: 8000 })
@@ -229,7 +259,7 @@ export function cvScorer(offer: OfferForMatching): (cvText: string) => Promise<C
     try { answer = json ? JSON.parse(json[0]) : null } catch { answer = null }
     // Jugements vérifiés dans le texte du CV que l'IA a lu (citations, intitulés), métiers du titre confirmés par la
     // comparaison des intitulés (title-check.ts).
-    const parsed = parseJudgements(answer, criteria, cvText)
+    const parsed = parseJudgements(answer, criteria, cvText, scale)
     if (!parsed) return null
     const [judgements] = await withCheckedTitles([parsed])
     const notes = parseScoringNotes(answer)
@@ -253,7 +283,7 @@ export async function matchCandidatesForOffer(
   offer: OfferForMatching, excludeCandidateIds: Set<string> = new Set(), only?: string[],
 ): Promise<MatchResult> {
   try {
-    const scoreCv = cvScorer(offer)
+    const scoreCv = cvScorer(offer, 'matching')
     const scoreOne = async (d: Models.Document): Promise<CandidateMatch | 'failed' | 'unreadable'> => {
       const cvText = await readCvForScoring(d.cvFileId as string).catch(e => {
         console.error('[sourcing] lecture du CV impossible', d.$id, e instanceof Error ? e.message : e)

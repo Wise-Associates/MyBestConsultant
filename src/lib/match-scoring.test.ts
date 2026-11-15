@@ -1,46 +1,53 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  CV_CHARS_FOR_SCORING, DOMAIN_CAP, MATCH_RULES, ROLE_CAP, capFor, carriedScreening, matchToCarry, criteriaCounts, cvTextForScoring, parseScoringNotes,
-  scoringSystemPrompt, scoringUserMessage, type OfferCriteria, cappedScore, criteriaBlock, judgedScore, judgementFields, judgementSummary, offerCriteria,
-  offerRequirements, offerTextForAi, parseDomainFit, parseJudgements, parseTitleRelations, recommendationFor, requiredSkills, rolePairs,
-  titleCheckPrompt, withBonus, withTitleRelations, type MatchJudgements,
+  CV_CHARS_FOR_SCORING, DOMAIN_CAP, MISSING_CAP, ROLE_CAP, SCALES, judgedResult, matchRules, matchToCarry, criteriaCounts, cvTextForScoring,
+  offerDetails, parseFit, parseScoringNotes, scoringSystemPrompt, scoringUserMessage, type OfferCriteria, criteriaBlock, judgedScore,
+  judgementFields, judgementSummary, offerCriteria, offerRequirements, offerTextForAi, parseJudgements, parseTitleRelations, recommendationFor,
+  requiredSkills, rolePairs, titleCheckPrompt, withBonus, withTitleRelations, type ActiveScale, type MatchJudgements,
 } from './match-scoring'
 
-describe('expérience du domaine demandé', () => {
-  it('lit la réponse de l\'IA, accents et casse compris ; inconnue sinon', () => {
-    assert.equal(parseDomainFit('oui'), 'oui')
-    assert.equal(parseDomainFit(' Non '), 'non')
-    assert.equal(parseDomainFit('PARTIEL'), 'partiel')
-    assert.equal(parseDomainFit('non requis'), 'non requis')
-    assert.equal(parseDomainFit('non-requis'), 'non requis')
-    assert.equal(parseDomainFit(undefined), null)
-    assert.equal(parseDomainFit('peut-être'), null)
+describe('deux barèmes : matching des CV disponibles, score final de l\'AO (ADR 0036)', () => {
+  it('les poids de chaque barème font 100, critères rouges plus lourds', () => {
+    for (const scale of ['matching', 'final', 'legacy'] as const) {
+      assert.equal(Object.values(SCALES[scale].weights).reduce((sum, w) => sum + (w ?? 0), 0), 100, scale)
+    }
+    assert.deepEqual(Object.keys(SCALES.matching.weights),
+      ['poste', 'exigences', 'projet', 'competences', 'localisation', 'niveau', 'formation', 'domaine', 'langue', 'tjm'])
+    assert.deepEqual(Object.keys(SCALES.final.weights), ['poste', 'exigences', 'projet', 'competences', 'client', 'localisation', 'niveau'])
   })
 
-  it('un 95/100 sans l\'expérience du domaine exigé descend à 60, sous le seuil « correspond » (65)', () => {
-    assert.equal(cappedScore(95, 'non'), DOMAIN_CAP.non)
-    assert.ok(DOMAIN_CAP.non < 65)
-    assert.equal(cappedScore(95, 'partiel'), DOMAIN_CAP.partiel)
-    assert.equal(cappedScore(40, 'non'), 40, 'un score déjà bas ne monte pas')
+  it('lit un critère à une seule valeur, accents et casse compris ; inconnu sinon', () => {
+    assert.equal(parseFit('oui', 'non requis'), 'oui')
+    assert.equal(parseFit(' Non ', 'non requis'), 'non')
+    assert.equal(parseFit('PARTIEL', 'non précisé'), 'partiel')
+    assert.equal(parseFit('non-requis', 'non requis'), 'non requis')
+    assert.equal(parseFit('non précisé', 'non requis'), 'non requis', 'valeur neutre du critère, quelle que soit celle écrite')
+    assert.equal(parseFit(undefined, 'non requis'), null)
+    assert.equal(parseFit('peut-être', 'non précisé'), null)
   })
 
-  it('laisse le score quand le domaine est présent, non exigé ou non renseigné', () => {
-    assert.equal(cappedScore(95, 'oui'), 95)
-    assert.equal(cappedScore(95, 'non requis'), 95)
-    assert.equal(cappedScore(95, null), 95)
+  it('les consignes comparent les expériences du CV à l\'offre, exigent une preuve, et ne demandent aucune note', () => {
+    const rules = matchRules('matching')
+    assert.match(rules, /Évalue le candidat sur 10 critères, sans donner de note/)
+    assert.match(rules, /une compétence ou un outil ne la prouve pas/)
+    assert.match(rules, /1\. "poste" : le titre de l'offre/)
+    assert.match(rules, /métier du titre non exercé ne se compense pas/)
+    assert.match(rules, /tout "oui" des listes "exigences" et "competences" recopie dans "citation" une ligne d'expérience du CV/)
+    assert.match(rules, /"intitule" : l'intitulé exact/)
+    assert.match(rules, /ravailler dans une équipe agile ou avec des développeurs n'est pas exercer ces métiers/)
+    assert.match(rules, /2\. "exigences" : le contexte et la description de l'offre/)
+    assert.match(rules, /comptée sur les expériences du même métier/)
+    for (const field of ['"projet"', '"localisation"', '"formation"', '"langue"', '"tjm"']) assert.ok(rules.includes(field), field)
+    assert.doesNotMatch(rules, /"client"/)
   })
 
-  it('les consignes de l\'IA comparent les expériences du CV à l\'offre, exigent une preuve, et ne demandent aucune note', () => {
-    assert.match(MATCH_RULES, /une compétence ou un outil ne la prouve pas/)
-    assert.match(MATCH_RULES, /sans donner de note/)
-    assert.match(MATCH_RULES, /"poste" : le titre de l'offre/)
-    assert.match(MATCH_RULES, /métier du titre non exercé ne se compense pas/)
-    assert.match(MATCH_RULES, /tout "oui" recopie dans "citation" une ligne d'expérience du CV/)
-    assert.match(MATCH_RULES, /"intitule" : l'intitulé exact/)
-    assert.match(MATCH_RULES, /ravailler dans une équipe agile ou avec des développeurs n'est pas exercer ces métiers/)
-    assert.match(MATCH_RULES, /"exigences" : pour chaque exigence de l'offre/)
-    assert.match(MATCH_RULES, /compté sur les expériences du même métier/)
+  it('score final : l\'expérience et l\'environnement du client, jamais les diplômes', () => {
+    const rules = matchRules('final')
+    assert.match(rules, /Évalue le candidat sur 7 critères/)
+    assert.match(rules, /jamais les diplômes/)
+    assert.match(rules, /5\. "client" : l'environnement du client de l'offre/)
+    for (const field of ['"formation"', '"langue"', '"tjm"', '"domaine"']) assert.ok(!rules.includes(field), field)
   })
 })
 
@@ -106,9 +113,12 @@ describe('exigences de l\'offre tirées de sa description (les mêmes pour tous 
     assert.match(block, /Exigences de l'offre \(réponds dans cet ordre\) :\n1\. 5 ans de développement full stack\n2\. Expérience de Scrum Master/)
     assert.match(block, /Compétences demandées \(réponds dans cet ordre\) :\n1\. Java\n2\. Spring$/)
     assert.equal(requiredSkills(Array.from({ length: 20 }, (_, i) => `C${i}`)).length, 12)
-    assert.match(judgementFields({ skills: 2, requirements: 3 }), /"exigences":\[\{"jugement":"oui"\|"partiel"\|"non","citation":"…"\}, …\] \(3 valeurs/)
-    assert.match(judgementFields({ skills: 0, requirements: 0 }), /"competences":\{"jugement":"oui"\|"partiel"\|"non","citation":"…"\}/)
-    assert.match(judgementFields({ skills: 0, requirements: 0 }), /"poste":\[\{"metier":"…","exerce":"oui"\|"partiel"\|"non","intitule":"…"\}/)
+    assert.match(judgementFields('matching', { skills: 2, requirements: 3 }), /"exigences":\[\{"jugement":"oui"\|"partiel"\|"non","citation":"…"\}, …\] \(3 valeurs/)
+    assert.match(judgementFields('matching', { skills: 0, requirements: 0 }), /"competences":\{"jugement":"oui"\|"partiel"\|"non","citation":"…"\}/)
+    assert.match(judgementFields('final', { skills: 0, requirements: 0 }), /"poste":\[\{"metier":"…","exerce":"oui"\|"partiel"\|"non","intitule":"…"\}/)
+    assert.match(judgementFields('matching'), /"langue":"oui"\|"partiel"\|"non"\|"non requis","tjm":"oui"\|"partiel"\|"non"\|"non précisé"$/)
+    assert.match(judgementFields('final'), /"client":"oui"\|"partiel"\|"non"\|"non précisé"/)
+    assert.match(judgementFields('matching'), /\(une valeur par exigence de la liste numérotée de l'offre, dans l'ordre ; sans liste, un seul objet\)/)
   })
 })
 
@@ -123,15 +133,18 @@ Compétences techniques : Python, Java, SQL, Docker, Kubernetes, Git`
 const DEV_LINE = 'Développement d\'API REST en Python avec Django et PostgreSQL pour le crédit immobilier'
 const criteria = { skills: ['Python', 'Kubernetes'], requirements: ['3 ans de développement d\'API', 'Animer les cérémonies Scrum'] }
 const yes = (citation = DEV_LINE) => ({ jugement: 'oui', citation })
+// Réponse avec les critères des deux barèmes : chaque barème ne lit que les siens.
 const answer = (over: Record<string, unknown> = {}) => ({
   poste: [{ metier: 'Développeur Full Stack', exerce: 'oui', intitule: 'Développeur Python' }],
   exigences: [yes(), yes()], competences: [yes(), yes('Intègre les outils SAST, DAST et SCA dans les pipelines CI/CD GitLab')],
-  domaine: 'oui', niveau: 'oui', ...over,
+  projet: 'oui', client: 'partiel', localisation: 'oui', niveau: 'oui', formation: 'non requis', domaine: 'oui', langue: 'non requis',
+  tjm: 'non précisé', ...over,
 })
+const parse = (raw: unknown, cv = CV, scale: ActiveScale = 'matching', c: OfferCriteria = criteria) => parseJudgements(raw, c, cv, scale)
 
 describe('jugements vérifiés dans le CV (la réponse de l\'IA ne suffit pas)', () => {
   it('poste : l\'intitulé cité doit figurer dans le CV ; sans intitulé, le métier n\'est pas prouvé', () => {
-    const roles = (poste: unknown) => parseJudgements(answer({ poste }), criteria, CV)?.roles
+    const roles = (poste: unknown) => parse(answer({ poste }))?.roles
     assert.deepEqual(roles([{ metier: 'Développeur Full Stack', exerce: 'oui', intitule: 'Développeur Python' }]),
       [{ title: 'Développeur Full Stack', fit: 'oui', cited: 'Développeur Python' }])
     assert.deepEqual(roles([{ metier: 'Scrum Master', exerce: 'oui', intitule: 'Scrum Master' }]),
@@ -140,11 +153,11 @@ describe('jugements vérifiés dans le CV (la réponse de l\'IA ne suffit pas)',
   })
 
   it('poste : la comparaison des intitulés (même métier, même famille, autre métier) décide, sans liste de mots', () => {
-    const j = parseJudgements(answer({ poste: [
+    const j = parse(answer({ poste: [
       { metier: 'Scrum Master', exerce: 'oui', intitule: 'Expert Application Security / Vulnerability Management' },
       { metier: 'Développeur Full Stack', exerce: 'oui', intitule: 'Développeur Python' },
       { metier: 'Ingénieur sécurité', exerce: 'oui', intitule: 'Expert Application Security / Vulnerability Management' },
-    ] }), criteria, CV)
+    ] }))
     assert.ok(j)
     assert.deepEqual(rolePairs(j).map(p => p.metier), ['Scrum Master', 'Développeur Full Stack', 'Ingénieur sécurité'])
     const fits = (relations: Parameters<typeof withTitleRelations>[1]) => withTitleRelations(j, relations).roles.map(r => r.fit)
@@ -163,7 +176,7 @@ describe('jugements vérifiés dans le CV (la réponse de l\'IA ne suffit pas)',
   })
 
   it('compétence « oui » : une ligne d\'expérience du CV qui la nomme, pas la liste des compétences', () => {
-    const skills = (competences: unknown[]) => parseJudgements(answer({ competences }), criteria, CV)?.skills
+    const skills = (competences: unknown[]) => parse(answer({ competences }))?.skills
     assert.deepEqual(skills([yes(), yes()]), ['oui', 'partiel'], 'Kubernetes absent de la ligne citée')
     assert.deepEqual(skills([yes('Compétences techniques : Python, Java, SQL, Docker, Kubernetes, Git'), { jugement: 'non' }]),
       ['partiel', 'non'], 'liste de mots-clés')
@@ -173,7 +186,7 @@ describe('jugements vérifiés dans le CV (la réponse de l\'IA ne suffit pas)',
   })
 
   it('exigence « oui » : une ligne d\'au moins 5 mots retrouvée dans le CV', () => {
-    const reqs = (exigences: unknown[]) => parseJudgements(answer({ exigences }), criteria, CV)?.requirements
+    const reqs = (exigences: unknown[]) => parse(answer({ exigences }))?.requirements
     assert.deepEqual(reqs([yes(), yes('Définit et déploie la stratégie AppSec')]), ['oui', 'oui'])
     assert.deepEqual(reqs([yes('Python Django'), yes('A animé les cérémonies Scrum de trois équipes')]), ['partiel', 'partiel'])
   })
@@ -181,15 +194,15 @@ describe('jugements vérifiés dans le CV (la réponse de l\'IA ne suffit pas)',
   it('cas de production : expert sécurité applicative sur « Scrum Master et Développeur Full Stack » → 50 au plus', () => {
     // Réponse de l'IA relevée le 2026-11-04 (66 avant vérification), puis comparaison des intitulés : deux « autre ».
     const security = 'Définit et déploie la stratégie AppSec pour plusieurs squads de développement en environnement agile'
-    const j = parseJudgements({
+    const j = parse({
       poste: [
         { metier: 'Scrum Master', exerce: 'oui', intitule: 'Expert Application Security / Vulnerability Management' },
         { metier: 'Développeur Full Stack', exerce: 'partiel', intitule: 'Expert Application Security / Vulnerability Management' },
       ],
       exigences: [yes(security), yes(security)],
       competences: [yes('Compétences techniques : Python, Java, SQL, Docker, Kubernetes, Git'), { jugement: 'partiel' }],
-      domaine: 'partiel', niveau: 'partiel',
-    }, criteria, CV)
+      projet: 'partiel', localisation: 'oui', niveau: 'partiel', formation: 'non requis', domaine: 'partiel', langue: 'non requis', tjm: 'non précisé',
+    })
     assert.ok(j)
     const checked = withTitleRelations(j, ['autre', 'autre'])
     assert.deepEqual(checked.roles.map(r => r.fit), ['non', 'non'])
@@ -198,64 +211,96 @@ describe('jugements vérifiés dans le CV (la réponse de l\'IA ne suffit pas)',
 })
 
 describe('score calculé à partir des jugements de l\'IA (stable d\'un calcul à l\'autre)', () => {
-  it('lit les jugements ; un élément oublié vaut « non »', () => {
-    const j = parseJudgements(answer({ competences: [yes()], exigences: [yes(), { jugement: 'partiel' }] }), criteria, CV)
+  it('lit les jugements du barème ; un élément oublié vaut « non »', () => {
+    const j = parse(answer({ competences: [yes()], exigences: [yes(), { jugement: 'partiel' }] }))
     assert.deepEqual(j, {
+      scale: 'matching',
       roles: [{ title: 'Développeur Full Stack', fit: 'oui', cited: 'Développeur Python' }], requirements: ['oui', 'partiel'], requirementsListed: true,
-      skills: ['oui', 'non'], skillsListed: true, domain: 'oui', level: 'oui',
+      skills: ['oui', 'non'], skillsListed: true,
+      fits: { projet: 'oui', localisation: 'oui', niveau: 'oui', formation: 'non requis', domaine: 'oui', langue: 'non requis', tjm: 'non précisé' },
     })
+    assert.deepEqual(parse(answer(), CV, 'final')?.fits, { projet: 'oui', client: 'partiel', localisation: 'oui', niveau: 'oui' })
   })
 
   it('sans liste dans l\'offre, un jugement d\'ensemble', () => {
-    const j = parseJudgements(answer({ competences: yes(), exigences: { jugement: 'non' } }), { skills: [], requirements: [] }, CV)
+    const j = parse(answer({ competences: yes(), exigences: { jugement: 'non' } }), CV, 'matching', { skills: [], requirements: [] })
     assert.equal(j?.skillsListed, false)
     assert.deepEqual(j?.skills, ['oui'])
     assert.deepEqual(j?.requirements, ['non'])
   })
 
-  it('refuse une réponse sans poste, exigences, compétences, domaine ou niveau (le candidat reste à noter)', () => {
-    for (const missing of ['poste', 'exigences', 'competences', 'domaine', 'niveau']) {
-      assert.equal(parseJudgements(answer({ [missing]: undefined }), criteria, CV), null, missing)
+  it('refuse une réponse à laquelle manque un critère du barème (le candidat reste à noter)', () => {
+    for (const missing of ['poste', 'exigences', 'projet', 'competences', 'localisation', 'niveau', 'formation', 'domaine', 'langue', 'tjm']) {
+      assert.equal(parse(answer({ [missing]: undefined })), null, missing)
     }
-    assert.equal(parseJudgements(answer({ poste: [{ metier: 'X', exerce: 'peut-être' }] }), criteria, CV), null)
-    assert.equal(parseJudgements('texte', criteria, CV), null)
+    assert.equal(parse(answer({ client: undefined }), CV, 'final'), null, 'client')
+    assert.ok(parse(answer({ formation: undefined, langue: 'peut-être' }), CV, 'final'), 'critères du matching seulement')
+    assert.equal(parse(answer({ poste: [{ metier: 'X', exerce: 'peut-être' }] })), null)
+    assert.equal(parse('texte'), null)
   })
 
-  const judged = (over: Partial<MatchJudgements> = {}): MatchJudgements => ({
-    roles: [{ title: '', fit: 'oui' }], requirements: ['oui', 'oui'], requirementsListed: true,
-    skills: ['oui', 'oui'], skillsListed: true, domain: 'oui', level: 'oui', ...over,
+  const ALL_YES = { projet: 'oui', client: 'oui', localisation: 'oui', niveau: 'oui', formation: 'oui', domaine: 'oui', langue: 'oui', tjm: 'oui' } as const
+  const judged = (over: Partial<MatchJudgements> = {}, fits: MatchJudgements['fits'] = {}, scale: ActiveScale = 'matching'): MatchJudgements => ({
+    scale, roles: [{ title: '', fit: 'oui' }], requirements: ['oui', 'oui'], requirementsListed: true,
+    skills: ['oui', 'oui'], skillsListed: true, fits: { ...ALL_YES, ...fits }, ...over,
   })
 
-  it('calcule le score : poste 30, exigences 30, compétences 20, domaine 15, niveau 5', () => {
+  it('matching : poste 20, techno 20, contexte 10, séniorité 10, secteur 10, localisation 8, formation 6, langue 6, projet 5, TJM 5', () => {
     assert.equal(judgedScore(judged()), 100)
-    // Exigences de la description 1 sur 4 : la liste de compétences ne suffit plus.
-    assert.equal(judgedScore(judged({ requirements: ['oui', 'non', 'non', 'non'] })), 78)
-    assert.equal(judgedScore(judged({ requirements: ['oui', 'partiel'], skills: ['oui', 'non'], domain: 'non requis', level: 'non précisé' })), 83)
+    assert.equal(judgedScore(judged({}, { tjm: 'non' })), 95, 'critère blanc : sans plafond')
+    assert.equal(judgedScore(judged({}, { projet: 'non', tjm: 'partiel' })), 93)
+    assert.equal(judgedScore(judged({ requirements: ['oui', 'partiel'], skills: ['oui', 'non'] }, { domaine: 'non requis', niveau: 'non précisé' })), 88)
+  })
+
+  it('score final : poste 25, techno 25, contexte 15, client 15, projet 10, localisation 5, séniorité 5 ; diplômes absents', () => {
+    assert.equal(judgedScore(judged({}, {}, 'final')), 100)
+    assert.equal(judgedScore(judged({}, { formation: 'non', langue: 'non', domaine: 'non', tjm: 'non' }, 'final')), 100, 'hors du barème final')
+    assert.equal(judgedScore(judged({}, { localisation: 'non' }, 'final')), 95, 'localisation : blanche au score final')
+    assert.equal(judgedScore(judged({}, { client: 'partiel' }, 'final')), 93)
+  })
+
+  it('critère rouge qui manque : plafonné sous 65, quel que soit le reste', () => {
+    for (const red of ['localisation', 'niveau', 'formation', 'langue'] as const) {
+      assert.equal(judgedScore(judged({}, { [red]: 'non' })), MISSING_CAP, red)
+    }
+    assert.equal(judgedScore(judged({}, { client: 'non' }, 'final')), MISSING_CAP)
+    assert.ok(MISSING_CAP < 65)
+    // Techno : moins d'un tiers des points manque ; un tiers pile ne plafonne pas.
+    assert.equal(judgedScore(judged({ skills: ['oui', 'non', 'non', 'non'] })), MISSING_CAP)
+    assert.equal(judgedScore(judged({ skills: ['oui', 'non', 'non'] })), 87)
+    assert.equal(judgedScore(judged({ skills: ['non'] }, {}, 'final')), MISSING_CAP)
+    // Neutre : jamais plafonné.
+    assert.equal(judgedScore(judged({}, { langue: 'non requis', localisation: 'non précisé' })), 100)
   })
 
   it('titre à plusieurs métiers : un métier non exercé plafonne à 50 sans se compenser par l\'autre', () => {
     // « Scrum Master et Développeur Full Stack » (production, 2026-11-04) : un Scrum Master qui n'avait jamais développé était noté 85.
-    const j = parseJudgements(answer({
+    const j = parse(answer({
       poste: [{ metier: 'Scrum Master', exerce: 'oui', intitule: 'Scrum Master' }, { metier: 'Développeur Full Stack', exerce: 'non' }],
-    }), criteria, 'Scrum Master — Assureur Fictif (2019-2023)')
+    }), 'Scrum Master — Assureur Fictif (2019-2023)')
     assert.equal(j && judgedScore(j), ROLE_CAP.non)
     assert.ok(ROLE_CAP.non < 65)
     assert.equal(judgedScore(judged({ roles: [{ title: '', fit: 'partiel' }] })), ROLE_CAP.partiel)
   })
 
-  it('le domaine exigé absent garde son plafond : jamais au-dessus de 60 ; le plus bas des plafonds l\'emporte', () => {
-    assert.equal(judgedScore(judged({ domain: 'non' })), DOMAIN_CAP.non)
-    assert.equal(judgedScore(judged({ domain: 'partiel' })), DOMAIN_CAP.partiel)
-    assert.equal(capFor({ roles: [{ title: '', fit: 'non' }], domain: 'non' }), ROLE_CAP.non)
+  it('le secteur exigé absent garde son plafond : jamais au-dessus de 60 ; le plus bas des plafonds l\'emporte', () => {
+    assert.equal(judgedScore(judged({}, { domaine: 'non' })), DOMAIN_CAP.non)
+    assert.equal(judgedScore(judged({}, { domaine: 'partiel' })), DOMAIN_CAP.partiel)
+    const both = judgedResult(judged({ roles: [{ title: '', fit: 'non' }] }, { domaine: 'non' }))
+    assert.deepEqual(both.cap, { value: ROLE_CAP.non, key: 'poste', level: 'non' })
+    assert.equal(both.score, ROLE_CAP.non)
+    assert.equal(judgedResult(judged({ roles: [{ title: '', fit: 'non' }], requirements: ['non'], skills: ['non'] }, { domaine: 'non' })).cap, null,
+      'un plafond qui n\'abaisse rien n\'est pas signalé')
   })
 
-  it('résume les jugements pour la raison affichée : poste, exigences, compétences, domaine, niveau', () => {
+  it('résume les jugements pour la raison affichée, dans l\'ordre du barème', () => {
     assert.equal(judgementSummary(judged({
       roles: [{ title: 'Scrum Master', fit: 'oui' }, { title: 'Développeur Full Stack', fit: 'non' }],
-      requirements: ['oui', 'partiel', 'non'], skills: ['oui', 'non'], domain: 'non requis',
-    })), 'Poste : Scrum Master oui, Développeur Full Stack non · Exigences : 1 sur 3, 1 partielle · Compétences : 1 sur 2 · Domaine : non requis · Niveau : oui')
-    assert.equal(judgementSummary(judged({ requirements: ['partiel'], requirementsListed: false, skills: ['oui'], skillsListed: false })),
-      'Poste : oui · Exigences : partiel · Compétences : oui · Domaine : oui · Niveau : oui')
+      requirements: ['oui', 'partiel', 'non'], skills: ['oui', 'non'],
+    }, { domaine: 'non requis', tjm: 'non précisé' })), 'Poste : Scrum Master oui, Développeur Full Stack non · Contexte : 1 sur 3, 1 partielle · Projet : oui'
+      + ' · Techno : 1 sur 2 · Localisation : oui · Séniorité : oui · Formation : oui · Secteur : non requis · Langue : oui · TJM : non précisé')
+    assert.equal(judgementSummary(judged({ requirements: ['partiel'], requirementsListed: false, skills: ['oui'], skillsListed: false }, {}, 'final')),
+      'Poste : oui · Contexte : partiel · Projet : oui · Techno : oui · Client : oui · Localisation : oui · Séniorité : oui')
   })
 })
 
@@ -263,15 +308,24 @@ describe('une seule notation pour tous les candidats (ADR 0029)', () => {
   const listed: OfferCriteria = { skills: ['Python', 'React'], requirements: ['5 ans de développement'] }
   const offer = { title: 'Développeur Full Stack', description: 'Développement d\'applications web.' }
 
-  it('demande les mêmes champs à l\'IA, quelle que soit la provenance du candidat', () => {
-    const system = scoringSystemPrompt(criteriaCounts(listed))
-    for (const field of ['"poste"', '"exigences"', '"competences"', '"domaine"', '"niveau"', '"points_forts"', '"vigilances"', '"raison"', '"resume"']) {
-      assert.ok(system.includes(field), field)
+  it('demande les champs du barème à l\'IA, avec les mêmes notes quelle que soit la provenance du candidat', () => {
+    for (const scale of ['matching', 'final'] as const) {
+      const system = scoringSystemPrompt(scale, criteriaCounts(listed))
+      for (const field of ['"poste"', '"exigences"', '"competences"', '"niveau"', '"points_forts"', '"vigilances"', '"raison"', '"resume"']) {
+        assert.ok(system.includes(field), `${scale} ${field}`)
+      }
+      assert.ok(system.includes(matchRules(scale)), scale)
+      assert.doesNotMatch(system, /"score"/, 'l\'IA ne donne pas de note')
+      assert.doesNotMatch(system, /competences_vues/, 'compétences listées par l\'offre : déjà jugées une à une')
     }
-    assert.ok(system.includes(MATCH_RULES))
-    assert.doesNotMatch(system, /"score"/, 'l\'IA ne donne pas de note')
-    assert.doesNotMatch(system, /competences_vues/, 'compétences listées par l\'offre : déjà jugées une à une')
-    assert.match(scoringSystemPrompt(criteriaCounts({ skills: [], requirements: [] })), /"competences_vues"/)
+    assert.match(scoringSystemPrompt('final', criteriaCounts({ skills: [], requirements: [] })), /"competences_vues"/)
+  })
+
+  it('précisions de l\'offre : lieu, télétravail, rémunération, clients sans doublon', () => {
+    assert.deepEqual(offerDetails({ location: ' Paris ', remote: 'hybrid', salary: 600, contractType: 'freelance' }, ['BNP Paribas', '', ' BNP Paribas ', 'Grand groupe bancaire']),
+      ['Lieu : Paris', 'Télétravail : partiel', 'TJM : 600 €/jour', 'Client : BNP Paribas, Grand groupe bancaire'])
+    assert.deepEqual(offerDetails({ salary: 55000, contractType: 'cdi' }), ['Salaire : 55 000 €/an'])
+    assert.deepEqual(offerDetails({ location: 42, salary: '600', remote: null }), [], 'champs illisibles : aucune ligne')
   })
 
   it('n\'envoie ni lettre de motivation ni critère ajouté : l\'offre et le CV seulement', () => {
@@ -321,13 +375,7 @@ describe('une seule notation pour tous les candidats (ADR 0029)', () => {
   })
 })
 
-describe('candidat ajouté au funnel depuis le Matching IA : son score est repris', () => {
-  it('reprend le score et la raison affichés, et la recommandation qui suit le score', () => {
-    assert.deepEqual(carriedScreening({ score: 78, reason: 'Poste : oui · … — Bon profil.' }), {
-      aiScore: 78, aiSummary: 'Poste : oui · … — Bon profil.', aiRecommendation: recommendationFor(78),
-    })
-  })
-
+describe('candidat ajouté au funnel depuis le Matching IA : son score de matching (historique)', () => {
   const shown = [
     { source: 'pool' as const, id: 'row-b', candidateId: 'cand-b', score: 95, reason: 'B' },
     { source: 'pool' as const, id: 'row-a', candidateId: 'cand-a', score: 30, reason: 'A' },
@@ -346,13 +394,5 @@ describe('candidat ajouté au funnel depuis le Matching IA : son score est repri
     assert.equal(matchToCarry(shown, { source: 'vivier', id: 'cv-1' }, 'cand-y')?.score, 70)
     assert.equal(matchToCarry(shown, { source: 'vivier', id: 'row-b' }, 'cand-b'), undefined)
     assert.equal(matchToCarry(shown, { source: 'application', id: 'app-1' }, 'cand-c'), undefined)
-  })
-
-  it('un candidat non noté n\'a pas de score à reprendre', () => {
-    assert.equal(carriedScreening({ score: null, reason: '' }), null)
-  })
-
-  it('borne la raison à la taille de l\'analyse enregistrée', () => {
-    assert.equal(carriedScreening({ score: 50, reason: 'r'.repeat(10_000) })?.aiSummary.length, 3000)
   })
 })

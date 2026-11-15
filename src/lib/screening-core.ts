@@ -9,7 +9,7 @@ import { aiInterviewDenial } from '@/lib/interview-access'
 import { recruiterCanSeeApplication } from '@/lib/job-ownership'
 import { recommendationFor, type Judgement } from '@/lib/match-scoring'
 import { withRecommendationBonus } from '@/lib/recommendation-boost'
-import { cvScorer, readCvForScoring } from '@/lib/sourcing-core'
+import { cvScorer, finalOfferDetails, readCvForScoring } from '@/lib/sourcing-core'
 
 // Notation des candidatures (screening manuel et automatique) et contrôle d'accès à une candidature. Hors des fichiers
 // « use server » (revue de sécurité du 2026-11-13) : `autoScreenApplication`, appelée sans session après une
@@ -112,13 +112,16 @@ export interface ApplicationToScreen {
   jobTitle: string
   jobDescription: string
   jobSkills: string[]
+  /** Lieu, télétravail, rémunération et clients de l'offre (finalOfferDetails). */
+  jobDetails: string[]
   /** CV joint à la candidature ; sans CV lisible, pas de score (jamais une note sur un texte d'erreur). */
   cvFileId?: string
 }
 
-// Notation d'une candidature, pour le screening manuel (screenAllApplications, après ses contrôles) et automatique.
-// La notation de la base candidats et du vivier de l'offre (cvScorer, ADR 0029) : même consigne, même modèle, même texte
-// du CV ; ni lettre de motivation ni critère ajouté. Puis le bonus des recommandations, la même règle que sur le Matching IA.
+
+// Notation d'une candidature, pour le screening manuel (screenAllApplications, après ses contrôles) et automatique : le
+// score final (ADR 0036), même modèle et même texte du CV que le matching (cvScorer, ADR 0029) ; ni lettre de motivation
+// ni critère ajouté. Puis le bonus des recommandations, la même règle que sur le Matching IA.
 export async function scoreApplication(app: ApplicationToScreen): Promise<ScreeningScore | { error: string }> {
   try {
     if (!app.cvFileId) return { error: 'Pas de CV joint à la candidature : score impossible' }
@@ -131,7 +134,7 @@ export async function scoreApplication(app: ApplicationToScreen): Promise<Screen
     }
     if (!cvText) return { error: 'CV sans texte lisible (PDF scanné) : score impossible' }
 
-    const scored = await cvScorer({ title: app.jobTitle, skills: app.jobSkills, description: app.jobDescription })(cvText)
+    const scored = await cvScorer({ title: app.jobTitle, skills: app.jobSkills, description: app.jobDescription, details: app.jobDetails }, 'final')(cvText)
     if (!scored) return { error: 'Réponse de l\'IA sans jugement lisible : relancez le screening' }
     const jobText = `${app.jobTitle} ${app.jobSkills.join(' ')} ${app.jobDescription}`
     const { score, reason } = withRecommendationBonus(scored.score, scored.reason, await recommendationsOf(app.candidateId), jobText)
@@ -180,7 +183,8 @@ async function recommendationsOf(candidateId: string | undefined): Promise<{ end
 // just submitted to, saves the result, and emails the candidate if they
 // score 70+. Never throws — screening failure must never surface to the
 // candidate's apply flow. `error` : pourquoi la candidature reste sans score (« Relancer » du Matching IA l'affiche).
-export async function autoScreenApplication(applicationId: string): Promise<{ error?: string }> {
+// `notify: false` : candidat ajouté au funnel depuis le Matching IA, qui n'a pas postulé : aucun e-mail.
+export async function autoScreenApplication(applicationId: string, { notify = true }: { notify?: boolean } = {}): Promise<{ error?: string; score?: number }> {
   try {
     const { databases } = createAdminClient()
     const appDoc = await databases.getDocument(DB_ID, COLLECTIONS.APPLICATIONS, applicationId)
@@ -209,6 +213,7 @@ export async function autoScreenApplication(applicationId: string): Promise<{ er
       jobTitle: jobDoc.title as string,
       jobDescription: jobDoc.description as string,
       jobSkills: (jobDoc.skills as string[]) ?? [],
+      jobDetails: await finalOfferDetails(jobDoc),
       cvFileId: appDoc.cvFileId as string | undefined,
     })
     if ('error' in result) {
@@ -241,13 +246,13 @@ export async function autoScreenApplication(applicationId: string): Promise<{ er
     ])
 
     // E-mail à la première analyse seulement : une analyse relancée (« Relancer le matching ») ne le renvoie pas.
-    if (result.score >= 70 && appDoc.aiScore == null) {
+    if (notify && result.score >= 70 && appDoc.aiScore == null) {
       try { await sendAutoScreeningEmail(applicationId, result) } catch { /* non-blocking */ }
     }
 
     revalidatePath('/recruiter/screening')
     revalidatePath('/recruiter/dashboard')
-    return {}
+    return { score: result.score }
   } catch (e) {
     // best-effort — never breaks the candidate's apply flow
     console.error('[screening] analyse automatique en échec', applicationId, e instanceof Error ? e.message : e)

@@ -6,7 +6,8 @@ import { ID, Query } from 'node-appwrite'
 import { getJobMatches, runPoolMatching, type JobMatchResult } from '@/lib/matching-core'
 import { createApplication, getJobById, hasApplied } from '@/lib/appwrite/jobs'
 import { getStagesForJob, logFunnelEvent } from '@/lib/appwrite/funnel'
-import { carriedScreening, matchToCarry } from '@/lib/match-scoring'
+import { matchToCarry } from '@/lib/match-scoring'
+import { mapLimit } from '@/lib/concurrency'
 import { recruiterCanOpenJob } from '@/lib/job-ownership'
 import { revalidatePath } from 'next/cache'
 import { requireRecruiter } from './actions'
@@ -121,10 +122,9 @@ async function resolveCandidateFromVivier(
 }
 
 // "Ajouter dans le funnel" depuis les résultats du Matching — pour les populations 1 et 2
-// (pool, vivier) qui n'ont pas encore de candidature, en crée une. Elle garde le score affiché par le Matching IA, sans
-// nouvel appel d'IA (ADR 0029 : avant, elle était notée de nouveau et le même candidat avait deux scores), et va dans
-// la phase « screening » du pipeline ; un candidat non noté atterrit dans la 1ère colonne, le recruteur lance le
-// screening depuis la carte. La population 3 (candidature existante) est déjà dans le
+// (pool, vivier) qui n'ont pas encore de candidature, en crée une, puis calcule son score final (ADR 0036, choix de
+// l'utilisateur du 2026-11-15 : le screening note sur l'AO, le matching ne fait que trier les CV disponibles ; avant,
+// ADR 0029, la candidature reprenait le score du Matching IA). La population 3 (candidature existante) est déjà dans le
 // funnel par définition — sélectionnée ici, c'est une erreur qu'on ignore proprement.
 export async function addToFunnelAction(
   jobId: string,
@@ -134,8 +134,7 @@ export async function addToFunnelAction(
   const { tenantId } = access
   const errors: string[] = []
   let added = 0
-  // Scores tels que la page les affiche (recommandations comprises), pour les reprendre sur la candidature. Illisibles :
-  // les candidatures sont créées sans score (le Matching IA les analysera), et le recruteur en est averti.
+  // Scores du Matching IA tels que la page les affiche, notés dans l'historique de la candidature à côté du score final.
   let shown: JobMatchResult[] = []
   let screeningStage: string | undefined
   try {
@@ -143,9 +142,10 @@ export async function addToFunnelAction(
     const { stages } = await getStagesForJob(tenantId, jobId)
     screeningStage = stages.find(st => st.autoAction === 'screening')?.slug ?? stages.find(st => st.slug === 'screening')?.slug
   } catch (e) {
-    console.error('[matching] scores à reprendre non lus', jobId, e instanceof Error ? e.message : e)
-    errors.push('Scores du Matching IA non lus : les candidats ajoutés seront analysés de nouveau')
+    console.error('[matching] scores du Matching IA ou phases non lus', jobId, e instanceof Error ? e.message : e)
+    errors.push('Scores du Matching IA non lus : ils ne figureront pas dans l\'historique des candidats ajoutés')
   }
+  const created: AddedCandidate[] = []
 
   for (const sel of selections) {
     try {
@@ -182,21 +182,12 @@ export async function addToFunnelAction(
       const application = await createApplication({ jobId, tenantId, candidateId, cvFileId })
       await logFunnelEvent(application.$id, application.status, 'stage_change')
       added++
-      const match = matchToCarry(shown, sel, candidateId)
-      const carried = match ? carriedScreening(match) : null
-      if (carried) {
-        try {
-          await keepMatchingScore(application.$id, { jobId, tenantId, stage: screeningStage, scoredAt: match?.matchedAt ?? null, ...carried })
-        } catch (e) {
-          // Candidature créée sans score : le Matching IA l'analysera à sa prochaine ouverture.
-          console.error('[matching] score non repris sur la candidature', application.$id, e instanceof Error ? e.message : e)
-          errors.push('Ajouté au funnel, mais le score n\'a pas pu être repris : il sera recalculé')
-        }
-      }
+      created.push({ applicationId: application.$id, matchingScore: matchToCarry(shown, sel, candidateId)?.score ?? null })
     } catch (e) {
       errors.push(e instanceof Error ? e.message : 'Erreur inconnue')
     }
   }
+  if (created.length > 0) errors.push(...await scoreAddedCandidates(created, screeningStage))
 
   revalidatePath(`/recruiter/pipeline/${jobId}`)
   revalidatePath(`/recruiter/pipeline/${jobId}/matching`)
@@ -204,28 +195,41 @@ export async function addToFunnelAction(
   return { added, errors }
 }
 
+interface AddedCandidate {
+  applicationId: string
+  /** Score affiché par le Matching IA (null : non noté). */
+  matchingScore: number | null
+}
+
+/** Scores finals calculés en même temps : un appel d'IA chacun, dans les 300 s de la page (maxDuration). */
+const FINAL_SCORING_CONCURRENCY = 5
+
 /**
- * Score du Matching IA repris sur une candidature qui vient d'être créée : score, raison et recommandation, phase
- * « screening » (une carte notée ne reste pas avant elle, comme après « Lancer le screening »), et l'analyse enregistrée
- * dont la page lit la date. Aucun e-mail au candidat : il n'a pas postulé.
+ * Score final des candidats ajoutés au funnel (ADR 0036) : un appel d'IA chacun, compté comme un screening manuel
+ * (formule avec entretiens IA, adresse vérifiée, place du jour), sans e-mail au candidat (il n'a pas postulé). Candidat
+ * noté : carte en phase « screening », score final et score du Matching IA dans l'historique. Sinon il reste sans
+ * score dans la 1re colonne ; le message dit pourquoi (« Relancer » sur le Matching IA). Messages sans doublon.
  */
-async function keepMatchingScore(applicationId: string, data: {
-  jobId: string; tenantId: string; stage: string | undefined; scoredAt: string | null
-  aiScore: number; aiSummary: string; aiRecommendation: string
-}): Promise<void> {
-  const { databases } = createAdminClient()
-  const { jobId, tenantId, stage, scoredAt, aiScore, aiSummary, aiRecommendation } = data
-  await databases.updateDocument(DB_ID, COLLECTIONS.APPLICATIONS, applicationId, {
-    aiScore, aiSummary, aiRecommendation, ...(stage ? { status: stage } : {}),
-  })
-  try {
-    await databases.createDocument(DB_ID, COLLECTIONS.SCREENINGS, ID.unique(), {
-      applicationId, jobId, tenantId, score: aiScore, recommendation: aiRecommendation, summary: aiSummary,
-      skills: '[]', strengths: [], concerns: [], provider: 'matching-ia', scoredAt: scoredAt ?? new Date().toISOString(),
+async function scoreAddedCandidates(added: AddedCandidate[], stage: string | undefined): Promise<string[]> {
+  const me = await aiInterviewRecruiter()
+  if ('error' in me) return [`Score final non calculé : ${me.error}`]
+  const errors = new Set<string>()
+  await mapLimit(added, FINAL_SCORING_CONCURRENCY, async ({ applicationId, matchingScore }) => {
+    const refused = await takeInterviewAiSlot(me).catch(e => {
+      console.error('[matching] quota du screening illisible', applicationId, e instanceof Error ? e.message : e)
+      return 'quota du jour illisible, réessayez avec « Relancer » sur le Matching IA'
     })
-  } catch (e) {
-    // Score repris quand même : seule la date de l'analyse manque sur le Matching IA.
-    console.error('[matching] analyse reprise non enregistrée', applicationId, e instanceof Error ? e.message : e)
-  }
-  await logFunnelEvent(applicationId, stage ?? 'screening', 'screening', `Score repris du Matching IA : ${aiScore}/100`)
+    if (refused) { errors.add(`Score final non calculé : ${refused}`); return }
+    const { error, score } = await autoScreenApplication(applicationId, { notify: false })
+    if (error || score === undefined) { errors.add(`Score final non calculé : ${error ?? 'réponse inattendue'}`); return }
+    try {
+      if (stage) await createAdminClient().databases.updateDocument(DB_ID, COLLECTIONS.APPLICATIONS, applicationId, { status: stage })
+    } catch (e) {
+      console.error('[matching] candidat noté laissé hors de la phase screening', applicationId, e instanceof Error ? e.message : e)
+      errors.add('Score final calculé, mais une carte n\'a pas pu passer en phase « screening » : déplacez-la dans le pipeline')
+    }
+    const matching = matchingScore !== null ? ` · Matching IA : ${matchingScore}/100` : ''
+    await logFunnelEvent(applicationId, stage ?? 'screening', 'screening', `Score final : ${score}/100${matching}`)
+  })
+  return [...errors]
 }
