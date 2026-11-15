@@ -19,6 +19,7 @@ import { listVivierOfferMatches } from '@/lib/appwrite/vivier-offer-matches'
 import { planPoolRows, poolRowId } from '@/lib/pool-matching'
 import { withCheckedTitles } from '@/lib/title-check'
 import { SCORING_AI, cvScorer, readCvForScoring, type MatchResult } from '@/lib/sourcing-core'
+import { offerDetails } from '@/lib/match-scoring'
 
 export interface JobMatchResult {
   source: 'pool' | 'vivier' | 'application'
@@ -149,8 +150,8 @@ export async function matchVivierCvAgainstJob(jobId: string, vivierCvId: string,
       return
     }
     const scored = await cvScorer({
-      title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? ''),
-    })(cvText)
+      title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? ''), details: offerDetails(job),
+    }, 'matching')(cvText)
     // Réponse sans jugement : CV non noté (jamais un score inventé).
     if (!scored) {
       console.error('[matching] réponse de l\'IA sans jugement lisible pour un CV du vivier de l\'offre', jobId, vivierCvId)

@@ -1,8 +1,7 @@
 import type { CSSProperties } from 'react'
 import { ChevronDown, Info } from 'lucide-react'
 import { HoverCard } from '@/components/ui/hover-card'
-import { CRITERIA, CRITERION_HELP, scoreAdjustment, type ScoreBreakdown } from '@/lib/score-breakdown'
-import { DOMAIN_CAP, ROLE_CAP } from '@/lib/match-scoring'
+import { CAP_RULES, CRITERION_HELP, criteriaOf, scoreAdjustment, type ScoreBreakdown } from '@/lib/score-breakdown'
 import { SOURCING_MIN_SCORE } from '@/lib/sourcing-rules'
 import type { JobMatchResult } from '@/lib/matching-core'
 
@@ -89,7 +88,12 @@ export function ScoreCriteriaList({ breakdown, match }: { breakdown: ScoreBreakd
 /** Couleur d'un critère en pastille dans le tableau : oui (vert), partiel (orange), non (rouge). */
 export const criterionTone = (percent: number) => (percent >= 85 ? '#10b981' : percent >= 35 ? '#f59e0b' : '#ef4444')
 
-/** Mode de calcul des scores, replié au-dessus de la liste : critères, preuves, plafonds, recommandations, seuils. */
+const SCALE_TITLES = [
+  { scale: 'matching', title: 'Matching des CV disponibles', who: 'base candidats, viviers, sourcing des AO' },
+  { scale: 'final', title: 'Score final', who: 'candidatures et candidats ajoutés au funnel, screening du pipeline' },
+] as const
+
+/** Mode de calcul des scores, replié au-dessus de la liste : les deux barèmes, preuves, plafonds, recommandations, seuils. */
 export function ScoringGuide({ className = 'mb-6' }: { className?: string }) {
   return (
     <details className={`group ${className} rounded-2xl`} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
@@ -101,22 +105,31 @@ export function ScoringGuide({ className = 'mb-6' }: { className?: string }) {
       <div className="px-4 pb-4 text-xs leading-relaxed space-y-3" style={muted}>
         <p>
           L’IA ne donne pas de note. Elle compare les expériences du CV (postes, missions, projets, employeurs, durées) à
-          l’offre et juge cinq critères par oui, partiel ou non. Chaque « oui » doit citer une ligne d’expérience du CV,
-          vérifiée par l’application : une compétence seulement listée dans le CV ne vaut que « partiel ». Le score est
-          ensuite calculé à partir de ces jugements : oui donne toute la part du critère, partiel la moitié, non rien.
+          l’offre et juge chaque critère par oui, partiel ou non. Chaque « oui » du contexte et des technologies doit citer
+          une ligne d’expérience du CV, vérifiée par l’application : une compétence seulement listée dans le CV ne vaut que
+          « partiel ». Le score est ensuite calculé à partir de ces jugements : oui donne toute la part du critère, partiel
+          la moitié, non rien. Deux barèmes : le matching trie les CV disponibles, le score final note les candidats du
+          pipeline sur l’expérience, jamais sur les diplômes.
         </p>
-        <ul className="space-y-2">
-          {CRITERIA.map(c => (
-            <li key={c.key}>
-              <span className="font-semibold" style={strong}>{c.label} · {c.weight} points</span> — {c.help}
-            </li>
-          ))}
-        </ul>
+        {SCALE_TITLES.map(({ scale, title, who }) => (
+          <div key={scale}>
+            <p className="font-semibold" style={strong}>{title} <span className="font-normal" style={muted}>({who})</span></p>
+            <ul className="mt-1 space-y-2">
+              {criteriaOf(scale).map(c => (
+                <li key={c.key}>
+                  <span className="font-semibold" style={strong}>{c.label} · {c.weight} points{c.capped ? ' · essentiel' : ''}</span> — {c.help}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
         <p>
-          <span className="font-semibold" style={strong}>Plafonds.</span> Un métier du titre non exercé limite le score
-          à {ROLE_CAP.non}, un métier seulement voisin à {ROLE_CAP.partiel} ; un domaine exigé absent du parcours le
-          limite à {DOMAIN_CAP.non}, un domaine voisin à {DOMAIN_CAP.partiel}. Le plus bas s’applique : un critère
-          essentiel qui manque ne se compense pas par les autres.
+          <span className="font-semibold" style={strong}>Plafonds des critères essentiels.</span> Un métier du titre non
+          exercé limite le score à {CAP_RULES.role.non}, un métier seulement voisin à {CAP_RULES.role.partiel} ; un secteur
+          exigé absent du parcours le limite à {CAP_RULES.domain.non}, un secteur voisin à {CAP_RULES.domain.partiel} ; tout
+          autre critère essentiel qui manque (moins de {CAP_RULES.listMissingPercent} % des technologies demandées, lieu,
+          séniorité, formation, langue, environnement du client) le limite à {CAP_RULES.missing}. Le plus bas s’applique :
+          un critère essentiel qui manque ne se compense pas par les autres.
         </p>
         <p>
           <span className="font-semibold" style={strong}>Recommandations.</span> Les recommandations reçues par le

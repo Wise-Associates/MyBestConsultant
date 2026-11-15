@@ -18,6 +18,7 @@ import { canDeleteComment, parseCommentBody } from './comment-input'
 import { createAoComment, deleteAoComment, deleteAoCommentsOfOffer, getAoComment, listAoComments, type AoComment } from './comments'
 import { getJobMatches, runPoolMatching } from '@/lib/matching-core'
 import { candidateNames, matchCandidatesForOffer } from '@/lib/sourcing-core'
+import { offerDetails } from '@/lib/match-scoring'
 import { bestMatches } from '@/lib/sourcing-rules'
 import type { AoCommentView, AoDashboardActions, AoSyncPassResult, PublicationDraft, PublicationMode, PublicationPreview, SourcingResult } from './dashboard-types'
 import { cityKey, titleKey } from './fingerprint'
@@ -381,7 +382,7 @@ export async function aoOfferSourcingOf(
         details: [
           technologies.length ? `Technologies : ${technologies.join(', ')}` : '',
           offer.experience ? `Expérience requise : ${offer.experience}` : '',
-          offer.location ? `Lieu : ${offer.location}` : '',
+          ...offerDetails(offer),
         ].filter(Boolean),
       })
       if (result.error) return { error: result.error, scanned: result.scanned }

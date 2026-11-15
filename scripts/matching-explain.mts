@@ -4,7 +4,8 @@
 // la notation des candidatures, de la base candidats et du vivier de l'offre),
 // puis affiche les jugements, leurs preuves, le score calculé et son plafond, à côté du score enregistré aujourd'hui.
 // Sert à vérifier un score contesté avant de le recalculer sur la page.
-//   npm run matching:explain -- .env.dev --job <id de l'offre> --cv <id du fichier CV>
+//   npm run matching:explain -- .env.dev --job <id de l'offre> --cv <id du fichier CV> [--final]
+// Barème du matching par défaut (base candidats, viviers) ; --final : score final d'une candidature (ADR 0036).
 //   npm run matching:explain -- .env.prod --prod --job <…> --cv <…>    (production : lecture seule, un appel d'IA)
 // L'identifiant du CV est celui de l'adresse /api/cv/<id>. Aucune valeur secrète n'est affichée ; les preuves citées par
 // l'IA reprennent des expériences du CV (à ne pas copier hors de l'équipe).
@@ -35,7 +36,7 @@ const [file] = args
 const jobId = option('--job')
 const cvFileId = option('--cv')
 if (!file || file.startsWith('--') || !jobId || !cvFileId) {
-  console.error('Usage : npm run matching:explain -- <fichier .env> [--prod] --job <id de l\'offre> --cv <id du fichier CV>')
+  console.error('Usage : npm run matching:explain -- <fichier .env> [--prod] --job <id de l\'offre> --cv <id du fichier CV> [--final]')
   process.exit(1)
 }
 const env = readEnv(file)
@@ -56,8 +57,9 @@ Object.assign(process.env, env)
 const { Query } = await import('node-appwrite')
 const { createAdminClient } = await import('../src/lib/appwrite/client')
 const { DB_ID, COLLECTIONS } = await import('../src/lib/appwrite/config')
-const { cvScorer, readCvForScoring } = await import('../src/lib/sourcing-core')
-const { capFor } = await import('../src/lib/match-scoring')
+const { cvScorer, finalOfferDetails, readCvForScoring } = await import('../src/lib/sourcing-core')
+const { judgedResult, labelOf, offerDetails } = await import('../src/lib/match-scoring')
+const scale = args.includes('--final') ? 'final' as const : 'matching' as const
 
 const { databases } = createAdminClient()
 let job: Awaited<ReturnType<typeof databases.getDocument>>
@@ -85,13 +87,14 @@ if (owners.documents.length > 0) {
   for (const m of pool.documents) stored.push(`base candidats : ${m.score}`)
 }
 
-console.log(`Projet ${env.APPWRITE_PROJECT_ID} — offre « ${job.title} »`)
+console.log(`Projet ${env.APPWRITE_PROJECT_ID} — offre « ${job.title} » — barème : ${scale === 'final' ? 'score final' : 'matching'}`)
 console.log(`CV ${cvFileId} : ${cvText.length} caractères lus. Score enregistré aujourd'hui : ${stored.join(' ; ') || 'aucun'}.`)
 console.log('Notation en cours (un appel d\'IA, rien n\'est enregistré)…\n')
 
 const result = await cvScorer({
   title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? ''),
-})(cvText)
+  details: scale === 'final' ? await finalOfferDetails(job) : offerDetails(job),
+}, scale)(cvText)
 if (!result) {
   console.error('Réponse de l\'IA sans jugement lisible : relancez (l\'application laisserait ce CV à noter).')
   process.exit(1)
@@ -117,8 +120,8 @@ console.log(`Exigences (tirées de la description${criteria.requirements.length 
 j.requirements.forEach((v, i) => console.log(`  ${i + 1}. ${criteria.requirements[i] ?? 'ensemble'} : ${v}${proofOf(at('exigences', i), v)}`))
 console.log(`Compétences demandées${criteria.skills.length ? '' : ' (aucune liste, jugement d\'ensemble)'} :`)
 j.skills.forEach((v, i) => console.log(`  ${i + 1}. ${criteria.skills[i] ?? 'ensemble'} : ${v}${proofOf(at('competences', i), v)}`))
-console.log(`Domaine : ${j.domain} · Niveau : ${j.level}`)
-const cap = capFor(j)
-console.log(`\nScore calculé : ${result.score}${cap < 100 ? ` (plafond ${cap})` : ''}`)
+console.log(Object.entries(j.fits).map(([key, fit]) => `${labelOf(scale, key as keyof typeof j.fits)} : ${fit}`).join(' · '))
+const { cap } = judgedResult(j)
+console.log(`\nScore calculé : ${result.score}${cap ? ` (plafonné à ${cap.value} : ${labelOf(scale, cap.key)} ${cap.level})` : ''}`)
 console.log(`Raison affichée : ${result.reason}`)
 console.log('Recommandations reçues par le candidat sur les expertises de l\'offre : bonus ajouté au score affiché (non calculé ici).')
