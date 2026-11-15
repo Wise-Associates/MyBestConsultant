@@ -36,14 +36,14 @@ export const RECRUITER_SECTIONS: RecruiterSection[] = [
   // rubrique depuis le 2026-10-30) partent des offres du tableau de bord.
   // Libellé « Job board » (demande du 2026-11-13, à la place de « Tableau de bord ») : aussi dans les liens « Retour ».
   { key: 'dashboard', label: 'Job board', href: '/recruiter/dashboard', group: 'recrutement', also: ['/recruiter/pipeline', '/recruiter/candidates', '/recruiter/candidate-preview', '/recruiter/import', '/recruiter/annonces'] },
-  // Processus de recrutement : pipelines, phases et statuts de l'organisation.
-  { key: 'funnel', label: 'Pipelines', href: '/recruiter/funnel', group: 'recrutement', also: [] },
   { key: 'ao', label: 'Appels d’offres', href: '/recruiter/parametres/boites-ao', group: 'recrutement', also: [] },
   // Le screening des CV n'a pas de rubrique : il est rangé avec les entretiens IA (lien sur leur page).
   { key: 'interviews', label: 'Entretiens IA', href: '/recruiter/interviews', group: 'recrutement', also: ['/recruiter/screening'] },
   { key: 'reporting', label: 'Reporting', href: '/recruiter/reporting', group: 'pilotage', also: [] },
   // La marque employeur se gère depuis la page de l'équipe.
   { key: 'equipe', label: 'Mon équipe', href: '/recruiter/equipe', group: 'pilotage', also: ['/recruiter/marque-employeur'] },
+  // Processus de recrutement : pipelines, phases et statuts de l'organisation (réglages, rangés dans Pilotage le 2026-11-15).
+  { key: 'funnel', label: 'Pipelines', href: '/recruiter/funnel', group: 'pilotage', also: [] },
   // Bas du menu (demande du 2026-11-13, ADR 0033), derrière le sélecteur de l'organisation : son identité, ses comptes,
   // son abonnement (ordre de la maquette).
   { key: 'organisation', label: 'Organisation', href: '/recruiter/organisation', group: 'compte', also: [] },
