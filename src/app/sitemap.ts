@@ -24,6 +24,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/a-propos-de-nous`, changeFrequency: 'monthly', priority: 0.5 },
     { url: `${BASE_URL}/contact`, changeFrequency: 'yearly', priority: 0.3 },
     { url: `${BASE_URL}/abonnement`, changeFrequency: 'monthly', priority: 0.4 },
+    { url: `${BASE_URL}/mbc-agency`, changeFrequency: 'monthly', priority: 0.5 },
   ]
 
   const jobPages: MetadataRoute.Sitemap = jobs.map(job => ({
