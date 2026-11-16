@@ -549,7 +549,7 @@ export function recommendationFor(score: number): Recommendation {
 // (lignes « Screening CV » et « Matching IA » de Config IA) et textes lus différents (CV et lettre de motivation, CV,
 // profil extrait). Un même candidat avait deux scores, l'un sur le Matching IA, l'autre dans le pipeline une fois ajouté
 // au funnel. Ils partagent maintenant l'invite (scoringSystemPrompt, scoringUserMessage), le texte du CV
-// (cvTextForScoring) et le modèle (SCORING_AI, sourcing-core.ts). Seul le vivier général garde ses lots de 5 offres
+// (cvTextForScoring) et le modèle (SCORING_AI, ai/models.ts). Seul le vivier général garde ses lots de 5 offres
 // (vivier-matching.ts), avec les mêmes règles et le même texte du CV.
 // Depuis le 2026-11-15 (ADR 0036), la consigne dépend du barème : matching pour les CV disponibles, score final pour une
 // candidature. Un candidat ajouté au funnel reçoit donc un score final, et son score de matching reste dans l'historique.
