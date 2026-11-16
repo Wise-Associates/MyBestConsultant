@@ -12,6 +12,7 @@ import {
 } from '@/lib/social-content'
 import { SAMPLE_POSTER_ID, SCENE_DAILY_LIMITS, isQueuedOverdue, parsePosterImage, posterUrl, sceneTimeoutMs } from '@/lib/social-poster/rules'
 import { isPublicationStopped } from '@/lib/ao/state'
+import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 import { STOPPED_DIFFUSION_ERROR, diffusionStopOutcome, isStoppedDiffusion, stopsDelivery } from '@/lib/publication-stop'
 import type { Job } from '@/types'
 
@@ -209,6 +210,8 @@ export function jobToLite(job: Job, company: string): JobLite {
     contractType: job.contractType, remote: job.remote, salary: job.salary,
     // Retours à la ligne gardés : la description est publiée telle quelle sur LinkedIn, qui n'en affiche pas plus de 3 000 caractères.
     skills: (job.skills ?? []).slice(0, 15).map(k => k.slice(0, 40)), description: plainLines(job.description ?? '').slice(0, 3000),
+    // AO des boîtes de la plateforme (« admin ») et offres partagées de l'admin (sans organisation) : publiées au nom de Wise Associates.
+    fromPlatform: !job.tenantId || job.tenantId === PLATFORM_TENANT_ID,
   }
 }
 
@@ -221,7 +224,7 @@ export async function generateCopy(job: JobLite): Promise<CopyDraft> {
       content: `Offre : ${job.title}\nEntreprise : ${job.company}\nLieu : ${job.location}\nCompétences : ${job.skills.join(', ')}\nDescription : ${job.description}`,
     }], `Tu es community manager d'une plateforme de recrutement IT. À partir d'une offre d'emploi, rédige en français un contenu pour les réseaux sociaux : percutant, sobre, sans emoji, sans promesse inventée, uniquement des informations présentes dans l'offre.
 Réponds UNIQUEMENT avec un JSON valide, sans markdown :
-{"hook":"accroche de 70 caractères maximum","tagline":"une phrase d'accroche inspirante de 85 caractères maximum, propre à ce poste, sans point d'exclamation","pitch":"2 à 3 phrases de présentation","missionBullets":["3 puces de 80 caractères maximum sur la mission"],"profileBullets":["3 à 5 compétences ou qualités clés, 35 caractères maximum chacune"]}`, { timeoutMs: 30_000 })
+{"hook":"accroche de 70 caractères maximum","tagline":"une phrase d'accroche inspirante de 85 caractères maximum, propre à ce poste, sans point d'exclamation","pitch":"2 à 3 phrases de présentation","missionBullets":["3 puces de 80 caractères maximum sur la mission"],"profileBullets":["3 à 5 compétences ou qualités clés, 35 caractères maximum chacune"],"context":"1 à 2 phrases, 300 caractères maximum, qui présentent le projet ou la mission : l'organisation telle que l'offre la désigne, ce qu'elle entreprend et dans quel cadre ; sans t'adresser au candidat","hashtags":["3 à 6 hashtags des principales expertises techniques ou métier demandées par l'offre (compétences, technologies, domaines), dans l'ordre d'importance, chacun en un seul mot sans accent ni espace ni #, écrit avec les mots de l'offre (ex. RisqueDeLiquidite, Java, AWS) ; aucun hashtag générique (recrutement, emploi, job) ni absent de l'offre"]}`, { timeoutMs: 30_000 })
     const m = content.match(/\{[\s\S]*\}/)
     return normalizeCopy(m ? JSON.parse(m[0]) : null, job)
   } catch (e) {

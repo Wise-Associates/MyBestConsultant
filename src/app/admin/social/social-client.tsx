@@ -113,8 +113,14 @@ export function SocialClient({ initialConfig, initialPosts, jobs, env, devPanel 
           </div>
         </div>
         <div>
-          <p className="text-sm font-semibold text-white/90 mb-1.5">Hashtags par défaut</p>
-          <input value={hashtags} onChange={e => { setHashtags(e.target.value); setSaved(false) }} placeholder="recrutement emploi IT consulting" className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={field} />
+          <label htmlFor="social-publisher-intro" className="block text-sm font-semibold text-white/90 mb-1.5">Présentation de Wise Associates (LinkedIn)</label>
+          <textarea id="social-publisher-intro" value={cfg.publisherIntro} onChange={e => set('publisherIntro', e.target.value)} maxLength={400} rows={3} placeholder="Laisser vide pour ne pas présenter Wise Associates" className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-y" style={field} />
+          <p className="text-[11px] mt-1" style={{ color: 'rgba(255,255,255,0.35)' }}>En tête des publications LinkedIn des offres de la plateforme (appels d’offres, offres de l’admin), avant le projet et l’objectif de la publication. Les offres d’une organisation cliente sont présentées à son nom. 400 caractères au plus.</p>
+        </div>
+        <div>
+          <label htmlFor="social-hashtags" className="block text-sm font-semibold text-white/90 mb-1.5">Hashtags par défaut</label>
+          <input id="social-hashtags" value={hashtags} onChange={e => { setHashtags(e.target.value); setSaved(false) }} placeholder="recrutement emploi IT consulting" className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={field} />
+          <p className="text-[11px] mt-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Sur LinkedIn, ils suivent les hashtags des expertises de chaque offre, tirés de ses compétences (10 hashtags au plus).</p>
         </div>
         <div className="flex items-center justify-end gap-3">
           {saved && <span className="text-xs text-emerald-400 inline-flex items-center gap-1"><Check className="h-3.5 w-3.5" />Enregistré</span>}
