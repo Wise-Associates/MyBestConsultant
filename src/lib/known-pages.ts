@@ -4,6 +4,7 @@
 export const KNOWN_PAGES: { href: string; label: string }[] = [
   { href: '/jobs', label: 'Offres' },
   { href: '/abonnement', label: 'Abonnements' },
+  { href: '/mbc-agency', label: 'MBC Agency' },
   { href: '/contact', label: 'Contact' },
   { href: '/legal', label: 'Mentions légales' },
 ]

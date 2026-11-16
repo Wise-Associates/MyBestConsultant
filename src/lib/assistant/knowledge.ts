@@ -17,6 +17,7 @@ AIDE ET SUPPORT
 - Les réponses arrivent dans la demande et par e-mail. Pour répondre, utiliser le bouton du message, pas la réponse à l'e-mail. « C'est résolu » clôt la demande ; y répondre la rouvre.
 - Le bouton « Transmettre au support » de l'assistant crée une demande avec cette conversation.
 - Les conversations avec l'assistant sont conservées ${retentionDays} jours, puis supprimées automatiquement ; elles sont aussi supprimées avec le compte. « Nouvelle conversation » ne supprime pas la précédente. Une conversation transmise au support devient une demande d'aide.
+- MBC Agency (menu « MBC Agency », page /mbc-agency) : cabinet de conseil en recrutement qui accompagne les entreprises (définition du besoin, recherche et approche directe, évaluation des candidats, consultants en mission, intégration). Pour un accompagnement : bouton « Parler de votre recrutement », qui ouvre le formulaire de /contact.
 - Contact : page /contact ou contact@mybestconsultant.fr. Mentions légales et droits RGPD (accès, rectification, suppression) : page /legal.`
 
 const CANDIDATE = `L'UTILISATEUR EST CANDIDAT.

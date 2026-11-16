@@ -4,8 +4,12 @@ import { ContactForm } from './contact-form'
 
 export const metadata = { title: 'Contact — MyBestConsultant' }
 
-// Sujets préremplis par un lien (« Demander un devis » de /abonnement) ; seule une valeur connue est reprise.
-const SUBJECTS: Record<string, string> = { devis: 'Demande de devis — offre sur mesure' }
+// Sujets préremplis par un lien (« Demander un devis » de /abonnement, boutons de /mbc-agency) ; seule une valeur connue
+// est reprise.
+const SUBJECTS: Record<string, string> = {
+  devis: 'Demande de devis — offre sur mesure',
+  agence: 'MBC Agency — accompagnement sur un recrutement',
+}
 
 export default async function ContactPage({ searchParams }: { searchParams: Promise<{ sujet?: string | string[] }> }) {
   const { sujet } = await searchParams

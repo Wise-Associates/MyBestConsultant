@@ -42,7 +42,10 @@ export async function SiteNavbar() {
   const managedLinks = layout.header.navLinks.filter(l => !roleHrefs.has(l.href))
   // « Marque employeur » (annuaire des marques employeurs) est toujours proposé, sans dépendre du menu géré en admin.
   const employersLink = [...roleLinks, ...managedLinks].some(l => l.href === '/entreprises') ? [] : [{ label: 'Marque employeur', href: '/entreprises' }]
-  const navLinks = [...roleLinks, ...employersLink, ...managedLinks]
+  // « MBC Agency » (cabinet de conseil en recrutement, demande du 2026-11-16) : de même, en fin de menu, sauf si l'admin
+  // l'a déjà placé dans le menu géré.
+  const agencyLink = managedLinks.some(l => l.href === '/mbc-agency') ? [] : [{ label: 'MBC Agency', href: '/mbc-agency' }]
+  const navLinks = [...roleLinks, ...employersLink, ...managedLinks, ...agencyLink]
 
   return (
     <SiteNavbarClient
