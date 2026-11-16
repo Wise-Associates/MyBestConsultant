@@ -13,6 +13,8 @@ import { getInterviewPrefillData, generateInterviewQuestions, createInterviewSes
 import { applicationOfOrganisation } from '@/lib/screening-core'
 import type { FunnelStage, FunnelEvent } from '@/types'
 import { revalidatePath } from 'next/cache'
+import { ScaleWeightsSchemas } from '@/lib/scoring-weights'
+import { saveRecruiterWeights } from '@/lib/scoring-weights-store'
 
 export async function requireRecruiter() {
   const user = await getCurrentUser()
@@ -437,5 +439,24 @@ export async function generateStepReportAction(applicationId: string, jobId: str
     return { report }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur lors de la génération du compte rendu' }
+  }
+}
+
+/**
+ * Poids personnels du recruteur connecté (scoring-weights.ts) pour un barème — matching depuis le Matching IA d'une
+ * offre, score final depuis son pipeline : enregistrés sur son propre compte seulement, refusés s'ils ne sont pas valides
+ * (un entier par critère du barème, total 100).
+ */
+export async function saveScoringWeightsAction(scale: unknown, input: unknown): Promise<{ error?: string }> {
+  const user = await requireRecruiter()
+  if (scale !== 'matching' && scale !== 'final') return { error: 'Demande invalide.' }
+  const parsed = ScaleWeightsSchemas[scale].safeParse(input)
+  if (!parsed.success) return { error: 'Poids invalides : le total doit faire 100 points, en nombres entiers.' }
+  try {
+    await saveRecruiterWeights(user.userId, scale, parsed.data)
+    return {}
+  } catch (e) {
+    console.error('[poids] enregistrement des poids impossible', e instanceof Error ? e.message : e)
+    return { error: 'Enregistrement impossible pour le moment : réessayez dans quelques instants.' }
   }
 }

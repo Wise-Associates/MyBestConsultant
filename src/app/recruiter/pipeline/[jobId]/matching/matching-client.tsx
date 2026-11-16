@@ -17,8 +17,10 @@ import {
 } from '@/lib/matching-filters'
 import { initialUrlListSync, noteListWrite, syncFromUrl } from '@/lib/url-list-state'
 import { scoreBreakdown } from '@/lib/score-breakdown'
+import type { RecruiterWeights } from '@/lib/scoring-weights'
 import { ScoreDetail, ScoringGuide, ScoreCriteriaList, criterionTone } from './score-detail'
 import { JobTabs } from '@/components/recruiter/job-tabs'
+import { ScoringWeightsButton } from '../scoring-weights-dialog'
 import { SOURCING_MIN_SCORE } from '@/lib/sourcing-rules'
 
 const PAGE_SIZE = 25
@@ -56,8 +58,10 @@ function profileHref(m: JobMatchResult): string | null {
 }
 
 /** `now` : heure du rendu par le serveur (ISO), avancée à chaque actualisation de la liste. */
-export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMatches, now }: {
+export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMatches, weights, weightsUnreadable, now }: {
   jobId: string; jobTitle: string
+  /** Poids personnels du recruteur : les scores reçus en tiennent déjà compte, le détail de chaque score aussi. */
+  weights: RecruiterWeights; weightsUnreadable: boolean
   /** « Paris · CDI · Publiée le 3 nov. 2026 », et compétences de l'offre : rappel de l'offre sur grand écran. */
   jobMeta: string; jobSkills: string[]
   initialMatches: JobMatchResult[]; now: string
@@ -263,7 +267,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
           </a>
         </div>
       )}
-      <ScoringGuide className="" />
+      <ScoringGuide className="" weights={weights} />
     </aside>
   )
 
@@ -288,7 +292,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
             const isSelected = selected.has(m.id)
             const isFocused = focused !== null && keyOf(focused) === keyOf(m)
             const cv = cvHref(m)
-            const breakdown = m.score != null ? scoreBreakdown(m.reason) : null
+            const breakdown = m.score != null ? scoreBreakdown(m.reason, weights) : null
             const reasonText = breakdown ? breakdown.rest : m.reason
             return (
               <tr key={keyOf(m)} onClick={() => setFocusKey(keyOf(m))} aria-selected={isFocused}
@@ -362,7 +366,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
     </div>
   )
 
-  const focusedBreakdown = focused && focused.score != null ? scoreBreakdown(focused.reason) : null
+  const focusedBreakdown = focused && focused.score != null ? scoreBreakdown(focused.reason, weights) : null
   const focusedProfile = focused ? profileHref(focused) : null
   const focusedCv = focused ? cvHref(focused) : null
   const panelButton = 'h-10 px-3 rounded-[10px] inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold no-underline transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)'
@@ -474,6 +478,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                 {isRefreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
                 Rafraîchir
               </button>
+              <ScoringWeightsButton scale="matching" weights={weights.matching} unreadable={weightsUnreadable} />
               <Link href={`/recruiter/pipeline/${jobId}`}
                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold no-underline transition-opacity hover:opacity-85"
                 style={{ background: '#10b981', color: 'white', boxShadow: '0 6px 16px -6px rgba(16,185,129,0.6)' }}>
@@ -491,7 +496,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
           <p className="text-sm mb-3" style={{ color: 'var(--color-text-muted)' }}>
             L&apos;IA a comparé cette offre aux candidatures reçues, à la base de candidats et à votre vivier (celui de l&apos;offre et votre vivier général). Sélectionnez qui vous intéresse puis lancez (ou relancez) le screening.
           </p>
-          <ScoringGuide />
+          <ScoringGuide weights={weights} />
         </div>
 
         {flash && (
@@ -557,7 +562,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                 const isSelected = selected.has(m.id)
                 const cv = cvHref(m)
                 const profile = profileHref(m)
-                const breakdown = m.score != null ? scoreBreakdown(m.reason) : null
+                const breakdown = m.score != null ? scoreBreakdown(m.reason, weights) : null
                 const reasonText = breakdown ? breakdown.rest : m.reason
                 const disabled = m.alreadyInFunnel
                 return (

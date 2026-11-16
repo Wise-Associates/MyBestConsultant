@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/appwrite/auth'
 import { getJobById } from '@/lib/appwrite/jobs'
 import { getJobMatches, unmatchedApplicationIds } from '@/lib/matching-core'
 import { autoScreenApplication } from '@/lib/screening-core'
+import { loadRecruiterWeights } from '@/lib/scoring-weights-store'
 import { MatchingClient } from './matching-client'
 import { jobMetaLine } from '@/components/recruiter/job-tabs'
 
@@ -19,12 +20,15 @@ export default async function MatchingPage({ params }: { params: Promise<{ jobId
   if (!job) notFound()
   if (job.tenantId !== user.tenantId && job.tenantId !== '') redirect('/recruiter/dashboard')
 
-  const { matches } = await getJobMatches(jobId, user.tenantId, user.$id)
+  // Scores aux poids personnels du recruteur (réglés depuis le pipeline de l'offre).
+  const { weights, unreadable } = await loadRecruiterWeights(user.userId)
+  const { matches } = await getJobMatches(jobId, user.tenantId, user.$id, weights)
 
   // Toute candidature doit avoir son matching : celles que l'analyse automatique a manquées sont relancées en tâche de fond.
   const retry = unmatchedApplicationIds(matches)
   if (retry.length > 0) after(async () => { for (const id of retry) await autoScreenApplication(id) })
 
-  return <MatchingClient jobId={jobId} jobTitle={job.title} jobMeta={jobMetaLine(job)} jobSkills={job.skills ?? []}
-    initialMatches={matches} now={new Date().toISOString()} />
+  // Remonté quand le recruteur change ses poids (router.refresh) : la liste, gardée dans l'état du client, reprend ses scores.
+  return <MatchingClient key={JSON.stringify(weights)} jobId={jobId} jobTitle={job.title} jobMeta={jobMetaLine(job)} jobSkills={job.skills ?? []}
+    initialMatches={matches} weights={weights} weightsUnreadable={unreadable} now={new Date().toISOString()} />
 }

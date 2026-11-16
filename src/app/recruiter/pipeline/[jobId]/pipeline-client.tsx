@@ -25,6 +25,9 @@ import { getInterviewDetailForRecruiter, analyzeInterviewForRecruiter } from './
 import type { FunnelStage, FunnelEvent } from '@/types'
 import { withOrphanStages } from '@/lib/funnel-stage-utils'
 import { FunnelModal } from './funnel-modal'
+import { ScoringWeightsButton } from './scoring-weights-dialog'
+import { personalScore, type RecruiterWeights } from '@/lib/scoring-weights'
+import { recommendationFor } from '@/lib/match-scoring'
 import { progress as funnelProgress, STEP_TYPES, currentIndex as funnelCurrent, type FunnelStep } from '@/lib/candidate-funnel'
 
 export interface PipelineInterview {
@@ -988,12 +991,14 @@ function EmailCard({ candidate, emails, onReplied }: {
 }
 
 export function PipelineClient({
-  jobId, jobTitle, jobMeta, initialCandidates, initialStages, initialEmails, pipeline = null,
+  jobId, jobTitle, jobMeta, initialCandidates, initialStages, initialEmails, pipeline = null, weights, weightsUnreadable,
 }: {
   jobId: string; tenantId: string; jobTitle: string
   /** « Paris · CDI · Publiée le 3 nov. 2026 » : rappel de l'offre dans le bandeau, sur grand écran. */
   jobMeta: string
   initialCandidates: PipelineCandidate[]; initialStages: FunnelStage[]; initialEmails: PipelineEmail[]; pipeline?: { id: string; name: string } | null
+  /** Poids personnels du recruteur (scoring-weights.ts) : scores reçus déjà recalculés, nouveaux scores recalculés ici. */
+  weights: RecruiterWeights; weightsUnreadable: boolean
 }) {
   const [candidates, setCandidates] = useState(initialCandidates)
   const [emails, setEmails] = useState(initialEmails)
@@ -1113,9 +1118,14 @@ export function PipelineClient({
     moveCard(appId, stageSlug)
   }
 
-  function handleScreeningDone(appId: string, score: number, recommendation?: string, summary?: string, stageSlug?: string) {
+  function handleScreeningDone(appId: string, stored: number, recommendation?: string, summary?: string, stageSlug?: string) {
+    // Score enregistré aux poids par défaut : affiché aux poids du recruteur, comme au chargement de la page.
+    const score = summary ? personalScore(stored, summary, weights) : stored
     setCandidates(cs => cs.map(c => c.appId === appId
-      ? { ...c, status: stageSlug && stages.some(s => s.slug === stageSlug) ? stageSlug : c.status, aiScore: score, aiRecommendation: recommendation ?? c.aiRecommendation, aiSummary: summary ?? c.aiSummary }
+      ? {
+          ...c, status: stageSlug && stages.some(s => s.slug === stageSlug) ? stageSlug : c.status, aiScore: score,
+          aiRecommendation: score !== stored ? recommendationFor(score) : recommendation ?? c.aiRecommendation, aiSummary: summary ?? c.aiSummary,
+        }
       : c))
   }
 
@@ -1293,6 +1303,7 @@ export function PipelineClient({
                 <Brain className="h-3.5 w-3.5" /> Matching IA
               </Link>
               <StageStatsButton stats={stageStats} total={candidates.length} />
+              <ScoringWeightsButton scale="final" weights={weights.final} unreadable={weightsUnreadable} />
               <button onClick={() => setConfigOpen(true)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80"
                 style={{ background: 'rgba(232,163,61,0.15)', color: 'var(--hero-accent)', border: '1px solid rgba(232,163,61,0.3)' }}>

@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import { ChevronDown, Info } from 'lucide-react'
 import { HoverCard } from '@/components/ui/hover-card'
 import { CAP_RULES, CRITERION_HELP, criteriaOf, scoreAdjustment, type ScoreBreakdown } from '@/lib/score-breakdown'
+import type { RecruiterWeights } from '@/lib/scoring-weights'
 import { SOURCING_MIN_SCORE } from '@/lib/sourcing-rules'
 import type { JobMatchResult } from '@/lib/matching-core'
 
@@ -93,8 +94,11 @@ const SCALE_TITLES = [
   { scale: 'final', title: 'Score final', who: 'candidatures et candidats ajoutés au funnel, screening du pipeline' },
 ] as const
 
-/** Mode de calcul des scores, replié au-dessus de la liste : les deux barèmes, preuves, plafonds, recommandations, seuils. */
-export function ScoringGuide({ className = 'mb-6' }: { className?: string }) {
+/**
+ * Mode de calcul des scores, replié au-dessus de la liste : les deux barèmes (aux poids du recruteur, `weights`), preuves,
+ * plafonds, recommandations, seuils.
+ */
+export function ScoringGuide({ className = 'mb-6', weights }: { className?: string; weights?: RecruiterWeights }) {
   return (
     <details className={`group ${className} rounded-2xl`} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
       <summary className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer list-none rounded-2xl text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text) [&::-webkit-details-marker]:hidden"
@@ -115,7 +119,7 @@ export function ScoringGuide({ className = 'mb-6' }: { className?: string }) {
           <div key={scale}>
             <p className="font-semibold" style={strong}>{title} <span className="font-normal" style={muted}>({who})</span></p>
             <ul className="mt-1 space-y-2">
-              {criteriaOf(scale).map(c => (
+              {criteriaOf(scale, weights).map(c => (
                 <li key={c.key}>
                   <span className="font-semibold" style={strong}>{c.label} · {c.weight} points{c.capped ? ' · essentiel' : ''}</span> — {c.help}
                 </li>
