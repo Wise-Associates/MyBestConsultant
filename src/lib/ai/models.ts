@@ -12,8 +12,8 @@ export const SCORING_AI = { module: 'matching', moduleDefault: 'claude' } as con
 /** `moduleDefault` : modèle du module quand Config IA n'en choisit aucun (affiché par l'écran admin, comme pickPrimary). */
 export const AI_MODULES: { id: AIModule; label: string; description: string; moduleDefault?: string }[] = [
   { id: 'interview', label: 'Entretiens IA', description: 'Questions, relances et analyse des entretiens' },
-  // Toute notation d'un candidat pour une offre (SCORING_AI ; ADR 0029, qui a retiré la ligne « Screening CV »).
-  { id: 'matching', label: 'Matching IA', description: 'Score des candidats pour une offre : candidatures (screening), base candidats, viviers — Claude si « Modèle par défaut »', moduleDefault: SCORING_AI.moduleDefault },
+  // Toute notation d'un candidat pour une offre et MBC Search (SCORING_AI ; ADR 0029, qui a retiré la ligne « Screening CV »).
+  { id: 'matching', label: 'Matching IA', description: 'Score des candidats pour une offre : candidatures (screening), base candidats, viviers ; MBC Search (critères, questions, message d’approche) — Claude si « Modèle par défaut »', moduleDefault: SCORING_AI.moduleDefault },
   // Sans repli (callLLM strict, src/lib/assistant/host.ts) : les conversations ne partent que chez le modèle choisi ici.
   { id: 'assistant', label: 'Assistant IA', description: 'Questions d’aide des candidats et recruteurs — sans repli : en cas de panne, l’assistant affiche une erreur' },
   // Sans repli (callLLM strict, src/lib/cv-export/export.ts) : le CV complet du candidat ne part que chez le modèle choisi ici.
