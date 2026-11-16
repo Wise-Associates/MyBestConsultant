@@ -1,3 +1,4 @@
+import type { RecruiterWeights } from './scoring-weights'
 import {
   DOMAIN_CAP, LIST_MISSING_BELOW, MAX_REQUIRED_SKILLS, MAX_REQUIREMENTS, MISSING_CAP, NEUTRAL, POINTS, ROLE_CAP, SCALES, fitLevel,
   labelOf, listLevel, meanPoints, scaleKeys, scoreOf, worstJudgement,
@@ -84,9 +85,13 @@ export const CRITERION_HELP: Record<CriterionKey, string> = {
     + 'pas, la part est complète.',
 }
 
-/** Critères d'un barème, dans son ordre, avec leur nom, leur poids, leur plafond éventuel et ce qu'ils mesurent. */
-export const criteriaOf = (scale: ActiveScale) => scaleKeys(scale).map(key => ({
-  key, label: labelOf(scale, key), weight: SCALES[scale].weights[key] ?? 0, capped: key in SCALES[scale].caps, help: CRITERION_HELP[key],
+/**
+ * Critères d'un barème, dans son ordre, avec leur nom, leur poids (ceux du recruteur s'il en a, `weights`), leur plafond
+ * éventuel et ce qu'ils mesurent.
+ */
+export const criteriaOf = (scale: ActiveScale, weights?: RecruiterWeights) => scaleKeys(scale).map(key => ({
+  key, label: labelOf(scale, key), weight: (weights?.[scale] ?? SCALES[scale].weights)[key] ?? 0, capped: key in SCALES[scale].caps,
+  help: CRITERION_HELP[key],
 }))
 
 /** Plafonds, en clair (guide « Comment le score est calculé »). */
@@ -143,8 +148,11 @@ function resultOf(key: CriterionKey, detail: string): CriterionResult | null {
   return { key, ratio: POINTS[fit], level: fitLevel(fit), detail }
 }
 
-/** Détail du score résumé au début de `reason` ; null si la raison n'a pas de résumé lisible (score d'avant, texte coupé). */
-export function scoreBreakdown(reason: string): ScoreBreakdown | null {
+/**
+ * Détail du score résumé au début de `reason` ; null si la raison n'a pas de résumé lisible (score d'avant, texte coupé).
+ * `custom` : poids d'un recruteur (scoring-weights.ts), pour les barèmes actuels ; le barème d'avant garde les siens.
+ */
+export function scoreBreakdown(reason: string, custom?: RecruiterWeights): ScoreBreakdown | null {
   for (const { scale, pattern } of SUMMARIES) {
     const m = reason.match(pattern)
     if (!m) continue
@@ -152,8 +160,8 @@ export function scoreBreakdown(reason: string): ScoreBreakdown | null {
     const results = keys.map((key, i) => resultOf(key, m[i + 1]))
     if (results.some(r => r === null)) return null
     const read = results as CriterionResult[]
-    const { weights } = SCALES[scale]
-    const { total, cap, score } = scoreOf(scale, read)
+    const weights = (scale !== 'legacy' && custom?.[scale]) || SCALES[scale].weights
+    const { total, cap, score } = scoreOf(scale, read, weights)
     const parts = read.map(r => {
       const max = weights[r.key] ?? 0
       return { key: r.key, label: labelOf(scale, r.key), percent: Math.round(r.ratio * 100), points: max * r.ratio, max, detail: r.detail }

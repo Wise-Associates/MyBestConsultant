@@ -73,6 +73,29 @@ Choix de l'utilisateur du 2026-11-15, sur proposition :
   l'ouverture du Matching IA ou par « Relancer », et le candidat reçoit alors l'e-mail des scores de 70 et plus alors
   qu'il n'a pas postulé.
 
+## Poids personnels (2026-11-16)
+
+Demande du 2026-11-16 : des poids **propres à chaque recruteur**, pas à l'organisation, les poids par défaut gardés, et
+réglables depuis le pipeline d'une offre.
+
+- Bouton « Pondération » du bandeau, **un barème par page** (demandes du même jour) : le Matching IA d'une offre
+  (`…/matching`) règle les poids du matching, son pipeline (`/recruiter/pipeline/<offre>`) ceux du score final
+  (screening) (`scoring-weights-dialog.tsx`, prop `scale`) : un champ par critère, total de 100 exigé, « Revenir aux
+  poids par défaut ». Les poids valent pour toutes les offres du recruteur ; enregistrer un barème garde l'autre.
+- Gardés dans les **préférences du compte Appwrite** du recruteur (`scoringWeights`, `scoring-weights-store.ts`) : ni
+  collection ni attribut à créer. Les préférences peuvent être écrites par l'utilisateur lui-même : relues et validées
+  (`parseRecruiterWeights` ; un barème invalide garde ses poids par défaut), et elles ne changent que ses propres
+  affichages. Enregistrement par `saveScoringWeightsAction(scale, poids)` (recruteur de la session, poids validés par
+  `ScaleWeightsSchemas`), l'autre barème et les autres préférences gardés (jeton d'invitation).
+- **Recalcul à l'affichage, sans appel d'IA** (`personalScore`, `scoring-weights.ts`) : le score est refait d'après le
+  résumé des jugements enregistré en tête de la raison, avec les poids du recruteur, puis l'écart du score enregistré
+  (recommandations) est rajouté. Appliqué au pipeline de l'offre (cartes, tri, filtre, recommandation) et à son
+  Matching IA (`getJobMatches(…, weights)` : scores, classement, filtres, détail et guide du calcul).
+- **Inchangé** : les scores enregistrés (poids par défaut) et tout ce qui les lit sans recruteur — e-mails automatiques
+  (70 et plus), seuil de 65 du vivier général et de ses correspondances, sourcing et suivi des AO, tableau de bord,
+  page Screening, reporting. Les plafonds des critères essentiels ne dépendent pas des poids. Un score sans résumé
+  lisible (barème d'avant le 2026-11-15, résumé coupé du vivier général) garde son score enregistré.
+
 ## Retour arrière
 
 `git revert` du commit. Aucune donnée ni structure n'est modifiée ; les scores calculés entre-temps gardent leur

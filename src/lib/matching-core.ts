@@ -20,6 +20,7 @@ import { planPoolRows, poolRowId } from '@/lib/pool-matching'
 import { withCheckedTitles } from '@/lib/title-check'
 import { SCORING_AI, cvScorer, readCvForScoring, type MatchResult } from '@/lib/sourcing-core'
 import { offerDetails } from '@/lib/match-scoring'
+import { personalScore, type RecruiterWeights } from '@/lib/scoring-weights'
 
 export interface JobMatchResult {
   source: 'pool' | 'vivier' | 'application'
@@ -206,8 +207,10 @@ const VIVIER_FIELDS = ['$id', '$createdAt', '$updatedAt', 'tenantId', 'jobId', '
 // `tenantId` = the caller's organisation: a job shared by the platform has the viviers of every organisation.
 // `vivierOwner` = profile (users.$id) of the recruiter whose viviers are shown — a vivier is personal, no colleague sees
 // it (decision of 2026-11-03) — or null for all of the organisation's (platform admin, as on the vivier page).
+// `weights` : poids du recruteur qui regarde (scoring-weights.ts) ; scores recalculés à partir de leurs jugements, puis
+// classés. Absents : scores enregistrés (poids par défaut).
 export async function getJobMatches(
-  jobId: string, tenantId: string, vivierOwner: string | null,
+  jobId: string, tenantId: string, vivierOwner: string | null, weights?: RecruiterWeights,
 ): Promise<{ matches: JobMatchResult[]; poolComputedAt: string | null }> {
   const { databases } = createAdminClient()
   const jobDoc = await databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId).catch(err => {
@@ -328,7 +331,8 @@ export async function getJobMatches(
     }
   })
 
-  const matches = [...poolMatches, ...vivierMatches, ...applicationMatches]
+  const all = [...poolMatches, ...vivierMatches, ...applicationMatches]
+  const matches = (weights ? all.map(m => (m.score === null ? m : { ...m, score: personalScore(m.score, m.reason, weights) })) : all)
     .sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
   const poolComputedAt = poolDocs[0]?.$createdAt as string | undefined ?? null
 

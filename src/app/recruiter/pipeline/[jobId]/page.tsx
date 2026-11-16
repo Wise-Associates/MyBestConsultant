@@ -15,6 +15,9 @@ import { jobMetaLine } from '@/components/recruiter/job-tabs'
 import type { InterviewAnalysis } from '@/app/recruiter/interviews/actions'
 import { getEmailsForApplications } from '@/lib/appwrite/application-emails'
 import type { FunnelStage } from '@/types'
+import { loadRecruiterWeights } from '@/lib/scoring-weights-store'
+import { personalScore } from '@/lib/scoring-weights'
+import { recommendationFor } from '@/lib/match-scoring'
 
 // Every interview per application (a recruiter can launch as many as they want for the
 // same candidate) — shown as sub-card results on the Kanban card, most recent first. Carries
@@ -68,8 +71,8 @@ export default async function PipelinePage({ params }: { params: Promise<{ jobId
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) redirect('/login')
 
-  const [job, allApps, { stages, pipeline }] = await Promise.all([
-    getJobById(jobId), getApplicationsByJob(jobId), getStagesForJob(user.tenantId, jobId),
+  const [job, allApps, { stages, pipeline }, { weights, unreadable }] = await Promise.all([
+    getJobById(jobId), getApplicationsByJob(jobId), getStagesForJob(user.tenantId, jobId), loadRecruiterWeights(user.userId),
   ])
   if (!job) notFound()
   // Admin-published jobs (tenantId '') are shared across recruiters, same access rule
@@ -87,6 +90,8 @@ export default async function PipelinePage({ params }: { params: Promise<{ jobId
 
   const candidates: PipelineCandidate[] = apps.map(a => {
     const info = userMap.get(a.candidateId)
+    // Score aux poids personnels du recruteur, recalculé d'après les jugements enregistrés (scoring-weights.ts).
+    const aiScore = a.aiScore == null ? undefined : personalScore(a.aiScore, a.aiSummary ?? '', weights)
     return {
       appId: a.$id,
       candidateName: info?.name || `Candidat #${a.candidateId.slice(-6)}`,
@@ -105,9 +110,9 @@ export default async function PipelinePage({ params }: { params: Promise<{ jobId
       funnel: funnelForCandidate(a.funnelJson, resolveStatus(stages, a.status)).steps,
       // Appwrite returns null (not undefined) for a numeric attribute that was never
       // set — normalize here so downstream `!== undefined` checks work correctly.
-      aiScore: a.aiScore ?? undefined,
+      aiScore,
       aiSummary: a.aiSummary ?? undefined,
-      aiRecommendation: a.aiRecommendation ?? undefined,
+      aiRecommendation: aiScore !== undefined && aiScore !== a.aiScore ? recommendationFor(aiScore) : a.aiRecommendation ?? undefined,
       interviews: interviewResults.get(a.$id) ?? [],
       tags: a.tags ?? [],
       note: a.note ?? '',
@@ -120,5 +125,6 @@ export default async function PipelinePage({ params }: { params: Promise<{ jobId
   const boardStages: FunnelStage[] = withOrphanStages(stages, candidates.map(c => c.status)).map(s =>
     stages.find(x => x.slug === s.slug) ?? { $id: `orphan-${s.slug}`, tenantId: user.tenantId!, slug: s.slug, label: s.label, color: s.color, order: s.order })
 
-  return <PipelineClient jobId={jobId} tenantId={user.tenantId} jobTitle={job.title} jobMeta={jobMetaLine(job)} initialCandidates={candidates} initialStages={boardStages} initialEmails={emails} pipeline={pipeline} />
+  // Remonté quand le recruteur change ses poids (router.refresh) : les cartes, gardées dans l'état du client, reprennent leurs scores.
+  return <PipelineClient key={JSON.stringify(weights)} jobId={jobId} tenantId={user.tenantId} jobTitle={job.title} jobMeta={jobMetaLine(job)} initialCandidates={candidates} initialStages={boardStages} initialEmails={emails} pipeline={pipeline} weights={weights} weightsUnreadable={unreadable} />
 }

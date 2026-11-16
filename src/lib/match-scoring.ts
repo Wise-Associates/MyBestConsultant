@@ -484,9 +484,12 @@ export interface ScoreResult {
   score: number
 }
 
-/** Score d'un barème à partir de ses critères (judgedScore, et le détail affiché qui le refait, score-breakdown.ts). */
-export function scoreOf(scale: ScaleName, results: CriterionResult[]): ScoreResult {
-  const { weights, caps } = SCALES[scale]
+/**
+ * Score d'un barème à partir de ses critères (judgedScore, et le détail affiché qui le refait, score-breakdown.ts).
+ * `weights` : poids d'un recruteur (scoring-weights.ts) à la place de ceux du barème ; les plafonds ne changent pas.
+ */
+export function scoreOf(scale: ScaleName, results: CriterionResult[], weights: Partial<Record<CriterionKey, number>> = SCALES[scale].weights): ScoreResult {
+  const { caps } = SCALES[scale]
   const total = Math.round(results.reduce((sum, r) => sum + (weights[r.key] ?? 0) * r.ratio, 0))
   let lowest: ScoreResult['cap'] = null
   for (const r of results) {

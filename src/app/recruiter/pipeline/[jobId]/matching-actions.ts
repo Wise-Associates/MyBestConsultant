@@ -13,28 +13,35 @@ import { revalidatePath } from 'next/cache'
 import { requireRecruiter } from './actions'
 import { aiInterviewRecruiter, takeInterviewAiSlot } from '@/lib/interview-access'
 import { autoScreenApplication } from '@/lib/screening-core'
+import { loadRecruiterWeights } from '@/lib/scoring-weights-store'
 
 // Server Actions appelables avec n'importe quel identifiant d'offre (publics : liens /jobs/<id>) : l'offre doit être de
 // l'organisation du recruteur ou partagée par la plateforme (tenantId ''), comme pour la page. `profileId` : le
-// recruteur (users.$id), dont seuls les viviers sont montrés et ajoutés au funnel (un vivier est personnel).
-async function requireJobAccess(jobId: string): Promise<{ tenantId: string; profileId: string }> {
-  const { tenantId, $id } = await requireRecruiter()
+// recruteur (users.$id), dont seuls les viviers sont montrés et ajoutés au funnel (un vivier est personnel) ; `userId` :
+// son compte, qui porte ses poids personnels (scoring-weights-store.ts).
+async function requireJobAccess(jobId: string): Promise<{ tenantId: string; profileId: string; userId: string }> {
+  const { tenantId, $id, userId } = await requireRecruiter()
   const job = await getJobById(jobId)
   if (!job || !tenantId || !recruiterCanOpenJob(job.tenantId, tenantId)) throw new Error('Non autorisé')
-  return { tenantId, profileId: $id }
+  return { tenantId, profileId: $id, userId }
+}
+
+/** Liste de la page, scores aux poids du recruteur. */
+async function matchesFor(jobId: string, access: { tenantId: string; profileId: string; userId: string }): Promise<JobMatchResult[]> {
+  const { weights } = await loadRecruiterWeights(access.userId)
+  return (await getJobMatches(jobId, access.tenantId, access.profileId, weights)).matches
 }
 
 export async function getMatchesAction(jobId: string): Promise<JobMatchResult[]> {
-  const { tenantId, profileId } = await requireJobAccess(jobId)
-  const { matches } = await getJobMatches(jobId, tenantId, profileId)
-  return matches
+  return matchesFor(jobId, await requireJobAccess(jobId))
 }
 
 // Lance (ou relance) le matching d'une candidature précise — par ex. quand l'analyse automatique n'a pas abouti.
 // Attend la fin de l'analyse, puis renvoie la liste à jour.
 export async function runApplicationMatchingAction(jobId: string, applicationId: string): Promise<{ matches?: JobMatchResult[]; error?: string }> {
   try {
-    const { tenantId, profileId } = await requireJobAccess(jobId)
+    const access = await requireJobAccess(jobId)
+    const { tenantId } = access
     const { databases } = createAdminClient()
     const app = await databases.getDocument(DB_ID, COLLECTIONS.APPLICATIONS, applicationId)
     if (app.jobId !== jobId || (app.tenantId !== tenantId && app.tenantId !== '')) return { error: 'Non autorisé' }
@@ -45,7 +52,7 @@ export async function runApplicationMatchingAction(jobId: string, applicationId:
     if (refused) return { error: refused }
     const { error } = await autoScreenApplication(applicationId)
     revalidatePath(`/recruiter/pipeline/${jobId}/matching`)
-    return { matches: (await getJobMatches(jobId, tenantId, profileId)).matches, error }
+    return { matches: await matchesFor(jobId, access), error }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur' }
   }
@@ -138,7 +145,7 @@ export async function addToFunnelAction(
   let shown: JobMatchResult[] = []
   let screeningStage: string | undefined
   try {
-    shown = (await getJobMatches(jobId, tenantId, access.profileId)).matches
+    shown = await matchesFor(jobId, access)
     const { stages } = await getStagesForJob(tenantId, jobId)
     screeningStage = stages.find(st => st.autoAction === 'screening')?.slug ?? stages.find(st => st.slug === 'screening')?.slug
   } catch (e) {
