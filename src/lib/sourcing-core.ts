@@ -5,6 +5,7 @@
 // a 'use server' file becomes a remotely-callable action, and these functions
 // skip the admin auth check, so they must never be reachable directly from a client.
 import { callLLM } from '@/lib/ai/llm-router'
+import { SCORING_AI } from '@/lib/ai/models'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
 import { Query, ID, type Models } from 'node-appwrite'
@@ -93,12 +94,6 @@ export async function readCvForScoring(cvFileId: string, bucketId: string = BUCK
   const text = await cvFileText(cvFileId, CV_CHARS_FOR_SCORING * 2, bucketId)
   return text.trim().length > 30 ? cvTextForScoring(text) : ''
 }
-
-/**
- * Modèle de toute notation d'un candidat pour une offre : ligne « Matching IA » de Config IA, Claude si elle est sur
- * « Modèle par défaut » (ADR 0029 : une seule ligne, « Screening CV » retirée ; repli habituel si le modèle échoue).
- */
-export const SCORING_AI = { module: 'matching', moduleDefault: 'claude' } as const
 
 
 export interface CandidateMatch {
@@ -253,7 +248,7 @@ export function cvScorer(offer: OfferForMatching, scale: ActiveScale): (cvText: 
   const system = scoringSystemPrompt(scale, criteriaCounts(criteria))
   return async cvText => {
     // Une preuve par élément jugé : réponse plus longue qu'une note (et la réflexion du modèle compte dans la limite).
-    const { content, provider } = await callLLM([{ role: 'user', content: scoringUserMessage(offer, criteria, cvText) }], system, { ...SCORING_AI, maxTokens: 8000 })
+    const { content, provider } = await callLLM([{ role: 'user', content: scoringUserMessage(offer, criteria, cvText) }], system, { ...SCORING_AI, maxTokens: 8000, timeoutMs: 120_000 })
     const json = content.match(/\{[\s\S]*\}/)
     let answer: unknown = null
     try { answer = json ? JSON.parse(json[0]) : null } catch { answer = null }

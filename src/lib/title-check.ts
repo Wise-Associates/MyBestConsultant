@@ -1,4 +1,5 @@
 import { callLLM } from '@/lib/ai/llm-router'
+import { SCORING_AI } from '@/lib/ai/models'
 import {
   parseTitleRelations, rolePairs, titleCheckPrompt, withTitleRelations, type MatchJudgements, type TitleRelation,
 } from '@/lib/match-scoring'
@@ -17,7 +18,7 @@ export async function withCheckedTitles(judged: MatchJudgements[]): Promise<Matc
   if (pairs.length > 0) {
     try {
       const { system, user } = titleCheckPrompt(pairs)
-      const { content } = await callLLM([{ role: 'user', content: user }], system, { module: 'matching', maxTokens: 2000 })
+      const { content } = await callLLM([{ role: 'user', content: user }], system, { ...SCORING_AI, maxTokens: 2000, timeoutMs: 120_000 })
       relations = parseTitleRelations(content, pairs.length)
       if (relations.some(r => r === null)) console.warn('[matching] comparaison des intitulés incomplète : métiers concernés à « partiel » au plus')
     } catch (e) {

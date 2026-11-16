@@ -8,7 +8,7 @@ import { testProvider } from './actions'
 import type { ProviderConfig } from './types'
 import { Row, TextInput, NumInput, ApiKeyInput } from './config-ui'
 import {
-  AI_MODULES, MODEL_LIMITS, OS_HOSTS, OS_PRESETS, makeModelId, type AIModule, type OpenSourceModel,
+  AI_MODULES, MODEL_LIMITS, OS_HOSTS, OS_PRESETS, makeModelId, pickPrimary, type AIModule, type OpenSourceModel,
 } from '@/lib/ai/models'
 
 type SetCfg = <K extends keyof ProviderConfig>(key: K, value: ProviderConfig[K]) => void
@@ -17,8 +17,6 @@ type TestResult = { ok: boolean; latencyMs: number; error?: string }
 const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }
 const btn = { border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.6)', background: 'rgba(255,255,255,0.05)' }
 const selectStyle = { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)' }
-
-const BUILTIN_LABEL: Record<string, string> = { claude: 'Claude', gpt4o: 'GPT-4o', teckia: 'TeckiA' }
 
 /** Nom lisible d'un modèle (intégré ou open source). */
 function modelName(id: string, cfg: ProviderConfig): string {
@@ -89,7 +87,10 @@ export function ModuleRouting({ cfg, set }: { cfg: ProviderConfig; set: SetCfg }
       <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
         {AI_MODULES.map(m => {
           const assigned = cfg.moduleRouting[m.id]
-          const effective = assigned && (BUILTIN_LABEL[assigned] || enabledCustom.some(c => c.id === assigned)) ? assigned : cfg.activeProvider
+          // Même règle que le routeur (pickPrimary) : « Modèle par défaut » de Matching IA est Claude, pas le modèle ACTIF.
+          const routing = { provider: cfg.activeProvider, moduleRouting: cfg.moduleRouting, openSourceModels: cfg.openSourceModels }
+          const byDefault = pickPrimary(routing, { moduleDefault: m.moduleDefault })
+          const effective = pickPrimary(routing, { module: m.id, moduleDefault: m.moduleDefault })
           return (
             <div key={m.id} className="flex items-center justify-between gap-4 flex-wrap px-4 py-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               <div className="min-w-[180px]">
@@ -100,7 +101,7 @@ export function ModuleRouting({ cfg, set }: { cfg: ProviderConfig; set: SetCfg }
                 <TestBadge result={results[`${m.id}:${effective}`] ?? null} />
                 <select value={assigned && effective === assigned ? assigned : 'default'} onChange={e => assign(m.id, e.target.value)}
                   className="px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-white/20 max-w-[280px]" style={selectStyle}>
-                  <option value="default" style={{ color: '#000' }}>Modèle par défaut — {modelName(cfg.activeProvider, cfg)}</option>
+                  <option value="default" style={{ color: '#000' }}>Modèle par défaut — {modelName(byDefault, cfg)}</option>
                   <optgroup label="Modèles intégrés">
                     {(['claude', 'gpt4o', 'teckia'] as const).map(id => <option key={id} value={id} style={{ color: '#000' }}>{modelName(id, cfg)}</option>)}
                   </optgroup>
