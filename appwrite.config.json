@@ -4397,6 +4397,24 @@
                     "array": false,
                     "format": "",
                     "default": null
+                },
+                {
+                    "key": "conversationJson",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 100000,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "peopleJson",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 1000000,
+                    "default": null,
+                    "encrypt": false
                 }
             ],
             "indexes": [

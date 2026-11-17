@@ -71,3 +71,24 @@ Le seul texte comparable avant enrichissement est donc l'intitulé.
   de 100) contre 1 500 avant (60 pages de 25). Rien n'en est enregistré, mais le volume est à reporter au registre des
   traitements (RGPD).
 - Retour arrière : revenir au commit précédent ; aucune donnée ni structure n'a changé.
+
+## Mise à jour du 2026-11-17 : mots du métier
+
+Demande de l'utilisateur : reprendre la façon dont l'assistant d'Apollo cherche (mots-clés dans tout le profil plutôt
+qu'intitulé exact), avec notre fonctionnement. Essais sur l'API, Paris :
+
+| Requête | Profils |
+|---|---|
+| Intitulés « Spécialiste support monétique », « Support monétique » + séniorité « senior » | 0 |
+| Mêmes intitulés, sans séniorité | 7, tous du métier |
+| Mot-clé « monétique » + séniorité « senior » | 3 |
+| Mot-clé « monétique », sans séniorité | 288, presque tous du métier |
+| Mots-clés « monétique paiement » | 23 (Apollo exige tous les mots) |
+
+Décision : l'IA donne aussi 0 à 2 **mots du métier** (`keywords`, ex. « monétique », « payments ») ; chacun devient une
+requête juste après celle du recruteur (`parseStrategies`) : le mot cherché seul dans tout le profil (`q_keywords`, avec
+les compétences ★ du recruteur), **sans intitulé ni séniorité** (la séniorité d'Apollo est un niveau strict qui écarte
+la plupart des bons profils), lieu, secteur et filtres gardés. Les profils trouvés sont notés comme les autres, sur les
+critères du recruteur avec la comparaison des intitulés par l'IA : un profil qui cite le mot sans exercer le métier
+reste en bas de la liste. Le « filtre IA » et la recherche sémantique de l'assistant d'Apollo ne sont pas dans
+l'API de recherche utilisée ; notre comparaison des intitulés par l'IA en tient lieu.

@@ -53,6 +53,16 @@ export async function savedPerson(userId: string, apolloId: string): Promise<Mbc
   }
 }
 
+/** Personnes déjà enregistrées par le recruteur parmi `apolloIds` (100 au plus : limite d'Appwrite par Query.equal). */
+export async function savedPeopleAmong(userId: string, apolloIds: string[]): Promise<MbcSavedPerson[]> {
+  if (apolloIds.length === 0) return []
+  const { databases } = createAdminClient()
+  const res = await databases.listDocuments(DB_ID, collection(), [
+    Query.equal('userId', userId), Query.equal('apolloId', apolloIds.slice(0, 100)), Query.limit(100),
+  ])
+  return res.documents.flatMap(d => parseSavedPersonDoc(d as unknown as Record<string, unknown>) ?? [])
+}
+
 /** Nombre de personnes enregistrées par le recruteur. */
 export async function countSavedPeople(userId: string): Promise<number> {
   const { databases } = createAdminClient()

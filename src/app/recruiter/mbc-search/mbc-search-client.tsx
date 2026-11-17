@@ -3,16 +3,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Bookmark, Loader2, Plus, Radar, X } from 'lucide-react'
 import {
-  analyseMbcBrief, askMbcQuestions, deleteMbcSearchEntry, evaluateMbcProfile, pinMbcSearch, planMbcStrategies, refineMbcSearch,
-  revealMbcProfiles, saveMbcPerson, searchMbcProfiles, similarMbcCriteria, unsaveMbcPerson, updateMbcFollow,
+  analyseMbcBrief, askMbcQuestions, deleteMbcSearchEntry, evaluateMbcProfile, openMbcDiscussion, pinMbcSearch, planMbcStrategies, refineMbcSearch,
+  revealMbcProfiles, saveMbcDiscussion, saveMbcPerson, searchMbcProfiles, similarMbcCriteria, unsaveMbcPerson, updateMbcFollow,
 } from './actions'
 import { DEFAULT_POOL_FILTERS, filterPool, poolCsv, type PoolContext, type PoolFilters } from '@/lib/mbc-search/results-view'
 import {
-  CRITERIA_LIMITS, EMPTY_CRITERIA, REVEAL_BATCH, criteriaProblem, savedSearchName, scoreProfile, type MbcCriteria, type ScoredProfile,
+  CRITERIA_LIMITS, EMPTY_CRITERIA, REVEAL_BATCH, criteriaProblem, savedSearchName, scoreProfile, type MbcCriteria, type MbcProfile, type ScoredProfile,
 } from '@/lib/mbc-search/rules'
 import { failedRun, hasMorePages, mergePool, settledRuns, type PoolProfile, type StrategyRun } from '@/lib/mbc-search/strategies'
 import { QUESTION_LIMITS, answerText, type MbcAnswer, type MbcQuestion } from '@/lib/mbc-search/conversation'
 import type { MbcSearchEntry } from '@/lib/mbc-search/history'
+import type { DiscussionMessage, DiscussionPerson, MbcDiscussion } from '@/lib/mbc-search/discussion'
 import type { MbcSavedPerson } from '@/lib/mbc-search/saved'
 import { ProfilePanel, type Added } from './mbc-profile-panel'
 import { ErrorNote, surface, type Evaluation, type Reveal, type SaveButton } from './mbc-search-ui'
@@ -27,7 +28,9 @@ import { COMPARE_MAX, FOLLOW_STATUSES, countByStatus, toggleCompared, type Follo
 // « Recherche directe »), tire les critères du besoin et des réponses, cherche chez Apollo et affiche les profils
 // classés ; chaque message du recruteur sous les résultats ajuste les critères et relance. Onglet « Sélection » : les
 // personnes enregistrées. Profil choisi : colonne de droite dès 1280 px, fenêtre plein écran en dessous.
-// La conversation n'est pas enregistrée : seul l'historique des recherches (brief et critères) l'est, par le serveur.
+// L'historique des recherches (brief et critères) est tenu par le serveur ; une recherche enregistrée (marque-page) garde
+// aussi sa discussion et les personnes révélées pendant celle-ci (demande du 2026-11-17, discussion.ts), mises à jour
+// au fil de la conversation et rouvertes telles quelles.
 // Recherche en plusieurs requêtes (ADR 0037) : la page lance les requêtes du besoin l'une après l'autre (une Server
 // Action chacune, pour montrer l'avancement et pouvoir s'arrêter après celle en cours) et réunit leurs profils.
 
@@ -64,6 +67,15 @@ const EVALUATE_BATCH = 10
 type Job = { index: number; page: number; query: MbcCriteria }
 
 const withEntry = (list: MbcSearchEntry[], entry: MbcSearchEntry) => [entry, ...list.filter(e => e.id !== entry.id)]
+/** Ligne de recherche d'une personne, seule envoyée au serveur avec la discussion (le profil complet y est relu). */
+const searchRow = (p: MbcProfile): MbcProfile => ({
+  id: p.id, firstName: p.firstName, lastNameMasked: p.lastNameMasked, title: p.title, company: p.company,
+  hasEmail: p.hasEmail, hasPhone: p.hasPhone, refreshedAt: p.refreshedAt,
+})
+/** Entrée du fil telle qu'enregistrée : sans identifiant d'écran ni proposition d'une erreur (valable sur le moment). */
+const storedMessage = (m: Msg): DiscussionMessage => (m.kind === 'results' ? { kind: 'results', total: m.total, label: m.label } : { kind: m.kind, text: m.text })
+/** Personnes envoyées à chaque enregistrement, les premières révélées d'abord (le serveur en garde 50 par discussion). */
+const DISCUSSION_PEOPLE_SENT = 100
 
 export function MbcSearchClient({ firstName, configured, revealUsage, jobs, history, savedPeople }: {
   /** Prénom du recruteur, pour la salutation de l'accueil. */
@@ -125,6 +137,10 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
   const [naming, setNaming] = useState<string | null>(null)
   const [historyNote, setHistoryNote] = useState<string | null>(null)
   const [historyBusy, setHistoryBusy] = useState(false)
+  // Recherche enregistrée dont la discussion est gardée et tenue à jour (marque-page, ou recherche rouverte).
+  const [keptId, setKeptId] = useState<string | null>(null)
+  // Personnes révélées pendant la conversation (« Révéler », « Enregistrer ») ou rouvertes avec elle : leur ligne de recherche.
+  const [talkPeople, setTalkPeople] = useState<Record<string, MbcProfile>>({})
 
   const nextId = useRef(0)
   // Réponses données aux questions de la conversation en cours : gardées si la lecture du besoin échoue ensuite, pour
@@ -138,6 +154,14 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
   const seedRef = useRef<string | null>(null)
   // Personnes de la recherche affichée, sans doublon : le nombre que garde son rappel une fois remplacée dans le fil.
   const poolIds = useRef(new Set<string>())
+  // Dernière discussion envoyée au serveur : rien n'est renvoyé tant qu'elle n'a pas changé. Envois l'un après l'autre
+  // (un plus ancien arrivé après écraserait le plus récent) : celui qui attend, et celui qui attend la fin du délai.
+  const lastKept = useRef<string | null>(null)
+  const keptSaving = useRef(false)
+  const keptQueued = useRef<string | null>(null)
+  const keptPending = useRef<string | null>(null)
+  // Message d'échec d'enregistrement affiché : retiré au premier enregistrement réussi.
+  const keptError = useRef<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
 
@@ -151,6 +175,54 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
     if (lastKind === 'results' && !progress && !questions) resultsRef.current?.scrollIntoView({ block: 'start', behavior })
     else endRef.current?.scrollIntoView({ block: 'end', behavior })
   }, [messages.length, lastKind, questions, progress, view, tab])
+
+  // Discussion d'une recherche enregistrée : envoyée une seconde après le dernier changement (message, critères, personne
+  // révélée), et seulement si elle a changé. Échec : affiché sous l'en-tête, renvoyée au changement suivant.
+  const keptPayload = keptId && messages.length > 0 ? JSON.stringify({
+    id: keptId,
+    discussion: { brief, criteria, messages: messages.map(storedMessage) },
+    people: Object.values(talkPeople).slice(0, DISCUSSION_PEOPLE_SENT),
+  }) : null
+  const sendKept = (payload: string) => {
+    if (keptSaving.current) {
+      keptQueued.current = payload
+      return
+    }
+    keptSaving.current = true
+    lastKept.current = payload
+    const fail = (text: string) => {
+      lastKept.current = null
+      keptError.current = text
+      setHistoryNote(text)
+    }
+    saveMbcDiscussion(JSON.parse(payload)).then(res => {
+      if (res.error) { fail(res.error); return }
+      const shown = keptError.current
+      keptError.current = null
+      if (shown) setHistoryNote(n => (n === shown ? null : n))
+    }, () => fail(OFFLINE)).finally(() => {
+      keptSaving.current = false
+      const next = keptQueued.current
+      keptQueued.current = null
+      if (next && next !== lastKept.current) sendKept(next)
+    })
+  }
+  /** Envoie tout de suite la discussion qui attendait la fin du délai (autre discussion ouverte, page quittée). */
+  const flushKept = () => {
+    const pending = keptPending.current
+    keptPending.current = null
+    if (pending && pending !== lastKept.current) sendKept(pending)
+  }
+  useEffect(() => {
+    if (!keptPayload || keptPayload === lastKept.current) return
+    keptPending.current = keptPayload
+    const timer = setTimeout(flushKept, 1000)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- flushKept ne lit que des refs
+  }, [keptPayload])
+  // Page quittée dans l'application (autre rubrique) : la dernière modification part quand même.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- au démontage seulement ; flushKept ne lit que des refs
+  useEffect(() => () => flushKept(), [])
 
   /** Une étape de la conversation : occupée pendant le travail, erreur réseau (Server Action injoignable) dans le fil. */
   const guarded = async (work: () => Promise<void>) => {
@@ -166,6 +238,9 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
   }
 
   const resetConversation = () => {
+    // La discussion gardée qui attendait son envoi part avant d'être remplacée ; la suivante repart de zéro.
+    flushKept()
+    lastKept.current = null
     answered.current = []
     setMessages([])
     setQuestions(null)
@@ -180,6 +255,8 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
     setEditing(false)
     setCurrent(null)
     setNaming(null)
+    setKeptId(null)
+    setTalkPeople({})
     setSelected([])
     setPanelOpen(false)
     setActiveId(null)
@@ -412,8 +489,48 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
     setEditing(true)
   }
 
-  const openEntry = (e: MbcSearchEntry) => {
+  /** Personnes révélées pendant la conversation : gardées avec sa discussion si la recherche est enregistrée. */
+  const noteRevealed = (ids: string[]) => {
+    const rows = ids.flatMap(id => {
+      const p = profileOf(id)
+      return p ? [[id, searchRow(p)] as const] : []
+    })
+    if (rows.length > 0) setTalkPeople(t => ({ ...t, ...Object.fromEntries(rows) }))
+  }
+
+  /** Discussion enregistrée rouverte telle quelle, avec ses personnes révélées ; la liste des profils revient sur demande. */
+  const restoreDiscussion = (e: MbcSearchEntry, d: MbcDiscussion, people: DiscussionPerson[]) => {
     resetConversation()
+    setBrief(d.brief)
+    setCriteria(d.criteria)
+    setMessages(d.messages.map(m => ({ ...m, id: ++nextId.current })))
+    setKeptId(e.id)
+    setTalkPeople(Object.fromEntries(people.map(p => [p.search.id, p.search])))
+    setReveals(r => ({ ...r, ...Object.fromEntries(people.map(p => [p.profile.id, { state: 'done', profile: p.profile } as Reveal])) }))
+    setSeen(s => ({ ...s, ...Object.fromEntries(people.map(p => [p.search.id, scoreProfile(p.search, d.criteria, openedAt)])) }))
+    setView('chat')
+    setTab('search')
+  }
+
+  /** Recherche de l'historique : une recherche enregistrée rouvre sa discussion ; sinon (ou rien de gardé), elle est relancée. */
+  const openEntry = (e: MbcSearchEntry) => {
+    if (!e.pinned) {
+      relaunchEntry(e)
+      return
+    }
+    setHistoryBusy(true)
+    setHistoryNote(null)
+    openMbcDiscussion(e.id).then(res => {
+      if (res.error) setHistoryNote(res.error)
+      else if (res.discussion) restoreDiscussion(e, res.discussion, res.people ?? [])
+      else relaunchEntry(e)
+    }, () => setHistoryNote(OFFLINE)).finally(() => setHistoryBusy(false))
+  }
+
+  const relaunchEntry = (e: MbcSearchEntry) => {
+    resetConversation()
+    // Recherche enregistrée sans discussion gardée (enregistrée avant le 2026-11-17) : cette conversation devient la sienne.
+    if (e.pinned) setKeptId(e.id)
     setBrief(e.brief)
     setCriteria(e.criteria)
     setView('chat')
@@ -447,6 +564,7 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
       setRevealUsed(u => (u === null ? null : u + charged))
       if (res.notKept) setNotice(res.notKept)
       const found = new Map(res.profiles.map(p => [p.id, p]))
+      noteRevealed(wanted.filter(id => found.has(id)))
       setReveals(r => ({
         ...r,
         ...Object.fromEntries(wanted.map(id => {
@@ -502,6 +620,7 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
       if (charged > 0) setRevealUsed(u => (u === null ? null : u + charged))
       const full = res.saved?.profile ?? res.revealed
       if (full) setReveals(r => ({ ...r, [id]: { state: 'done', profile: full } }))
+      if (full) noteRevealed([id])
       else if (res.missing) setReveals(r => ({ ...r, [id]: { state: 'missing' } }))
       else if (!wasRevealed) forgetLoading()
       if (full || res.missing) setSelected(s => s.filter(x => x !== id))
@@ -518,6 +637,8 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
 
   /** Enregistre la recherche lancée sous un nom, ou la retire des recherches enregistrées (elle reste dans l'historique). */
   const pin = async (id: string, pinned: boolean, name?: string) => {
+    const entry = entries.find(e => e.id === id)
+    if (!pinned && !window.confirm(`Retirer « ${entry?.name ?? 'cette recherche'} » des recherches enregistrées ? Sa discussion et les personnes gardées avec elle seront effacées (la recherche reste dans l’historique).`)) return
     setHistoryBusy(true)
     setHistoryNote(null)
     try {
@@ -526,7 +647,12 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
       const entry = res.entry
       setEntries(list => list.map(e => (e.id === entry.id ? entry : e)))
       setNaming(null)
-      if (pinned) setHistoryNote(`Recherche « ${entry.name} » enregistrée.`)
+      // Enregistrée depuis la conversation : sa discussion est gardée dès maintenant ; retirée : le serveur l'a effacée,
+      // elle sera renvoyée entière si la recherche est de nouveau enregistrée.
+      lastKept.current = null
+      if (pinned) setKeptId(entry.id)
+      else if (entry.id === keptId) setKeptId(null)
+      if (pinned) setHistoryNote(`Recherche « ${entry.name} » enregistrée, avec sa discussion et les personnes révélées.`)
     } catch {
       setHistoryNote(OFFLINE)
     } finally {
@@ -704,6 +830,7 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
   }
   const runningIndex = run?.running ? run.runs.findIndex(r => r.status === 'running') : -1
   const savedListed = savedPersons.map(s => profileOf(s.profile.id)).filter((p): p is ScoredProfile => Boolean(p))
+  const keptPeople = Object.keys(talkPeople).map(profileOf).filter((p): p is ScoredProfile => Boolean(p))
   const statusCounts = countByStatus(savedPersons.map(s => s.follow))
   const savedShown = statusFilter === 'all' ? savedListed : savedListed.filter(p => savedById.get(p.id)?.follow.status === statusFilter)
   // Personnes cochées pour « Comparer », encore enregistrées et révélées.
@@ -715,8 +842,10 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
     return [{ profile, full: r.profile, evaluation: e?.state === 'done' ? e.evaluation : undefined, follow: savedById.get(id)?.follow }]
   })
   const active = panelOpen && activeId ? profileOf(activeId) : undefined
-  // La recherche affichée peut être enregistrée tant que ses critères n'ont pas changé depuis son lancement.
-  const currentEntry = current && current.criteria === JSON.stringify(criteria) ? entries.find(e => e.id === current.id) ?? null : null
+  // Marque-page de l'en-tête : la recherche dont la discussion est gardée ; sinon la recherche affichée, qui peut être
+  // enregistrée tant que ses critères n'ont pas changé depuis son lancement.
+  const currentEntry = (keptId ? entries.find(e => e.id === keptId) : undefined)
+    ?? (current && current.criteria === JSON.stringify(criteria) ? entries.find(e => e.id === current.id) ?? null : null)
   const conversationTitle = !problem ? savedSearchName(criteria) : brief ? (brief.length > 60 ? `${brief.slice(0, 60)}…` : brief) : null
   const title = conversationTitle ?? (messages.length === 0 ? 'Votre sélection' : 'Nouvelle recherche')
   const lastSpoken = [...messages].reverse().find(m => m.kind === 'assistant' || m.kind === 'error')
@@ -876,6 +1005,27 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
                     </div>
                   )
                 })}
+                {/* Discussion rouverte (choix du 2026-11-17) : ses personnes révélées, puis la liste des profils sur demande. */}
+                {!run && keptId && messages.length > 0 && (
+                  <AssistantMessage>
+                    {keptPeople.length > 0 && (
+                      <section aria-label="Personnes révélées dans cette discussion" className="rounded-2xl overflow-hidden mb-3" style={surface}>
+                        <p className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                          <strong style={{ color: 'var(--color-text)' }}>{keptPeople.length} personne{keptPeople.length > 1 ? 's' : ''} révélée{keptPeople.length > 1 ? 's' : ''}</strong>
+                          {' '}dans cette discussion · gardée{keptPeople.length > 1 ? 's' : ''} avec elle (50 au plus)
+                        </p>
+                        <ul>{keptPeople.map(p => row(p))}</ul>
+                      </section>
+                    )}
+                    {!busy && !questions && !problem && (
+                      <button type="button" onClick={() => { void guarded(() => runSearch(criteria, brief)) }} disabled={!configured}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold disabled:opacity-40"
+                        style={{ background: 'var(--color-brand-orange)', color: 'white' }}>
+                        <Radar className="h-4 w-4" aria-hidden /> Relancer la recherche
+                      </button>
+                    )}
+                  </AssistantMessage>
+                )}
                 {/* Critères saisis à la main, ou à compléter : avant toute liste de profils. */}
                 {editing && !run && <div className="rounded-2xl overflow-hidden" style={surface}>{editor}</div>}
                 {questions && (
@@ -949,7 +1099,7 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
           )}
 
           <p className="max-w-4xl w-full mx-auto px-4 sm:px-6 pb-6 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            Source : Apollo.io. Un profil complet (nom entier, e-mail professionnel, LinkedIn, lieu, parcours) coûte un crédit Apollo. Un profil révélé est gardé 90 jours pour votre organisation (sans second crédit) ; une personne enregistrée reste dans votre sélection jusqu&apos;à ce que vous la retiriez ; votre besoin et vos critères restent dans votre historique, la conversation n&apos;est pas enregistrée. Utilisez ces données pour un recrutement, conformément au RGPD.
+            Source : Apollo.io. Un profil complet (nom entier, e-mail professionnel, LinkedIn, lieu, parcours) coûte un crédit Apollo. Un profil révélé est gardé 90 jours pour votre organisation (sans second crédit) ; une personne enregistrée reste dans votre sélection jusqu&apos;à ce que vous la retiriez ; votre besoin et vos critères restent dans votre historique ; une recherche enregistrée (marque-page) garde aussi sa discussion et les personnes révélées pendant celle-ci, jusqu&apos;à ce que vous la retiriez. Utilisez ces données pour un recrutement, conformément au RGPD.
           </p>
         </div>
 

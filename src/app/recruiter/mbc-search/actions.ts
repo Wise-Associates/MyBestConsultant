@@ -34,24 +34,32 @@ import {
   answersSchema, briefForAi, briefWithAnswers, criteriaForAi, parseQuestionsAnswer, parseRefinement, refineMessageSchema, type MbcQuestion,
 } from '@/lib/mbc-search/conversation'
 import { SAVED_SEARCHES_MAX, searchIdSchema, searchNameSchema, type MbcSearchEntry } from '@/lib/mbc-search/history'
-import { deleteMbcSearch, isMbcHistoryConfigured, recordMbcSearch, setMbcSearchPinned } from '@/lib/mbc-search/history-store'
+import {
+  MbcDiscussionUnavailableError, deleteMbcSearch, getMbcDiscussion, isMbcHistoryConfigured, recordMbcSearch, setMbcSearchPinned, writeMbcDiscussion,
+} from '@/lib/mbc-search/history-store'
+import { DISCUSSION_LIMITS, discussionSchema, mergeDiscussionPeople, type DiscussionPerson, type MbcDiscussion } from '@/lib/mbc-search/discussion'
 import { isMbcRevealStoreConfigured, saveReveals, storedReveals, vivierTargetsOf } from '@/lib/mbc-search/reveal-store'
 import { SAVED_PEOPLE_MAX, searchRowSchema, type MbcSavedPerson } from '@/lib/mbc-search/saved'
 import {
-  MbcFollowUnavailableError, countSavedPeople, deleteSavedPerson, isMbcSavedStoreConfigured, saveSavedPerson, savedPerson, updateSavedFollow,
+  MbcFollowUnavailableError, countSavedPeople, deleteSavedPerson, isMbcSavedStoreConfigured, saveSavedPerson, savedPeopleAmong, savedPerson, updateSavedFollow,
 } from '@/lib/mbc-search/saved-store'
 import { followSchema, type MbcFollow } from '@/lib/mbc-search/follow'
 
 // Actions de MBC Search (/recruiter/mbc-search, ADR 0018). Chacune vérifie elle-même le recruteur : une Server Action
 // est un point d'entrée public. Les pages de résultats ne sont pas enregistrées : seuls sont écrits les places de quota,
 // l'historique des recherches du recruteur (critères, brief, nombre de résultats), les profils complets payés par
-// l'organisation (gardés 90 jours pour ne pas les payer deux fois) et les personnes que le recruteur enregistre (gardées
-// jusqu'à ce qu'il les retire).
+// l'organisation (gardés 90 jours pour ne pas les payer deux fois), les personnes que le recruteur enregistre (gardées
+// jusqu'à ce qu'il les retire) et, pour une recherche qu'il enregistre, sa discussion et les personnes qu'il y a
+// révélées (ADR 0041, gardées tant qu'elle reste enregistrée).
 
 const SESSION_EXPIRED = 'Session expirée : rechargez la page et reconnectez-vous.'
 
 // Appels récents de chaque recruteur (burst.ts) : propres à ce processus serveur, perdus à son redémarrage.
 const recentCalls = new Map<string, number[]>()
+// Enregistrements de discussions de chaque recruteur (l'écran en envoie un par seconde au plus) : leur propre débit, pour
+// ne pas prendre les places des recherches.
+const discussionSaves = new Map<string, number[]>()
+const DISCUSSION_SAVES_PER_MINUTE = 30
 
 /**
  * Recruteur de la session, débit de ses appels (20 par minute, burst.ts), formule qui comprend MBC Search, abonnement
@@ -295,6 +303,92 @@ export async function pinMbcSearch(input: unknown): Promise<{ entry?: MbcSearchE
   } catch (err) {
     console.error('[mbc-search] enregistrement d\'une recherche impossible', err instanceof Error ? err.message : String(err))
     return { error: HISTORY_UNAVAILABLE }
+  }
+}
+
+const DISCUSSION_UNAVAILABLE = 'Discussion non enregistrée : la base de MBC Search doit être mise à jour. Contactez le support.'
+
+/**
+ * Discussion enregistrée d'une recherche de l'historique du recruteur, et les personnes révélées pendant celle-ci (profil
+ * complet gardé avec elle). `discussion` null : rien d'enregistré, l'écran relance alors la recherche comme avant.
+ */
+export async function openMbcDiscussion(id: unknown): Promise<{ entry?: MbcSearchEntry; discussion?: MbcDiscussion | null; people?: DiscussionPerson[]; error?: string }> {
+  const parsed = searchIdSchema.safeParse(id)
+  if (!parsed.success) return { error: 'Recherche invalide : rechargez la page.' }
+  const owner = await historyOwner()
+  if ('error' in owner) return owner
+  try {
+    const found = await getMbcDiscussion(owner.userId, parsed.data)
+    if (!found) return { error: 'Recherche introuvable : elle a peut-être été supprimée.' }
+    return found
+  } catch (err) {
+    console.error('[mbc-search] discussion illisible', err instanceof Error ? err.message : String(err))
+    return { error: HISTORY_UNAVAILABLE }
+  }
+}
+
+const SaveDiscussionInput = z.object({
+  id: searchIdSchema,
+  discussion: discussionSchema,
+  // Lignes de recherche des personnes révélées dans la discussion : le profil complet, lui, est relu en base.
+  people: z.array(searchRowSchema).max(100),
+})
+
+/**
+ * Garde la discussion d'une recherche **enregistrée** (épinglée) et les personnes révélées pendant celle-ci (demande du
+ * 2026-11-17). Le profil complet d'une nouvelle personne est relu en base (révélé par l'organisation ou enregistré par le
+ * recruteur), jamais pris du navigateur : une personne non révélée est ignorée. Ni crédit ni quota.
+ */
+export async function saveMbcDiscussion(input: unknown): Promise<{ people?: number; error?: string }> {
+  const parsed = SaveDiscussionInput.safeParse(input)
+  if (!parsed.success) return { error: 'Discussion invalide : rechargez la page.' }
+  const user = await getCurrentUser()
+  if (!user || user.role !== 'recruiter' || !user.tenantId) return { error: SESSION_EXPIRED }
+  if (!isMbcHistoryConfigured()) return { error: HISTORY_UNAVAILABLE }
+  if (!takeBurstSlot(discussionSaves, user.userId, Date.now(), DISCUSSION_SAVES_PER_MINUTE)) {
+    return { error: 'Discussion enregistrée trop souvent en une minute : elle le sera au prochain message.' }
+  }
+  const tenantId = user.tenantId
+  const { id, discussion, people: rows } = parsed.data
+  try {
+    const found = await getMbcDiscussion(user.userId, id)
+    if (!found) return { error: 'Recherche introuvable : elle a peut-être été supprimée.' }
+    if (!found.entry.pinned) return { error: 'Enregistrez d’abord la recherche (marque-page) pour garder sa discussion.' }
+    const known = new Set(found.people.map(p => p.profile.id))
+    // Nouvelles personnes, sans doublon, pas plus que les places libres de la discussion.
+    const fresh = [...new Map(rows.filter(r => !known.has(r.id)).map(r => [r.id, r])).values()]
+      .slice(0, Math.max(0, DISCUSSION_LIMITS.people - found.people.length))
+    const added: DiscussionPerson[] = []
+    if (fresh.length > 0) {
+      // Mêmes conditions que la révélation (formule, abonnement, adresse vérifiée) : sans elles, les messages sont gardés,
+      // aucun profil n'est copié dans la discussion.
+      const access = await loadTenantAccess(tenantId)
+      const denial = featureDenial(access.entitlements, 'mbcSearch')
+        ?? mbcSearchDenial({ tenantId, subscriptionStatus: access.subscriptionStatus, emailVerified: user.emailVerification })
+      if (!denial) {
+        const ids = fresh.map(r => r.id)
+        const stored = isMbcRevealStoreConfigured() ? await storedReveals(tenantId, ids, new Date()) : []
+        const byId = new Map(stored.map(p => [p.id, p]))
+        const missing = ids.filter(x => !byId.has(x))
+        if (missing.length > 0 && isMbcSavedStoreConfigured()) {
+          for (const s of await savedPeopleAmong(user.userId, missing)) byId.set(s.profile.id, s.profile)
+        }
+        for (const search of fresh) {
+          const profile = byId.get(search.id)
+          if (profile) added.push({ search, profile })
+        }
+      }
+    }
+    const people = mergeDiscussionPeople(found.people, added)
+    await writeMbcDiscussion(id, discussion, people)
+    return { people: people.length }
+  } catch (err) {
+    if (err instanceof MbcDiscussionUnavailableError) {
+      console.error('[mbc-search] attributs de la discussion absents', err.message)
+      return { error: DISCUSSION_UNAVAILABLE }
+    }
+    console.error('[mbc-search] discussion non enregistrée', err instanceof Error ? err.message : String(err))
+    return { error: 'Discussion non enregistrée pour le moment : elle le sera au prochain message.' }
   }
 }
 

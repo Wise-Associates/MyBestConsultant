@@ -6,8 +6,8 @@ describe('menu latéral de l\'espace recruteur', () => {
   it('range les rubriques en trois groupes, MBC Search en premier', () => {
     assert.deepEqual(recruiterNavGroups().map(g => [g.label, g.sections.map(s => s.label)]), [
       ['Recherche', ['MBC Search', 'CV Thèque', 'Mon vivier']],
-      ['Recrutement', ['Job board', 'Appels d’offres', 'Entretiens IA']],
-      ['Pilotage', ['Reporting', 'Mon équipe', 'Pipelines']],
+      ['Recrutement', ['Appels d’offres', 'Tableau de bord']],
+      ['Pilotage', ['Entretiens IA', 'Reporting', 'Mon équipe', 'Pipelines']],
     ])
   })
 
