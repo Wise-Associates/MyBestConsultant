@@ -41,7 +41,7 @@ describe('offre lue et appliquée', () => {
     assert.ok(offer)
     assert.equal(offer.terms.maxUsers, 40)
     assert.equal(offer.terms.maxActiveJobs, 12)
-    assert.deepEqual(offer.terms.features, { mbcSearch: true, aiInterviews: false, aoSourcing: false, cvExport: true })
+    assert.deepEqual(offer.terms.features, { mbcSearch: true, mbcPhone: false, aiInterviews: false, aoSourcing: false, cvExport: true })
     assert.equal(offer.terms.dailyQuotas.mbcSearch, 200)
   })
 

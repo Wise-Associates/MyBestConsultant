@@ -1,15 +1,17 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
 import {
-  Bookmark, Check, Copy, ExternalLink, Globe, Loader2, Mail, MapPin, MessageSquareText, Plus, Sparkles, UserRound, Users, X,
+  Bookmark, Check, Copy, ExternalLink, Globe, Loader2, Mail, MapPin, MessageSquareText, Phone, Plus, Sparkles, UserRound, Users, X,
 } from 'lucide-react'
 import { addMbcProfileToVivier } from '@/app/recruiter/vivier/actions'
 import { draftMbcOutreach } from './actions'
 import { SCORE_WEIGHTS, type MbcCriteria, type MbcRevealed, type OutreachChannel, type ScoredProfile } from '@/lib/mbc-search/rules'
 import type { MbcEvaluation } from '@/lib/mbc-search/evaluation'
 import { FOLLOW_LIMITS, FOLLOW_STATUSES, type FollowStatus, type MbcFollow } from '@/lib/mbc-search/follow'
-import { Avatar, ChipField, ErrorNote, orangeTint, surface, type Evaluation, type Reveal, type SaveButton } from './mbc-search-ui'
+import { Avatar, ChipField, ErrorNote, orangeTint, surface, type Evaluation, type PhoneControl, type Reveal, type SaveButton } from './mbc-search-ui'
+import { canRequestPhone, phoneTypeLabel, type MbcPhone } from '@/lib/mbc-search/phone'
 
 // Panneau du profil choisi dans la liste : score détaillé, puis, une fois révélé, données d'Apollo (coordonnées,
 // parcours), suites (vivier, offre, profils similaires, message d'approche) et analyse de l'IA, présentée à part des
@@ -153,6 +155,14 @@ function ContactRow({ label, value, children }: { label: string; value: string; 
 
 const smallBtn = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold shrink-0 disabled:opacity-40'
 
+/** Ligne « Téléphone » tant qu'aucun numéro n'est affiché : demande à faire, en cours, sans résultat. */
+function phoneStatusText(phone: MbcPhone | undefined, flagged: boolean): string {
+  if (!phone) return flagged ? 'Connu d’Apollo, pas encore demandé' : 'Pas encore demandé'
+  if (phone.status === 'pending') return 'Recherche du numéro chez Apollo…'
+  if (phone.status === 'failed') return 'Recherche sans résultat : vous pouvez la relancer'
+  return 'Aucun numéro trouvé par Apollo'
+}
+
 /** « Enregistrer » / « Enregistré » ; `cost` : profil pas encore révélé, l'enregistrer coûte un crédit. */
 function SaveToggle({ save, className, cost }: { save: SaveButton; className: string; cost?: boolean }) {
   return (
@@ -167,7 +177,7 @@ function SaveToggle({ save, className, cost }: { save: SaveButton; className: st
 }
 
 export function ProfilePanel({
-  profile, reveal, criteria, brief, jobs, save, added, canReveal, evaluation, canSimilar, evaluateBlocked, follow,
+  profile, reveal, criteria, brief, jobs, save, added, canReveal, evaluation, canSimilar, evaluateBlocked, follow, phone,
   onReveal, onAdded, onEvaluate, onSimilar, onSaveFollow, onClose,
 }: {
   profile: ScoredProfile
@@ -186,6 +196,8 @@ export function ProfilePanel({
   /** Suivi de la personne si elle est enregistrée (sinon : pas de section « Suivi »). */
   follow?: MbcFollow
   onSaveFollow: (f: MbcFollow) => Promise<{ follow?: MbcFollow; error?: string }>
+  /** « Demander le téléphone » (profil révélé). */
+  phone: PhoneControl
   onReveal: () => void
   onAdded: (target: string) => void
   onEvaluate: () => void
@@ -293,6 +305,32 @@ export function ProfilePanel({
                 </button>
               </ContactRow>
             ) : <ContactRow label="E-mail" value="Aucun e-mail professionnel connu" />}
+            {full.phone?.numbers.map(n => (
+              <ContactRow key={n.number} label={phoneTypeLabel(n.type)} value={n.number}>
+                <a href={`tel:${n.number}`} className={`${smallBtn} no-underline`} style={{ ...surface, color: 'var(--color-text)' }}>
+                  <Phone className="h-3 w-3" /> Appeler
+                </a>
+              </ContactRow>
+            ))}
+            {full.phone?.status !== 'found' && (
+              <ContactRow label="Téléphone" value={canRequestPhone(full.phone) && !phone.included ? 'Réservé aux formules payantes' : phoneStatusText(full.phone, profile.hasPhone)}>
+                {canRequestPhone(full.phone) && !phone.included ? (
+                  <Link href="/recruiter/abonnement#formules" className={`${smallBtn} no-underline`} style={{ ...surface, color: 'var(--color-text)' }}>
+                    Voir les formules
+                  </Link>
+                ) : canRequestPhone(full.phone) ? (
+                  <button type="button" onClick={phone.onRequest} disabled={phone.busy || phone.disabled !== null}
+                    title={phone.disabled ?? 'Jusqu’à 8 crédits Apollo si un numéro est trouvé, aucun sinon'}
+                    className={smallBtn} style={{ ...surface, color: 'var(--color-text)' }}>
+                    {phone.busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Phone className="h-3 w-3" />} Demander · jusqu’à 8 crédits
+                  </button>
+                ) : full.phone?.status === 'pending' && (
+                  phone.busy
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" aria-label="Recherche du numéro en cours" style={{ color: 'var(--color-text-muted)' }} />
+                    : <button type="button" onClick={phone.onCheck} className={smallBtn} style={{ ...surface, color: 'var(--color-text)' }}>Vérifier</button>
+                )}
+              </ContactRow>
+            )}
             {full.linkedinUrl && (
               <ContactRow label="LinkedIn" value={full.linkedinUrl.replace(/^https:\/\/(www\.)?/, '')}>
                 <a href={full.linkedinUrl} target="_blank" rel="noopener noreferrer" className={`${smallBtn} no-underline`} style={{ ...surface, color: 'var(--color-text)' }}>

@@ -1,22 +1,38 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  FEATURES, STANDARD_ENTITLEMENTS, activeJobsDenial, entitlementsOf, featureDenial, lowerOf, planLabel, usersDenial, type Entitlements,
+  FEATURES, STANDARD_ENTITLEMENTS, UNPAID_ENTITLEMENTS, activeJobsDenial, entitlementsOf, featureDenial, lowerOf, planLabel, usersDenial, type Entitlements,
 } from './plans'
 
 const custom = (patch: Partial<Entitlements>): Entitlements => ({ ...STANDARD_ENTITLEMENTS, ...patch })
 
 describe('formules et droits des organisations', () => {
-  it('donne aux formules standard les droits qu\'avaient toutes les organisations avant les offres sur mesure', () => {
-    for (const plan of ['free', 'essentiel', 'pro', 'gold', 'max', '', undefined, null]) {
-      assert.deepEqual(entitlementsOf({ plan }), STANDARD_ENTITLEMENTS)
+  it('donne aux formules standard payées les droits qu\'avaient toutes les organisations avant les offres sur mesure', () => {
+    for (const plan of ['essentiel', 'pro', 'gold', 'max']) {
+      for (const subscriptionStatus of ['active', 'trialing']) assert.deepEqual(entitlementsOf({ plan, subscriptionStatus }), STANDARD_ENTITLEMENTS)
     }
     assert.equal(STANDARD_ENTITLEMENTS.maxUsers, 15)
     assert.equal(STANDARD_ENTITLEMENTS.maxActiveJobs, null)
     assert.ok(FEATURES.every(f => STANDARD_ENTITLEMENTS.features[f]))
     assert.deepEqual(STANDARD_ENTITLEMENTS.dailyQuotas, {
-      mbcSearch: 300, mbcReveal: 100, cvExport: 20, aoSourcing: 20, aoRewrite: 30, aoRetry: 30, vivierMatching: 200, interviewAi: 500,
+      mbcSearch: 300, mbcReveal: 100, mbcPhone: 20, cvExport: 20, aoSourcing: 20, aoRewrite: 30, aoRetry: 30, vivierMatching: 200, interviewAi: 500,
     })
+  })
+
+  it('réserve le téléphone de MBC Search aux formules payées et en cours, sans rien retirer d\'autre', () => {
+    for (const tenant of [
+      { plan: 'free', subscriptionStatus: 'active' }, { plan: 'pro', subscriptionStatus: 'past_due' }, { plan: 'essentiel', subscriptionStatus: 'canceled' },
+      { plan: '', subscriptionStatus: 'active' }, { plan: undefined }, { plan: null, subscriptionStatus: 'active' },
+    ]) {
+      assert.deepEqual(entitlementsOf(tenant), UNPAID_ENTITLEMENTS, JSON.stringify(tenant))
+    }
+    assert.equal(UNPAID_ENTITLEMENTS.features.mbcPhone, false)
+    assert.deepEqual({ ...UNPAID_ENTITLEMENTS, features: { ...UNPAID_ENTITLEMENTS.features, mbcPhone: true } }, STANDARD_ENTITLEMENTS)
+    assert.match(featureDenial(UNPAID_ENTITLEMENTS, 'mbcPhone') ?? '', /téléphone.*pas compris dans la formule/)
+    // Offre sur mesure : le téléphone seulement si l'offre le comprend et qu'elle est payée.
+    const withPhone = custom({})
+    assert.equal(entitlementsOf({ plan: 'custom', subscriptionStatus: 'active' }, withPhone).features.mbcPhone, true)
+    assert.equal(entitlementsOf({ plan: 'custom', subscriptionStatus: 'past_due' }, withPhone).features.mbcPhone, false)
   })
 
   it('applique les conditions d\'une offre sur mesure payée à la seule formule « custom »', () => {

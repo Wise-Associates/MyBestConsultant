@@ -57,7 +57,7 @@ const PROFILE_LINKS: Record<UserRole, { label: string; href: string; icon: React
   ],
   recruiter: [
     { label: 'Mon dashboard',   href: '/recruiter/dashboard', icon: <LayoutDashboard className="h-4 w-4" /> },
-    { label: 'Publier une offre', href: '/recruiter/dashboard', icon: <Plus          className="h-4 w-4" /> },
+    { label: 'Publier une offre', href: '/recruiter/publier', icon: <Plus          className="h-4 w-4" /> },
     { label: 'Processus de recrutement', href: '/recruiter/funnel', icon: <GitBranch className="h-4 w-4" /> },
     { label: 'Voir les offres', href: '/jobs',                icon: <Briefcase       className="h-4 w-4" /> },
   ],
@@ -238,7 +238,7 @@ export function SiteNavbarClient({ siteName, logoUrl, navLinks, user, supportUnr
 
             {/* Publier une offre — recruteur/admin uniquement */}
             {user && (user.role === 'recruiter' || user.role === 'admin') && (
-              <Link href="/recruiter/dashboard"
+              <Link href="/recruiter/publier"
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 700, color: '#E8A33D', textDecoration: 'none', border: '1px solid rgba(232,163,61,0.35)', background: 'rgba(232,163,61,0.07)', transition: 'all 0.2s' }}
                 onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(232,163,61,0.14)'; el.style.borderColor = 'rgba(232,163,61,0.6)' }}
                 onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(232,163,61,0.07)'; el.style.borderColor = 'rgba(232,163,61,0.35)' }}>

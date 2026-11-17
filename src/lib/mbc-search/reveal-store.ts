@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { listAllDocuments } from '@/lib/appwrite/list-all'
 import type { MbcRevealed } from './rules'
+import type { MbcPhone } from './phone'
 import { parseRevealDoc, revealCutoff, revealDocId, revealJson } from './reveals'
 
 // Profils complets révélés par une organisation (collection mbc_reveals, sans permission client) : relus pour ne pas
@@ -38,6 +39,24 @@ export async function saveReveals(tenantId: string, userId: string, profiles: Mb
       await databases.updateDocument(DB_ID, COLLECTIONS.MBC_REVEALS, id, data)
     }
   }
+}
+
+/** Téléphone d'un profil révélé par l'organisation et encore gardé ; false : profil absent ou plus gardé. */
+export async function saveRevealPhone(tenantId: string, apolloId: string, phone: MbcPhone, now: Date): Promise<boolean> {
+  if (!isMbcRevealStoreConfigured()) return false
+  const { databases } = createAdminClient()
+  const id = revealDocId(tenantId, apolloId)
+  let doc: Models.Document
+  try {
+    doc = await databases.getDocument(DB_ID, COLLECTIONS.MBC_REVEALS, id)
+  } catch (err) {
+    if (codeOf(err) === 404) return false
+    throw err
+  }
+  const profile = doc.tenantId === tenantId ? parseRevealDoc(doc as unknown as Record<string, unknown>, now) : null
+  if (!profile) return false
+  await databases.updateDocument(DB_ID, COLLECTIONS.MBC_REVEALS, id, { profileJson: revealJson({ ...profile, phone }) })
+  return true
 }
 
 /**

@@ -5,8 +5,8 @@ import { RECRUITER_SECTIONS, recruiterAccountSections, recruiterNavGroups, recru
 describe('menu latéral de l\'espace recruteur', () => {
   it('range les rubriques en trois groupes, MBC Search en premier', () => {
     assert.deepEqual(recruiterNavGroups().map(g => [g.label, g.sections.map(s => s.label)]), [
-      ['Recherche', ['MBC Search', 'CV Thèque', 'Mon vivier']],
-      ['Recrutement', ['Appels d’offres', 'Tableau de bord']],
+      ['Recherche', ['Search', 'CV Thèque', 'Mon vivier']],
+      ['Recrutement', ['Publier un job', 'Appels d’offres', 'Tableau de bord']],
       ['Pilotage', ['Entretiens IA', 'Reporting', 'Mon équipe', 'Pipelines']],
     ])
   })
@@ -36,6 +36,7 @@ describe('menu latéral de l\'espace recruteur', () => {
   it('range les pages sans rubrique propre sous la rubrique d\'où elles partent', () => {
     assert.equal(recruiterSectionOf('/recruiter/pipeline/job42'), 'dashboard')
     assert.equal(recruiterSectionOf('/recruiter/offres/job42'), 'dashboard')
+    assert.equal(recruiterSectionOf('/recruiter/publier'), 'publier')
     assert.equal(recruiterSectionOf('/recruiter/candidates/app7'), 'dashboard')
     assert.equal(recruiterSectionOf('/recruiter/annonces'), 'dashboard')
     assert.equal(recruiterSectionOf('/recruiter/screening/best'), 'interviews')

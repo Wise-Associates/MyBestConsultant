@@ -11,7 +11,7 @@ type UserCtx = { role: UserRole } | null
 function smartHref(intent: 'deposit' | 'discover' | 'recruiter-cta' | 'candidate-cta' | 'cvtheque', user: UserCtx): string {
   const role = user?.role
   if (intent === 'deposit') {
-    if (role === 'recruiter' || role === 'admin') return '/recruiter/dashboard?openCreateJob=1'
+    if (role === 'recruiter' || role === 'admin') return '/recruiter/publier'
     if (role === 'candidate') return '/jobs'
     return '/register?role=recruiter'
   }

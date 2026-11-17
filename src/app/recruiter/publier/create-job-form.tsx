@@ -3,24 +3,22 @@
 import { useRef, useState, useTransition } from 'react'
 import { Skeleton, SkeletonRegion } from '@/components/shared/skeleton'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Plus, X, Loader2, Sparkles, RefreshCw, Library, ChevronDown, PencilLine, FileUp } from 'lucide-react'
-import { createJobAction, listMyJobsForLibrary } from './actions'
-import { generateJobDraft, improveJobDraft, type JobDraft } from './ai-job-draft-actions'
-import { ImportPanel } from './import-panel'
+import { Loader2, Sparkles, RefreshCw, Library, ChevronDown, PencilLine, FileUp } from 'lucide-react'
+import { createJobAction, listMyJobsForLibrary } from '@/app/recruiter/dashboard/actions'
+import { generateJobDraft, improveJobDraft, type JobDraft } from '@/app/recruiter/dashboard/ai-job-draft-actions'
+import { ImportPanel } from '@/app/recruiter/dashboard/import-panel'
+import { startNavigationProgress } from '@/components/shared/navigation-progress'
 import type { Job } from '@/types'
 import { PAY_FIELD_LABEL, payHint, payUnitFor } from '@/lib/job-pay'
 
 /**
- * button : sur un bandeau de page, couleurs --hero-* (bandeau clair dans l'espace recruteur depuis le 2026-11-13) ; primary : bouton plein aux couleurs du thème, sur fond clair, à la hauteur des champs de la
- * barre de filtres du tableau de bord (pleine largeur sur mobile) ; tile : carte.
+ * Création d'une offre, page « Publier un job » (/recruiter/publier, demande du 2026-11-17 ; avant : fenêtre « Nouvelle
+ * offre » du tableau de bord). Deux façons de publier : saisie manuelle (avec l'assistant de rédaction et la
+ * bibliothèque des anciennes offres) ou import IA / Excel (`?tab=import`). Offre publiée : ouverture de son détail.
  */
-export function CreateJobDialog({ tenantId, companyName, variant = 'button' }: { tenantId: string; companyName: string; variant?: 'button' | 'primary' | 'tile' }) {
+export function CreateJobForm({ companyName }: { companyName: string }) {
   const searchParams = useSearchParams()
-  // Le CTA "Déposer une offre" de la page d'accueil renvoie ici avec ce paramètre pour
-  // ouvrir directement la saisie manuelle, au lieu de laisser le recruteur la chercher.
   const router = useRouter()
-  const [open, setOpen] = useState(() => searchParams.get('openCreateJob') === '1')
-  // Deux façons de publier dans la même fenêtre : saisie manuelle (avec l'assistant de rédaction) ou import IA / Excel.
   const [tab, setTab] = useState<'manual' | 'import'>(() => (searchParams.get('tab') === 'import' ? 'import' : 'manual'))
   const [error, setError] = useState('')
   const [isPending, startTransition] = useTransition()
@@ -113,15 +111,12 @@ export function CreateJobDialog({ tenantId, companyName, variant = 'button' }: {
     setError('')
     startTransition(async () => {
       const result = await createJobAction(formData)
-      if (result.error) {
-        setError(result.error)
-      } else {
-        setOpen(false)
-        formRef.current?.reset()
-        setTitle(''); setDescription(''); setSkills('')
-        setLocation(''); setContractType(''); setRemote(''); setSalary('')
-        setAiPrompt(''); setLastDraft(null); setAiError(''); setLibraryOpen(false)
+      if (result.error || !result.jobId) {
+        setError(result.error ?? 'L’offre n’a pas pu être créée. Réessayez.')
+        return
       }
+      startNavigationProgress()
+      router.push(`/recruiter/offres/${result.jobId}`)
     })
   }
 
@@ -133,48 +128,7 @@ export function CreateJobDialog({ tenantId, companyName, variant = 'button' }: {
   }
 
   return (
-    <>
-      {variant === 'tile' ? (
-        <button onClick={() => setOpen(true)}
-          className="group relative overflow-hidden rounded-3xl p-5 flex flex-col gap-3 text-left transition-all duration-300 w-full hover:-translate-y-1 shadow-[0_10px_30px_-10px_rgba(11,29,81,0.3)] hover:shadow-[0_20px_45px_-12px_rgba(11,29,81,0.45)]"
-          style={{ background: 'var(--color-primary)', border: '1px solid var(--color-primary)' }}>
-          <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full transition-transform duration-500 group-hover:scale-125"
-            style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.22), transparent 70%)' }} />
-          <div className="relative w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{ background: 'rgba(255,255,255,0.15)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.35)' }}>
-            <Plus className="h-5 w-5" style={{ color: 'white' }} />
-          </div>
-          <div className="relative">
-            <p className="font-semibold text-sm" style={{ color: 'white' }}>Publier une offre</p>
-            <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.7)' }}>Créer une nouvelle mission</p>
-          </div>
-        </button>
-      ) : (
-        <button
-          onClick={() => setOpen(true)}
-          className={`flex items-center justify-center gap-2 px-5 rounded-xl text-sm font-semibold whitespace-nowrap transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-(--color-primary) ${variant === 'primary' ? 'w-full sm:w-auto h-11 sm:h-10' : 'py-2.5'}`}
-          style={variant === 'primary'
-            ? { background: 'var(--color-primary)', color: 'var(--color-primary-fg)', border: '1px solid var(--color-primary)' }
-            : { background: 'var(--hero-control)', color: 'var(--hero-fg)', border: '1px solid var(--hero-line)' }}>
-          <Plus className="h-4 w-4" /> Créer une offre
-        </button>
-      )}
-
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.6)' }}
-          onClick={e => { if (e.target === e.currentTarget && tab === 'manual') setOpen(false) }}>
-          <div className={`w-full ${tab === 'import' ? 'max-w-3xl' : 'max-w-lg'} rounded-2xl overflow-hidden transition-[max-width] duration-200`}
-            style={{ background: 'var(--color-background)', border: '1px solid var(--color-border)' }}>
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4"
-              style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--hero-bg)' }}>
-              <h2 className="font-semibold text-[var(--hero-fg)]">Nouvelle offre</h2>
-              <button onClick={() => setOpen(false)} className="text-[var(--hero-fg-muted)] hover:text-[var(--hero-fg)] transition-colors">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
+    <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--color-background)', border: '1px solid var(--color-border)' }}>
             {/* Onglets : saisie manuelle | import IA */}
             <div className="flex gap-1 px-4 pt-3" style={{ borderBottom: '1px solid var(--color-border)' }}>
               {([['manual', 'Saisie manuelle', PencilLine], ['import', 'Import IA / Excel', FileUp]] as const).map(([id, label, Icon]) => (
@@ -187,10 +141,10 @@ export function CreateJobDialog({ tenantId, companyName, variant = 'button' }: {
             </div>
 
             {tab === 'import' && (
-              <ImportPanel tenantName={companyName} onClose={() => { setOpen(false); router.refresh() }} onImported={() => router.refresh()} />
+              <ImportPanel tenantName={companyName} onClose={() => { startNavigationProgress(); router.push('/recruiter/dashboard') }} onImported={() => router.refresh()} />
             )}
 
-            <form ref={formRef} action={submit} className={`p-6 space-y-4 max-h-[70vh] overflow-y-auto ${tab === 'import' ? 'hidden' : ''}`}>
+            <form ref={formRef} action={submit} className={`p-6 space-y-4 ${tab === 'import' ? 'hidden' : ''}`}>
               <div className="rounded-xl p-4 space-y-2.5" style={{ background: 'rgba(232,163,61,0.06)', border: '1px solid rgba(232,163,61,0.25)' }}>
                 <div className="flex items-center justify-between gap-2">
                   <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest"
@@ -328,7 +282,7 @@ export function CreateJobDialog({ tenantId, companyName, variant = 'button' }: {
               )}
 
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setOpen(false)}
+                <button type="button" onClick={() => { startNavigationProgress(); router.push('/recruiter/dashboard') }}
                   className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-opacity hover:opacity-70"
                   style={{ background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}>
                   Annuler
@@ -340,9 +294,6 @@ export function CreateJobDialog({ tenantId, companyName, variant = 'button' }: {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-    </>
+    </div>
   )
 }

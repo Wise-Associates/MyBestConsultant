@@ -144,10 +144,11 @@ export function SectionPageSkeleton({ content = 'list' }: { content?: 'list' | '
 /** Tableau de bord : indicateurs séparés par un filet, tuiles « À traiter », puis « Mes offres ». */
 export function DashboardSkeleton() {
   // Même mise en page que la page (dashboard-layout.ts) : indicateurs puis « Mes offres », dont l'en-tête porte la
-  // recherche et le bouton « Filtres » (le rail de gauche a été retiré le 2026-11-17) ; panneau d'aperçu dès 1800 px.
+  // recherche et le bouton « Filtres » (le rail de gauche a été retiré le 2026-11-17) ; le panneau d'aperçu, fermé par
+  // défaut depuis le même jour, n'a pas de forme.
   return (
     <SkeletonRegion label="Chargement du tableau de bord…" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <div className="max-w-6xl min-[90rem]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[90rem]:px-8 py-6 sm:py-8 min-[90rem]:py-6 flex flex-col gap-6 sm:gap-7 min-[112.5rem]:grid min-[112.5rem]:grid-cols-[minmax(0,1fr)_340px] min-[112.5rem]:gap-6 min-[112.5rem]:items-start">
+      <div className="max-w-6xl min-[90rem]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[90rem]:px-8 py-6 sm:py-8 min-[90rem]:py-6 flex flex-col gap-6 sm:gap-7">
         <div className="min-w-0 flex flex-col gap-6 sm:gap-7 min-[90rem]:gap-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-px rounded-[20px] overflow-hidden" style={{ background: 'var(--color-border)', border: '1px solid var(--color-border)' }}>
             {Array.from({ length: 4 }, (_, i) => (
@@ -182,27 +183,15 @@ export function DashboardSkeleton() {
                 <Skeleton className="h-6 w-16" />
                 <Skeleton className="h-1.5 w-full rounded-full" />
                 <Skeleton className="hidden lg:block h-8 w-36" />
-                {/* « Voir pipeline » (icône seule sous 1440 px), Matching IA dès 1440 px, Modifier, menu. */}
+                {/* « Voir pipeline » (icône seule sous 1440 px), Matching IA, Modifier, menu. */}
                 <div className="hidden lg:flex justify-end gap-1">
                   <Skeleton className="h-10 w-10 min-[90rem]:w-30 rounded-[10px]" />
-                  <Skeleton className="hidden min-[90rem]:block h-10 w-10 rounded-[10px]" />
+                  <Skeleton className="h-10 w-10 rounded-[10px]" />
                   <Skeleton className="h-10 w-10 rounded-[10px]" />
                   <Skeleton className="h-10 w-10 rounded-[10px]" />
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-        <div className="hidden min-[112.5rem]:flex flex-col gap-3.5">
-          <div className="rounded-[20px] p-5 space-y-3" style={card}>
-            <Skeleton className="h-5 w-4/5" />
-            <Skeleton className="h-3 w-3/5" />
-            <Skeleton className="h-16 w-full rounded-xl" />
-            {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-3 w-full" />)}
-          </div>
-          <div className="rounded-[20px] p-5 space-y-3" style={card}>
-            <Skeleton className="h-3 w-28" />
-            {Array.from({ length: 3 }, (_, i) => <Skeleton key={i} className="h-9 w-full" />)}
           </div>
         </div>
       </div>
@@ -533,6 +522,47 @@ export function PipelineSkeleton() {
           <Skeleton className="h-3 w-full" />
           <Skeleton className="h-3 w-4/5" />
           <Skeleton className="h-3 w-3/5" />
+        </div>
+      </div>
+    </SkeletonRegion>
+  )
+}
+
+/** « Publier un job » (/recruiter/publier, 2026-11-17) : bandeau, puis la carte des onglets, de l'assistant IA et des champs. */
+export function PublishJobSkeleton() {
+  return (
+    <SkeletonRegion label="Chargement de la page « Publier un job »…" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
+      <div style={{ background: 'var(--hero-bg)' }}>
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-5 space-y-2">
+          <Skeleton style={onHero} className="h-3 w-28" />
+          <Skeleton style={onHero} className="h-7 w-48" />
+          <Skeleton style={onHero} className="h-3.5 w-full max-w-md" />
+        </div>
+      </div>
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
+        <div className="rounded-2xl overflow-hidden" style={card}>
+          <div className="flex gap-2 px-4 pt-3 pb-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
+            <Skeleton className="h-9 w-40 rounded-xl" />
+            <Skeleton className="h-9 w-40 rounded-xl" />
+          </div>
+          <div className="p-6 space-y-4">
+            <Skeleton className="h-28 w-full rounded-xl" />
+            {[0, 1].map(i => (
+              <div key={i} className="space-y-1.5">
+                <Skeleton className="h-3 w-32" />
+                <Skeleton className="h-9 w-full rounded-lg" />
+              </div>
+            ))}
+            <div className="grid grid-cols-2 gap-3">
+              <Skeleton className="h-9 rounded-lg" />
+              <Skeleton className="h-9 rounded-lg" />
+            </div>
+            <Skeleton className="h-28 w-full rounded-lg" />
+            <div className="flex gap-3 pt-2">
+              <Skeleton className="h-10 flex-1 rounded-xl" />
+              <Skeleton className="h-10 flex-1 rounded-xl" />
+            </div>
+          </div>
         </div>
       </div>
     </SkeletonRegion>

@@ -58,6 +58,12 @@ describe('MBC Search : personnes révélées d’une discussion', () => {
     assert.deepEqual(read[0], people[0])
   })
 
+  it('ne garde jamais le téléphone d’une personne dans la discussion', () => {
+    const withPhone = person(1, { phone: { status: 'found', numbers: [{ number: '+33639980001', type: 'mobile' }], requestedAt: '2026-11-17T10:00:00.000Z' } })
+    assert.equal(JSON.stringify(discussionPeopleJson([withPhone])).includes('+33639980001'), false)
+    assert.equal(parseDiscussionPeople(discussionPeopleJson([withPhone]))[0].profile.phone, undefined)
+  })
+
   it('écarte une entrée dont la ligne et le profil ne sont pas la même personne', () => {
     const mixed = JSON.stringify([{ search: person(1).search, profile: JSON.parse(discussionPeopleJson([person(2)]))[0].profile }])
     assert.deepEqual(parseDiscussionPeople(mixed), [])

@@ -13,7 +13,7 @@ import { aoAccessFor } from '@/lib/ao/platform-view'
 import { activeJobsLimitDenial } from '@/lib/tenant-access'
 import type { Job } from '@/types'
 
-export async function createJobAction(formData: FormData): Promise<{ error?: string }> {
+export async function createJobAction(formData: FormData): Promise<{ error?: string; jobId?: string }> {
   // Début de la requête : la publication sur les réseaux, en arrière-plan, doit finir avant maxDuration (page.tsx).
   const requestStart = Date.now()
   const user = await getCurrentUser()
@@ -69,7 +69,8 @@ export async function createJobAction(formData: FormData): Promise<{ error?: str
     await tryAutoSourceCandidates(job)
 
     revalidatePath('/recruiter/dashboard')
-    return {}
+    // Identifiant de l'offre créée : la page « Publier un job » ouvre son détail.
+    return { jobId: job.$id }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur lors de la création de l’offre.' }
   }

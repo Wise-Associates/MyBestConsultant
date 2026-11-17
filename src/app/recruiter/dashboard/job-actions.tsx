@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState, useTransition, type KeyboardEvent } from 'react'
 import Link from 'next/link'
-import { Loader2, Pencil, MoreHorizontal, RefreshCw, Sparkles, Archive, ArchiveRestore, Trash2, ExternalLink, Kanban, Brain } from 'lucide-react'
+import { Loader2, Pencil, MoreHorizontal, RefreshCw, Archive, ArchiveRestore, Trash2, ExternalLink, Kanban, Brain } from 'lucide-react'
 import { toggleJobStatusAction, deleteJobAction, updateOwnJobAction } from './actions'
 import { JobEditModal } from '@/app/admin/jobs/job-edit-modal'
 import type { JobState } from '@/lib/recruiter-dashboard'
@@ -12,8 +12,8 @@ const iconButton = 'w-10 h-10 rounded-[10px] flex items-center justify-center tr
 const item = 'w-full h-[38px] px-2.5 rounded-[9px] flex items-center gap-2.5 text-left text-[13px] font-medium no-underline transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_5%,transparent)] focus-visible:outline-none focus-visible:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)]'
 
 // Actions d'une ligne de « Mes offres » : « Voir pipeline » (demande du 2026-11-17 ; une icône seule sous 1440 px), le
-// Matching IA (dès 1440 px ; avant, dans le menu, où il reste), « Modifier » et le menu « Autres actions ». Une offre
-// partagée de la plateforme (tenantId '') n'a ni « Modifier » ni archivage : le serveur refuse de la modifier.
+// Matching IA (icône, plus dans le menu : doublon retiré le 2026-11-17), « Modifier » et le menu « Autres actions ». Une
+// offre partagée de la plateforme (tenantId '') n'a ni « Modifier » ni archivage : le serveur refuse de la modifier.
 // « Voir l'offre » ouvre la page publique de l'offre (/jobs/<id>, affichée même archivée) dans un nouvel onglet, pour
 // garder la liste filtrée (demande du 2026-11-05).
 export function JobActions({ job, state, shared, matchingHref, canRepublish, onRepublish }: {
@@ -87,7 +87,7 @@ export function JobActions({ job, state, shared, matchingHref, canRepublish, onR
           <span className="sr-only min-[90rem]:not-sr-only">Voir pipeline</span><span className="sr-only"> de l’offre {job.title}</span>
         </Link>
         <Link href={matchingHref} aria-label={`Matching IA de l’offre ${job.title}`} title="Matching IA"
-          className={`${iconButton} hidden min-[90rem]:flex`} style={{ color: 'var(--color-text-muted)' }}>
+          className={iconButton} style={{ color: 'var(--color-text-muted)' }}>
           <Brain className="h-4 w-4" aria-hidden />
         </Link>
         {!shared && (
@@ -115,9 +115,6 @@ export function JobActions({ job, state, shared, matchingHref, canRepublish, onR
                   <RefreshCw className="h-3.75 w-3.75" aria-hidden />Republier sur les réseaux
                 </button>
               )}
-              <Link href={matchingHref} role="menuitem" className={item} style={{ color: 'var(--color-text)' }}>
-                <Sparkles className="h-3.75 w-3.75" aria-hidden />Voir le matching IA
-              </Link>
               {!shared && (
                 <>
                   <button type="button" role="menuitem" className={item} style={{ color: 'var(--color-text)' }} onClick={toggleArchive}>

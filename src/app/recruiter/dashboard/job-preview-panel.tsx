@@ -2,7 +2,7 @@
 
 import { useId, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
-import { MapPin, Sparkles, Share2, ChevronDown } from 'lucide-react'
+import { MapPin, Sparkles, Share2, ChevronDown, X } from 'lucide-react'
 import { diffusionText } from '@/lib/social-content'
 import type { CandidateApp } from './applications-panel'
 import type { DashboardJobRow } from './jobs-list-client'
@@ -31,12 +31,14 @@ const heading = 'font-semibold uppercase mb-2.5'
 const headingStyle: CSSProperties = { ...muted, fontSize: 11, letterSpacing: '0.06em', lineHeight: 1.4 }
 const button = 'h-10 px-3.5 rounded-[10px] inline-flex items-center justify-center gap-2 text-[13px] font-semibold no-underline cursor-pointer transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)'
 
-export function JobPreviewPanel({ row, apps, stages, onOpenApplications }: {
+export function JobPreviewPanel({ row, apps, stages, onOpenApplications, onClose }: {
   row: DashboardJobRow
   apps: CandidateApp[]
   /** Phases du pipeline, dans l'ordre. */
   stages: FunnelStage[]
   onOpenApplications: () => void
+  /** Ferme le panneau (il ne s'ouvre que par le bouton « Aperçu » d'une ligne). */
+  onClose: () => void
 }) {
   const { job, facts } = row
   const matchingHref = `/recruiter/pipeline/${job.$id}/matching`
@@ -59,7 +61,14 @@ export function JobPreviewPanel({ row, apps, stages, onOpenApplications }: {
       <div className={card} style={cardStyle}>
         <div className="flex items-start justify-between gap-3">
           <h2 className="font-bold" style={{ color: 'var(--color-text)', fontSize: 17, lineHeight: 1.35, letterSpacing: '-0.01em' }}>{job.title}</h2>
-          <span className="shrink-0 text-[11px] font-semibold rounded-full px-2.5 py-0.5" style={badge.style}>{badge.label}</span>
+          <span className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[11px] font-semibold rounded-full px-2.5 py-0.5" style={badge.style}>{badge.label}</span>
+            <button type="button" onClick={onClose} aria-label="Fermer l’aperçu" title="Fermer l’aperçu"
+              className="w-8 h-8 -mr-1.5 -mt-1 rounded-lg inline-flex items-center justify-center cursor-pointer bg-transparent border-0 hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] focus-visible:outline-2 focus-visible:outline-(--color-text)"
+              style={muted}>
+              <X className="h-4 w-4" aria-hidden />
+            </button>
+          </span>
         </div>
         <p className="mt-1.5 flex items-center gap-1.5 flex-wrap text-[13px]" style={muted}>
           <MapPin className="h-3.25 w-3.25" aria-hidden />

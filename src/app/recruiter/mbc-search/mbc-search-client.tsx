@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Bookmark, Loader2, Plus, Radar, X } from 'lucide-react'
 import {
-  analyseMbcBrief, askMbcQuestions, deleteMbcSearchEntry, evaluateMbcProfile, openMbcDiscussion, pinMbcSearch, planMbcStrategies, refineMbcSearch,
-  revealMbcProfiles, saveMbcDiscussion, saveMbcPerson, searchMbcProfiles, similarMbcCriteria, unsaveMbcPerson, updateMbcFollow,
+  analyseMbcBrief, askMbcQuestions, checkMbcPhone, deleteMbcSearchEntry, evaluateMbcProfile, openMbcDiscussion, pinMbcSearch, planMbcStrategies,
+  refineMbcSearch, requestMbcPhone, revealMbcProfiles, saveMbcDiscussion, saveMbcPerson, searchMbcProfiles, similarMbcCriteria, unsaveMbcPerson,
+  updateMbcFollow,
 } from './actions'
 import { DEFAULT_POOL_FILTERS, filterPool, poolCsv, type PoolContext, type PoolFilters } from '@/lib/mbc-search/results-view'
 import {
@@ -16,7 +17,8 @@ import type { MbcSearchEntry } from '@/lib/mbc-search/history'
 import type { DiscussionMessage, DiscussionPerson, MbcDiscussion } from '@/lib/mbc-search/discussion'
 import type { MbcSavedPerson } from '@/lib/mbc-search/saved'
 import { ProfilePanel, type Added } from './mbc-profile-panel'
-import { ErrorNote, surface, type Evaluation, type Reveal, type SaveButton } from './mbc-search-ui'
+import { ErrorNote, surface, type Evaluation, type PhoneControl, type Reveal, type SaveButton } from './mbc-search-ui'
+import type { MbcPhone } from '@/lib/mbc-search/phone'
 import { MbcSearchHome } from './mbc-search-home'
 import { AssistantMessage, ProgressSteps, PromptBox, QuestionCard, UserBubble } from './mbc-search-thread'
 import { CriteriaEditor, ResultRow, ResultsBlock } from './mbc-search-results'
@@ -77,12 +79,14 @@ const storedMessage = (m: Msg): DiscussionMessage => (m.kind === 'results' ? { k
 /** Personnes envoyées à chaque enregistrement, les premières révélées d'abord (le serveur en garde 50 par discussion). */
 const DISCUSSION_PEOPLE_SENT = 100
 
-export function MbcSearchClient({ firstName, configured, revealUsage, jobs, history, savedPeople }: {
+export function MbcSearchClient({ firstName, configured, revealUsage, phoneIncluded, jobs, history, savedPeople }: {
   /** Prénom du recruteur, pour la salutation de l'accueil. */
   firstName: string
   configured: boolean
   /** Profils complets révélés aujourd'hui par l'organisation, sur sa limite ; null si illisible. */
   revealUsage: { used: number; limit: number } | null
+  /** Téléphone des profils compris dans la formule (formules payées seulement, ADR 0042). */
+  phoneIncluded: boolean
   /** Offres ouvertes de l'organisation, pour « Associer à une offre » ; null si illisibles. */
   jobs: { id: string; title: string }[] | null
   /** Historique des recherches du recruteur, plus récente d'abord ; null si indisponible. */
@@ -123,6 +127,8 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
   const [seen, setSeen] = useState<Record<string, ScoredProfile>>({})
   const [savedPersons, setSavedPersons] = useState<MbcSavedPerson[]>(savedPeople ?? [])
   const [saving, setSaving] = useState<string[]>([])
+  // Téléphones demandés ou relus en ce moment (ADR 0042), par identifiant Apollo.
+  const [phoneBusy, setPhoneBusy] = useState<string[]>([])
   // Une personne enregistrée absente des résultats est notée selon les critères affichés, avec la ligne de recherche
   // gardée à son enregistrement ; « récent » se mesure à l'ouverture de la page.
   const [openedAt] = useState(() => new Date())
@@ -578,6 +584,56 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
       setNotice(OFFLINE)
     }
   }
+
+  /** Téléphone d'une personne : sur son profil révélé et sur la personne enregistrée (nouvelle version pour son suivi). */
+  const applyPhone = (id: string, phone: MbcPhone, savedUpdatedAt?: string) => {
+    setReveals(r => {
+      const current = r[id]
+      return current?.state === 'done' ? { ...r, [id]: { state: 'done', profile: { ...current.profile, phone } } } : r
+    })
+    setSavedPersons(list => list.map(s => (s.profile.id === id ? { ...s, profile: { ...s.profile, phone }, updatedAt: savedUpdatedAt ?? s.updatedAt } : s)))
+  }
+  const markPhoneBusy = (id: string, on: boolean) => setPhoneBusy(b => (on ? (b.includes(id) ? b : [...b, id]) : b.filter(x => x !== id)))
+  /** Relit une demande en attente : toutes les 5 s, 2 min au plus ; ensuite « Vérifier » relance la relecture. */
+  const pollPhone = (id: string, tries = 0, delayMs = 5000) => {
+    markPhoneBusy(id, true)
+    setTimeout(() => {
+      checkMbcPhone(id).then(res => {
+        if (res.phone) applyPhone(id, res.phone, res.savedUpdatedAt)
+        if (res.error) setNotice(res.error)
+        if (!res.error && res.phone?.status === 'pending' && tries < 23) pollPhone(id, tries + 1)
+        else markPhoneBusy(id, false)
+      }, () => {
+        markPhoneBusy(id, false)
+        setNotice(OFFLINE)
+      })
+    }, delayMs)
+  }
+  /** « Demander le téléphone » : la demande (crédits si un numéro est trouvé), puis sa relecture si Apollo cherche encore. */
+  const requestPhone = async (id: string) => {
+    if (phoneBusy.includes(id)) return
+    markPhoneBusy(id, true)
+    setNotice(null)
+    try {
+      const res = await requestMbcPhone(id)
+      if (res.phone) applyPhone(id, res.phone, res.savedUpdatedAt)
+      if (res.error) setNotice(res.error)
+      if (res.phone?.status === 'pending') {
+        pollPhone(id)
+        return
+      }
+    } catch {
+      setNotice(OFFLINE)
+    }
+    markPhoneBusy(id, false)
+  }
+  const phoneControl = (id: string): PhoneControl => ({
+    included: phoneIncluded,
+    busy: phoneBusy.includes(id),
+    disabled: busy ? 'Une autre action est en cours.' : null,
+    onRequest: () => { void requestPhone(id) },
+    onCheck: () => pollPhone(id, 0, 0),
+  })
 
   const savedById = new Map(savedPersons.map(s => [s.profile.id, s]))
   // Profil trouvé par plusieurs requêtes : celui de la liste réunie (la ligne affichée), pour que le panneau ait sa note.
@@ -1099,7 +1155,7 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
           )}
 
           <p className="max-w-4xl w-full mx-auto px-4 sm:px-6 pb-6 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            Source : Apollo.io. Un profil complet (nom entier, e-mail professionnel, LinkedIn, lieu, parcours) coûte un crédit Apollo. Un profil révélé est gardé 90 jours pour votre organisation (sans second crédit) ; une personne enregistrée reste dans votre sélection jusqu&apos;à ce que vous la retiriez ; votre besoin et vos critères restent dans votre historique ; une recherche enregistrée (marque-page) garde aussi sa discussion et les personnes révélées pendant celle-ci, jusqu&apos;à ce que vous la retiriez. Utilisez ces données pour un recrutement, conformément au RGPD.
+            Source : Apollo.io. Un profil complet (nom entier, e-mail professionnel, LinkedIn, lieu, parcours) coûte un crédit Apollo ; son téléphone se demande à part, jusqu&apos;à 8 crédits de plus si un numéro est trouvé. Un profil révélé est gardé 90 jours pour votre organisation (sans second crédit) ; une personne enregistrée reste dans votre sélection jusqu&apos;à ce que vous la retiriez ; votre besoin et vos critères restent dans votre historique ; une recherche enregistrée (marque-page) garde aussi sa discussion et les personnes révélées pendant celle-ci, jusqu&apos;à ce que vous la retiriez. Utilisez ces données pour un recrutement, conformément au RGPD.
           </p>
         </div>
 
@@ -1117,7 +1173,7 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
               evaluation={evaluations[active.id]} canSimilar={!busy && evaluating === null}
               evaluateBlocked={busy || evaluating !== null ? 'Une autre action est en cours.' : criteriaProblem(need.criteria)}
               onEvaluate={() => { void evaluate(active.id) }} onSimilar={() => startSimilar(active.id)}
-              follow={savedById.get(active.id)?.follow} onSaveFollow={f => saveFollow(active.id, f)}
+              follow={savedById.get(active.id)?.follow} onSaveFollow={f => saveFollow(active.id, f)} phone={phoneControl(active.id)}
               onClose={() => setPanelOpen(false)} />
           </aside>
         )}

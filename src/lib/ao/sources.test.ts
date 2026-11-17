@@ -59,7 +59,7 @@ describe('organisations', () => {
       lockIdFor('t1'), lockIdFor(long), counterIdFor('vision', long, day), counterIdFor('tables', 't1', day), counterIdFor('mailboxTests', 't1', day),
       `${counterIdFor('mailboxTestsAll', 'plateforme', day)}_499`, `${counterIdFor('assistantUser', long, day)}_29`, `${counterIdFor('assistantAll', 'platform', day)}_999`,
       `${counterIdFor('vivierMatchAll', 'platform', day)}_1999`, `${counterIdFor('aoPageOrg', long, day)}_29`, `${counterIdFor('aoPageAll', 'platform', day)}_299`,
-      `${counterIdFor('interviewAiOrg', long, day)}_9999`, `${counterIdFor('interviewAiAll', 'platform', day)}_4999`,
+      `${counterIdFor('interviewAiOrg', long, day)}_9999`, `${counterIdFor('interviewAiAll', 'platform', day)}_4999`, `${counterIdFor('mbcPhoneOrg', long, day)}_19`, `${counterIdFor('mbcPhoneAll', 'platform', day)}_199`,
       `${counterIdFor('interviewInviteOrg', long, day)}_99`, `${counterIdFor('interviewRoom', long, day)}_199`, `${counterIdFor('interviewRoomStt', long, day)}_99`,
       `${counterIdFor('interviewSttOrg', long, day)}_299`, `${counterIdFor('interviewSttAll', 'platform', day)}_2999`,
     ]) {

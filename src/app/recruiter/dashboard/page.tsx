@@ -13,15 +13,14 @@ import { jobFacts, summarize } from '@/lib/recruiter-dashboard'
 import { formatDateFr } from '@/lib/format-date'
 import { listTenantRecruiters, recruiterOptions } from '@/lib/recruiter-assignment'
 import { parseRecruiterSelection } from '@/lib/recruiter-job-filters'
-import { CreateJobDialog } from './create-job-dialog'
 import type { CandidateApp } from './applications-panel'
 import { JobsListClient, type DashboardJobRow } from './jobs-list-client'
 import { DashboardStats } from './dashboard-stats'
 import { RecruiterFilter } from './recruiter-filter'
 import type { Application } from '@/types'
 
-// Les Server Actions de cette page (création d'offre, import, « Publier sur les réseaux ») envoient la publication
-// en arrière-plan : photo de l'affiche par OpenAI (jusqu'à 2 min) puis envoi à Make.
+// Les Server Actions de cette page (« Publier sur les réseaux », « Republier ») envoient la publication en arrière-plan :
+// photo de l'affiche par OpenAI (jusqu'à 2 min) puis envoi à Make. La création d'une offre est sur « Publier un job ».
 export const maxDuration = 300
 
 // 25 identifiants par requête ; seuls les 25 premiers candidats étaient lus, les autres s'affichaient par leur identifiant.
@@ -181,11 +180,7 @@ export default async function RecruiterDashboard({ searchParams }: {
               <RecruiterFilter recruiters={recruiterOptions(recruiters)} selection={selection} currentRecruiterId={user.$id} />
             </Suspense>
           )}
-          action={
-            <Suspense fallback={null}>
-              <CreateJobDialog tenantId={tenantId} companyName={user.firstName + ' ' + user.lastName} variant="primary" />
-            </Suspense>
-          } />
+          />
 
         <p className="text-center text-xs sm:text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
           Une question, un souci ? <Link href="/recruiter/support" className="font-semibold no-underline hover:underline" style={{ color: 'var(--color-primary)' }}>Contactez le support</Link>

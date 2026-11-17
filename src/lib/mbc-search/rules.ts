@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { MbcPhone } from './phone'
 import type { TitleRelation } from '@/lib/match-scoring'
 
 // MBC Search (/recruiter/mbc-search, ADR 0018) : le recruteur décrit le profil recherché, l'IA en tire des critères
@@ -363,6 +364,8 @@ export interface MbcRevealed {
   experiences: MbcExperience[]
   seniority?: string
   industry?: string
+  /** Téléphone demandé par un recruteur (« Demander le téléphone », phone.ts) ; absent : jamais demandé. */
+  phone?: MbcPhone
 }
 
 /** Corps de `POST /api/v1/people/bulk_match` : seulement les identifiants Apollo, jamais un nom ni un e-mail. */

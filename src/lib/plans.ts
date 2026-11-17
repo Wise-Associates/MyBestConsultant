@@ -22,11 +22,12 @@ export function planLabel(plan: string): string {
 }
 
 /** Fonctions réservées qu'une formule ouvre ou non. */
-export const FEATURES = ['mbcSearch', 'aiInterviews', 'aoSourcing', 'cvExport'] as const
+export const FEATURES = ['mbcSearch', 'mbcPhone', 'aiInterviews', 'aoSourcing', 'cvExport'] as const
 export type Feature = (typeof FEATURES)[number]
 
 export const FEATURE_LABEL: Record<Feature, string> = {
   mbcSearch: 'MBC Search',
+  mbcPhone: 'Téléphones MBC Search',
   aiInterviews: 'Entretiens IA et screening des CV',
   aoSourcing: 'Appels d\'offres',
   cvExport: 'Export « Format ESN »',
@@ -34,19 +35,21 @@ export const FEATURE_LABEL: Record<Feature, string> = {
 
 const NOT_INCLUDED: Record<Feature, string> = {
   mbcSearch: 'MBC Search n\'est pas compris',
+  mbcPhone: 'Le téléphone des profils MBC Search n\'est pas compris',
   aiInterviews: 'Les entretiens IA et le screening des CV ne sont pas compris',
   aoSourcing: 'Le suivi des appels d\'offres n\'est pas compris',
   cvExport: 'L\'export « Format ESN » n\'est pas compris',
 }
 
 /** Quotas du jour (UTC) d'une organisation ; les plafonds pour toutes les organisations restent dans chaque module. */
-export const DAILY_QUOTAS = ['mbcSearch', 'mbcReveal', 'cvExport', 'aoSourcing', 'aoRewrite', 'aoRetry', 'vivierMatching', 'interviewAi'] as const
+export const DAILY_QUOTAS = ['mbcSearch', 'mbcReveal', 'mbcPhone', 'cvExport', 'aoSourcing', 'aoRewrite', 'aoRetry', 'vivierMatching', 'interviewAi'] as const
 export type DailyQuota = (typeof DAILY_QUOTAS)[number]
 
 /** Nom affiché de chaque quota du jour (offre sur mesure : page Abonnement, admin). */
 export const DAILY_QUOTA_LABEL: Record<DailyQuota, string> = {
   mbcSearch: 'Recherches MBC Search',
   mbcReveal: 'Profils complets MBC Search',
+  mbcPhone: 'Téléphones demandés dans MBC Search',
   cvExport: 'Exports « Format ESN »',
   aoSourcing: 'Recherches de candidats sur un AO',
   aoRewrite: 'Rédactions d\'AO par l\'IA',
@@ -72,20 +75,32 @@ export interface Entitlements {
  * `mbcSearch` passé de 60 à 300 le 2026-11-16 : un besoin part en plusieurs requêtes (ADR 0037), qui comptent chacune.
  */
 export const STANDARD_DAILY_QUOTAS: Readonly<Record<DailyQuota, number>> = {
-  mbcSearch: 300, mbcReveal: 100, cvExport: 20, aoSourcing: 20, aoRewrite: 30, aoRetry: 30, vivierMatching: 200, interviewAi: 500,
+  mbcSearch: 300, mbcReveal: 100, mbcPhone: 20, cvExport: 20, aoSourcing: 20, aoRewrite: 30, aoRetry: 30, vivierMatching: 200, interviewAi: 500,
 }
 
 /**
- * Droits des formules standard (gratuite, Essentiel, Pro, anciennes formules de l'admin). Décision du 2026-11-13 :
- * ils restent ceux d'avant (aucune organisation ne perd d'accès) ; seule une offre sur mesure les change. Appliquer
- * la page des formules (3 ou 5 offres actives…) se fera ici.
+ * Droits des formules standard payées (Essentiel, Pro, anciennes formules de l'admin) et en cours. Décision du
+ * 2026-11-13 : ils restent ceux d'avant (aucune organisation ne perd d'accès) ; seule une offre sur mesure les change.
+ * Appliquer la page des formules (3 ou 5 offres actives…) se fera ici.
  */
 export const STANDARD_ENTITLEMENTS: Readonly<Entitlements> = {
   maxUsers: 15,
   maxActiveJobs: null,
-  features: { mbcSearch: true, aiInterviews: true, aoSourcing: true, cvExport: true },
+  features: { mbcSearch: true, mbcPhone: true, aiInterviews: true, aoSourcing: true, cvExport: true },
   dailyQuotas: STANDARD_DAILY_QUOTAS,
 }
+
+/**
+ * Formule gratuite, ou formule payée qui ne l'est plus : les mêmes droits, sauf le téléphone de MBC Search, réservé aux
+ * formules payées (demande du 2026-11-17, ADR 0042 : jusqu'à 8 crédits Apollo par numéro, l'inscription est libre).
+ */
+export const UNPAID_ENTITLEMENTS: Readonly<Entitlements> = {
+  ...STANDARD_ENTITLEMENTS,
+  features: { ...STANDARD_ENTITLEMENTS.features, mbcPhone: false },
+}
+
+/** Formules payées, dont les anciennes formules de l'admin (« custom » sans conditions lues : droits standard). */
+const PAID_PLANS = new Set(['essentiel', 'pro', 'custom', 'gold', 'max'])
 
 /** Droits les plus bas de `a` et de `b`, limite par limite (null : sans limite) ; une fonction est ouverte si les deux l'ouvrent. */
 export function lowerOf(a: Entitlements, b: Entitlements): Entitlements {
@@ -104,12 +119,14 @@ const PAYING = new Set(['active', 'trialing'])
 /**
  * Droits en vigueur pour une organisation. `customTerms` : conditions de son offre sur mesure acceptée ; elles ne
  * s'appliquent qu'à la formule « custom ». Sans elles (offre retirée), droits standard. Formule « custom » qui n'est
- * plus payée (retard, résiliation, suspension) : les plus bas de l'offre et des droits standard — ni les conditions
- * négociées sans les payer, ni plus de droits que l'offre n'en donnait (revue de sécurité du 2026-11-13).
+ * plus payée (retard, résiliation, suspension) : les plus bas de l'offre et des droits d'une formule non payée — ni les
+ * conditions négociées sans les payer, ni plus de droits que l'offre n'en donnait (revue de sécurité du 2026-11-13).
+ * Formule gratuite ou formule payée qui ne l'est plus : sans le téléphone de MBC Search (UNPAID_ENTITLEMENTS).
  */
 export function entitlementsOf(tenant: { plan?: unknown; subscriptionStatus?: unknown }, customTerms?: Entitlements | null): Entitlements {
-  if (tenant.plan !== 'custom' || !customTerms) return STANDARD_ENTITLEMENTS
-  return PAYING.has(String(tenant.subscriptionStatus)) ? customTerms : lowerOf(customTerms, STANDARD_ENTITLEMENTS)
+  const paying = PAYING.has(String(tenant.subscriptionStatus))
+  if (tenant.plan === 'custom' && customTerms) return paying ? customTerms : lowerOf(customTerms, UNPAID_ENTITLEMENTS)
+  return paying && PAID_PLANS.has(String(tenant.plan)) ? STANDARD_ENTITLEMENTS : UNPAID_ENTITLEMENTS
 }
 
 /** Refus d'une fonction que la formule ne comprend pas ; null si elle la comprend. */

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { APOLLO_PERSON_ID, EXPERIENCE_DESCRIPTION_CHARS, PLAIN_EMAIL, type MbcRevealed } from './rules'
+import { phoneSchema } from './phone'
 
 // Profils complets déjà révélés par une organisation (collection mbc_reveals, ADR 0018) : règles pures, testées.
 // Un profil payé (un crédit Apollo) est gardé MBC_REVEAL_RETENTION_DAYS jours pour toute l'organisation : il s'affiche
@@ -41,6 +42,8 @@ const revealedSchema = z.object({
   })).max(8),
   seniority: text(40).default(''),
   industry: text(120).default(''),
+  // Téléphone demandé par un recruteur (ADR 0042) : absent des profils qui ne l'ont jamais été.
+  phone: phoneSchema.optional(),
 })
 
 /** Texte enregistré pour un profil : champs bornés comme à la relecture (l'attribut profileJson fait 20 000 caractères). */

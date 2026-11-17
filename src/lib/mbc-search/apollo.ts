@@ -8,6 +8,7 @@ import {
   type MbcProfile, type MbcRevealed, type OutreachChannel,
 } from './rules'
 import { QUESTION_LIMITS, briefForAi, criteriaForAi } from './conversation'
+import { parsePhoneRequest, type MbcPhoneNumber } from './phone'
 import { STRATEGY_LIMITS } from './strategies'
 
 // Appels externes de MBC Search (ADR 0018) : recherche et enrichissement de personnes d'Apollo.io, lecture du brief par l'IA.
@@ -15,8 +16,12 @@ import { STRATEGY_LIMITS } from './strategies'
 // le brief ni les profils (données personnelles), seulement le statut et le type d'erreur.
 
 const APOLLO_SEARCH_URL = 'https://api.apollo.io/api/v1/mixed_people/api_search'
-// Enrichissement : ni e-mails personnels ni téléphones (RGPD ; le téléphone coûte 8 crédits et passe par un webhook).
+// Enrichissement : ni e-mails personnels ni téléphones (RGPD) ; le téléphone se demande à part, personne par personne (ADR 0042).
 const APOLLO_REVEAL_URL = 'https://api.apollo.io/api/v1/people/bulk_match?reveal_personal_emails=false&reveal_phone_number=false'
+// Téléphone, à la demande du recruteur seulement (ADR 0042) : cherché en différé par Apollo et relu par nous (poll_only :
+// pas de webhook à exposer), jusqu'à 8 crédits de plus par numéro trouvé.
+const APOLLO_PHONE_URL = 'https://api.apollo.io/api/v1/people/match?reveal_personal_emails=false&reveal_phone_number=true&poll_only=true'
+const APOLLO_RESULT_URL = 'https://api.apollo.io/api/v1/webhook_result/'
 const APOLLO_TIMEOUT_MS = 15_000
 const BRIEF_TIMEOUT_MS = 30_000
 
@@ -94,6 +99,43 @@ export async function revealApolloPeople(ids: string[]): Promise<MbcRevealed[]> 
     throw new ApolloSearchError('Réponse d\'Apollo illisible : réessayez dans quelques instants.')
   }
   return parsed
+}
+
+/** Demande le téléphone d'une personne : numéros déjà donnés et, si Apollo cherche encore, le numéro de la demande. */
+export async function requestApolloPhone(id: string): Promise<{ numbers: MbcPhoneNumber[]; requestId: string | null }> {
+  const parsed = parsePhoneRequest(await postApollo(APOLLO_PHONE_URL, { id }, 'téléphone'))
+  if (!parsed) {
+    console.error('[mbc-search] réponse de la demande de téléphone d\'une forme inattendue')
+    throw new ApolloSearchError('Réponse d\'Apollo illisible : réessayez dans quelques instants.')
+  }
+  return parsed
+}
+
+/**
+ * Relit le résultat d'une demande de téléphone (sans crédit) : `pending` tant qu'Apollo cherche, `gone` si la demande est
+ * inconnue ou périmée (30 jours), sinon la réponse à lire avec parsePhoneResult.
+ */
+export async function pollApolloPhone(requestId: string): Promise<{ state: 'pending' } | { state: 'gone' } | { state: 'done'; json: unknown }> {
+  const apiKey = process.env.APOLLO_API_KEY
+  if (!apiKey) throw new ApolloSearchError('La recherche Apollo n\'est pas configurée sur la plateforme : contactez le support.', true)
+  let res: Response
+  try {
+    res = await fetch(APOLLO_RESULT_URL + encodeURIComponent(requestId), {
+      headers: { 'Cache-Control': 'no-cache', 'x-api-key': apiKey }, cache: 'no-store', signal: AbortSignal.timeout(APOLLO_TIMEOUT_MS),
+    })
+  } catch (err) {
+    console.error('[mbc-search] Apollo injoignable (résultat du téléphone)', err instanceof Error ? err.name : 'inconnu')
+    throw new ApolloSearchError('Apollo ne répond pas : réessayez dans quelques instants.')
+  }
+  const body: unknown = await res.json().catch(() => null)
+  if (res.ok) return { state: 'done', json: body }
+  const code = (body as { error_code?: unknown } | null)?.error_code
+  if (res.status === 404 && code === 'result_pending') return { state: 'pending' }
+  if (res.status === 410 || (res.status === 404 && code === 'request_id_unknown')) return { state: 'gone' }
+  console.error('[mbc-search] Apollo a refusé la relecture du téléphone', res.status, typeof code === 'string' ? code : '')
+  if (res.status === 401 || res.status === 403) throw new ApolloSearchError('La clé Apollo de la plateforme ne permet pas de relire les téléphones : contactez le support.', true)
+  if (res.status === 429) throw new ApolloSearchError('Trop de demandes envoyées à Apollo : réessayez dans une minute.', true)
+  throw new ApolloSearchError('Apollo n\'a pas pu donner le numéro pour le moment : réessayez dans quelques instants.')
 }
 
 const BRIEF_SYSTEM_PROMPT = `Tu aides un recruteur à chercher des profils dans une base de personnes (Apollo.io).
