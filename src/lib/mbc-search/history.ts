@@ -4,7 +4,9 @@ import { CRITERIA_LIMITS, criteriaSchema, savedSearchName, type MbcCriteria } fr
 
 // Historique des recherches de MBC Search (collection mbc_searches, ADR 0018) : règles pures, testées. Un document par
 // recruteur et par jeu de critères : relancer la même recherche met à jour sa ligne au lieu d'en ajouter une.
-// Serveur seulement (node:crypto) ; l'écran n'en importe que des types. Seuls les critères, le brief et le nombre de résultats sont gardés : jamais un profil trouvé ni une coordonnée.
+// Serveur seulement (node:crypto) ; l'écran n'en importe que des types. Gardés : critères, brief et nombre de résultats ;
+// jamais un profil trouvé ni une coordonnée, sauf pour une recherche enregistrée : sa discussion et les personnes révélées
+// pendant celle-ci (discussion.ts, ADR 0041), tant qu'elle reste enregistrée.
 
 /** Recherches gardées dans l'historique d'un recruteur, hors recherches enregistrées (les plus anciennes sont supprimées). */
 export const SEARCH_HISTORY_MAX = 50

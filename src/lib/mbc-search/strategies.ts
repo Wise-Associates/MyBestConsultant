@@ -10,6 +10,11 @@ import {
 // obligatoire ★, 0 à 2 mots-clés). Lieu, séniorité, secteur et filtres restent ceux du recruteur ; ses compétences ★
 // restent obligatoires partout. Chaque profil est noté sur les critères du recruteur, quelle que soit la requête qui l'a
 // trouvé. Règles pures, testées (strategies.test.ts), utilisées aussi dans le navigateur.
+// Mots du métier (2026-11-17, à la manière de la recherche par mots-clés d'Apollo) : 1 ou 2 requêtes de plus cherchent
+// chacune un mot qui désigne le domaine (« monétique », « payments ») dans tout le profil, sans intitulé ni séniorité. Essai du
+// 2026-11-17 à Paris : intitulé « Spécialiste support monétique » + séniorité « senior » : 0 profil ; sans la séniorité :
+// 7 ; mot « monétique » sans séniorité : 288, presque tous du métier. La séniorité d'Apollo est un niveau strict, elle
+// écarte la plupart des bons profils ; la note et la comparaison des intitulés par l'IA classent ensuite ce qui est trouvé.
 
 export const STRATEGY_LIMITS = {
   /** Requêtes par besoin, celle des critères du recruteur comprise. */
@@ -17,6 +22,8 @@ export const STRATEGY_LIMITS = {
   titles: 4,
   /** Mots-clés obligatoires que l'IA peut ajouter à une requête quand le recruteur n'en a marqué aucun. */
   keywords: 2,
+  /** Mots du métier (`keywords` de la réponse de l'IA) : une requête sans intitulé chacun. */
+  domainWords: 2,
   label: 80,
   /** Profils par page d'une requête : le maximum d'Apollo. */
   perPage: 100,
@@ -32,16 +39,18 @@ export interface MbcStrategy {
 }
 
 export const BASE_STRATEGY_LABEL = 'Vos critères'
+const DOMAIN_STRATEGY_LABEL = 'Mot du métier'
 
 const normalizedList = (list: string[]) => list.map(s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()).sort()
 /** Deux requêtes identiques pour Apollo : mêmes intitulés et mêmes mots-clés obligatoires, à la casse et à l'ordre près. */
 const queryKey = (c: MbcCriteria) => JSON.stringify([normalizedList(c.titles), normalizedList(requiredSkillsOf(c))])
 
 /**
- * Requêtes d'un besoin : celle des critères du recruteur d'abord, puis celles proposées par l'IA (`text`, donnée non
- * fiable : JSON `{"strategies": [{"label", "titles", "requiredSkills"}]}`), validées une à une par `criteriaSchema`,
- * sans doublon, 5 au plus. Une réponse illisible ne donne que la requête du recruteur. L'IA ne touche ni au lieu, ni à
- * la séniorité, ni au secteur, ni aux filtres ; les compétences ★ du recruteur restent obligatoires.
+ * Requêtes d'un besoin : celle des critères du recruteur d'abord, puis celles des mots du métier s'il y en a, puis celles
+ * proposées par l'IA (`text`, donnée non fiable : JSON `{"keywords": [...], "strategies": [{"label", "titles",
+ * "requiredSkills"}]}`), validées une à une par `criteriaSchema`, sans doublon, 5 au plus. Une réponse illisible ne donne
+ * que la requête du recruteur. L'IA ne touche ni au lieu, ni au secteur, ni aux filtres ; les compétences ★ du recruteur
+ * restent obligatoires. Seules les requêtes des mots du métier n'ont ni intitulé ni séniorité.
  */
 export function parseStrategies(text: string, base: MbcCriteria): MbcStrategy[] {
   const strategies: MbcStrategy[] = [{ label: BASE_STRATEGY_LABEL, criteria: base }]
@@ -49,6 +58,20 @@ export function parseStrategies(text: string, base: MbcCriteria): MbcStrategy[] 
   const obj = jsonObjectIn(text)
   const proposed = Array.isArray(obj?.strategies) ? obj.strategies : []
   const baseRequired = requiredSkillsOf(base)
+  // Mots du métier : chacun cherché seul dans tout le profil (q_keywords ; Apollo exige tous les mots donnés ensemble :
+  // « monétique paiement » 23 profils contre 288), avec les compétences ★ du recruteur, sans intitulé ni séniorité. Juste
+  // après la requête du recruteur : elles ne doivent pas être coupées par la limite de 5 requêtes.
+  const domain = textList(obj?.keywords, CRITERIA_LIMITS.item, STRATEGY_LIMITS.domainWords).filter(w => !baseRequired.some(r => same(r, w)))
+  for (const word of domain) {
+    const required = [...baseRequired, word]
+    const checked = criteriaSchema.safeParse({
+      ...base, titles: [], seniorities: [], requiredSkills: required,
+      skills: [...required, ...base.skills.filter(b => !required.some(r => same(r, b)))].slice(0, CRITERIA_LIMITS.items),
+    })
+    if (!checked.success || criteriaProblem(checked.data) || keys.has(queryKey(checked.data))) continue
+    keys.add(queryKey(checked.data))
+    strategies.push({ label: `${DOMAIN_STRATEGY_LABEL} « ${word} », toutes séniorités`.slice(0, STRATEGY_LIMITS.label), criteria: checked.data })
+  }
   for (const raw of proposed) {
     if (strategies.length >= STRATEGY_LIMITS.count) break
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue

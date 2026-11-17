@@ -32,14 +32,16 @@ export const RECRUITER_SECTIONS: RecruiterSection[] = [
   { key: 'mbcsearch', label: 'MBC Search', href: '/recruiter/mbc-search', group: 'recherche', also: [] },
   { key: 'cvtheque', label: 'CV Thèque', href: '/recruiter/cvtheque', group: 'recherche', also: [] },
   { key: 'vivier', label: 'Mon vivier', href: '/recruiter/vivier', group: 'recherche', also: [] },
+  { key: 'ao', label: 'Appels d’offres', href: '/recruiter/parametres/boites-ao', group: 'recrutement', also: [] },
   // Détail d'une offre (2026-11-17), ses onglets (matching, funnel, réponse client), fiche candidat, import et suivi des
   // annonces (lien « Suivi & rapports » de « Mes offres », sans rubrique depuis le 2026-10-30) partent des offres du
   // tableau de bord.
-  // Libellé « Job board » (demande du 2026-11-13, à la place de « Tableau de bord ») : aussi dans les liens « Retour ».
-  { key: 'dashboard', label: 'Job board', href: '/recruiter/dashboard', group: 'recrutement', also: ['/recruiter/offres', '/recruiter/pipeline', '/recruiter/candidates', '/recruiter/candidate-preview', '/recruiter/import', '/recruiter/annonces'] },
-  { key: 'ao', label: 'Appels d’offres', href: '/recruiter/parametres/boites-ao', group: 'recrutement', also: [] },
-  // Le screening des CV n'a pas de rubrique : il est rangé avec les entretiens IA (lien sur leur page).
-  { key: 'interviews', label: 'Entretiens IA', href: '/recruiter/interviews', group: 'recrutement', also: ['/recruiter/screening'] },
+  // Libellé « Tableau de bord » (redevenu le 2026-11-17 ; « Job board » du 2026-11-13 au 2026-11-17) : aussi dans les liens
+  // « Retour ». Après les appels d'offres (demande du 2026-11-17).
+  { key: 'dashboard', label: 'Tableau de bord', href: '/recruiter/dashboard', group: 'recrutement', also: ['/recruiter/offres', '/recruiter/pipeline', '/recruiter/candidates', '/recruiter/candidate-preview', '/recruiter/import', '/recruiter/annonces'] },
+  // Le screening des CV n'a pas de rubrique : il est rangé avec les entretiens IA (lien sur leur page). Dans Pilotage, en
+  // tête, depuis le 2026-11-17 (avant : Recrutement).
+  { key: 'interviews', label: 'Entretiens IA', href: '/recruiter/interviews', group: 'pilotage', also: ['/recruiter/screening'] },
   { key: 'reporting', label: 'Reporting', href: '/recruiter/reporting', group: 'pilotage', also: [] },
   // La marque employeur se gère depuis la page de l'équipe.
   { key: 'equipe', label: 'Mon équipe', href: '/recruiter/equipe', group: 'pilotage', also: ['/recruiter/marque-employeur'] },

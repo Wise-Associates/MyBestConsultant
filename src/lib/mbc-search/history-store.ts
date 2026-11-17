@@ -4,6 +4,9 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { savedSearchName, type MbcCriteria } from './rules'
 import { SAVED_SEARCHES_MAX, SEARCH_HISTORY_MAX, historyOverflow, parseSearchDoc, searchDocId, type MbcSearchEntry } from './history'
+import {
+  discussionPeopleJson, fitDiscussion, parseDiscussion, parseDiscussionPeople, type DiscussionPerson, type MbcDiscussion,
+} from './discussion'
 
 // Historique des recherches de MBC Search dans Appwrite (collection mbc_searches, sans permission client : seul le
 // serveur la lit). Toute lecture et toute écriture portent sur le compte du recruteur de la session (`userId`, compte
@@ -26,6 +29,8 @@ export async function listMbcSearches(userId: string): Promise<MbcSearchEntry[]>
   const { databases } = createAdminClient()
   const res = await databases.listDocuments(DB_ID, collection(), [
     Query.equal('userId', userId),
+    // Sans la discussion enregistrée ni ses personnes (jusqu'à 1 Mo par recherche) : lues seulement à l'ouverture.
+    Query.select(['$id', 'userId', 'name', 'brief', 'criteriaJson', 'pinned', 'total', 'lastRunAt']),
     Query.orderDesc('lastRunAt'),
     // Au plus SEARCH_HISTORY_MAX non enregistrées + SAVED_SEARCHES_MAX enregistrées ; marge pour une écriture concurrente.
     Query.limit(SEARCH_HISTORY_MAX + SAVED_SEARCHES_MAX + 10),
@@ -100,8 +105,45 @@ export async function setMbcSearchPinned(userId: string, id: string, pinned: boo
     if (count.total >= SAVED_SEARCHES_MAX) return 'full'
   }
   const { databases } = createAdminClient()
-  const updated = await databases.updateDocument(DB_ID, collection(), id, { pinned, ...(name ? { name } : {}) })
+  // Retirée des recherches enregistrées : sa discussion et ses personnes sont effacées (gardées seulement tant qu'elle
+  // l'est, choix du 2026-11-17). Attributs absents du document (structure pas encore poussée) : rien à effacer.
+  const clear = !pinned && 'conversationJson' in doc ? { conversationJson: null, peopleJson: null } : {}
+  const updated = await databases.updateDocument(DB_ID, collection(), id, { pinned, ...(name ? { name } : {}), ...clear })
   return parseSearchDoc(updated as unknown as Record<string, unknown>)
+}
+
+/** La structure de la collection n'a pas encore les attributs de la discussion (appwrite.config.json non poussé). */
+export class MbcDiscussionUnavailableError extends Error {}
+
+/**
+ * Recherche du recruteur avec sa discussion enregistrée et ses personnes (null : introuvable ou d'un autre recruteur).
+ * `discussion` null : rien d'enregistré (recherche épinglée avant le 2026-11-17, ou pas épinglée).
+ */
+export async function getMbcDiscussion(userId: string, id: string): Promise<{ entry: MbcSearchEntry; discussion: MbcDiscussion | null; people: DiscussionPerson[] } | null> {
+  const doc = await ownDoc(userId, id)
+  const entry = doc && parseSearchDoc(doc as unknown as Record<string, unknown>)
+  if (!doc || !entry) return null
+  return { entry, discussion: parseDiscussion(doc.conversationJson), people: parseDiscussionPeople(doc.peopleJson) }
+}
+
+/**
+ * Écrit la discussion et les personnes d'une recherche du recruteur (propriété et épinglage vérifiés par l'appelant).
+ * Retirée des recherches enregistrées entre-temps (autre onglet) : effacées aussitôt, comme le retrait le fait.
+ */
+export async function writeMbcDiscussion(id: string, discussion: MbcDiscussion, people: DiscussionPerson[]): Promise<void> {
+  const { databases } = createAdminClient()
+  try {
+    await databases.updateDocument(DB_ID, collection(), id, {
+      conversationJson: JSON.stringify(fitDiscussion(discussion)),
+      peopleJson: discussionPeopleJson(people),
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (typeOf(err) === 'document_invalid_structure' && message.includes('Unknown attribute')) throw new MbcDiscussionUnavailableError(message)
+    throw err
+  }
+  const after = await databases.getDocument(DB_ID, collection(), id, [Query.select(['$id', 'pinned'])])
+  if (after.pinned !== true) await databases.updateDocument(DB_ID, collection(), id, { conversationJson: null, peopleJson: null })
 }
 
 /** Supprime une ligne de l'historique du recruteur ; false : introuvable. */

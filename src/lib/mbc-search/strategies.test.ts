@@ -38,6 +38,34 @@ describe('MBC Search : requêtes d\'un besoin proposées par l\'IA', () => {
     assert.deepEqual(s[2].criteria.requiredSkills, ['Spark'])
   })
 
+  it('mots du métier : une requête par mot, juste après celle du recruteur, sans intitulé ni séniorité, le reste gardé', () => {
+    const s = parseStrategies(JSON.stringify({
+      keywords: ['monétique', 'payments', 'cartes'],
+      strategies: [{ label: 'Intitulé français', titles: ['Ingénieur Data'], requiredSkills: [] }],
+    }), base)
+    assert.deepEqual(s.map(x => x.label), [BASE_STRATEGY_LABEL, 'Mot du métier « monétique », toutes séniorités', 'Mot du métier « payments », toutes séniorités', 'Intitulé français'])
+    const [, monetique] = s
+    assert.deepEqual(monetique.criteria.titles, [])
+    assert.deepEqual(monetique.criteria.seniorities, [])
+    assert.deepEqual(monetique.criteria.requiredSkills, ['monétique'])
+    assert.deepEqual(monetique.criteria.skills, ['monétique', 'Spark', 'Kafka'])
+    assert.deepEqual(monetique.criteria.locations, ['Lyon, France'])
+    assert.deepEqual(monetique.criteria.sectors, ['Banking'])
+    assert.equal(monetique.criteria.emailOnly, true)
+  })
+
+  it('mots du métier : les compétences ★ du recruteur restent obligatoires, un mot déjà ★ ne fait pas de requête', () => {
+    const withRequired = { ...base, requiredSkills: ['Kafka'] }
+    const s = parseStrategies(JSON.stringify({ keywords: ['kafka', 'streaming'] }), withRequired)
+    assert.equal(s.length, 2)
+    assert.deepEqual(s[1].criteria.requiredSkills, ['Kafka', 'streaming'])
+  })
+
+  it('mots du métier absents ou illisibles : rien n\'est ajouté', () => {
+    assert.equal(parseStrategies(JSON.stringify({ keywords: 'monétique' }), base).length, 1)
+    assert.equal(parseStrategies(JSON.stringify({ keywords: [] , strategies: [] }), base).length, 1)
+  })
+
   it('une compétence obligatoire ajoutée par l\'IA reste dans les compétences (sinon elle ne filtrerait pas)', () => {
     const [, s] = parseStrategies(answer([{ label: 'Avec Airflow', titles: ['Data Engineer'], requiredSkills: ['Airflow'] }]), base)
     assert.deepEqual(s.criteria.requiredSkills, ['Airflow'])
