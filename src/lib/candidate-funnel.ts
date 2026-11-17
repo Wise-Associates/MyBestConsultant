@@ -55,9 +55,14 @@ export const COLUMN_RANK: Record<string, number> = {
 
 const newId = () => Math.random().toString(36).slice(2, 8)
 
-/** Funnel par défaut : Screening → Entretien IA → téléphonique → visio → présentiel → Embauché. */
+/**
+ * Funnel par défaut : Screening → Entretien IA → téléphonique → visio → présentiel → Embauché. Identifiants fixes
+ * (« dft0 »…) : le funnel d'un candidat jamais enregistré est recalculé à chaque lecture, et la page et le serveur doivent
+ * y retrouver la même étape (identifiants tirés au hasard avant le 2026-11-17 : « Étape introuvable. » sur toute action).
+ */
 export function defaultFunnel(): FunnelStep[] {
-  return (['screening', 'ai_interview', 'phone', 'video', 'onsite', 'hired'] as StepType[]).map(type => ({ id: newId(), type, label: STEP_TYPES[type].label, status: 'todo' as StepStatus }))
+  return (['screening', 'ai_interview', 'phone', 'video', 'onsite', 'hired'] as StepType[])
+    .map((type, i) => ({ id: `dft${i}`, type, label: STEP_TYPES[type].label, status: 'todo' as StepStatus }))
 }
 
 /** Numérote les étapes d'un même type (« Entretien IA 1 », « Entretien IA 2 »…) sauf celles dont le libellé a été personnalisé. */

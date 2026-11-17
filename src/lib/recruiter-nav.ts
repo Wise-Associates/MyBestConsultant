@@ -37,8 +37,8 @@ export const RECRUITER_SECTIONS: RecruiterSection[] = [
   { key: 'publier', label: 'Publier un job', href: '/recruiter/publier', group: 'recrutement', also: ['/recruiter/import'] },
   { key: 'ao', label: 'Appels d’offres', href: '/recruiter/parametres/boites-ao', group: 'recrutement', also: [] },
   // Détail d'une offre (2026-11-17), ses onglets (matching, funnel, réponse client), fiche candidat, import et suivi des
-  // annonces (lien « Suivi & rapports » de « Mes offres », sans rubrique depuis le 2026-10-30) partent des offres du
-  // tableau de bord.
+  // annonces (sans rubrique depuis le 2026-10-30 ; ouvert depuis les AO publiés, plus depuis « Mes offres » depuis le
+  // 2026-11-17) partent des offres du tableau de bord.
   // Libellé « Tableau de bord » (redevenu le 2026-11-17 ; « Job board » du 2026-11-13 au 2026-11-17) : aussi dans les liens
   // « Retour ». Après les appels d'offres (demande du 2026-11-17).
   { key: 'dashboard', label: 'Tableau de bord', href: '/recruiter/dashboard', group: 'recrutement', also: ['/recruiter/offres', '/recruiter/pipeline', '/recruiter/candidates', '/recruiter/candidate-preview', '/recruiter/import', '/recruiter/annonces'] },

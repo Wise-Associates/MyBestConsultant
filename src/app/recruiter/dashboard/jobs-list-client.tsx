@@ -1,9 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Inbox, Users, AlertTriangle, Clock, Layers, Search, X } from 'lucide-react'
+import { Inbox, Users, AlertTriangle, Clock, Search, X } from 'lucide-react'
 import { JobRow } from './job-row'
 import { ROW_GRID } from './dashboard-layout'
 import { JobApplicationsModal } from './job-applications-modal'
@@ -255,13 +254,6 @@ export function JobsListClient({
                 status={statusTabs} focus={focusTiles} recruiters={recruiterFilter}
                 contract={<ContractFilter value={filters.contract} onChange={contract => update({ contract })} />} />
               {sortSelect}
-              {rows.length > 0 && (
-                <Link href="/recruiter/annonces"
-                  className="inline-flex items-center gap-2 h-11 sm:h-10 px-3.5 rounded-[10px] text-[13px] font-semibold no-underline transition-opacity hover:opacity-80"
-                  style={{ background: 'rgba(232,163,61,0.14)', color: '#8f5e12' }}>
-                  <Layers className="h-3.75 w-3.75" aria-hidden /> Suivi &amp; rapports
-                </Link>
-              )}
             </div>
           </div>
 

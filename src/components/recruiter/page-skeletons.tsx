@@ -165,13 +165,11 @@ export function DashboardSkeleton() {
                 <Skeleton className="h-6 w-32" />
                 <Skeleton className="h-5 w-9 rounded-full" />
               </div>
-              {/* Recherche, « Filtres », tri, « Suivi & rapports », « Créer une offre ». */}
+              {/* Recherche, « Filtres », tri. */}
               <div className="flex items-center gap-2.5 flex-wrap w-full lg:w-auto">
                 <Skeleton className="h-11 sm:h-10 flex-1 min-w-0 sm:min-w-60 rounded-xl" />
                 <Skeleton className="h-11 sm:h-10 w-28 rounded-xl" />
                 <Skeleton className="h-11 sm:h-10 w-36 rounded-xl" />
-                <Skeleton className="h-11 sm:h-10 w-36 rounded-[10px]" />
-                <Skeleton className="h-11 sm:h-10 flex-1 sm:flex-none sm:w-40 rounded-xl" />
               </div>
             </div>
             {Array.from({ length: 5 }, (_, i) => (

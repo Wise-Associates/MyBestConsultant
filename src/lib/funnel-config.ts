@@ -30,12 +30,14 @@ const PLAN = ['À planifier', 'Planifié', 'À replanifier']
 export const STAGE_TEMPLATES: { id: 'default' | 'interviews' | 'blank'; name: string; description: string; stages: StageInput[] | null }[] = [
   { id: 'default', name: 'Copie du pipeline par défaut', description: 'Les mêmes phases que votre pipeline actuel, à adapter ensuite.', stages: null },
   {
-    id: 'interviews', name: 'Plusieurs entretiens', description: 'Nouveaux candidats, screening IA, entretiens téléphonique, visio et présentiel, embauche.',
+    id: 'interviews', name: 'Plusieurs entretiens', description: 'Nouveaux candidats, screening IA, entretiens téléphonique, IA, visio et présentiel, embauche.',
     stages: [
       { slug: 'pending', label: 'Nouveaux candidats', color: '#6b7280' },
       { slug: 'screening', label: 'Screening IA', color: '#8b5cf6', autoAction: 'screening' },
       { slug: 'phone_interview', label: 'Entretien téléphonique', color: '#0ea5e9', statuses: PLAN },
-      { slug: 'interview', label: 'Entretien visio', color: '#3b82f6', autoAction: 'interview', statuses: PLAN },
+      // La colonne de l'entretien IA s'appelle comme l'étape du funnel qui y mène ; la visio a la sienne (étape « Entretien visio »).
+      { slug: 'interview', label: 'Entretien IA', color: '#3b82f6', autoAction: 'interview', statuses: PLAN },
+      { slug: 'video_interview', label: 'Entretien visio', color: '#14b8a6', statuses: PLAN },
       { slug: 'onsite_interview', label: 'Entretien présentiel', color: '#6366f1', statuses: PLAN },
       { slug: 'accepted', label: 'Embauchés', color: '#10b981' },
       { slug: 'on_hold', label: 'Vivier', color: '#f59e0b', statuses: ['À recontacter', 'En attente'] },

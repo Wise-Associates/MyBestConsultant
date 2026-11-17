@@ -4,7 +4,7 @@ import { getCurrentUser } from './auth'
 import { ID, Query } from 'node-appwrite'
 import { DEFAULT_STAGE_INPUTS, DEFAULT_STATUS_LIBRARY, sanitizeStatusList, type StageInput } from '@/lib/funnel-config'
 import { COLUMN_DEFS, COLUMN_RANK, funnelForCandidate, reportRequiredMessage, stepBlockingMove } from '@/lib/candidate-funnel'
-import { resolveStatus } from '@/lib/funnel-stage-utils'
+import { resolveStatus, stageLabel } from '@/lib/funnel-stage-utils'
 import type { FunnelStage, FunnelPipeline, FunnelEvent, FunnelEventKind } from '@/types'
 
 type Doc = Record<string, unknown> & { $id: string }
@@ -13,14 +13,17 @@ const parseJson = <T,>(raw: unknown, fallback: T): T => { try { return typeof ra
 
 function docToStage(doc: Doc): FunnelStage {
   const statuses = sanitizeStatusList(parseJson<unknown[]>(doc.statusesJson, []))
+  const slug = doc.slug as string
+  const autoAction = (doc.autoAction as FunnelStage['autoAction']) || undefined
   return {
     $id: doc.$id,
     tenantId: doc.tenantId as string,
-    slug: doc.slug as string,
-    label: doc.label as string,
+    slug,
+    // Lu ici, le libellé corrigé est aussi celui que le recruteur enregistre ensuite (écran « Étapes », colonnes ajoutées).
+    label: stageLabel({ slug, label: doc.label as string, autoAction }),
     color: doc.color as string,
     order: doc.order as number,
-    autoAction: (doc.autoAction as FunnelStage['autoAction']) || undefined,
+    autoAction,
     pipelineId: (doc.pipelineId as string) || undefined,
     statuses: statuses.length ? statuses : undefined,
   }

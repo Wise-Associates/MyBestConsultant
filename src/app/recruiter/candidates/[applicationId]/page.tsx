@@ -26,7 +26,7 @@ import { RELATIONSHIP_LABEL } from '@/lib/recommendation-boost'
 const STATUS: Record<string, { label: string; bg: string; text: string }> = {
   pending:   { label: 'En attente',   bg: 'rgba(107,114,128,0.14)', text: '#6b7280' },
   screening: { label: 'Screening IA', bg: 'rgba(139,92,246,0.14)',  text: '#6d28d9' },
-  interview: { label: 'Entretien',    bg: 'rgba(59,130,246,0.14)',  text: '#1d4ed8' },
+  interview: { label: 'Entretien IA', bg: 'rgba(59,130,246,0.14)',  text: '#1d4ed8' },
   accepted:  { label: 'Accepté ✓',   bg: 'rgba(16,185,129,0.14)',  text: '#047857' },
   rejected:  { label: 'Refusé',       bg: 'rgba(239,68,68,0.14)',   text: '#b91c1c' },
   on_hold:   { label: 'Vivier',       bg: 'rgba(245,158,11,0.14)',  text: '#b45309' },

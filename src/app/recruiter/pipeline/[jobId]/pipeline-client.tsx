@@ -89,7 +89,7 @@ const RECO_LABEL: Record<string, { label: string; color: string }> = {
 }
 
 const AUTO_ACTION_LABEL: Record<string, string> = {
-  screening: 'Screening', interview: 'Entretien',
+  screening: 'Screening', interview: 'Entretien IA',
 }
 
 // Funnels created before "action suggérée" existed have no autoAction saved on their
@@ -372,10 +372,11 @@ function CandidateCard({
               « {currentStep.report} »
             </p>
           ) : (
-            <p className="flex items-start gap-1.5 text-[11px] font-semibold leading-snug rounded-lg px-2.5 py-1.5"
+            <button type="button" onClick={onOpenProcess} title="Ouvrir le funnel du candidat pour rédiger le compte rendu"
+              className="flex items-start gap-1.5 text-left text-[11px] font-semibold leading-snug rounded-lg px-2.5 py-1.5 cursor-pointer hover:opacity-85 focus-visible:outline-2 focus-visible:outline-(--color-text)"
               style={{ border: '1px dashed rgba(220,38,38,0.45)', background: 'rgba(220,38,38,0.05)', color: '#b91c1c' }}>
               <Lock className="h-3 w-3 mt-px shrink-0" aria-hidden />Compte rendu de « {currentStep.label} » à rédiger avant l’étape suivante
-            </p>
+            </button>
           )}
           <div className="flex gap-1.5">
             <button type="button" onClick={onOpenProcess} title="Funnel de recrutement du candidat : étapes, comptes rendus, personnalisation"
@@ -1059,6 +1060,8 @@ export function PipelineClient({
   const [collapseEmpty, setCollapseEmpty] = useState(true)
   const [openedEmpty, setOpenedEmpty] = useState<Set<string>>(new Set())
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Texte d'aide du panneau de droite fermé par le recruteur : écran seulement, il revient au rechargement (demande du 2026-11-17).
+  const [hintClosed, setHintClosed] = useState(false)
 
   const [globalError, setGlobalError] = useState<string | null>(null)
   const [autoOpenInterviewFor, setAutoOpenInterviewFor] = useState<string | null>(null)
@@ -1076,7 +1079,9 @@ export function PipelineClient({
   // La candidature suit son funnel : elle passe dans la colonne de l'étape suivante (screening / entretien IA : la fenêtre correspondante s'ouvre).
   function moveFromFunnel(appId: string, column: string, autoAction?: string) {
     if (autoAction === 'interview') { setAutoOpenInterviewFor(appId); return }
-    moveCard(appId, column)
+    // Étape validée à l'instant par le serveur, avec son compte rendu : la copie locale du candidat n'est pas encore à
+    // jour (elle n'a pas le compte rendu saisi dans la fenêtre), sa vérification refuserait le passage à tort.
+    moveCard(appId, column, { validated: true })
   }
 
   // « Étape suivante » d'une carte : valide l'étape en cours avec son résultat et son compte rendu enregistrés, puis la
@@ -1132,12 +1137,13 @@ export function PipelineClient({
   // optimistic update with rollback if the server call fails. If the target stage has a
   // suggested action configured, drop it straight into that action instead of leaving the
   // recruiter to notice and click a separate suggestion pill.
-  function moveCard(appId: string, stageSlug: string) {
+  function moveCard(appId: string, stageSlug: string, { validated = false }: { validated?: boolean } = {}) {
     const autoAction = getStageAutoAction(stages.find(s => s.slug === stageSlug))
     const candidate = candidates.find(c => c.appId === appId)
 
-    // Compte rendu obligatoire avant de quitter l'étape en cours (règle vérifiée aussi par le serveur).
-    const blocking = candidate?.funnel ? stepBlockingMove(candidate.funnel, stages, candidate.status, stageSlug) : null
+    // Compte rendu obligatoire avant de quitter l'étape en cours (règle vérifiée aussi par le serveur, qui seul juge après
+    // une validation : `validated`).
+    const blocking = !validated && candidate?.funnel ? stepBlockingMove(candidate.funnel, stages, candidate.status, stageSlug) : null
     if (blocking) {
       setGlobalError(reportRequiredMessage(blocking))
       setTimeout(() => setGlobalError(null), 6000)
@@ -1380,7 +1386,7 @@ export function PipelineClient({
         </div>
       </div>
 
-      <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-8 min-[90rem]:py-5 min-[90rem]:grid min-[90rem]:grid-cols-[256px_minmax(0,1fr)] min-[112.5rem]:grid-cols-[256px_minmax(0,1fr)_340px] min-[90rem]:gap-5 min-[90rem]:items-start">
+      <div className={`max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-8 min-[90rem]:py-5 min-[90rem]:grid min-[90rem]:grid-cols-[256px_minmax(0,1fr)] ${selected || !hintClosed ? 'min-[112.5rem]:grid-cols-[256px_minmax(0,1fr)_340px]' : ''} min-[90rem]:gap-5 min-[90rem]:items-start`}>
         {rail}
         <div className="min-w-0">
         <p className="flex items-start gap-2 mb-4 px-4 py-2.5 rounded-xl text-[13px]" style={{ background: '#b4530910', color: '#92400e', border: '1px solid #b4530933' }}>
@@ -1482,9 +1488,14 @@ export function PipelineClient({
           <CandidatePanel key={selected.appId} candidate={selected} stages={stages} busyLabel={busy[selected.appId]}
             onMove={slug => moveFromPanel(selected.appId, slug)}
             onOpenProcess={() => setProcessFor(selected.appId)} onOpenEdit={() => setEditingId(selected.appId)} onClose={() => setSelectedId(null)} />
-        ) : (
-          <aside className="hidden min-[112.5rem]:block sticky top-[84px] rounded-[20px] p-4 text-[13px]" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
-            Cliquez sur une carte pour afficher le candidat ici : sa phase, son score, les déplacements possibles et son historique.
+        ) : !hintClosed && (
+          <aside className="hidden min-[112.5rem]:flex items-start gap-2 sticky top-[84px] rounded-[20px] p-4 text-[13px]" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
+            <p className="flex-1">Cliquez sur une carte pour afficher le candidat ici : sa phase, son score, les déplacements possibles et son historique.</p>
+            <button type="button" onClick={() => setHintClosed(true)} aria-label="Fermer l’aide" title="Fermer l’aide"
+              className="w-8 h-8 -mr-1.5 -mt-1 shrink-0 rounded-lg inline-flex items-center justify-center cursor-pointer bg-transparent border-0 hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] focus-visible:outline-2 focus-visible:outline-(--color-text)"
+              style={{ color: 'var(--color-text-muted)' }}>
+              <X className="h-4 w-4" aria-hidden />
+            </button>
           </aside>
         )}
       </div>
@@ -1689,6 +1700,7 @@ function CandidatePanel({ candidate, stages, busyLabel, onMove, onOpenProcess, o
   const current = stages.find(s => s.slug === candidate.status)
   const minOrder = minAllowedOrder(candidate, stages)
   const reco = candidate.aiRecommendation ? RECO_LABEL[candidate.aiRecommendation] : undefined
+  const currentStep = candidate.funnel ? candidate.funnel[funnelCurrent(candidate.funnel)] : undefined
   const stageLabel = (slug: string) => stages.find(s => s.slug === slug)?.label ?? slug
   const muted = { color: 'var(--color-text-muted)' }
   const heading = 'font-semibold uppercase mt-4 mb-2'
@@ -1733,6 +1745,30 @@ function CandidatePanel({ candidate, stages, busyLabel, onMove, onOpenProcess, o
         </div>
       )}
 
+      {/* Compte rendu de l'étape en cours (obligatoire pour avancer, 2026-11-17) : rédigé dans la fenêtre du funnel. */}
+      {currentStep && (
+        <>
+          <h3 className={heading} style={headingStyle}>Compte rendu · {currentStep.label}</h3>
+          {hasReport(currentStep) ? (
+            <div className="rounded-xl px-3 py-2.5" style={{ background: 'rgba(16,185,129,0.08)' }}>
+              <p className="text-[12.5px] leading-relaxed whitespace-pre-line line-clamp-4" style={{ color: 'var(--color-text)' }}>{currentStep.report}</p>
+              <button type="button" onClick={onOpenProcess} className="mt-1.5 text-xs font-semibold underline bg-transparent border-0 p-0 cursor-pointer" style={{ color: 'var(--color-text)' }}>
+                Modifier ou valider l’étape
+              </button>
+            </div>
+          ) : (
+            <div className="rounded-xl px-3 py-2.5 flex flex-col gap-2" style={{ border: '1px dashed rgba(220,38,38,0.45)', background: 'rgba(220,38,38,0.05)' }}>
+              <p className="flex items-start gap-1.5 text-xs font-semibold leading-snug" style={{ color: '#b91c1c' }}>
+                <Lock className="h-3 w-3 mt-0.5 shrink-0" aria-hidden />À rédiger avant de déplacer le candidat
+              </p>
+              <button type="button" onClick={onOpenProcess} className={`${button} self-start`} style={{ background: 'var(--color-primary)', color: 'var(--color-primary-fg)' }}>
+                <Pencil className="h-3.5 w-3.5" aria-hidden />Rédiger le compte rendu
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
       <h3 className={heading} style={headingStyle}>Déplacer vers</h3>
       <div className="flex flex-wrap gap-1.5">
         {sorted.filter(s => s.slug !== candidate.status).map(s => {
@@ -1769,7 +1805,7 @@ function CandidatePanel({ candidate, stages, busyLabel, onMove, onOpenProcess, o
       )}
 
       <div className="grid grid-cols-2 gap-2 mt-4">
-        <button type="button" onClick={onOpenProcess} className={`${button} bg-transparent`} style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}><GitBranch className="h-3.5 w-3.5" aria-hidden />Processus</button>
+        <button type="button" onClick={onOpenProcess} className={`${button} bg-transparent`} style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}><GitBranch className="h-3.5 w-3.5" aria-hidden />Funnel</button>
         <button type="button" onClick={onOpenEdit} className={`${button} bg-transparent`} style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}><Pencil className="h-3.5 w-3.5" aria-hidden />Tags et note</button>
         {candidate.cvFileId && <a href={`/api/cv/${candidate.cvFileId}`} target="_blank" rel="noopener noreferrer" className={button} style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}><FileText className="h-3.5 w-3.5" aria-hidden />Voir le CV</a>}
         <Link href={`/recruiter/candidates/${candidate.appId}`} className={button} style={{ background: 'var(--color-primary)', color: 'var(--color-primary-fg)' }}>Fiche candidat</Link>

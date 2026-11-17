@@ -12,6 +12,16 @@ const LEGACY: Record<string, { label: string; color: string }> = {
   rejected: { label: 'Refusé', color: '#ef4444' },
 }
 
+/**
+ * Libellé affiché d'une colonne. La colonne de l'entretien IA (action suggérée « interview ») gardait d'anciens libellés par
+ * défaut, « Entretien » (premiers pipelines) ou « Entretien visio » (modèle « Plusieurs entretiens ») : l'étape « Entretien IA »
+ * du funnel y semblait disparaître (signalé le 2026-11-17). Ils s'affichent « Entretien IA » ; un autre libellé reste tel quel.
+ */
+export function stageLabel(stage: { slug: string; label: string; autoAction?: string | null }): string {
+  const aiInterview = stage.autoAction === 'interview' || (!stage.autoAction && stage.slug === 'interview')
+  return aiInterview && ['entretien', 'entretien visio'].includes(stage.label.trim().toLowerCase()) ? 'Entretien IA' : stage.label
+}
+
 const humanize = (slug: string) => {
   const t = slug.replace(/[_-]+/g, ' ').trim()
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : 'Autre'
@@ -38,7 +48,7 @@ export function withOrphanStages(stages: StageLite[], statuses: string[]): Stage
   for (const slug of new Set(statuses)) {
     if (known.has(slug)) continue
     const legacy = LEGACY[slug]
-    extra.push({ slug, label: legacy?.label ?? humanize(slug), color: legacy?.color ?? '#9ca3af', order: order++ })
+    extra.push({ slug, label: stageLabel({ slug, label: legacy?.label ?? humanize(slug) }), color: legacy?.color ?? '#9ca3af', order: order++ })
   }
   return [...sorted, ...extra]
 }
