@@ -2,11 +2,14 @@
 
 import { z } from 'zod'
 import { getCurrentUser } from '@/lib/appwrite/auth'
-import { releaseDailySlot, takeDailySlotId } from '@/lib/ao/state'
+import { acquireSyncLock, releaseDailySlot, releaseSyncLock, takeDailySlotId, type SyncLock } from '@/lib/ao/state'
 import {
   ApolloSearchError, briefQuestionsText, briefToCriteriaText, outreachDraftText, refineCriteriaText, revealApolloPeople, searchApolloPeople,
-  evaluationText, strategiesText, titleFitsText,
+  evaluationText, pollApolloPhone, requestApolloPhone, strategiesText, titleFitsText,
 } from '@/lib/mbc-search/apollo'
+import {
+  MBC_PHONE_DAILY_LIMITS, MBC_PHONE_QUOTA_MESSAGE, canRequestPhone, mergeNumbers, parsePhoneResult, settledPhone, type MbcPhone,
+} from '@/lib/mbc-search/phone'
 import { parseTitleRelations, type TitleRelation } from '@/lib/match-scoring'
 import { STRATEGY_LIMITS, parseStrategies, titleKey, titlePairs, type MbcStrategy } from '@/lib/mbc-search/strategies'
 import { takeBurstSlot } from '@/lib/mbc-search/burst'
@@ -38,10 +41,11 @@ import {
   MbcDiscussionUnavailableError, deleteMbcSearch, getMbcDiscussion, isMbcHistoryConfigured, recordMbcSearch, setMbcSearchPinned, writeMbcDiscussion,
 } from '@/lib/mbc-search/history-store'
 import { DISCUSSION_LIMITS, discussionSchema, mergeDiscussionPeople, type DiscussionPerson, type MbcDiscussion } from '@/lib/mbc-search/discussion'
-import { isMbcRevealStoreConfigured, saveReveals, storedReveals, vivierTargetsOf } from '@/lib/mbc-search/reveal-store'
+import { isMbcRevealStoreConfigured, saveRevealPhone, saveReveals, storedReveals, vivierTargetsOf } from '@/lib/mbc-search/reveal-store'
+import { revealDocId } from '@/lib/mbc-search/reveals'
 import { SAVED_PEOPLE_MAX, searchRowSchema, type MbcSavedPerson } from '@/lib/mbc-search/saved'
 import {
-  MbcFollowUnavailableError, countSavedPeople, deleteSavedPerson, isMbcSavedStoreConfigured, saveSavedPerson, savedPeopleAmong, savedPerson, updateSavedFollow,
+  MbcFollowUnavailableError, countSavedPeople, deleteSavedPerson, isMbcSavedStoreConfigured, saveSavedPerson, saveSavedPhone, savedPeopleAmong, savedPerson, updateSavedFollow,
 } from '@/lib/mbc-search/saved-store'
 import { followSchema, type MbcFollow } from '@/lib/mbc-search/follow'
 
@@ -60,6 +64,9 @@ const recentCalls = new Map<string, number[]>()
 // ne pas prendre les places des recherches.
 const discussionSaves = new Map<string, number[]>()
 const DISCUSSION_SAVES_PER_MINUTE = 30
+// Relectures du téléphone demandé (l'écran relit toutes les 5 s pendant 2 min) : débit à part, sans place de quota.
+const phoneChecks = new Map<string, number[]>()
+const PHONE_CHECKS_PER_MINUTE = 30
 
 /**
  * Recruteur de la session, débit de ses appels (20 par minute, burst.ts), formule qui comprend MBC Search, abonnement
@@ -503,6 +510,131 @@ async function revealedFor(user: { userId: string; tenantId: string }, id: strin
 }
 
 const NOT_REVEALED = 'Révélez d’abord le profil complet de cette personne.'
+
+/**
+ * Garde le téléphone avec le profil révélé de l'organisation et, si le recruteur l'a enregistrée, avec la personne
+ * enregistrée (ADR 0042 : même conservation que le profil). `savedUpdatedAt` : nouvelle version de la personne enregistrée.
+ */
+async function keepPhone(user: { userId: string; tenantId: string }, id: string, phone: MbcPhone): Promise<{ kept: boolean; savedUpdatedAt?: string }> {
+  const revealKept = await saveRevealPhone(user.tenantId, id, phone, new Date())
+  const savedUpdatedAt = isMbcSavedStoreConfigured() ? await saveSavedPhone(user.userId, id, phone) : null
+  return { kept: revealKept || savedUpdatedAt !== null, savedUpdatedAt: savedUpdatedAt ?? undefined }
+}
+
+type PhoneOutcome = { phone?: MbcPhone; savedUpdatedAt?: string; error?: string }
+/** Verrou de la demande de téléphone d'une personne pour une organisation (document de ao_sync_state, 35 caractères). */
+const phoneLockId = (tenantId: string, apolloId: string) => `ph_${revealDocId(tenantId, apolloId).slice(1, 33)}`
+const phoneForScreen = (phone: MbcPhone): MbcPhone => ({ status: phone.status, numbers: phone.numbers, requestedAt: phone.requestedAt })
+
+/**
+ * « Demander le téléphone » d'une personne révélée (ADR 0042, à la demande seulement) : mêmes conditions que la
+ * révélation, une place des quotas du jour (20 par organisation, 200 pour toutes), jusqu'à 8 crédits Apollo si un numéro
+ * est trouvé. Déjà demandé (trouvé, aucun, ou en attente) : renvoyé sans nouvelle demande.
+ */
+export async function requestMbcPhone(apolloId: unknown): Promise<PhoneOutcome> {
+  const parsed = z.string().regex(APOLLO_PERSON_ID).safeParse(apolloId)
+  if (!parsed.success) return { error: 'Profil invalide : rechargez la page.' }
+  const id = parsed.data
+  const user = await getCurrentUser()
+  if (!user || user.role !== 'recruiter' || !user.tenantId) return { error: SESSION_EXPIRED }
+  if (!takeBurstSlot(recentCalls, user.userId, Date.now())) return { error: 'Trop de demandes en une minute : patientez quelques secondes, puis relancez.' }
+  const owner = { userId: user.userId, tenantId: user.tenantId }
+  const now = new Date()
+  // Une demande à la fois par organisation et par personne (deux onglets, deux collègues) : la seconde attendrait sinon
+  // une demande payée en double, dont le résultat serait perdu.
+  let lock: SyncLock | null
+  try {
+    lock = await acquireSyncLock(phoneLockId(owner.tenantId, id), owner.userId, now)
+  } catch (err) {
+    console.error('[mbc-search] verrou du téléphone illisible', err instanceof Error ? err.message : String(err))
+    return { error: 'Téléphone indisponible pour le moment : réessayez dans quelques instants.' }
+  }
+  if (!lock) return { error: 'Le téléphone de cette personne est déjà demandé : patientez quelques secondes.' }
+  try {
+    try {
+      const access = await loadTenantAccess(owner.tenantId)
+      // Téléphone réservé aux formules payées et en cours (demande du 2026-11-17, plans.ts).
+      const denial = featureDenial(access.entitlements, 'mbcSearch') ?? featureDenial(access.entitlements, 'mbcPhone')
+        ?? mbcSearchDenial({ tenantId: owner.tenantId, subscriptionStatus: access.subscriptionStatus, emailVerified: user.emailVerification })
+      if (denial) return { error: denial }
+      // Relu sous le verrou : une demande faite entre-temps est renvoyée, pas refaite.
+      const profile = await revealedFor(owner, id)
+      if (!profile) return { error: NOT_REVEALED }
+      if (profile.phone && !canRequestPhone(profile.phone)) return { phone: phoneForScreen(profile.phone) }
+      const limit = access.entitlements.dailyQuotas.mbcPhone
+      const own = await takeDailySlotId('mbcPhoneOrg', owner.tenantId, now, limit)
+      if (!own) return { error: MBC_PHONE_QUOTA_MESSAGE.organisation(limit) }
+      if (!(await takeDailySlotId('mbcPhoneAll', 'platform', now, MBC_PHONE_DAILY_LIMITS.allOrganisations))) {
+        console.warn('[mbc-search] plafond quotidien des téléphones atteint pour toutes les organisations')
+        await releaseDailySlot(own)
+        return { error: MBC_PHONE_QUOTA_MESSAGE.platform }
+      }
+    } catch (err) {
+      console.error('[mbc-search] abonnement, profil ou quota des téléphones illisible', err instanceof Error ? err.message : String(err))
+      return { error: 'Téléphone indisponible pour le moment : réessayez dans quelques instants.' }
+    }
+    let asked: { numbers: MbcPhone['numbers']; requestId: string | null }
+    try {
+      asked = await requestApolloPhone(id)
+    } catch (err) {
+      if (err instanceof ApolloSearchError) return { error: err.message }
+      console.error('[mbc-search] demande de téléphone impossible', err instanceof Error ? err.name : 'inconnu')
+      return { error: 'Téléphone indisponible pour le moment : réessayez dans quelques instants.' }
+    }
+    const phone: MbcPhone = asked.requestId
+      ? { status: 'pending', numbers: asked.numbers, requestId: asked.requestId, requestedAt: now.toISOString() }
+      : settledPhone(asked.numbers, now.toISOString())
+    try {
+      const { kept, savedUpdatedAt } = await keepPhone(owner, id, phone)
+      if (!kept) return { phone: phoneForScreen(phone), error: 'Numéro demandé mais pas gardé : le profil n’est plus conservé par votre organisation.' }
+      return { phone: phoneForScreen(phone), savedUpdatedAt }
+    } catch (err) {
+      console.error('[mbc-search] téléphone non gardé', err instanceof Error ? err.message : String(err))
+      return { phone: phoneForScreen(phone), error: 'Numéro demandé mais pas enregistré : il ne sera peut-être plus affiché au prochain chargement.' }
+    }
+  } finally {
+    await releaseSyncLock(lock)
+  }
+}
+
+/** Relit une demande de téléphone en attente (sans crédit ni quota) et garde le résultat. */
+export async function checkMbcPhone(apolloId: unknown): Promise<PhoneOutcome> {
+  const parsed = z.string().regex(APOLLO_PERSON_ID).safeParse(apolloId)
+  if (!parsed.success) return { error: 'Profil invalide : rechargez la page.' }
+  const id = parsed.data
+  const user = await getCurrentUser()
+  if (!user || user.role !== 'recruiter' || !user.tenantId) return { error: SESSION_EXPIRED }
+  if (!takeBurstSlot(phoneChecks, user.userId, Date.now(), PHONE_CHECKS_PER_MINUTE)) return { error: 'Trop de vérifications en une minute : patientez, puis vérifiez de nouveau.' }
+  const owner = { userId: user.userId, tenantId: user.tenantId }
+  try {
+    // Numéro de la demande relu dans le profil gardé par l'organisation, jamais reçu du navigateur.
+    const profile = await revealedFor(owner, id)
+    const phone = profile?.phone
+    if (!phone) return { error: NOT_REVEALED }
+    if (phone.status !== 'pending' || !phone.requestId) return { phone: phoneForScreen(phone) }
+    const result = await pollApolloPhone(phone.requestId)
+    if (result.state === 'pending') return { phone: phoneForScreen(phone) }
+    // Écrit sous le verrou de la demande, et seulement si la demande relue est encore celle-ci : un résultat tardif
+    // n'écrase jamais une demande plus récente.
+    const lock = await acquireSyncLock(phoneLockId(owner.tenantId, id), owner.userId, new Date())
+    if (!lock) return { phone: phoneForScreen(phone) }
+    try {
+      const current = (await revealedFor(owner, id))?.phone
+      if (current?.requestId !== phone.requestId) return current ? { phone: phoneForScreen(current) } : { error: NOT_REVEALED }
+      const next: MbcPhone = result.state === 'gone'
+        ? { status: 'failed', numbers: phone.numbers, requestedAt: phone.requestedAt }
+        : settledPhone(mergeNumbers(phone.numbers, parsePhoneResult(result.json, id)), phone.requestedAt)
+      const { savedUpdatedAt } = await keepPhone(owner, id, next)
+      return { phone: phoneForScreen(next), savedUpdatedAt }
+    } finally {
+      await releaseSyncLock(lock)
+    }
+  } catch (err) {
+    if (err instanceof ApolloSearchError) return { error: err.message }
+    console.error('[mbc-search] relecture du téléphone impossible', err instanceof Error ? err.message : String(err))
+    return { error: 'Téléphone indisponible pour le moment : réessayez dans quelques instants.' }
+  }
+}
 
 const evaluateSchema = z.object({
   id: z.string().regex(APOLLO_PERSON_ID),

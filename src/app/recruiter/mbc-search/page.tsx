@@ -19,10 +19,12 @@ export default async function MbcSearchPage() {
 
   // Jauge des profils complets du jour, offres pour « Associer à une offre », historique des recherches et personnes
   // enregistrées : facultatifs, la recherche marche sans.
-  const [revealUsage, jobs, history, savedPeople] = await Promise.all([
-    // Limite du jour : celle de la formule de l'organisation (plans.ts).
+  const [usage, jobs, history, savedPeople] = await Promise.all([
+    // Limite du jour : celle de la formule de l'organisation (plans.ts), qui dit aussi si le téléphone est compris.
     tenantId ? Promise.all([countDailySlots('mbcRevealOrg', tenantId, new Date()), loadTenantAccess(tenantId)])
-      .then(([used, access]) => ({ used, limit: access.entitlements.dailyQuotas.mbcReveal }))
+      .then(([used, access]) => ({
+        revealUsage: { used, limit: access.entitlements.dailyQuotas.mbcReveal }, phoneIncluded: access.entitlements.features.mbcPhone,
+      }))
       .catch(err => {
         console.error('[mbc-search] jauge des profils complets illisible', err instanceof Error ? err.message : String(err))
         return null
@@ -45,7 +47,9 @@ export default async function MbcSearchPage() {
     <MbcSearchClient
       firstName={user.firstName ?? ''}
       configured={isApolloConfigured()}
-      revealUsage={revealUsage}
+      revealUsage={usage?.revealUsage ?? null}
+      // Illisible : bouton affiché, le serveur vérifie la formule à la demande.
+      phoneIncluded={usage?.phoneIncluded ?? true}
       jobs={jobs?.map(j => ({ id: j.$id, title: j.title || 'Offre sans intitulé' })) ?? null}
       history={history}
       savedPeople={savedPeople}

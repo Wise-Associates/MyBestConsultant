@@ -65,6 +65,8 @@ const COUNTER_PREFIX = {
   aoPageOrg: 'pg', aoPageAll: 'pa',
   interviewAiOrg: 'ia', interviewAiAll: 'ib', interviewInviteOrg: 'ic', interviewRoom: 'id', interviewRoomStt: 'ie',
   interviewSttOrg: 'if', interviewSttAll: 'ig',
+  // Téléphones demandés dans MBC Search (ADR 0042).
+  mbcPhoneOrg: 'pk', mbcPhoneAll: 'pl',
 } as const
 export type DailyCounter = keyof typeof COUNTER_PREFIX
 

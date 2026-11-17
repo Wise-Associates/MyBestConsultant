@@ -1,6 +1,6 @@
 // Composant client : importé seulement par mbc-search-client.tsx (« use client »), qui en fait du code navigateur.
 import {
-  Bookmark, Check, Circle, Download, ExternalLink, Loader2, Mail, RotateCcw, Search, SlidersHorizontal, Sparkles, Star, UserRound, X,
+  Bookmark, Check, Circle, Download, ExternalLink, Loader2, Mail, Phone, RotateCcw, Search, SlidersHorizontal, Sparkles, Star, UserRound, X,
 } from 'lucide-react'
 import { REVEAL_BATCH, SENIORITIES, requiredSkillsOf, type MbcCriteria, type ScoredProfile, type Seniority } from '@/lib/mbc-search/rules'
 import type { StrategyRun } from '@/lib/mbc-search/strategies'
@@ -219,6 +219,10 @@ export function ResultRow({ p, criteria, reveal, aiScore, follow, selectMode = '
             {full.email
               ? <a href={`mailto:${full.email}`} aria-label={`Écrire à ${name}`} className={`${iconBtn} no-underline`} style={{ ...surface, color: 'var(--color-text)' }}><Mail className="h-4 w-4" /></a>
               : <span className={iconBtn} />}
+            {full.phone?.numbers[0] && (
+              <a href={`tel:${full.phone.numbers[0].number}`} aria-label={`Appeler ${name}`} title={full.phone.numbers[0].number}
+                className={`${iconBtn} no-underline`} style={{ ...surface, color: 'var(--color-text)' }}><Phone className="h-4 w-4" /></a>
+            )}
           </>
         ) : reveal?.state !== 'missing' && (
           <button type="button" onClick={onReveal} disabled={busy || reveal?.state === 'loading' || save.saving}

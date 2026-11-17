@@ -73,9 +73,18 @@ export function parseDiscussion(raw: unknown): MbcDiscussion | null {
   }
 }
 
-/** Personnes à écrire : le profil complet passe par revealJson (mêmes coupes que les profils révélés gardés). */
+/**
+ * Personnes à écrire : le profil complet passe par revealJson (mêmes coupes que les profils révélés gardés), **sans le
+ * téléphone** (ADR 0042 : il ne vit qu'avec le profil de l'organisation, 90 jours, et la personne enregistrée).
+ */
 export const discussionPeopleJson = (people: DiscussionPerson[]) =>
-  JSON.stringify(people.map(p => ({ search: p.search, profile: revealJson(p.profile) })))
+  JSON.stringify(people.map(p => ({ search: p.search, profile: revealJson(withoutPhone(p.profile)) })))
+
+const withoutPhone = (profile: MbcRevealed): MbcRevealed => {
+  const copy = { ...profile }
+  delete copy.phone
+  return copy
+}
 
 /** Personnes relues, avec les garanties d'un profil révélé (liens https, adresse simple) ; une entrée illisible est écartée. */
 export function parseDiscussionPeople(raw: unknown): DiscussionPerson[] {
@@ -87,7 +96,7 @@ export function parseDiscussionPeople(raw: unknown): DiscussionPerson[] {
     const search = searchRowSchema.safeParse((item as { search?: unknown } | null)?.search)
     if (!search.success) return []
     const profile = parseRevealedJson((item as { profile?: unknown }).profile, search.data.id)
-    return profile ? [{ search: search.data, profile }] : []
+    return profile ? [{ search: search.data, profile: withoutPhone(profile) }] : []
   })
 }
 

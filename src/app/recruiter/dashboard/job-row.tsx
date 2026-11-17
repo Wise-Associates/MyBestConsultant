@@ -12,7 +12,7 @@ import type { DashboardJobRow } from './jobs-list-client'
 import type { FunnelStage } from '@/types'
 import type { RecruiterOption } from '@/lib/recruiter-assignment'
 import { startNavigationProgress } from '@/components/shared/navigation-progress'
-import { PREVIEW_MEDIA, ROW_GRID } from './dashboard-layout'
+import { ROW_GRID } from './dashboard-layout'
 import { amberBadge, badge, neutralBadge } from '@/components/shared/list-styles'
 
 const CONTRACT_LABELS: Record<string, string> = {
@@ -40,14 +40,10 @@ export function JobRow({ row, apps, stages, canPublish, recruiters, first, focus
   const ownOnline = !row.shared && facts.state === 'online'
 
   // Toute la ligne ouvre le détail de l'offre (demande du 2026-11-17, avant : le matching) ; le titre est le lien pour le
-  // clavier et les lecteurs d'écran, les boutons et liens de la ligne gardent leur propre action. Sur un écran assez large
-  // pour le panneau d'aperçu, le clic sur la ligne l'affiche dans ce panneau (le titre ouvre toujours le détail).
+  // clavier et les lecteurs d'écran, les boutons et liens de la ligne gardent leur propre action. Le panneau d'aperçu ne
+  // s'ouvre que par le bouton « Aperçu » de la ligne (demande du 2026-11-17 : plus affiché d'office).
   function openFromRow(e: MouseEvent<HTMLElement>) {
     if ((e.target as HTMLElement).closest('a, button, select, label, [role="menu"]')) return
-    if (window.matchMedia(PREVIEW_MEDIA).matches) {
-      onPreview()
-      return
-    }
     startNavigationProgress()
     router.push(detailHref)
   }
@@ -134,7 +130,7 @@ export function JobRow({ row, apps, stages, canPublish, recruiters, first, focus
       <SocialStatus info={row.social} state={facts.state} shared={row.shared} canPublish={canPublish} publish={publish} />
 
       <div className="flex justify-end">
-        <button type="button" onClick={onPreview} aria-pressed={previewed} title="Afficher dans l’aperçu"
+        <button type="button" onClick={onPreview} aria-pressed={previewed} title={previewed ? 'Fermer l’aperçu' : 'Afficher dans l’aperçu'}
           className="hidden min-[112.5rem]:flex w-10 h-10 rounded-[10px] items-center justify-center cursor-pointer bg-transparent border-0 transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
           style={{ color: previewed ? 'var(--color-primary)' : 'var(--color-text-muted)' }}>
           <PanelRight className="h-4 w-4" aria-hidden /><span className="sr-only">Aperçu de {job.title}</span>

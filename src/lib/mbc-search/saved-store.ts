@@ -5,6 +5,8 @@ import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import type { MbcProfile, MbcRevealed } from './rules'
 import { SAVED_PEOPLE_MAX, parseSavedPersonDoc, savedPersonDocId, savedPersonFields, type MbcSavedPerson } from './saved'
 import { followFields, type MbcFollow } from './follow'
+import { revealJson } from './reveals'
+import type { MbcPhone } from './phone'
 
 // Personnes enregistrées par un recruteur dans MBC Search (collection mbc_saved_people, sans permission client : seul
 // le serveur la lit). Toute lecture et toute écriture portent sur le compte du recruteur de la session (`userId`,
@@ -61,6 +63,18 @@ export async function savedPeopleAmong(userId: string, apolloIds: string[]): Pro
     Query.equal('userId', userId), Query.equal('apolloId', apolloIds.slice(0, 100)), Query.limit(100),
   ])
   return res.documents.flatMap(d => parseSavedPersonDoc(d as unknown as Record<string, unknown>) ?? [])
+}
+
+/**
+ * Téléphone d'une personne enregistrée par le recruteur, gardé avec elle (ADR 0042) : sa nouvelle version (`$updatedAt`,
+ * pour que son suivi s'enregistre ensuite), ou null si elle n'est pas enregistrée.
+ */
+export async function saveSavedPhone(userId: string, apolloId: string, phone: MbcPhone): Promise<string | null> {
+  const found = await savedPerson(userId, apolloId)
+  if (!found) return null
+  const { databases } = createAdminClient()
+  const doc = await databases.updateDocument(DB_ID, collection(), savedPersonDocId(userId, apolloId), { profileJson: revealJson({ ...found.profile, phone }) })
+  return doc.$updatedAt
 }
 
 /** Nombre de personnes enregistrées par le recruteur. */

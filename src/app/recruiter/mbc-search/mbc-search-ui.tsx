@@ -20,6 +20,11 @@ export type Evaluation = { state: 'loading' } | { state: 'done'; evaluation: Mbc
  * Bouton « Enregistrer » d'une personne (ligne et panneau) : marque-page plein = enregistrée, un clic la retire.
  * `reason` : pourquoi il est grisé (affiché au survol et dans le panneau).
  */
+/**
+ * « Demander le téléphone » d'un profil révélé (ADR 0042) : compris dans la formule (formules payées), demande ou
+ * relecture en cours, raison d'une demande impossible (sinon null), demander, vérifier une demande en attente.
+ */
+export type PhoneControl = { included: boolean; busy: boolean; disabled: string | null; onRequest: () => void; onCheck: () => void }
 export type SaveButton = { saved: boolean; saving: boolean; disabled: boolean; reason: string | null; onToggle: () => void }
 
 export function ErrorNote({ children }: { children: React.ReactNode }) {

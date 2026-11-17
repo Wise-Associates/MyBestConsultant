@@ -4,7 +4,7 @@
 // Règles pures, testées dans recruiter-nav.test.ts.
 
 export type RecruiterSectionKey =
-  | 'dashboard' | 'funnel' | 'ao' | 'reporting' | 'vivier' | 'cvtheque' | 'mbcsearch' | 'equipe' | 'interviews'
+  | 'publier' | 'dashboard' | 'funnel' | 'ao' | 'reporting' | 'vivier' | 'cvtheque' | 'mbcsearch' | 'equipe' | 'interviews'
   | 'utilisateurs' | 'abonnement' | 'organisation'
 
 /** `compte` : rubriques du bas du menu (utilisateurs, abonnement, organisation), hors des groupes du haut. */
@@ -29,9 +29,12 @@ export const RECRUITER_GROUPS: { key: RecruiterGroupKey; label: string }[] = [
 /** Rubriques dans l'ordre du menu : celles d'un même groupe se suivent. */
 export const RECRUITER_SECTIONS: RecruiterSection[] = [
   // Recherche de profils hors de la plateforme, via Apollo.io (ADR 0018) ; page d'arrivée du recruteur (dashboard-routes.ts).
-  { key: 'mbcsearch', label: 'MBC Search', href: '/recruiter/mbc-search', group: 'recherche', also: [] },
+  { key: 'mbcsearch', label: 'Search', href: '/recruiter/mbc-search', group: 'recherche', also: [] },
   { key: 'cvtheque', label: 'CV Thèque', href: '/recruiter/cvtheque', group: 'recherche', also: [] },
   { key: 'vivier', label: 'Mon vivier', href: '/recruiter/vivier', group: 'recherche', also: [] },
+  // Création d'une offre (saisie, assistant IA, import IA / Excel) : une page à part depuis le 2026-11-17 (avant : une
+  // fenêtre ouverte depuis le tableau de bord), en tête du groupe.
+  { key: 'publier', label: 'Publier un job', href: '/recruiter/publier', group: 'recrutement', also: ['/recruiter/import'] },
   { key: 'ao', label: 'Appels d’offres', href: '/recruiter/parametres/boites-ao', group: 'recrutement', also: [] },
   // Détail d'une offre (2026-11-17), ses onglets (matching, funnel, réponse client), fiche candidat, import et suivi des
   // annonces (lien « Suivi & rapports » de « Mes offres », sans rubrique depuis le 2026-10-30) partent des offres du

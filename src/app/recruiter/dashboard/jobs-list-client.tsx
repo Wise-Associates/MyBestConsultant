@@ -53,7 +53,7 @@ const plural = (n: number, one: string, many: string) => (n > 1 ? many : one)
 const CONTRACT_LABELS: Record<JobContract, string> = { cdi: 'CDI', cdd: 'CDD', freelance: 'Freelance', mission: 'Mission' }
 
 export function JobsListClient({
-  rows, appsByJob, funnelStages, socialEnabled, socialUnavailable, recruiters, jobsWithNew, focusJobId, action, recruiterFilter, recruiterFiltered, recruiterChip, header,
+  rows, appsByJob, funnelStages, socialEnabled, socialUnavailable, recruiters, jobsWithNew, focusJobId, recruiterFilter, recruiterFiltered, recruiterChip, header,
 }: {
   rows: DashboardJobRow[]; appsByJob: Record<string, CandidateApp[]>; funnelStages: FunnelStage[]
   socialEnabled: boolean
@@ -65,8 +65,6 @@ export function JobsListClient({
   jobsWithNew: number
   /** Offre à montrer (?offre= de la page, depuis le suivi d'un appel d'offres publié). */
   focusJobId?: string
-  /** Bouton « Créer une offre », dans l'en-tête de « Mes offres ». */
-  action?: ReactNode
   /** Filtre « Recruteurs » (appliqué par le serveur : `rows` ne contient que les offres choisies). */
   recruiterFilter?: ReactNode
   recruiterFiltered: boolean
@@ -77,8 +75,9 @@ export function JobsListClient({
 }) {
   const router = useRouter()
   const [openJobId, setOpenJobId] = useState<string | null>(null)
-  // Offre du panneau d'aperçu (écrans d'au moins 1800 px) ; par défaut, la première de la liste filtrée.
-  const [previewJobId, setPreviewJobId] = useState<string | null>(focusJobId ?? null)
+  // Offre du panneau d'aperçu (écrans d'au moins 1800 px) : fermé tant que le recruteur ne l'ouvre pas par le bouton
+  // « Aperçu » d'une ligne (demande du 2026-11-17 : plus affiché d'office) ; le même bouton ou la croix le ferme.
+  const [previewJobId, setPreviewJobId] = useState<string | null>(null)
   // Filtres repris de l'adresse : « Retour » depuis une offre, Précédent du navigateur et rechargement retrouvent la liste.
   const searchParams = useSearchParams()
   const urlFilters = jobFiltersFromSearchParams(searchParams)
@@ -149,7 +148,7 @@ export function JobsListClient({
     { status: 'archived', label: 'Archivées', n: rows.length - online },
   ]
   const displayed = Math.min(visible, shown.length)
-  const previewRow = shown.find(r => r.job.$id === previewJobId) ?? shown[0]
+  const previewRow = previewJobId ? shown.find(r => r.job.$id === previewJobId) : undefined
 
   const activeCount = (filters.status !== 'all' ? 1 : 0) + (filters.contract.length > 0 ? 1 : 0) + (filters.focus ? 1 : 0) + (recruiterFiltered ? 1 : 0)
 
@@ -236,7 +235,7 @@ export function JobsListClient({
   ]
 
   return (
-    <div className="flex flex-col gap-6 sm:gap-7 min-[112.5rem]:grid min-[112.5rem]:grid-cols-[minmax(0,1fr)_340px] min-[112.5rem]:gap-6 min-[112.5rem]:items-start">
+    <div className={`flex flex-col gap-6 sm:gap-7 ${previewRow ? 'min-[112.5rem]:grid min-[112.5rem]:grid-cols-[minmax(0,1fr)_340px] min-[112.5rem]:gap-6 min-[112.5rem]:items-start' : ''}`}>
       <div className="min-w-0 flex flex-col gap-6 sm:gap-7 min-[90rem]:gap-4">
         {header}
 
@@ -263,7 +262,6 @@ export function JobsListClient({
                   <Layers className="h-3.75 w-3.75" aria-hidden /> Suivi &amp; rapports
                 </Link>
               )}
-              {action && <div className="flex-1 sm:flex-none">{action}</div>}
             </div>
           </div>
 
@@ -295,7 +293,7 @@ export function JobsListClient({
             <div className="py-14 px-6 text-center flex flex-col items-center gap-3 border-t border-(--color-border) lg:border-t-0">
               <p className="text-sm" style={muted}>
                 {rows.length > 0 ? 'Aucune offre ne correspond à ces filtres.'
-                  : recruiterFiltered ? 'Aucune offre affectée à ces recruteurs.' : 'Aucune offre. Créez votre première offre pour commencer.'}
+                  : recruiterFiltered ? 'Aucune offre affectée à ces recruteurs.' : 'Aucune offre pour l’instant : publiez la première depuis « Publier un job ».'}
               </p>
               {filtering && (
                 <button type="button" onClick={() => update(EMPTY_JOB_FILTERS)}
@@ -312,7 +310,8 @@ export function JobsListClient({
                 return (
                   <JobRow key={row.job.$id} row={row} apps={appsByJob[row.job.$id] ?? []} stages={sortedStages} canPublish={socialEnabled} recruiters={recruiters}
                     first={i === 0} focused={focused} focusRef={focused ? focusRef : undefined} onOpenApplications={() => setOpenJobId(row.job.$id)}
-                    previewed={previewRow?.job.$id === row.job.$id} onPreview={() => setPreviewJobId(row.job.$id)} />
+                    previewed={previewRow?.job.$id === row.job.$id}
+                    onPreview={() => setPreviewJobId(id => (id === row.job.$id ? null : row.job.$id))} />
                 )
               })}
             </div>
@@ -338,7 +337,7 @@ export function JobsListClient({
       {previewRow && (
         <aside aria-label="Aperçu de l’offre" className="hidden min-[112.5rem]:block sticky top-[84px]">
           <JobPreviewPanel row={previewRow} apps={appsByJob[previewRow.job.$id] ?? []} stages={sortedStages}
-            onOpenApplications={() => setOpenJobId(previewRow.job.$id)} />
+            onOpenApplications={() => setOpenJobId(previewRow.job.$id)} onClose={() => setPreviewJobId(null)} />
         </aside>
       )}
 

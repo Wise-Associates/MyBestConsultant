@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useId, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import {
-  BarChart3, Building2, ChevronDown, CreditCard, FolderOpen, FolderSearch, GitBranch, Inbox, LayoutDashboard, MessageSquare, PanelLeftClose,
+  BarChart3, Building2, ChevronDown, CreditCard, FilePlus2, FolderOpen, FolderSearch, GitBranch, Inbox, LayoutDashboard, MessageSquare, PanelLeftClose,
   PanelLeftOpen, Radar, UserCog, Users,
 } from 'lucide-react'
 import {
@@ -22,6 +22,7 @@ import {
 // Couleurs du thème du site (var(--color-…)), comme le reste de l'espace recruteur.
 
 const ICONS: Record<RecruiterSectionKey, ComponentType<{ className?: string; strokeWidth?: number; 'aria-hidden'?: boolean }>> = {
+  publier: FilePlus2,
   dashboard: LayoutDashboard,
   funnel: GitBranch,
   ao: Inbox,
