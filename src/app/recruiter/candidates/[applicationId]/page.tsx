@@ -2,6 +2,8 @@ import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { BackLink } from '@/components/recruiter/back-link'
 import { getCurrentUser } from '@/lib/appwrite/auth'
+import { viewerCanOpenJob } from '@/lib/job-ownership'
+import { loadOfferViewer } from '@/lib/offer-viewer'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
@@ -89,6 +91,10 @@ export default async function CandidateProfilePage({ params, searchParams }: {
     getFunnelStages(user.tenantId),
   ])
   if (!candidate) notFound()
+  // Candidature d'une offre que le recruteur ouvre : un membre, ses offres seulement (ADR 0043) ; offre supprimée :
+  // propriétaire et administrateurs seulement, comme avant.
+  const viewer = await loadOfferViewer(user)
+  if (job ? !viewerCanOpenJob({ tenantId: job.tenantId, recruiterId: job.recruiterId }, viewer) : !viewer.seesAllOffers) redirect('/recruiter/dashboard')
 
   // Profil proposé par un chasseur de têtes : c'est lui l'interlocuteur (coordonnées du candidat non exposées).
   const identity = (await resolveCandidateIdentities([candidate.$id])).get(candidate.$id)

@@ -7,7 +7,8 @@ import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createJob, updateJobStatus, updateJobFields, deleteJob, oneMonthFromNow, getJobsByTenant, getJobById } from '@/lib/appwrite/jobs'
 import { checkAssignee, notifyAssigneeWarning, setAoAssignee, setJobRecruiter } from '@/lib/recruiter-assignment'
 import { shouldNotifyAssignee } from '@/lib/assignment-email'
-import { jobOwnership } from '@/lib/job-ownership'
+import { jobOwnership, viewerCanOpenJob } from '@/lib/job-ownership'
+import { loadOfferViewer } from '@/lib/offer-viewer'
 import { PAY_NEEDS_CONTRACT } from '@/lib/job-pay'
 import { aoAccessFor } from '@/lib/ao/platform-view'
 import { activeJobsLimitDenial } from '@/lib/tenant-access'
@@ -82,17 +83,20 @@ export async function createJobAction(formData: FormData): Promise<{ error?: str
 export async function listMyJobsForLibrary(): Promise<Job[]> {
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) return []
-  return getJobsByTenant(user.tenantId)
+  // Un membre : ses offres seulement (ADR 0043).
+  const viewer = await loadOfferViewer(user)
+  return (await getJobsByTenant(user.tenantId)).filter(job => viewerCanOpenJob(job, viewer))
 }
 
 // Archiver, remettre en ligne ou supprimer : seulement une offre de l'organisation du recruteur (les offres partagées
-// de la plateforme, tenantId '', sont gérées par l'admin). Avant, toute offre était modifiable par son identifiant.
+// de la plateforme, tenantId '', sont gérées par l'admin), et pour un membre une offre qui lui est affectée (ADR 0043).
+// Avant, toute offre était modifiable par son identifiant.
 async function ownJobOrError(jobId: unknown): Promise<{ jobId: string; job: Job } | { error: string }> {
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) return { error: 'Non autorisé.' }
   if (typeof jobId !== 'string' || !jobId) return { error: 'Offre introuvable.' }
   const job = await getJobById(jobId)
-  if (!job || job.tenantId !== user.tenantId) return { error: 'Offre introuvable.' }
+  if (!job || job.tenantId !== user.tenantId || !viewerCanOpenJob(job, await loadOfferViewer(user))) return { error: 'Offre introuvable.' }
   return { jobId, job }
 }
 
@@ -186,7 +190,7 @@ export async function assignJobAction(jobId: unknown, recruiterId: unknown): Pro
     if (refused) return { error: refused }
     // Lue avant : recruteur d'avant (pas d'e-mail s'il ne change pas), intitulé et ville pour l'e-mail.
     const job = await getJobById(jobId)
-    if (!job || job.tenantId !== user.tenantId) return { error: 'Offre introuvable.' }
+    if (!job || job.tenantId !== user.tenantId || !viewerCanOpenJob(job, await loadOfferViewer(user))) return { error: 'Offre introuvable.' }
     if (!(await setJobRecruiter(user.tenantId, jobId, recruiterId))) return { error: 'Offre introuvable.' }
     if (jobId.startsWith('ao')) {
       const offerId = jobId.slice(2)
@@ -226,7 +230,7 @@ export async function publishJobToSocialAction(jobId: string, again = false): Pr
   if (!user || user.role !== 'recruiter' || !user.tenantId) return { ok: false, message: 'Non autorisé.' }
   try {
     const job = await getJobById(jobId)
-    if (!job || job.tenantId !== user.tenantId) return { ok: false, message: 'Offre introuvable.' }
+    if (!job || job.tenantId !== user.tenantId || !viewerCanOpenJob(job, await loadOfferViewer(user))) return { ok: false, message: 'Offre introuvable.' }
     const { latestSocialStateByJob, prepareSocialPost, deliverSocialPost, deliveryDeadline } = await import('@/lib/social')
     const last = (await latestSocialStateByJob([jobId])).get(jobId)
     const finished = !last || last.stale || ['published', 'partial', 'failed'].includes(last.status)

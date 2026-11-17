@@ -10,6 +10,7 @@ import { Banner } from '@/components/ao/ao-banner'
 import { AoOfferPage } from '@/components/ao/ao-offer-page'
 import { AoAssignee } from '@/components/ao/ao-assignee'
 import { getAoAssignee, listTenantRecruiters, recruiterOptions, type RecruiterOption } from '@/lib/recruiter-assignment'
+import { viewerCanUseAoOffer } from '@/lib/offer-viewer'
 import { assignRecruiterAoOffer, recruiterAoOfferSourcing, setRecruiterAoOfferStatus, stopRecruiterAoPublicationTasks } from '../actions'
 
 // Page d'un appel d'offres de l'organisation du recruteur : détail, préparation et publication, sourcing, et offres
@@ -56,11 +57,12 @@ export default async function RecruiterAoOfferPage({ params, searchParams }: {
     console.error('AO: suivi de la publication de l\'organisation illisible', user.tenantId, offerId, err instanceof Error ? err.message : err)
     trackingError = 'Suivi de la publication indisponible (offre en ligne, LinkedIn, sourcing) : rechargez la page dans quelques instants.'
   }
-  // Recruteur affecté : lu à part, son échec n'empêche pas d'afficher l'offre (le bloc est alors masqué).
+  // Recruteur affecté : lu à part, son échec n'empêche pas d'afficher l'offre (le bloc est alors masqué). Masqué aussi
+  // pour un membre sur l'offre publiée d'un collègue (ADR 0043 : l'action le refuse).
   let assignment: { recruiters: RecruiterOption[]; assigneeId: string } | null = null
   try {
-    const [recruiters, assigneeId] = await Promise.all([listTenantRecruiters(user.tenantId), getAoAssignee(row.$id)])
-    assignment = { recruiters: recruiterOptions(recruiters), assigneeId }
+    const [recruiters, assigneeId, allowed] = await Promise.all([listTenantRecruiters(user.tenantId), getAoAssignee(row.$id), viewerCanUseAoOffer(user, row.$id)])
+    if (allowed) assignment = { recruiters: recruiterOptions(recruiters), assigneeId }
   } catch (err) {
     console.error('AO: recruteur affecté illisible', user.tenantId, offerId, err instanceof Error ? err.message : err)
   }

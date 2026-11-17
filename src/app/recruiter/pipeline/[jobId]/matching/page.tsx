@@ -7,6 +7,8 @@ import { autoScreenApplication } from '@/lib/screening-core'
 import { loadRecruiterWeights } from '@/lib/scoring-weights-store'
 import { MatchingClient } from './matching-client'
 import { jobMetaLine } from '@/components/recruiter/job-tabs'
+import { viewerCanOpenJob } from '@/lib/job-ownership'
+import { loadOfferViewer } from '@/lib/offer-viewer'
 
 // « Rafraîchir » : un appel d'IA par candidat de la base, 5 à la fois (sourcing-core.ts), dans chacune de ses deux requêtes.
 export const maxDuration = 300
@@ -18,7 +20,8 @@ export default async function MatchingPage({ params }: { params: Promise<{ jobId
 
   const job = await getJobById(jobId)
   if (!job) notFound()
-  if (job.tenantId !== user.tenantId && job.tenantId !== '') redirect('/recruiter/dashboard')
+  // Offre que le recruteur ouvre (ADR 0043 : un membre, les siennes seulement).
+  if (!viewerCanOpenJob(job, await loadOfferViewer(user))) redirect('/recruiter/dashboard')
 
   // Scores aux poids personnels du recruteur (réglés depuis le pipeline de l'offre).
   const [{ weights, unreadable }, tabCounts] = await Promise.all([loadRecruiterWeights(user.userId), jobTabCounts(job, user.tenantId)])

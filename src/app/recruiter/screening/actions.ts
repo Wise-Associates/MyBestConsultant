@@ -11,7 +11,8 @@ import { wrapEmailHtml } from '@/lib/email-template'
 import { aiInterviewRecruiter, takeInterviewAiSlot, takeInterviewInviteSlot } from '@/lib/interview-access'
 import { screeningBatch } from '@/lib/interview-rules'
 import { notificationUserId } from '@/lib/candidate-identity'
-import { recruiterCanOpenJob, recruiterCanSeeApplication } from '@/lib/job-ownership'
+import { viewerCanOpenJob, viewerCanSeeApplication } from '@/lib/job-ownership'
+import { loadOfferViewer } from '@/lib/offer-viewer'
 import { screeningCsv } from '@/lib/screening-csv'
 import {
   applicationOfOrganisation, getCandidateAuthUserId, scoreApplication, sendAutoScreeningEmail, type ApplicationToScreen, type ScreeningScore,
@@ -98,7 +99,7 @@ export async function sendInterviewInvitationEmail(params: {
     const applicationId = typeof session.applicationId === 'string' && session.applicationId ? session.applicationId : undefined
     // Session liée à une candidature : revérifiée (sessions créées avant le contrôle des candidatures), et le candidat est
     // celui de la candidature, jamais une adresse saisie.
-    if (applicationId && !(await applicationOfOrganisation(applicationId, user.tenantId))) return { error: 'Entretien introuvable' }
+    if (applicationId && !(await applicationOfOrganisation(applicationId, await loadOfferViewer(user)))) return { error: 'Entretien introuvable' }
     const refused = await takeInterviewInviteSlot(user, user.tenantId)
     if (refused) return { error: refused }
 
@@ -161,7 +162,7 @@ export async function sendCustomMessage(params: {
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Message invalide.' }
 
   try {
-    if (!(await applicationOfOrganisation(parsed.data.applicationId, user.tenantId))) return { error: 'Candidat introuvable' }
+    if (!(await applicationOfOrganisation(parsed.data.applicationId, await loadOfferViewer(user)))) return { error: 'Candidat introuvable' }
     const candidateAuthId = await getCandidateAuthUserId(parsed.data.applicationId)
     if (!candidateAuthId) return { error: 'Candidat introuvable' }
 
@@ -202,11 +203,11 @@ export async function getApplicationsForJob(jobId: string): Promise<{ apps: Appl
     if (typeof jobId !== 'string' || !/^[\w-]{1,36}$/.test(jobId)) return { apps: [], job: null, existingResults: [], error: 'Offre introuvable' }
 
     const { databases } = createAdminClient()
-    // Offre de l'organisation du recruteur ou partagée par la plateforme (recruiterCanOpenJob). Offre partagée : ses
-    // candidatures et les candidatures directes seulement, jamais celles d'une autre organisation (recruiterCanSeeApplication).
+    // Offre que le recruteur ouvre (viewerCanOpenJob : de son organisation — un membre, les siennes, ADR 0043 — ou partagée).
+    // Offre partagée : ses candidatures et les candidatures directes seulement, jamais celles d'une autre organisation.
     const jobDoc = await databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId)
     const shared = jobDoc.tenantId === '' || jobDoc.tenantId == null
-    if (!recruiterCanOpenJob(typeof jobDoc.tenantId === 'string' ? jobDoc.tenantId : '', user.tenantId)) {
+    if (!viewerCanOpenJob({ tenantId: jobDoc.tenantId, recruiterId: jobDoc.recruiterId }, await loadOfferViewer(user))) {
       return { apps: [], job: null, existingResults: [], error: 'Offre introuvable' }
     }
     const appsResult = await databases.listDocuments(DB_ID, COLLECTIONS.APPLICATIONS, [
@@ -305,7 +306,8 @@ export async function screenAllApplications(jobId: string, appIds: string[]): Pr
   const { databases } = createAdminClient()
   const jobDoc = await databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId)
   const jobTenantId = typeof jobDoc.tenantId === 'string' ? jobDoc.tenantId : ''
-  if (!recruiterCanOpenJob(jobTenantId, me.tenantId)) return { results: [], errors: ['Offre introuvable'] }
+  const viewer = await loadOfferViewer(me.user)
+  if (!viewerCanOpenJob({ tenantId: jobTenantId, recruiterId: jobDoc.recruiterId }, viewer)) return { results: [], errors: ['Offre introuvable'] }
   const job = {
     title: jobDoc.title as string,
     description: jobDoc.description as string,
@@ -320,7 +322,7 @@ export async function screenAllApplications(jobId: string, appIds: string[]): Pr
     try {
       const appDoc = await databases.getDocument(DB_ID, COLLECTIONS.APPLICATIONS, appId)
       const appTenantId = typeof appDoc.tenantId === 'string' ? appDoc.tenantId : ''
-      if (appDoc.jobId !== jobId || !recruiterCanSeeApplication(jobTenantId, appTenantId, me.tenantId)) {
+      if (appDoc.jobId !== jobId || !viewerCanSeeApplication({ tenantId: jobTenantId, recruiterId: jobDoc.recruiterId }, appTenantId, viewer)) {
         errors.push(`Candidature ${appId} introuvable pour cette offre`)
         continue
       }

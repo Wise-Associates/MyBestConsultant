@@ -6,7 +6,8 @@ import { getStagesForJob } from '@/lib/appwrite/funnel'
 import { resolveCandidateIdentities } from '@/lib/candidate-identity'
 import { funnelForCandidate } from '@/lib/candidate-funnel'
 import { resolveStatus } from '@/lib/funnel-stage-utils'
-import { recruiterCanOpenJob, recruiterCanSeeApplication } from '@/lib/job-ownership'
+import { viewerCanOpenJob, viewerCanSeeApplication } from '@/lib/job-ownership'
+import { loadOfferViewer } from '@/lib/offer-viewer'
 import { parseClientSubmission, REJECTED_COLUMN, sentSteps, synthesisSteps, type ClientSubmission } from '@/lib/client-response'
 import { buildClientSheet, type ClientSheet } from '@/lib/client-sheet'
 import { getJobClient, isJobClientsConfigured } from '@/lib/appwrite/job-clients'
@@ -64,8 +65,9 @@ async function loadClientData(jobId: string) {
     getJobById(jobId), getApplicationsByJob(jobId), getStagesForJob(tenantId, jobId), loadRecruiterWeights(user.userId),
   ])
   if (!job) notFound()
-  if (!recruiterCanOpenJob(job.tenantId, tenantId)) redirect('/recruiter/dashboard')
-  const apps = allApps.filter(a => recruiterCanSeeApplication(job.tenantId, a.tenantId ?? '', tenantId))
+  const viewer = await loadOfferViewer(user)
+  if (!viewerCanOpenJob(job, viewer)) redirect('/recruiter/dashboard')
+  const apps = allApps.filter(a => viewerCanSeeApplication(job, a.tenantId ?? '', viewer))
   const [identities, client] = await Promise.all([
     resolveCandidateIdentities(apps.map(a => a.candidateId)),
     // Client de l'offre : illisible, l'onglet s'affiche quand même et le signale (« unavailable »).

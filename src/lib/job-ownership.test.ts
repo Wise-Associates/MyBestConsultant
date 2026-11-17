@@ -1,6 +1,9 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { jobOwnership, planJobRecruiter, recruiterCanOpenJob, recruiterCanSeeApplication, type UserRef } from './job-ownership'
+import {
+  isAssignedTo, jobOwnership, planJobRecruiter, recruiterCanOpenJob, recruiterCanSeeApplication, viewerCanOpenJob, viewerCanSeeApplication,
+  type OfferViewer, type UserRef,
+} from './job-ownership'
 
 const author: UserRef = { $id: 'profil1', userId: 'auth1', tenantId: 'org1', role: 'recruiter' }
 const colleague: UserRef = { $id: 'profil2', userId: 'auth2', tenantId: 'org1', role: 'recruiter' }
@@ -65,5 +68,38 @@ describe('candidature vue par un recruteur (screening, entretiens, pipeline)', (
     assert.equal(recruiterCanSeeApplication('', '', 'org1'), true)
     assert.equal(recruiterCanSeeApplication('', 'org2', 'org1'), false)
     assert.equal(recruiterCanSeeApplication('', '', null), false)
+  })
+})
+
+describe('offres vues par un membre, un administrateur ou le propriétaire (ADR 0043)', () => {
+  const member: OfferViewer = { tenantId: 'orgA', profileId: 'profilCamille', userId: 'authCamille', seesAllOffers: false }
+  const owner: OfferViewer = { ...member, profileId: 'profilDomi', userId: 'authDomi', seesAllOffers: true }
+
+  it('un membre ouvre seulement les offres de son organisation qui lui sont affectées', () => {
+    assert.ok(viewerCanOpenJob({ tenantId: 'orgA', recruiterId: 'profilCamille' }, member))
+    // Valeur écrite avant l'ADR 0023 : le compte Auth.
+    assert.ok(viewerCanOpenJob({ tenantId: 'orgA', recruiterId: 'authCamille' }, member))
+    assert.ok(!viewerCanOpenJob({ tenantId: 'orgA', recruiterId: 'profilAutre' }, member))
+    assert.ok(!viewerCanOpenJob({ tenantId: 'orgA', recruiterId: '' }, member))
+    assert.ok(!viewerCanOpenJob({ tenantId: 'orgA' }, member))
+    // Offre de la plateforme (affectée à personne) ou d'une autre organisation.
+    assert.ok(!viewerCanOpenJob({ tenantId: '', recruiterId: 'profilCamille' }, member))
+    assert.ok(!viewerCanOpenJob({ tenantId: 'orgB', recruiterId: 'profilCamille' }, member))
+    assert.ok(!isAssignedTo(undefined, member))
+  })
+
+  it('le propriétaire et les administrateurs ouvrent toutes les offres de leur organisation et de la plateforme', () => {
+    assert.ok(viewerCanOpenJob({ tenantId: 'orgA', recruiterId: 'profilAutre' }, owner))
+    assert.ok(viewerCanOpenJob({ tenantId: 'orgA', recruiterId: null }, owner))
+    assert.ok(viewerCanOpenJob({ tenantId: '' }, owner))
+    assert.ok(!viewerCanOpenJob({ tenantId: 'orgB' }, owner))
+    assert.ok(!viewerCanOpenJob({ tenantId: 'orgA' }, { ...owner, tenantId: '' }))
+  })
+
+  it('une candidature suit son offre, et la règle des offres partagées', () => {
+    assert.ok(viewerCanSeeApplication({ tenantId: 'orgA', recruiterId: 'profilCamille' }, 'orgA', member))
+    assert.ok(!viewerCanSeeApplication({ tenantId: 'orgA', recruiterId: 'profilAutre' }, 'orgA', member))
+    assert.ok(viewerCanSeeApplication({ tenantId: '' }, 'orgA', owner))
+    assert.ok(!viewerCanSeeApplication({ tenantId: '' }, 'orgB', owner))
   })
 })

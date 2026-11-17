@@ -8,7 +8,8 @@ import { createApplication, getJobById, hasApplied } from '@/lib/appwrite/jobs'
 import { getStagesForJob, logFunnelEvent } from '@/lib/appwrite/funnel'
 import { matchToCarry } from '@/lib/match-scoring'
 import { mapLimit } from '@/lib/concurrency'
-import { recruiterCanOpenJob } from '@/lib/job-ownership'
+import { viewerCanOpenJob } from '@/lib/job-ownership'
+import { loadOfferViewer } from '@/lib/offer-viewer'
 import { revalidatePath } from 'next/cache'
 import { requireRecruiter } from './actions'
 import { aiInterviewRecruiter, takeInterviewAiSlot } from '@/lib/interview-access'
@@ -20,9 +21,11 @@ import { loadRecruiterWeights } from '@/lib/scoring-weights-store'
 // recruteur (users.$id), dont seuls les viviers sont montrés et ajoutés au funnel (un vivier est personnel) ; `userId` :
 // son compte, qui porte ses poids personnels (scoring-weights-store.ts).
 async function requireJobAccess(jobId: string): Promise<{ tenantId: string; profileId: string; userId: string }> {
-  const { tenantId, $id, userId } = await requireRecruiter()
+  const user = await requireRecruiter()
+  const { tenantId, $id, userId } = user
   const job = await getJobById(jobId)
-  if (!job || !tenantId || !recruiterCanOpenJob(job.tenantId, tenantId)) throw new Error('Non autorisé')
+  // Un membre : ses offres seulement (ADR 0043).
+  if (!job || !tenantId || !viewerCanOpenJob(job, await loadOfferViewer(user))) throw new Error('Non autorisé')
   return { tenantId, profileId: $id, userId }
 }
 

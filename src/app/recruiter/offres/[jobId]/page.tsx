@@ -9,7 +9,8 @@ import { getCurrentUser } from '@/lib/appwrite/auth'
 import { getJobById, getApplicationsByJob, countMatchesByJob } from '@/lib/appwrite/jobs'
 import { getStagesForJob } from '@/lib/appwrite/funnel'
 import { resolveStatus, withOrphanStages } from '@/lib/funnel-stage-utils'
-import { recruiterCanOpenJob, recruiterCanSeeApplication } from '@/lib/job-ownership'
+import { viewerCanOpenJob, viewerCanSeeApplication } from '@/lib/job-ownership'
+import { loadOfferViewer } from '@/lib/offer-viewer'
 import { jobState, type JobState } from '@/lib/recruiter-dashboard'
 import { listTenantRecruiters } from '@/lib/recruiter-assignment'
 import { diffusionText } from '@/lib/social-content'
@@ -51,7 +52,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
 
   const job = await getJobById(jobId)
   if (!job) notFound()
-  if (!recruiterCanOpenJob(job.tenantId, tenantId)) redirect('/recruiter/dashboard')
+  // Un membre : ses offres seulement (ADR 0043).
+  const viewer = await loadOfferViewer(user)
+  if (!viewerCanOpenJob(job, viewer)) redirect('/recruiter/dashboard')
   const shared = job.tenantId !== tenantId
 
   const { latestPostsByJob } = await import('@/lib/social')
@@ -70,7 +73,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
     }) : null,
   ])
 
-  const apps = allApps.filter(a => recruiterCanSeeApplication(job.tenantId, a.tenantId ?? '', tenantId))
+  const apps = allApps.filter(a => viewerCanSeeApplication(job, a.tenantId ?? '', viewer))
   const statuses = apps.map(a => resolveStatus(stages, a.status))
   // Toutes les phases du funnel de l'offre, dans l'ordre ; une candidature dont la phase n'existe plus garde la sienne.
   const stageCounts = withOrphanStages(stages, statuses).map(stage => ({ stage, count: statuses.filter(s => s === stage.slug).length }))

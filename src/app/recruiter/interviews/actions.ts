@@ -14,6 +14,7 @@ import { updateApplicationStatus } from '@/lib/appwrite/jobs'
 import { aiInterviewRecruiter, takeInterviewAiSlot } from '@/lib/interview-access'
 import { analysisInputSchema, followUpInputSchema, questionsInputSchema, sessionInputSchema } from '@/lib/interview-rules'
 import { applicationOfOrganisation } from '@/lib/screening-core'
+import { loadOfferViewer } from '@/lib/offer-viewer'
 import { funnelMoveRefusal } from '@/lib/appwrite/funnel'
 
 export interface InterviewPrefill {
@@ -36,7 +37,7 @@ export async function getInterviewPrefillData(applicationId: string): Promise<In
   try {
     const { databases } = createAdminClient()
     // Candidature d'une offre de l'organisation du recruteur (ou partagée par la plateforme) seulement.
-    const owned = await applicationOfOrganisation(applicationId, user.tenantId)
+    const owned = await applicationOfOrganisation(applicationId, await loadOfferViewer(user))
     if (!owned) return { error: 'Candidature introuvable' }
     const { application, job } = owned
     const candidate = await databases.getDocument(DB_ID, COLLECTIONS.USERS, application.candidateId as string)
@@ -303,7 +304,7 @@ export async function createInterviewSession(
     if ('error' in me) return { error: me.error }
     // Candidature liée : d'une offre de l'organisation du recruteur (ou partagée par la plateforme) seulement. Un
     // entretien créé sans candidature (« Nouvel entretien ») n'en a pas.
-    const owned = applicationId ? await applicationOfOrganisation(applicationId, me.tenantId) : null
+    const owned = applicationId ? await applicationOfOrganisation(applicationId, await loadOfferViewer(me.user)) : null
     if (applicationId && !owned) return { error: 'Candidature introuvable' }
     // Textes repris dans l'invitation au candidat : bornés et validés (adresse e-mail, 30 questions au plus).
     const input = sessionInputSchema.safeParse({ candidateName, candidateEmail, jobTitle, questions })

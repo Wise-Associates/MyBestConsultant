@@ -9,7 +9,8 @@ import { normalizeWhatsApp } from '@/lib/whatsapp'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
-import { recruiterCanOpenJob, recruiterCanSeeApplication } from '@/lib/job-ownership'
+import { viewerCanOpenJob, viewerCanSeeApplication } from '@/lib/job-ownership'
+import { loadOfferViewer } from '@/lib/offer-viewer'
 import { PipelineClient, type PipelineCandidate } from './pipeline-client'
 import { jobMetaLine } from '@/components/recruiter/job-tabs'
 import type { InterviewAnalysis } from '@/app/recruiter/interviews/actions'
@@ -77,12 +78,12 @@ export default async function PipelinePage({ params }: { params: Promise<{ jobId
     getJobById(jobId), getApplicationsByJob(jobId), getStagesForJob(user.tenantId, jobId), loadRecruiterWeights(user.userId),
   ])
   if (!job) notFound()
-  // Admin-published jobs (tenantId '') are shared across recruiters, same access rule
-  // as the rest of the recruiter dashboard (getJobsByTenant merges both sets).
-  if (!recruiterCanOpenJob(job.tenantId, user.tenantId)) redirect('/recruiter/dashboard')
-  // Offre partagée : les candidats ajoutés par une autre organisation ne sont jamais montrés (recruiterCanSeeApplication,
-  // revue de sécurité du 2026-11-13).
-  const apps = allApps.filter(a => recruiterCanSeeApplication(job.tenantId, a.tenantId ?? '', user.tenantId))
+  // Offre que le recruteur ouvre (viewerCanOpenJob) : de son organisation — un membre, les siennes seulement (ADR 0043) —
+  // ou partagée par la plateforme (tenantId ''). Offre partagée : les candidats ajoutés par une autre organisation ne sont
+  // jamais montrés (revue de sécurité du 2026-11-13).
+  const viewer = await loadOfferViewer(user)
+  if (!viewerCanOpenJob(job, viewer)) redirect('/recruiter/dashboard')
+  const apps = allApps.filter(a => viewerCanSeeApplication(job, a.tenantId ?? '', viewer))
 
   // Candidat classique, ou profil du vivier d'un chasseur (contact = le chasseur) : voir lib/candidate-identity.
   const userMap = await resolveCandidateIdentities(apps.map(a => a.candidateId))
