@@ -2,6 +2,7 @@ import 'server-only'
 import { Query, type Models } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
+import { listAllDocuments } from '@/lib/appwrite/list-all'
 import type { MbcRevealed } from './rules'
 import { parseRevealDoc, revealCutoff, revealDocId, revealJson } from './reveals'
 
@@ -46,12 +47,13 @@ export async function saveReveals(tenantId: string, userId: string, profiles: Mb
 export async function vivierTargetsOf(tenantId: string, recruiterId: string, apolloIds: string[]): Promise<Record<string, string[]>> {
   if (apolloIds.length === 0) return {}
   const { databases } = createAdminClient()
-  const res = await databases.listDocuments(DB_ID, COLLECTIONS.VIVIER_CVS, [
+  // Lu en entier : une page de 100 personnes (recherche en plusieurs requêtes) peut être dans plusieurs viviers chacune.
+  const documents = await listAllDocuments(databases, DB_ID, COLLECTIONS.VIVIER_CVS, [
     Query.equal('tenantId', tenantId), Query.equal('recruiterId', recruiterId), Query.equal('apolloId', apolloIds),
-    Query.select(['apolloId', 'jobId']), Query.limit(100),
+    Query.select(['$id', 'apolloId', 'jobId']),
   ])
   const out: Record<string, string[]> = {}
-  for (const d of res.documents) {
+  for (const d of documents) {
     const id = typeof d.apolloId === 'string' ? d.apolloId : ''
     if (id) (out[id] ??= []).push(typeof d.jobId === 'string' && d.jobId ? d.jobId : 'general')
   }

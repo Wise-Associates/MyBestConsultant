@@ -4537,6 +4537,33 @@
                     "array": false,
                     "format": "",
                     "default": null
+                },
+                {
+                    "key": "followStatus",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 30,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "followNote",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 2000,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "followTags",
+                    "type": "string",
+                    "required": false,
+                    "array": true,
+                    "size": 40,
+                    "default": null,
+                    "encrypt": false
                 }
             ],
             "indexes": [

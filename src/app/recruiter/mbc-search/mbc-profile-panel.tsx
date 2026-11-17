@@ -1,14 +1,131 @@
 'use client'
 
 import { useState } from 'react'
-import { Bookmark, Check, Copy, ExternalLink, Globe, Loader2, Mail, MapPin, MessageSquareText, Plus, UserRound, X } from 'lucide-react'
+import {
+  Bookmark, Check, Copy, ExternalLink, Globe, Loader2, Mail, MapPin, MessageSquareText, Plus, Sparkles, UserRound, Users, X,
+} from 'lucide-react'
 import { addMbcProfileToVivier } from '@/app/recruiter/vivier/actions'
 import { draftMbcOutreach } from './actions'
-import { SCORE_WEIGHTS, type MbcCriteria, type MbcRevealed, type ScoredProfile } from '@/lib/mbc-search/rules'
-import { Avatar, ErrorNote, orangeTint, surface, type Reveal, type SaveButton } from './mbc-search-ui'
+import { SCORE_WEIGHTS, type MbcCriteria, type MbcRevealed, type OutreachChannel, type ScoredProfile } from '@/lib/mbc-search/rules'
+import type { MbcEvaluation } from '@/lib/mbc-search/evaluation'
+import { FOLLOW_LIMITS, FOLLOW_STATUSES, type FollowStatus, type MbcFollow } from '@/lib/mbc-search/follow'
+import { Avatar, ChipField, ErrorNote, orangeTint, surface, type Evaluation, type Reveal, type SaveButton } from './mbc-search-ui'
 
-// Panneau du profil choisi dans la liste : score détaillé, puis, une fois révélé, coordonnées, parcours et suites
-// (vivier, offre, message d'approche). Colonne de droite sur grand écran, fenêtre plein écran en dessous.
+// Panneau du profil choisi dans la liste : score détaillé, puis, une fois révélé, données d'Apollo (coordonnées,
+// parcours), suites (vivier, offre, profils similaires, message d'approche) et analyse de l'IA, présentée à part des
+// données d'Apollo (ADR 0037, phase 2). Colonne de droite sur grand écran, fenêtre plein écran en dessous.
+
+const CHANNELS: { id: OutreachChannel; label: string }[] = [
+  { id: 'email', label: 'E-mail' }, { id: 'linkedin', label: 'LinkedIn' }, { id: 'whatsapp', label: 'WhatsApp' },
+]
+
+const sectionTitle = 'mt-5 mb-2 font-bold uppercase tracking-wider'
+
+/** Liste de textes de l'analyse, sous un titre ; rien si elle est vide. */
+function NoteList({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) return null
+  return (
+    <div className="mt-3">
+      <p className="text-xs font-bold" style={{ color: 'var(--color-text)' }}>{title}</p>
+      <ul className="mt-1 space-y-0.5 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+        {/* Textes de l'IA : deux identiques sont possibles, la position départage. */}
+        {items.map((item, i) => <li key={`${i}-${item}`}>· {item}</li>)}
+      </ul>
+    </div>
+  )
+}
+
+/**
+ * Suivi d'une personne enregistrée (ADR 0039) : statut, étiquettes et note du recruteur, gardés avec elle. `onSave` :
+ * le suivi tel qu'enregistré (note nettoyée par le serveur), ou l'erreur à afficher.
+ */
+function FollowEditor({ follow, onSave }: { follow: MbcFollow; onSave: (f: MbcFollow) => Promise<{ follow?: MbcFollow; error?: string }> }) {
+  const [draft, setDraft] = useState(follow)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
+  const changed = JSON.stringify(draft) !== JSON.stringify(follow)
+  /** Modification du recruteur : le message du dernier enregistrement ne vaut plus. */
+  const change = (patch: Partial<MbcFollow>) => {
+    setDraft(d => ({ ...d, ...patch }))
+    setMessage(null)
+  }
+  const save = async () => {
+    setSaving(true)
+    setMessage(null)
+    const res = await onSave(draft)
+    setSaving(false)
+    // Version enregistrée reprise telle quelle : sinon une note nettoyée par le serveur paraîtrait encore modifiée.
+    if (res.follow) setDraft(res.follow)
+    setMessage(res.follow ? { ok: true, text: 'Suivi enregistré.' } : { ok: false, text: res.error ?? 'Suivi non enregistré.' })
+  }
+  return (
+    <div className="grid gap-2.5">
+      <div>
+        <label htmlFor="mbc-follow-status" className="text-xs font-bold" style={{ color: 'var(--color-text)' }}>Statut</label>
+        <select id="mbc-follow-status" value={draft.status} onChange={e => change({ status: e.target.value as FollowStatus })}
+          className="mt-1 w-full rounded-xl px-3 py-2 text-sm" style={{ ...surface, color: 'var(--color-text)' }}>
+          {(Object.keys(FOLLOW_STATUSES) as FollowStatus[]).map(s => <option key={s} value={s}>{FOLLOW_STATUSES[s]}</option>)}
+        </select>
+      </div>
+      <ChipField id="mbc-follow-tags" label="Étiquettes" hint={`${FOLLOW_LIMITS.tags} au plus`} placeholder="ex : Relance, Java"
+        values={draft.tags} onChange={tags => change({ tags })} limits={{ items: FOLLOW_LIMITS.tags, item: FOLLOW_LIMITS.tag }} />
+      <div>
+        <label htmlFor="mbc-follow-note" className="text-xs font-bold" style={{ color: 'var(--color-text)' }}>Note</label>
+        <textarea id="mbc-follow-note" value={draft.note} onChange={e => change({ note: e.target.value })} rows={3}
+          maxLength={FOLLOW_LIMITS.note} placeholder="Ce que vous voulez retenir de cette personne (visible par vous seul)."
+          className="mt-1 w-full rounded-xl p-3 text-sm resize-y" style={{ ...surface, color: 'var(--color-text)' }} />
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button type="button" onClick={save} disabled={!changed || saving}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold disabled:opacity-40"
+          style={{ background: 'var(--color-brand-orange)', color: 'white' }}>
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />} Enregistrer le suivi
+        </button>
+        {message && (message.ok
+          ? <p role="status" className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{message.text}</p>
+          : <div className="flex-1 min-w-0"><ErrorNote>{message.text}</ErrorNote></div>)}
+      </div>
+    </div>
+  )
+}
+
+/** Analyse de l'IA d'un profil révélé : score sur le barème du matching (données Apollo), critères, notes. */
+function EvaluationView({ e }: { e: MbcEvaluation }) {
+  return (
+    <div className="rounded-xl p-3" style={{ background: orangeTint(6) }}>
+      <p className="text-sm" style={{ color: 'var(--color-text)' }}>
+        <strong>{e.score} / 100</strong> sur ce qu’Apollo montre
+        {e.cap && <span style={{ color: 'var(--color-text-muted)' }}> · plafonné à {e.cap.value} ({e.cap.label})</span>}
+      </p>
+      <dl className="mt-2 space-y-1.5">
+        {e.parts.map(part => (
+          <div key={part.key} className="grid grid-cols-[5.5rem_1fr_auto] items-center gap-2 text-xs" style={{ color: 'var(--color-text)' }}>
+            <dt>{part.label}</dt>
+            {part.unavailable
+              ? <dd className="col-span-2" style={{ color: 'var(--color-text-muted)' }}>Non disponible</dd>
+              : (
+                <>
+                  <span className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-border)' }} aria-hidden>
+                    <span className="block h-full" style={{ width: `${part.max > 0 ? (part.points / part.max) * 100 : 0}%`, background: 'var(--color-brand-orange)' }} />
+                  </span>
+                  <dd className="text-right tabular-nums" style={{ color: 'var(--color-text-muted)' }} title={part.detail}>{Math.round(part.points)}/{Math.round(part.max)}</dd>
+                </>
+              )}
+          </div>
+        ))}
+      </dl>
+      {e.summary && <p className="mt-3 text-xs" style={{ color: 'var(--color-text)' }}>{e.summary}</p>}
+      <NoteList title="Pourquoi il correspond" items={e.strengths} />
+      <NoteList title="Non visible dans le profil" items={e.missing} />
+      <NoteList title="Points de vigilance" items={e.concerns} />
+      <NoteList title="Questions d’entretien" items={e.questions} />
+      <NoteList title="Prochaines étapes" items={e.nextSteps} />
+      <p className="mt-3 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+        Analyse de l’IA, à vérifier. Apollo ne donne ni compétences, ni formation, ni langues : une compétence non visible n’est pas forcément absente.
+      </p>
+    </div>
+  )
+}
 
 const BREAKDOWN: { key: keyof typeof SCORE_WEIGHTS; label: string }[] = [
   { key: 'title', label: 'Intitulé' },
@@ -49,7 +166,10 @@ function SaveToggle({ save, className, cost }: { save: SaveButton; className: st
   )
 }
 
-export function ProfilePanel({ profile, reveal, criteria, brief, jobs, save, added, canReveal, onReveal, onAdded, onClose }: {
+export function ProfilePanel({
+  profile, reveal, criteria, brief, jobs, save, added, canReveal, evaluation, canSimilar, evaluateBlocked, follow,
+  onReveal, onAdded, onEvaluate, onSimilar, onSaveFollow, onClose,
+}: {
   profile: ScoredProfile
   reveal?: Reveal
   criteria: MbcCriteria
@@ -58,17 +178,29 @@ export function ProfilePanel({ profile, reveal, criteria, brief, jobs, save, add
   save: SaveButton
   added: Added
   canReveal: boolean
+  evaluation?: Evaluation
+  /** « Chercher des profils similaires » possible (rien d'autre en cours ; aucun critère requis). */
+  canSimilar: boolean
+  /** Pourquoi « Évaluer » est impossible (autre action en cours, besoin sans intitulé ni compétence), sinon null. */
+  evaluateBlocked: string | null
+  /** Suivi de la personne si elle est enregistrée (sinon : pas de section « Suivi »). */
+  follow?: MbcFollow
+  onSaveFollow: (f: MbcFollow) => Promise<{ follow?: MbcFollow; error?: string }>
   onReveal: () => void
   onAdded: (target: string) => void
+  onEvaluate: () => void
+  onSimilar: () => void
   onClose: () => void
 }) {
+  const [channel, setChannel] = useState<OutreachChannel>('email')
   const full = reveal?.state === 'done' ? reveal.profile : null
   const name = full?.name || [profile.firstName, profile.lastNameMasked].filter(Boolean).join(' ') || 'Profil sans nom'
   const [copied, setCopied] = useState<'email' | 'message' | null>(null)
   const [jobId, setJobId] = useState('')
   const [adding, setAdding] = useState<string | null>(null)
   const [addNote, setAddNote] = useState<{ ok: boolean; text: string; href?: string } | null>(null)
-  const [draft, setDraft] = useState<{ state: 'idle' | 'loading' } | { state: 'done'; text: string } | { state: 'error'; text: string }>({ state: 'idle' })
+  // Le brouillon garde le canal pour lequel il a été écrit (le choix peut changer pendant sa rédaction).
+  const [draft, setDraft] = useState<{ state: 'idle' | 'loading' } | { state: 'done'; text: string; channel: OutreachChannel } | { state: 'error'; text: string }>({ state: 'idle' })
 
   const copy = async (what: 'email' | 'message', text: string) => {
     try {
@@ -113,16 +245,17 @@ export function ProfilePanel({ profile, reveal, criteria, brief, jobs, save, add
 
   const writeDraft = async () => {
     if (!full) return
+    const asked = channel
     setDraft({ state: 'loading' })
     try {
       const res = await draftMbcOutreach({
-        brief, criteria,
+        brief, criteria, channel: asked,
         person: {
           firstName: full.name.split(/\s+/)[0] ?? '', title: full.title, company: full.company,
           experiences: full.experiences.map(e => ({ title: e.title, company: e.company })),
         },
       })
-      setDraft(res.message ? { state: 'done', text: res.message } : { state: 'error', text: res.error ?? 'Message indisponible.' })
+      setDraft(res.message ? { state: 'done', text: res.message, channel: asked } : { state: 'error', text: res.error ?? 'Message indisponible.' })
     } catch {
       setDraft({ state: 'error', text: 'Le serveur ne répond pas : vérifiez votre connexion puis réessayez.' })
     }
@@ -151,7 +284,8 @@ export function ProfilePanel({ profile, reveal, criteria, brief, jobs, save, add
 
       {full ? (
         <>
-          <div className="mt-4 grid gap-2">
+          <h3 className={sectionTitle} style={{ color: 'var(--color-text-muted)', fontSize: '11px', fontWeight: 700 }}>Données Apollo</h3>
+          <div className="grid gap-2">
             {full.email ? (
               <ContactRow label={full.emailStatus === 'verified' ? 'E-mail ✓' : 'E-mail'} value={full.email}>
                 <button type="button" onClick={() => copy('email', full.email)} className={smallBtn} style={{ ...surface, color: 'var(--color-text)' }}>
@@ -207,23 +341,73 @@ export function ProfilePanel({ profile, reveal, criteria, brief, jobs, save, add
               {addNote.href && <a href={addNote.href} className="font-bold underline underline-offset-2" style={{ color: 'var(--color-text)' }}>Voir</a>}
             </p>
           )}
+          {/* Décision du 2026-11-17 : une personne de MBC Search entre dans le pipeline avec son CV, comme tout candidat. */}
+          <p className="mt-2 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+            Pour le pipeline d’une offre : demandez son CV (le message d’approche le demande), puis importez-le dans le vivier de l’offre.
+          </p>
+          <button type="button" onClick={onSimilar} disabled={!canSimilar}
+            title="Nouvelle recherche des profils proches de celui-ci (l’IA tire les critères de son poste et de son parcours)"
+            className="mt-2 w-full inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold disabled:opacity-40" style={{ ...surface, color: 'var(--color-text)' }}>
+            <Users className="h-4 w-4" /> Chercher des profils similaires
+          </button>
+
+          {follow && (
+            <>
+              <h3 className={sectionTitle} style={{ color: 'var(--color-text-muted)', fontSize: '11px', fontWeight: 700 }}>Suivi</h3>
+              <FollowEditor follow={follow} onSave={onSaveFollow} />
+            </>
+          )}
+
+          <h3 className={sectionTitle} style={{ color: 'var(--color-text-muted)', fontSize: '11px', fontWeight: 700 }}>Analyse IA</h3>
+          {evaluation?.state === 'done' ? <EvaluationView e={evaluation.evaluation} /> : (
+            <button type="button" onClick={onEvaluate} disabled={evaluateBlocked !== null || evaluation?.state === 'loading'}
+              title={evaluateBlocked ?? 'L’IA juge le profil sur le barème du matching, avec vos poids (une recherche du quota du jour)'}
+              className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold disabled:opacity-40"
+              style={{ background: 'var(--color-brand-orange)', color: 'white' }}>
+              {evaluation?.state === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {evaluation?.state === 'loading' ? 'Évaluation en cours…' : 'Évaluer pour ce besoin'}
+            </button>
+          )}
+          {evaluation?.state !== 'done' && evaluation?.state !== 'loading' && evaluateBlocked && (
+            <p className="mt-1.5 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{evaluateBlocked}</p>
+          )}
+          {evaluation?.state === 'error' && <div className="mt-2"><ErrorNote>{evaluation.text}</ErrorNote></div>}
 
           <div className="mt-4">
+            {draft.state !== 'done' && (
+              <div role="radiogroup" aria-label="Canal du message" className="mb-2 flex gap-1.5">
+                {CHANNELS.map(c => (
+                  <button key={c.id} type="button" role="radio" aria-checked={channel === c.id} onClick={() => setChannel(c.id)}
+                    disabled={draft.state === 'loading'} className="px-2.5 py-1 rounded-full text-xs font-semibold disabled:opacity-50"
+                    style={channel === c.id ? { background: orangeTint(12), border: '1px solid var(--color-brand-orange)', color: 'var(--color-text)' } : { ...surface, color: 'var(--color-text-muted)' }}>
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            )}
             {draft.state === 'done' ? (
               <div className="space-y-2">
-                <label htmlFor="mbc-draft" className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Message d’approche (à relire)</label>
-                <textarea id="mbc-draft" value={draft.text} onChange={e => setDraft({ state: 'done', text: e.target.value })} rows={9}
+                <label htmlFor="mbc-draft" className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+                  Message {CHANNELS.find(c => c.id === draft.channel)?.label} (à relire){draft.channel === 'linkedin' ? ` · ${draft.text.length} / 300 caractères` : ''}
+                </label>
+                <textarea id="mbc-draft" value={draft.text} onChange={e => setDraft({ ...draft, text: e.target.value })} rows={9}
                   className="w-full rounded-xl p-3 text-sm resize-y" style={{ ...surface, color: 'var(--color-text)' }} />
                 <div className="flex gap-2 flex-wrap">
                   <button type="button" onClick={() => copy('message', draft.text)} className={smallBtn} style={{ ...surface, color: 'var(--color-text)' }}>
                     {copied === 'message' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} Copier
                   </button>
-                  {full.email && (
+                  {draft.channel === 'email' && full.email && (
                     <a href={`mailto:${full.email}?body=${encodeURIComponent(draft.text)}`} className={`${smallBtn} no-underline`} style={{ ...surface, color: 'var(--color-text)' }}>
                       <Mail className="h-3 w-3" /> Ouvrir dans ma messagerie
                     </a>
                   )}
+                  {draft.channel === 'linkedin' && full.linkedinUrl && (
+                    <a href={full.linkedinUrl} target="_blank" rel="noopener noreferrer" className={`${smallBtn} no-underline`} style={{ ...surface, color: 'var(--color-text)' }}>
+                      Ouvrir LinkedIn <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
                   <button type="button" onClick={writeDraft} className={smallBtn} style={{ ...surface, color: 'var(--color-text)' }}>Réécrire</button>
+                  <button type="button" onClick={() => setDraft({ state: 'idle' })} className={smallBtn} style={{ ...surface, color: 'var(--color-text)' }}>Autre canal</button>
                 </div>
               </div>
             ) : (

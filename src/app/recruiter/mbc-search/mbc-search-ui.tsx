@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { AlertCircle, Plus, Star, X } from 'lucide-react'
 import { CRITERIA_LIMITS, type MbcRevealed } from '@/lib/mbc-search/rules'
+import type { MbcEvaluation } from '@/lib/mbc-search/evaluation'
 
 // Petits éléments partagés par les écrans de MBC Search (couleurs du thème du site seulement).
 
@@ -11,6 +12,9 @@ export const orangeTint = (pct: number) => `color-mix(in srgb, var(--color-brand
 
 /** État du profil complet d'une ligne : en cours, révélé, ou introuvable chez Apollo. */
 export type Reveal = { state: 'loading' } | { state: 'done'; profile: MbcRevealed } | { state: 'missing' }
+
+/** Évaluation d'un profil révélé par l'IA pendant la visite (non enregistrée). */
+export type Evaluation = { state: 'loading' } | { state: 'done'; evaluation: MbcEvaluation } | { state: 'error'; text: string }
 
 /**
  * Bouton « Enregistrer » d'une personne (ligne et panneau) : marque-page plein = enregistrée, un clic la retire.
@@ -53,14 +57,16 @@ export function Avatar({ name, photoUrl, size = 40 }: { name: string; photoUrl?:
  * Valeurs d'un critère en puces, avec un champ pour en ajouter (Entrée ou +). `starred` : puces marquables
  * (compétences obligatoires), un clic sur l'étoile bascule.
  */
-export function ChipField({ id, label, hint, placeholder, values, onChange, starred, onStar }: {
+export function ChipField({ id, label, hint, placeholder, values, onChange, starred, onStar, limits = CRITERIA_LIMITS }: {
   id: string; label: string; hint?: string; placeholder: string; values: string[]; onChange: (v: string[]) => void
   starred?: string[]; onStar?: (v: string) => void
+  /** Nombre de puces et longueur de chacune (critères par défaut ; étiquettes du suivi : FOLLOW_LIMITS). */
+  limits?: { items: number; item: number }
 }) {
   const [draft, setDraft] = useState('')
-  const full = values.length >= CRITERIA_LIMITS.items
+  const full = values.length >= limits.items
   const add = () => {
-    const v = draft.trim().slice(0, CRITERIA_LIMITS.item)
+    const v = draft.trim().slice(0, limits.item)
     if (!v || full || values.some(x => x.toLowerCase() === v.toLowerCase())) return
     onChange([...values, v])
     setDraft('')
@@ -94,9 +100,9 @@ export function ChipField({ id, label, hint, placeholder, values, onChange, star
         })}
       </div>
       <div className="mt-1.5 flex items-center gap-1 rounded-lg px-2" style={surface}>
-        <input id={id} value={draft} onChange={e => setDraft(e.target.value)} onBlur={add} disabled={full} maxLength={CRITERIA_LIMITS.item}
+        <input id={id} value={draft} onChange={e => setDraft(e.target.value)} onBlur={add} disabled={full} maxLength={limits.item}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-          placeholder={full ? `${CRITERIA_LIMITS.items} au plus` : placeholder}
+          placeholder={full ? `${limits.items} au plus` : placeholder}
           className="flex-1 min-w-0 bg-transparent py-1.5 text-sm outline-none" style={{ color: 'var(--color-text)' }} />
         {draft.trim() && (
           <button type="button" onClick={add} aria-label={`Ajouter à ${label}`} className="rounded p-0.5" style={{ color: 'var(--color-text)' }}>

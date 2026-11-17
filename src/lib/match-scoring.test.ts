@@ -169,6 +169,9 @@ describe('jugements vérifiés dans le CV (la réponse de l\'IA ne suffit pas)',
   it('lit la comparaison des intitulés ; une valeur illisible ou absente est inconnue', () => {
     assert.deepEqual(parseTitleRelations('Voici : ["autre", "MÊME", "famille"]', 4), ['autre', 'meme', 'famille', null])
     assert.deepEqual(parseTitleRelations('["peut-être"]', 1), [null])
+    // Longueur exigée (MBC Search, longues listes) : une valeur manquante décalerait les avis suivants.
+    assert.deepEqual(parseTitleRelations('["meme", "autre"]', 3, true), [null, null, null])
+    assert.deepEqual(parseTitleRelations('["meme", "autre", "famille"]', 3, true), ['meme', 'autre', 'famille'])
     assert.deepEqual(parseTitleRelations('aucun tableau', 2), [null, null])
     const prompt = titleCheckPrompt([{ metier: 'Scrum Master', intitule: 'Expert Application Security' }])
     assert.match(prompt.user, /1\. Métier demandé : « Scrum Master » — intitulé du CV : « Expert Application Security »/)

@@ -2,12 +2,14 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import type { MbcProfile, MbcRevealed } from './rules'
 import { parseSavedPersonDoc, savedPersonDocId, savedPersonFields, searchRowSchema } from './saved'
+import { DEFAULT_FOLLOW } from './follow'
 
 const profile: MbcRevealed = {
   id: '0123456789abcdef01234567', name: 'Camille Martin', title: 'Data Engineer', headline: 'Data', company: 'Exemple SA',
   companyWebsite: 'https://exemple.fr', location: 'Lyon, France', linkedinUrl: 'https://www.linkedin.com/in/exemple',
   email: 'camille@exemple.fr', emailStatus: 'verified', photoUrl: '',
-  experiences: [{ title: 'Data Engineer', company: 'Exemple SA', start: '2021-03', end: '', current: true }],
+  experiences: [{ title: 'Data Engineer', company: 'Exemple SA', start: '2021-03', end: '', current: true, description: '' }],
+  seniority: '', industry: '',
 }
 const search: MbcProfile = {
   id: profile.id, firstName: 'Camille', lastNameMasked: 'M***n', title: 'Data Engineer', company: 'Exemple SA',
@@ -27,7 +29,11 @@ describe('MBC Search : personnes enregistrées', () => {
   })
 
   it('relit une personne enregistrée, sans limite de durée', () => {
-    assert.deepEqual(parseSavedPersonDoc(doc()), { search, profile, savedAt })
+    assert.deepEqual(parseSavedPersonDoc(doc()), { search, profile, savedAt, follow: DEFAULT_FOLLOW, updatedAt: '' })
+    // Version du document, renvoyée avec le suivi pour ne pas écraser un suivi plus récent (ADR 0039).
+    assert.equal(parseSavedPersonDoc(doc({ $updatedAt: '2026-11-17T10:00:00.000+00:00' }))?.updatedAt, '2026-11-17T10:00:00.000+00:00')
+    // Suivi du recruteur (ADR 0039) relu avec la personne.
+    assert.deepEqual(parseSavedPersonDoc(doc({ followStatus: 'contacte', followNote: 'Rappeler', followTags: ['Java'] }))?.follow, { status: 'contacte', note: 'Rappeler', tags: ['Java'] })
     assert.deepEqual(parseSavedPersonDoc(doc({ savedAt: '2020-01-01T00:00:00.000Z' }))?.profile, profile)
   })
 

@@ -9,6 +9,8 @@ import { loadTenantAccess } from '@/lib/tenant-access'
 import { MbcSearchClient } from './mbc-search-client'
 
 export const metadata = { title: 'MBC Search' }
+// Actions de la page : une évaluation par l'IA peut durer deux minutes, plus la comparaison des intitulés (ADR 0038).
+export const maxDuration = 300
 
 export default async function MbcSearchPage() {
   const user = await getCurrentUser()

@@ -3,21 +3,24 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Bookmark, Loader2, Plus, Radar, X } from 'lucide-react'
 import {
-  analyseMbcBrief, askMbcQuestions, deleteMbcSearchEntry, pinMbcSearch, refineMbcSearch, revealMbcProfiles, saveMbcPerson, searchMbcProfiles,
-  unsaveMbcPerson,
+  analyseMbcBrief, askMbcQuestions, deleteMbcSearchEntry, evaluateMbcProfile, pinMbcSearch, planMbcStrategies, refineMbcSearch,
+  revealMbcProfiles, saveMbcPerson, searchMbcProfiles, similarMbcCriteria, unsaveMbcPerson, updateMbcFollow,
 } from './actions'
+import { DEFAULT_POOL_FILTERS, filterPool, poolCsv, type PoolContext, type PoolFilters } from '@/lib/mbc-search/results-view'
 import {
-  CRITERIA_LIMITS, EMPTY_CRITERIA, MAX_PAGE, PAGE_SIZE, REVEAL_BATCH, criteriaProblem, savedSearchName, scoreProfile, type MbcCriteria,
-  type ScoredProfile,
+  CRITERIA_LIMITS, EMPTY_CRITERIA, REVEAL_BATCH, criteriaProblem, savedSearchName, scoreProfile, type MbcCriteria, type ScoredProfile,
 } from '@/lib/mbc-search/rules'
+import { failedRun, hasMorePages, mergePool, settledRuns, type PoolProfile, type StrategyRun } from '@/lib/mbc-search/strategies'
 import { QUESTION_LIMITS, answerText, type MbcAnswer, type MbcQuestion } from '@/lib/mbc-search/conversation'
 import type { MbcSearchEntry } from '@/lib/mbc-search/history'
 import type { MbcSavedPerson } from '@/lib/mbc-search/saved'
 import { ProfilePanel, type Added } from './mbc-profile-panel'
-import { ErrorNote, surface, type Reveal, type SaveButton } from './mbc-search-ui'
+import { ErrorNote, surface, type Evaluation, type Reveal, type SaveButton } from './mbc-search-ui'
 import { MbcSearchHome } from './mbc-search-home'
 import { AssistantMessage, ProgressSteps, PromptBox, QuestionCard, UserBubble } from './mbc-search-thread'
 import { CriteriaEditor, ResultRow, ResultsBlock } from './mbc-search-results'
+import { CompareDialog } from './mbc-compare-dialog'
+import { COMPARE_MAX, FOLLOW_STATUSES, countByStatus, toggleCompared, type FollowStatus, type MbcFollow } from '@/lib/mbc-search/follow'
 
 // MBC Search en conversation (demande du 2026-11-13, à la place du brief puis de l'espace de travail en trois colonnes) :
 // l'accueil (mbc-search-home.tsx) reçoit le besoin ; dans le fil, l'IA pose au plus 3 questions à choix (sauf
@@ -25,6 +28,8 @@ import { CriteriaEditor, ResultRow, ResultsBlock } from './mbc-search-results'
 // classés ; chaque message du recruteur sous les résultats ajuste les critères et relance. Onglet « Sélection » : les
 // personnes enregistrées. Profil choisi : colonne de droite dès 1280 px, fenêtre plein écran en dessous.
 // La conversation n'est pas enregistrée : seul l'historique des recherches (brief et critères) l'est, par le serveur.
+// Recherche en plusieurs requêtes (ADR 0037) : la page lance les requêtes du besoin l'une après l'autre (une Server
+// Action chacune, pour montrer l'avancement et pouvoir s'arrêter après celle en cours) et réunit leurs profils.
 
 /** Entrée du fil. Seul le dernier `results` affiche la liste des profils ; les précédents ne sont plus qu'un rappel. */
 type Msg =
@@ -37,7 +42,26 @@ type NewMsg = { [K in Msg['kind']]: Omit<Extract<Msg, { kind: K }>, 'id'> }[Msg[
 type Tab = 'search' | 'selection'
 
 const OFFLINE = 'Le serveur ne répond pas : vérifiez votre connexion puis réessayez.'
-const SEARCH_STEP = 'Recherche des profils et classement'
+const PLAN_STEP = 'Préparation de plusieurs recherches'
+/** Profils affichés à la fois (« Afficher 50 profils de plus ») : une recherche en réunit jusqu'à 500. */
+const SHOW_STEP = 50
+
+/** Recherche en cours ou dernière recherche du fil : ses critères, ses requêtes et leurs profils réunis. */
+type Run = {
+  /** Critères du recruteur au lancement : la note des profils et la suite (« Chercher plus loin »). */
+  base: MbcCriteria
+  brief: string
+  runs: StrategyRun[]
+  pool: PoolProfile[]
+  running: boolean
+  titleCheckFailed: boolean
+  /** « Profils similaires » : la personne de départ, écartée de la liste. */
+  seedId?: string
+}
+/** Profils révélés évalués à la fois (« Évaluer les profils révélés ») : une évaluation prend jusqu'à deux minutes. */
+const EVALUATE_BATCH = 10
+/** Page d'une requête à lancer. */
+type Job = { index: number; page: number; query: MbcCriteria }
 
 const withEntry = (list: MbcSearchEntry[], entry: MbcSearchEntry) => [entry, ...list.filter(e => e.id !== entry.id)]
 
@@ -63,7 +87,17 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
   const [messages, setMessages] = useState<Msg[]>([])
   const [questions, setQuestions] = useState<MbcQuestion[] | null>(null)
   const [progress, setProgress] = useState<{ steps: string[]; at: number } | null>(null)
-  const [results, setResults] = useState<{ profiles: ScoredProfile[]; total: number; page: number } | null>(null)
+  const [run, setRun] = useState<Run | null>(null)
+  const [shown, setShown] = useState(SHOW_STEP)
+  const [listFilters, setListFilters] = useState<PoolFilters>(DEFAULT_POOL_FILTERS)
+  // Évaluations par l'IA pendant la visite (relatives au besoin de la recherche affichée : vidées à chaque recherche).
+  const [evaluations, setEvaluations] = useState<Record<string, Evaluation>>({})
+  const [evaluating, setEvaluating] = useState<{ done: number; total: number } | null>(null)
+  // Onglet « Sélection » (ADR 0039) : filtre par statut du suivi, personnes à comparer (révélées, 3 au plus).
+  const [statusFilter, setStatusFilter] = useState<FollowStatus | 'all'>('all')
+  const [compareIds, setCompareIds] = useState<string[]>([])
+  const [comparing, setComparing] = useState(false)
+  const [stopping, setStopping] = useState(false)
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
   // Erreur d'une action sur un profil (révéler, enregistrer) : bandeau sous l'en-tête, hors du fil.
@@ -96,6 +130,14 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
   // Réponses données aux questions de la conversation en cours : gardées si la lecture du besoin échoue ensuite, pour
   // que le besoin complété dans le champ du bas les reprenne.
   const answered = useRef<MbcAnswer[]>([])
+  // « Arrêter » : lu entre deux requêtes (celle en cours, une Server Action, ne s'interrompt pas).
+  const stopRef = useRef(false)
+  // Numéro des évaluations : changé à chaque recherche ; une évaluation finie après n'est pas reprise (autre besoin).
+  const evalEpoch = useRef(0)
+  // « Profils similaires » : la personne de départ, écartée de toutes les recherches de la conversation (ajustements compris).
+  const seedRef = useRef<string | null>(null)
+  // Personnes de la recherche affichée, sans doublon : le nombre que garde son rappel une fois remplacée dans le fil.
+  const poolIds = useRef(new Set<string>())
   const endRef = useRef<HTMLDivElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
 
@@ -127,7 +169,14 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
     answered.current = []
     setMessages([])
     setQuestions(null)
-    setResults(null)
+    setRun(null)
+    setShown(SHOW_STEP)
+    setListFilters(DEFAULT_POOL_FILTERS)
+    // Évaluées pour le besoin d'avant : une autre conversation, un autre besoin.
+    evalEpoch.current++
+    setEvaluations({})
+    setEvaluating(null)
+    seedRef.current = null
     setEditing(false)
     setCurrent(null)
     setNaming(null)
@@ -137,43 +186,131 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
     setNotice(null)
   }
 
-  /** Recherche Apollo puis classement ; `newRun` : nouvelle recherche dans le fil (sinon : autre page de la même). */
-  const searchStep = async (c: MbcCriteria, page: number, b: string, newRun: boolean): Promise<boolean> => {
-    const res = await searchMbcProfiles(c, page, b)
-    if (res.error) {
-      push({ kind: 'error', text: res.error })
-      return false
+  /**
+   * Lance les pages demandées des requêtes, l'une après l'autre, et réunit leurs profils (sans doublon) au fil de l'eau.
+   * « Arrêter » : après la requête en cours. Un refus qui se répéterait (`stop` : quota, clé Apollo…) arrête tout ; une
+   * requête en échec n'arrête pas les autres ; aucune n'aboutit : le fil le dit. Serveur injoignable (exception) : la
+   * fin du passage est faite quand même, puis l'erreur remonte à `guarded`, qui l'écrit dans le fil.
+   */
+  const executeRuns = async (base: MbcCriteria, b: string, jobs: Job[]) => {
+    stopRef.current = false
+    setStopping(false)
+    setRun(r => r && { ...r, running: true })
+    const update = (index: number, change: (x: StrategyRun) => StrategyRun) => setRun(r => r && { ...r, runs: r.runs.map((x, i) => (i === index ? change(x) : x)) })
+    let succeeded = 0
+    let firstError: string | null = null
+    let blocked = false
+    try {
+      for (const job of jobs) {
+        if (stopRef.current) break
+        update(job.index, x => ({ ...x, status: 'running', error: undefined }))
+        const record = job.index === 0 && job.page === 1
+        const res = await searchMbcProfiles({ criteria: base, query: job.query, page: job.page, brief: b, record })
+        if (res.error) {
+          const error = res.error
+          update(job.index, x => failedRun(x, job.page, error))
+          firstError ??= error
+          if (res.stop) {
+            blocked = true
+            push({ kind: 'error', text: error })
+            break
+          }
+          continue
+        }
+        succeeded++
+        const profiles = res.profiles ?? []
+        // Profils déjà payés par l'organisation : affichés révélés, sans nouveau crédit ; vivier : déjà ajoutés.
+        const known = res.revealed ?? []
+        if (known.length > 0) setReveals(r => ({ ...r, ...Object.fromEntries(known.map(k => [k.id, { state: 'done', profile: k } as Reveal])) }))
+        const inVivier = res.inVivier ?? {}
+        if (Object.keys(inVivier).length > 0) {
+          setAdded(a => ({ ...a, ...Object.fromEntries(Object.entries(inVivier).map(([id, targets]) => [id, { ...a[id], ...Object.fromEntries(targets.map(t => [t, true as const])) }])) }))
+        }
+        if (record) {
+          const entry = res.entry
+          setCurrent(entry ? { id: entry.id, criteria: JSON.stringify(base) } : null)
+          if (entry) setEntries(list => withEntry(list, entry))
+          setNaming(null)
+          setHistoryNote(res.historyError ?? null)
+        }
+        setSeen(s => ({ ...s, ...Object.fromEntries(profiles.map(p => [p.id, p])) }))
+        for (const p of profiles) poolIds.current.add(p.id)
+        const total = res.total ?? 0
+        setRun(r => {
+          if (!r) return r
+          const merged = mergePool(r.pool, profiles, job.index)
+          return {
+            ...r,
+            pool: merged.pool,
+            titleCheckFailed: r.titleCheckFailed || Boolean(res.titleCheckFailed),
+            runs: r.runs.map((x, i) => (i === job.index
+              ? { ...x, status: 'done', page: job.page, total, found: x.found + profiles.length, added: x.added + merged.added }
+              : x)),
+          }
+        })
+      }
+      if (!blocked && succeeded === 0 && firstError) push({ kind: 'error', text: `Aucune recherche n'a abouti : ${firstError}` })
+    } finally {
+      // Requêtes pas encore lancées : « arrêtée » ; requête dont la réponse n'est jamais arrivée : en échec.
+      setRun(r => r && { ...r, running: false, runs: settledRuns(r.runs, OFFLINE) })
+      setStopping(false)
+      const seed = seedRef.current
+      const size = poolIds.current.size - (seed && poolIds.current.has(seed) ? 1 : 0)
+      setMessages(list => {
+        let last = -1
+        list.forEach((m, i) => { if (m.kind === 'results') last = i })
+        return list.map((m, i) => (i === last && m.kind === 'results' ? { ...m, total: size } : m))
+      })
     }
-    const profiles = res.profiles ?? []
-    const total = res.total ?? 0
-    setResults({ profiles, total, page })
-    // Profils déjà payés par l'organisation : affichés révélés, sans nouveau crédit ; vivier : déjà ajoutés.
-    const known = res.revealed ?? []
-    if (known.length > 0) setReveals(r => ({ ...r, ...Object.fromEntries(known.map(k => [k.id, { state: 'done', profile: k } as Reveal])) }))
-    const inVivier = res.inVivier ?? {}
-    if (Object.keys(inVivier).length > 0) {
-      setAdded(a => ({ ...a, ...Object.fromEntries(Object.entries(inVivier).map(([id, targets]) => [id, { ...a[id], ...Object.fromEntries(targets.map(t => [t, true as const])) }])) }))
+  }
+
+  /**
+   * Nouvelle recherche dans le fil : requêtes du besoin (celle des critères, puis celles de l'IA), lancées l'une après
+   * l'autre. `before` : étapes déjà faites de la conversation (lecture du besoin, ajustement), pour l'avancement affiché.
+   */
+  const runSearch = async (c: MbcCriteria, b: string, before: string[] = []) => {
+    setProgress({ steps: [...before, PLAN_STEP], at: before.length })
+    const plan = await planMbcStrategies({ brief: b, criteria: c })
+    if (plan.error || !plan.strategies) {
+      push({ kind: 'error', text: plan.error ?? 'Recherche impossible pour le moment : réessayez dans quelques instants.' })
+      return
     }
-    if (page === 1) {
-      const entry = res.entry
-      setCurrent(entry ? { id: entry.id, criteria: JSON.stringify(c) } : null)
-      if (entry) setEntries(list => withEntry(list, entry))
-      setNaming(null)
-      setHistoryNote(res.historyError ?? null)
-    }
-    setSeen(s => ({ ...s, ...Object.fromEntries(profiles.map(p => [p.id, p])) }))
+    setProgress(null)
+    if (plan.note) push({ kind: 'assistant', text: plan.note })
+    const strategies = plan.strategies
+    setRun({
+      base: c, brief: b, pool: [], running: true, titleCheckFailed: false, seedId: seedRef.current ?? undefined,
+      runs: strategies.map(strategy => ({ strategy, status: 'waiting', page: 0, total: 0, found: 0, added: 0 })),
+    })
+    setShown(SHOW_STEP)
+    setListFilters(DEFAULT_POOL_FILTERS)
+    evalEpoch.current++
+    setEvaluations({})
+    setEvaluating(null)
     setSelected([])
-    if (newRun) {
-      push({ kind: 'results', total, label: savedSearchName(c) })
-      setEditing(false)
-      setPanelOpen(false)
-    }
-    return true
+    setEditing(false)
+    setPanelOpen(false)
+    poolIds.current = new Set()
+    push({ kind: 'results', total: 0, label: savedSearchName(c) })
+    await executeRuns(c, b, strategies.map((s, index) => ({ index, page: 1, query: s.criteria })))
+  }
+
+  /** « Chercher plus loin » : page suivante de chaque requête qui a encore des profils chez Apollo. */
+  const searchDeeper = () => {
+    if (!run) return
+    const { base, brief: b, runs } = run
+    const jobs = runs.flatMap((r, index) => (hasMorePages(r) ? [{ index, page: r.page + 1, query: r.strategy.criteria }] : []))
+    if (jobs.length > 0) void guarded(() => executeRuns(base, b, jobs))
+  }
+
+  const stopRun = () => {
+    stopRef.current = true
+    setStopping(true)
   }
 
   /** Critères tirés du besoin (et des réponses aux questions), avec les filtres choisis à l'accueil, puis recherche. */
   const analyseAndSearch = async (b: string, answers: MbcAnswer[]) => {
-    setProgress({ steps: ['Lecture de votre besoin', SEARCH_STEP], at: 0 })
+    setProgress({ steps: ['Lecture de votre besoin', PLAN_STEP], at: 0 })
     const res = await analyseMbcBrief(b, answers)
     if (res.error || !res.criteria) {
       push({ kind: 'error', text: res.error ?? 'L\'IA n\'a pas pu lire le besoin.', offer: 'manual' })
@@ -181,8 +318,7 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
     }
     const c = { ...res.criteria, emailOnly: filters.emailOnly, recentOnly: filters.recentOnly }
     setCriteria(c)
-    setProgress({ steps: ['Lecture de votre besoin', SEARCH_STEP], at: 1 })
-    await searchStep(c, 1, b, true)
+    await runSearch(c, b, ['Lecture de votre besoin'])
   }
 
   /** Envoi du besoin depuis l'accueil : début d'une nouvelle conversation. */
@@ -230,7 +366,7 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
   const refine = (message: string) => {
     push({ kind: 'user', text: message })
     void guarded(async () => {
-      setProgress({ steps: ['Ajustement des critères', SEARCH_STEP], at: 0 })
+      setProgress({ steps: ['Ajustement des critères', PLAN_STEP], at: 0 })
       const res = await refineMbcSearch({ brief, criteria, message })
       if (res.error || !res.criteria) {
         push({ kind: 'error', text: res.error ?? 'L\'IA n\'a pas pu ajuster la recherche.' })
@@ -238,8 +374,7 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
       }
       if (res.reply) push({ kind: 'assistant', text: res.reply })
       setCriteria(res.criteria)
-      setProgress({ steps: ['Ajustement des critères', SEARCH_STEP], at: 1 })
-      await searchStep(res.criteria, 1, brief, true)
+      await runSearch(res.criteria, brief, ['Ajustement des critères'])
     })
   }
 
@@ -258,16 +393,7 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
   /** Critères modifiés à la main (ou saisis sans brief) : nouvelle recherche dans le fil. */
   const runEdited = () => {
     push({ kind: 'assistant', text: 'Je relance la recherche avec vos critères.' })
-    void guarded(async () => {
-      setProgress({ steps: [SEARCH_STEP], at: 0 })
-      await searchStep(criteria, 1, brief, true)
-    })
-  }
-
-  const goToPage = (page: number) => {
-    void guarded(async () => {
-      if (await searchStep(criteria, page, brief, false)) resultsRef.current?.scrollIntoView({ block: 'start' })
-    })
+    void guarded(() => runSearch(criteria, brief))
   }
 
   /** Après un échec de l'IA : recherche sans questions, ou critères saisis à la main. */
@@ -299,10 +425,7 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
       return
     }
     push({ kind: 'assistant', text: `Je relance votre recherche « ${e.name} ».` })
-    void guarded(async () => {
-      setProgress({ steps: [SEARCH_STEP], at: 0 })
-      await searchStep(e.criteria, 1, e.brief, true)
-    })
+    void guarded(() => runSearch(e.criteria, e.brief))
   }
 
   /** Profil complet (payant) des profils demandés ; ceux déjà révélés ou en cours ne sont pas redemandés. */
@@ -339,9 +462,11 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
   }
 
   const savedById = new Map(savedPersons.map(s => [s.profile.id, s]))
+  // Profil trouvé par plusieurs requêtes : celui de la liste réunie (la ligne affichée), pour que le panneau ait sa note.
+  const poolById = new Map((run?.pool ?? []).map(p => [p.id, p]))
   const profileOf = (id: string): ScoredProfile | undefined => {
     const s = savedById.get(id)
-    return seen[id] ?? (s ? scoreProfile(s.search, criteria, openedAt) : undefined)
+    return poolById.get(id) ?? seen[id] ?? (s ? scoreProfile(s.search, need.criteria, openedAt) : undefined)
   }
 
   /**
@@ -362,6 +487,9 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
         // Encore révélée pour la visite : sa ligne et son panneau restent ouvrables.
         setSeen(s => (s[id] ? s : { ...s, [id]: p }))
         setSavedPersons(list => list.filter(s => s.profile.id !== id))
+        // Plus dans la sélection : plus à comparer (et la fenêtre ne se rouvrira pas seule).
+        setCompareIds(c => c.filter(x => x !== id))
+        setComparing(false)
         return
       }
       // Révélation en cours : « Révéler » et « Révéler la sélection » l'écartent, sinon la personne serait payée deux fois.
@@ -424,6 +552,78 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
     }
   }
 
+  // Besoin des évaluations et des profils similaires : celui de la recherche affichée, sinon les critères en cours
+  // (onglet « Sélection » sans recherche).
+  const need = run ? { criteria: run.base, brief: run.brief } : { criteria, brief }
+
+  /**
+   * « Évaluer » un profil révélé pour le besoin (une recherche du quota) : l'erreur, ou null ; `stale` : une autre
+   * recherche a commencé pendant l'évaluation, son résultat (pour l'ancien besoin) est écarté.
+   */
+  const evaluate = async (id: string): Promise<{ stale: true } | { error: string | null }> => {
+    const epoch = evalEpoch.current
+    setEvaluations(e => ({ ...e, [id]: { state: 'loading' } }))
+    const next: Evaluation = await evaluateMbcProfile({ id, brief: need.brief, criteria: need.criteria })
+      .then((res): Evaluation => (res.evaluation
+        ? { state: 'done', evaluation: res.evaluation }
+        : { state: 'error', text: res.error ?? 'Évaluation indisponible pour le moment.' }))
+      .catch((): Evaluation => ({ state: 'error', text: OFFLINE }))
+    if (evalEpoch.current !== epoch) return { stale: true }
+    setEvaluations(e => ({ ...e, [id]: next }))
+    return { error: next.state === 'error' ? next.text : null }
+  }
+
+  /** « Évaluer les profils révélés » : l'un après l'autre ; un échec (quota, IA indisponible) arrête la série et s'affiche. */
+  const evaluateAll = async (ids: string[]) => {
+    const epoch = evalEpoch.current
+    setNotice(null)
+    setEvaluating({ done: 0, total: ids.length })
+    try {
+      for (const [i, id] of ids.entries()) {
+        const res = await evaluate(id)
+        if ('stale' in res) break
+        if (res.error) {
+          setNotice(res.error)
+          break
+        }
+        setEvaluating({ done: i + 1, total: ids.length })
+      }
+    } finally {
+      // Une autre recherche a commencé : elle a déjà remis l'avancement à zéro (et a pu lancer le sien).
+      if (evalEpoch.current === epoch) setEvaluating(null)
+    }
+  }
+
+  /**
+   * « Chercher des profils similaires » : nouvelle conversation, critères tirés du profil révélé par l'IA, puis recherche
+   * en plusieurs requêtes ; la personne de départ est écartée de la liste.
+   */
+  const startSimilar = (id: string) => {
+    const r = reveals[id]
+    const first = r?.state === 'done' ? r.profile.name.split(/\s+/)[0] : ''
+    resetConversation()
+    seedRef.current = id
+    // Besoin de la conversation d'avant oublié : si la lecture du profil échoue, rien ne la reprendrait par erreur.
+    setBrief('')
+    setCriteria({ ...EMPTY_CRITERIA, ...filters })
+    setView('chat')
+    setTab('search')
+    push({ kind: 'user', text: `Profils similaires à ${first || 'ce profil'}` })
+    void guarded(async () => {
+      setProgress({ steps: ['Lecture du profil', PLAN_STEP], at: 0 })
+      const res = await similarMbcCriteria(id)
+      if (res.error || !res.criteria || !res.brief) {
+        push({ kind: 'error', text: res.error ?? 'Profils similaires indisponibles pour le moment.', offer: 'manual' })
+        return
+      }
+      const c = res.criteria
+      setBrief(res.brief)
+      setCriteria(c)
+      push({ kind: 'assistant', text: `Je cherche des profils proches : ${[...c.titles, ...c.skills].slice(0, 6).join(', ')}${c.locations[0] ? ` · ${c.locations[0]}` : ''}.` })
+      await runSearch(c, res.brief, ['Lecture du profil'])
+    })
+  }
+
   const quotaLeft = revealUsage && revealUsed !== null ? Math.max(0, revealUsage.limit - revealUsed) : null
   /** Bouton « Enregistrer » d'une personne : sans profil révélé, il en révèle un et prend donc une place du quota. */
   const saveButton = (id: string): SaveButton => {
@@ -444,31 +644,89 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
   }
   const openProfile = (id: string) => { setActiveId(id); setPanelOpen(true) }
   const toggleSelected = (id: string) => setSelected(s => (s.includes(id) ? s.filter(x => x !== id) : s.length < REVEAL_BATCH ? [...s, id] : s))
-  const row = (p: ScoredProfile) => (
-    <ResultRow key={p.id} p={p} criteria={criteria} reveal={reveals[p.id]} active={panelOpen && p.id === activeId} busy={busy}
-      selected={selected.includes(p.id)} save={saveButton(p.id)} inVivier={Object.keys(added[p.id] ?? {}).length > 0}
-      onOpen={() => openProfile(p.id)} onSelect={() => toggleSelected(p.id)} onReveal={() => reveal([p.id])} />
+  // Ce que la page sait de plus sur chaque profil : révélé, score de l'évaluation par l'IA (filtres, tri, export).
+  const poolContext: PoolContext = {
+    revealed: Object.fromEntries(Object.entries(reveals).flatMap(([id, r]) => (r.state === 'done' ? [[id, r.profile]] : []))),
+    aiScore: Object.fromEntries(Object.entries(evaluations).flatMap(([id, e]) => (e.state === 'done' ? [[id, e.evaluation.score]] : []))),
+  }
+  const toggleCompare = (id: string) => setCompareIds(c => toggleCompared(c, id, x => savedById.has(x)))
+  /** Ligne d'une personne ; `mode` : sa case sert à « Révéler la sélection » (recherche) ou à « Comparer » (sélection). */
+  const row = (p: ScoredProfile, mode: 'reveal' | 'compare' = 'reveal') => (
+    <ResultRow key={p.id} p={p} criteria={run?.base ?? criteria} reveal={reveals[p.id]} aiScore={poolContext.aiScore[p.id]}
+      follow={savedById.get(p.id)?.follow} selectMode={mode} active={panelOpen && p.id === activeId} busy={busy}
+      selected={mode === 'compare' ? compareIds.includes(p.id) : selected.includes(p.id)} save={saveButton(p.id)}
+      inVivier={Object.keys(added[p.id] ?? {}).length > 0}
+      onOpen={() => openProfile(p.id)} onSelect={() => (mode === 'compare' ? toggleCompare(p.id) : toggleSelected(p.id))} onReveal={() => reveal([p.id])} />
   )
+
+  /**
+   * Suivi d'une personne enregistrée, avec la version lue (un suivi enregistré entre-temps dans un autre onglet n'est
+   * pas écrasé) : le suivi enregistré, ou l'erreur à afficher. La liste est mise à jour.
+   */
+  const saveFollow = async (id: string, follow: MbcFollow): Promise<{ follow?: MbcFollow; error?: string }> => {
+    try {
+      const res = await updateMbcFollow({ id, follow, updatedAt: savedById.get(id)?.updatedAt ?? '' })
+      const saved = res.follow
+      const updatedAt = res.updatedAt
+      if (!saved || !updatedAt) return { error: res.error ?? 'Suivi non enregistré.' }
+      setSavedPersons(list => list.map(s => (s.profile.id === id ? { ...s, follow: saved, updatedAt } : s)))
+      return { follow: saved }
+    } catch {
+      return { error: OFFLINE }
+    }
+  }
 
   const problem = criteriaProblem(criteria)
   const lastResultsId = [...messages].reverse().find(m => m.kind === 'results')?.id ?? null
   // Les propositions d'une erreur (« sans questions », « à la main ») ne valent que tant qu'elle est le dernier message.
   const lastId = messages.at(-1)?.id ?? null
-  const listed = (results?.profiles ?? []).filter(p => !criteria.recentOnly || p.match.fresh)
-  const hiddenByRecent = criteria.recentOnly ? (results?.profiles.length ?? 0) - listed.length : 0
-  const lastPage = results ? Math.min(MAX_PAGE, Math.ceil(results.total / PAGE_SIZE)) : 0
+  // Sans la personne de départ de « Profils similaires » : ni dans la liste, ni dans les nombres.
+  const pool = (run?.pool ?? []).filter(p => p.id !== run?.seedId)
+  const listed = pool.filter(p => !criteria.recentOnly || p.match.fresh)
+  const hiddenByRecent = criteria.recentOnly ? pool.length - listed.length : 0
+  const filtered = filterPool(listed, listFilters, poolContext)
+  const visible = filtered.slice(0, shown)
+  // Profils révélés de la liste filtrée à évaluer (jamais évalués, ou en échec), 10 au plus par clic.
+  const toEvaluate = filtered
+    .filter(p => poolContext.revealed[p.id] && (!evaluations[p.id] || evaluations[p.id].state === 'error'))
+    .slice(0, EVALUATE_BATCH).map(p => p.id)
+  /** Export CSV des profils filtrés (results-view.ts), téléchargé par le navigateur : rien ne passe par le serveur. */
+  const exportCsv = () => {
+    // BOM : Excel lit le fichier en UTF-8 (accents des noms et des intitulés).
+    const blob = new Blob([`\uFEFF${poolCsv(filtered, poolContext)}`], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `mbc-search-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    // Révoquée plus tard : Safari annule un téléchargement dont l'adresse disparaît aussitôt (comme esn-export-dialog.tsx).
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+  const runningIndex = run?.running ? run.runs.findIndex(r => r.status === 'running') : -1
   const savedListed = savedPersons.map(s => profileOf(s.profile.id)).filter((p): p is ScoredProfile => Boolean(p))
+  const statusCounts = countByStatus(savedPersons.map(s => s.follow))
+  const savedShown = statusFilter === 'all' ? savedListed : savedListed.filter(p => savedById.get(p.id)?.follow.status === statusFilter)
+  // Personnes cochées pour « Comparer », encore enregistrées et révélées.
+  const compared = compareIds.flatMap(id => {
+    const profile = profileOf(id)
+    const r = reveals[id]
+    if (!savedById.has(id) || !profile || r?.state !== 'done') return []
+    const e = evaluations[id]
+    return [{ profile, full: r.profile, evaluation: e?.state === 'done' ? e.evaluation : undefined, follow: savedById.get(id)?.follow }]
+  })
   const active = panelOpen && activeId ? profileOf(activeId) : undefined
   // La recherche affichée peut être enregistrée tant que ses critères n'ont pas changé depuis son lancement.
   const currentEntry = current && current.criteria === JSON.stringify(criteria) ? entries.find(e => e.id === current.id) ?? null : null
   const conversationTitle = !problem ? savedSearchName(criteria) : brief ? (brief.length > 60 ? `${brief.slice(0, 60)}…` : brief) : null
   const title = conversationTitle ?? (messages.length === 0 ? 'Votre sélection' : 'Nouvelle recherche')
   const lastSpoken = [...messages].reverse().find(m => m.kind === 'assistant' || m.kind === 'error')
-  const status = progress ? `${progress.steps[progress.at]}…` : lastSpoken && 'text' in lastSpoken ? lastSpoken.text : ''
+  const status = progress ? `${progress.steps[progress.at]}…`
+    : run && runningIndex >= 0 ? `Recherche ${runningIndex + 1} sur ${run.runs.length} : ${run.runs[runningIndex].strategy.label}…`
+      : lastSpoken && 'text' in lastSpoken ? lastSpoken.text : ''
 
   const editor = (
     <CriteriaEditor criteria={criteria} onChange={setCriteria} onRun={runEdited} running={busy} disabled={busy || !configured}
-      problem={problem} runLabel={results ? 'Relancer' : 'Rechercher'} />
+      problem={problem} runLabel={run ? 'Relancer' : 'Rechercher'} />
   )
 
   // Jauge du jour : dès 1280 px (en dessous, l'en-tête n'a pas la place ; le coût est rappelé sur chaque bouton « Révéler »).
@@ -595,7 +853,7 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
                       </AssistantMessage>
                     )
                   }
-                  if (m.id !== lastResultsId || !results) {
+                  if (m.id !== lastResultsId || !run) {
                     return (
                       <AssistantMessage key={m.id}>
                         <p className="text-sm rounded-xl px-4 py-2.5 inline-block" style={{ background: 'var(--color-background)', color: 'var(--color-text-muted)' }}>
@@ -606,15 +864,20 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
                   }
                   return (
                     <div key={m.id} ref={resultsRef} className="scroll-mt-24">
-                      <ResultsBlock total={results.total} page={results.page} lastPage={lastPage} listed={listed} hiddenByRecent={hiddenByRecent}
-                        criteria={criteria} busy={busy} editing={editing} onToggleEditing={() => setEditing(v => !v)} editor={editor}
-                        selectable={listed.filter(p => !reveals[p.id]).map(p => p.id)} selected={selected} quotaLeft={quotaLeft}
-                        renderRow={row} onSelectAll={setSelected} onRevealSelection={() => { void reveal(selected) }} onPage={goToPage} />
+                      <ResultsBlock total={pool.length} listed={visible} remaining={filtered.length - visible.length} hiddenByRecent={hiddenByRecent}
+                        filters={listFilters} onFilters={f => { setListFilters(f); setShown(SHOW_STEP) }} filtered={filtered.length} onExport={exportCsv}
+                        toEvaluate={toEvaluate.length} evaluating={evaluating} onEvaluateAll={() => { void evaluateAll(toEvaluate) }}
+                        runs={run.runs} running={run.running} stopping={stopping} titleCheckFailed={run.titleCheckFailed}
+                        deeper={run.runs.filter(hasMorePages).length}
+                        criteria={run.base} busy={busy} editing={editing} onToggleEditing={() => setEditing(v => !v)} editor={editor}
+                        selectable={visible.filter(p => !reveals[p.id]).map(p => p.id)} selected={selected} quotaLeft={quotaLeft}
+                        renderRow={row} onSelectAll={setSelected} onRevealSelection={() => { void reveal(selected) }}
+                        onShowMore={() => setShown(s => s + SHOW_STEP)} onStop={stopRun} onDeeper={searchDeeper} />
                     </div>
                   )
                 })}
                 {/* Critères saisis à la main, ou à compléter : avant toute liste de profils. */}
-                {editing && !results && <div className="rounded-2xl overflow-hidden" style={surface}>{editor}</div>}
+                {editing && !run && <div className="rounded-2xl overflow-hidden" style={surface}>{editor}</div>}
                 {questions && (
                   <AssistantMessage continued={lastKind === 'assistant'}>
                     <QuestionCard questions={questions} disabled={busy} onSubmit={submitAnswers} />
@@ -633,7 +896,7 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
                     <PromptBox id="mbc-composer" label="Message pour ajuster la recherche" rows={2} maxLength={QUESTION_LIMITS.message} minLength={2}
                       disabled={busy || !configured || Boolean(questions)}
                       placeholder={questions ? 'Répondez à la question ci-dessus, ou passez-la.'
-                        : results ? 'Dites-moi ce qui ne va pas, ce qui manque ou où chercher ensuite.'
+                        : run ? 'Dites-moi ce qui ne va pas, ce qui manque ou où chercher ensuite.'
                           : 'Précisez votre besoin…'}
                       onSend={sendFromComposer} />
                   </div>
@@ -647,6 +910,25 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
                   <strong style={{ color: 'var(--color-text)' }}>{savedPersons.length} personne{savedPersons.length > 1 ? 's' : ''} enregistrée{savedPersons.length > 1 ? 's' : ''}</strong>
                   {' '}· révélées, gardées jusqu&apos;à ce que vous les retiriez{problem ? '' : ' · notées selon la recherche en cours'}
                 </p>
+                {savedListed.length > 0 && (
+                  <div className="flex items-center gap-2 flex-wrap px-4 pb-3">
+                    <select aria-label="Filtrer par statut du suivi" value={statusFilter} onChange={e => setStatusFilter(e.target.value as FollowStatus | 'all')}
+                      className="rounded-lg px-2 py-1.5 text-xs" style={{ ...surface, color: 'var(--color-text)' }}>
+                      <option value="all">Tous les statuts · {savedListed.length}</option>
+                      {(Object.keys(FOLLOW_STATUSES) as FollowStatus[]).map(st => (
+                        <option key={st} value={st} disabled={statusCounts[st] === 0}>{FOLLOW_STATUSES[st]} · {statusCounts[st]}</option>
+                      ))}
+                    </select>
+                    <span className="flex-1" />
+                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                      {compared.length > 0 ? `${compared.length} à comparer` : `Cochez 2 ou ${COMPARE_MAX} personnes pour les comparer`}
+                    </span>
+                    <button type="button" onClick={() => setComparing(true)} disabled={compared.length < 2}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-40" style={{ background: 'var(--color-brand-orange)', color: 'white' }}>
+                      Comparer
+                    </button>
+                  </div>
+                )}
                 {savedPeople === null ? (
                   <p className="px-6 py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)', borderTop: '1px solid var(--color-border)' }}>
                     Personnes enregistrées indisponibles pour le moment : la recherche fonctionne, sans elles.
@@ -655,8 +937,12 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
                   <p className="px-6 py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)', borderTop: '1px solid var(--color-border)' }}>
                     Aucune personne enregistrée : cliquez sur le marque-page d’un profil. Elle est révélée (1 crédit si elle ne l’est pas encore) et reste ici jusqu’à ce que vous la retiriez.
                   </p>
+                ) : savedShown.length === 0 ? (
+                  <p className="px-6 py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)', borderTop: '1px solid var(--color-border)' }}>
+                    Personne avec ce statut.
+                  </p>
                 ) : (
-                  <ul>{savedListed.map(row)}</ul>
+                  <ul>{savedShown.map(p => row(p, 'compare'))}</ul>
                 )}
               </section>
             </div>
@@ -667,15 +953,21 @@ export function MbcSearchClient({ firstName, configured, revealUsage, jobs, hist
           </p>
         </div>
 
+        <CompareDialog people={compared} open={comparing && compared.length >= 2} onClose={() => setComparing(false)} />
+
         {/* Profil choisi : colonne de droite dès 1280 px, fenêtre plein écran en dessous. */}
         {active && (
           <aside aria-label="Profil choisi"
             className="fixed inset-0 z-50 overflow-y-auto p-4 xl:sticky xl:inset-auto xl:z-auto xl:w-96 xl:shrink-0 xl:top-[68px] xl:h-[calc(100vh-68px)]"
             style={{ background: 'var(--color-background)', borderLeft: '1px solid var(--color-border)' }}>
-            <ProfilePanel key={active.id} profile={active} reveal={reveals[active.id]} criteria={criteria} brief={brief} jobs={jobs}
+            <ProfilePanel key={active.id} profile={active} reveal={reveals[active.id]} criteria={need.criteria} brief={need.brief} jobs={jobs}
               save={saveButton(active.id)} added={added[active.id] ?? {}} canReveal={!busy && (quotaLeft === null || quotaLeft > 0)}
               onReveal={() => { void reveal([active.id]) }}
               onAdded={target => setAdded(a => ({ ...a, [active.id]: { ...a[active.id], [target]: true } }))}
+              evaluation={evaluations[active.id]} canSimilar={!busy && evaluating === null}
+              evaluateBlocked={busy || evaluating !== null ? 'Une autre action est en cours.' : criteriaProblem(need.criteria)}
+              onEvaluate={() => { void evaluate(active.id) }} onSimilar={() => startSimilar(active.id)}
+              follow={savedById.get(active.id)?.follow} onSaveFollow={f => saveFollow(active.id, f)}
               onClose={() => setPanelOpen(false)} />
           </aside>
         )}

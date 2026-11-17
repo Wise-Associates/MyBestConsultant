@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  APOLLO_PERSON_ID, EMPTY_CRITERIA, apolloKeywords, cleanOutreachDraft, outreachNeedText, outreachPersonText, savedSearchName, PAGE_SIZE, criteriaProblem, criteriaSchema, parseApolloMatches, parseApolloPeople, parseBriefCriteria,
-  rankProfiles, readCriteria, scoreProfile, toApolloQuery, toRevealRequest, type MbcProfile,
+  APOLLO_PERSON_ID, EMPTY_CRITERIA, apolloKeywords, cleanOutreachDraft, outreachNeedText, outreachPersonText, savedSearchName, criteriaProblem, criteriaSchema, parseApolloMatches, parseApolloPeople, parseBriefCriteria,
+  rankProfiles, readCriteria, retryDelayMs, scoreProfile, toApolloQuery, toRevealRequest, type MbcProfile,
 } from './rules'
 import { MBC_SEARCH_DAILY_LIMITS, MBC_SEARCH_QUOTA_MESSAGE, mbcSearchDenial } from './access'
 
@@ -26,14 +26,14 @@ describe('MBC Search : critères de recherche', () => {
     assert.equal(criteriaSchema.safeParse({ titles: ['Data Engineer'], locations: ['Paris'], seniorities: ['senior'], skills: [] }).success, true)
   })
 
-  it('construit la requête Apollo : compétences obligatoires en mots-clés, 25 profils par page', () => {
-    const q = toApolloQuery({ titles: ['Data Engineer'], locations: ['Paris, France'], seniorities: ['senior'], skills: ['Spark', 'Kafka'], requiredSkills: ['kafka'] }, 3)
+  it('construit la requête Apollo : compétences obligatoires en mots-clés, page et taille demandées', () => {
+    const q = toApolloQuery({ titles: ['Data Engineer'], locations: ['Paris, France'], seniorities: ['senior'], skills: ['Spark', 'Kafka'], requiredSkills: ['kafka'] }, 3, 100)
     assert.deepEqual(q.person_titles, ['Data Engineer'])
     assert.deepEqual(q.person_locations, ['Paris, France'])
     assert.deepEqual(q.person_seniorities, ['senior'])
     assert.equal(q.q_keywords, 'kafka')
     assert.equal(q.page, 3)
-    assert.equal(q.per_page, PAGE_SIZE)
+    assert.equal(q.per_page, 100)
     assert.ok(!('q_organization_keyword_tags' in q) && !('contact_email_status' in q))
   })
 
@@ -43,8 +43,19 @@ describe('MBC Search : critères de recherche', () => {
     assert.equal(apolloKeywords({ ...EMPTY_CRITERIA, titles: ['Dev'], skills: ['Spark'], requiredSkills: ['Kafka'] }), '')
   })
 
+  it('réessaie une fois après un refus passager d\'Apollo, jamais après un refus qui se répéterait', () => {
+    assert.equal(retryDelayMs(429, '3'), 3000)
+    assert.equal(retryDelayMs(429, '0.5'), 500)
+    assert.equal(retryDelayMs(429, '60'), null, 'attente trop longue pour le recruteur')
+    assert.equal(retryDelayMs(429, null), null, 'Apollo surchargé : une minute')
+    assert.equal(retryDelayMs(429, 'demain'), null)
+    assert.equal(retryDelayMs(503, null), 1000)
+    assert.equal(retryDelayMs(502, null), 1000)
+    for (const status of [400, 401, 402, 403, 404, 422]) assert.equal(retryDelayMs(status, '1'), null, String(status))
+  })
+
   it('filtre par secteur de l\'employeur et sur les personnes à l\'e-mail connu', () => {
-    const q = toApolloQuery({ ...EMPTY_CRITERIA, titles: ['Dev'], sectors: ['Banking'], emailOnly: true }, 1)
+    const q = toApolloQuery({ ...EMPTY_CRITERIA, titles: ['Dev'], sectors: ['Banking'], emailOnly: true }, 1, 100)
     assert.deepEqual(q.q_organization_keyword_tags, ['Banking'])
     assert.ok(q.contact_email_status?.includes('verified'))
   })
@@ -103,6 +114,29 @@ describe('MBC Search : score et classement', () => {
 
   it('marque le critère d\'intitulé « indifférent » quand aucun intitulé n\'est demandé', () => {
     assert.equal(scoreProfile(profile(), { ...criteria, titles: [] }, NOW).match.title, 'any')
+  })
+
+  it('intitulé comparé par l\'IA : même métier sans mot commun, autre métier malgré les mots communs', () => {
+    const same = scoreProfile(profile({ title: 'Ingénieur Data' }), criteria, NOW, 'meme')
+    assert.equal(same.points.title, 55)
+    assert.equal(same.match.title, 'full')
+    assert.ok(same.reasons.includes('Même métier que « Data Engineer » (intitulé comparé par l\'IA)'))
+    const other = scoreProfile(profile({ title: 'Data Engineering Manager' }), criteria, NOW, 'autre')
+    assert.equal(other.points.title, 0)
+    assert.equal(other.match.title, 'none')
+    const near = scoreProfile(profile({ title: 'Analytics Engineer' }), criteria, NOW, 'famille')
+    assert.equal(near.points.title, 28)
+    assert.equal(near.match.title, 'partial')
+    // Tous les mots d'un intitulé demandé, à un autre niveau : même métier, la séniorité est filtrée chez Apollo.
+    assert.equal(scoreProfile(profile({ title: 'Senior Data Engineer' }), criteria, NOW, 'famille').points.title, 55)
+    // Sans intitulé demandé, l'avis de l'IA ne compte pas.
+    assert.equal(scoreProfile(profile(), { ...criteria, titles: [] }, NOW, 'autre').match.title, 'any')
+  })
+
+  it('classe avec l\'avis de l\'IA sur chaque intitulé quand il est donné', () => {
+    const ranked = rankProfiles([profile({ id: 'mots', title: 'Data Engineer Manager' }), profile({ id: 'ia', title: 'Ingénieur Data' })],
+      criteria, NOW, p => (p.id === 'ia' ? 'meme' : 'autre'))
+    assert.deepEqual(ranked.map(p => p.id), ['ia', 'mots'])
   })
 
   it('classe du meilleur au moins bon, en gardant l\'ordre d\'Apollo à score égal', () => {
@@ -187,9 +221,10 @@ describe('MBC Search : profils complets (enrichissement Apollo)', () => {
       linkedinUrl: 'https://www.linkedin.com/in/camille-exemple', email: 'camille.dupont@exemple.fr', emailStatus: 'verified',
       photoUrl: 'https://media.exemple.fr/p.jpg',
       experiences: [
-        { title: 'Data Engineer', company: 'Exemple SA', start: '2022-03', end: '', current: true },
-        { title: 'Développeuse', company: 'Démo SAS', start: '2019-01', end: '2022-02', current: false },
+        { title: 'Data Engineer', company: 'Exemple SA', start: '2022-03', end: '', current: true, description: '' },
+        { title: 'Développeuse', company: 'Démo SAS', start: '2019-01', end: '2022-02', current: false, description: '' },
       ],
+      seniority: '', industry: '',
     })
   })
 
@@ -226,5 +261,19 @@ describe('MBC Search : nom d\'une recherche', () => {
   it('nomme une recherche d\'après son intitulé et sa ville', () => {
     assert.equal(savedSearchName({ ...EMPTY_CRITERIA, titles: ['Data Engineer'], locations: ['Lyon, France'] }), 'Data Engineer · Lyon')
     assert.equal(savedSearchName({ ...EMPTY_CRITERIA, skills: ['Kafka'] }), 'Kafka')
+  })
+})
+
+describe('MBC Search : éléments du profil complet pour l\'évaluation par l\'IA', () => {
+  it('garde la séniorité, le secteur de l\'employeur et la description de chaque poste, bornés', () => {
+    const [p] = parseApolloMatches({
+      matches: [{
+        id: 'a1', name: 'Camille Martin', seniority: 'senior', organization: { name: 'Exemple SA', industry: 'Banking' },
+        employment_history: [{ title: 'Data Engineer', organization_name: 'Exemple SA', current: true, description: 'x'.repeat(2000) }],
+      }],
+    }) ?? []
+    assert.equal(p.seniority, 'senior')
+    assert.equal(p.industry, 'Banking')
+    assert.equal(p.experiences[0].description?.length, 500)
   })
 })

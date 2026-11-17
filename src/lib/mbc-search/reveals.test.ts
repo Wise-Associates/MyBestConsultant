@@ -8,7 +8,8 @@ const profile: MbcRevealed = {
   id: '0123456789abcdef01234567', name: 'Camille Martin', title: 'Data Engineer', headline: 'Data', company: 'Exemple SA',
   companyWebsite: 'https://exemple.fr', location: 'Lyon, France', linkedinUrl: 'https://www.linkedin.com/in/exemple',
   email: 'camille@exemple.fr', emailStatus: 'verified', photoUrl: '',
-  experiences: [{ title: 'Data Engineer', company: 'Exemple SA', start: '2021-03', end: '', current: true }],
+  experiences: [{ title: 'Data Engineer', company: 'Exemple SA', start: '2021-03', end: '', current: true, description: '' }],
+  seniority: '', industry: '',
 }
 const doc = (over: Record<string, unknown> = {}) => ({ apolloId: profile.id, profileJson: revealJson(profile), revealedAt: now.toISOString(), ...over })
 
