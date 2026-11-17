@@ -11,6 +11,7 @@ import { jobOwnership } from '@/lib/job-ownership'
 import { PAY_NEEDS_CONTRACT } from '@/lib/job-pay'
 import { aoAccessFor } from '@/lib/ao/platform-view'
 import { activeJobsLimitDenial } from '@/lib/tenant-access'
+import { deleteJobClients } from '@/lib/appwrite/job-clients'
 import type { Job } from '@/types'
 
 export async function createJobAction(formData: FormData): Promise<{ error?: string; jobId?: string }> {
@@ -156,6 +157,7 @@ export async function deleteJobAction(jobId: string): Promise<{ error?: string }
   if ('error' in own) return own
   try {
     await deleteJob(own.jobId)
+    await deleteJobClients(own.jobId) // contact du client effacé avec l'offre (ne lève jamais)
   } catch (e) {
     console.error('[dashboard] offre non supprimée', own.jobId, e instanceof Error ? e.message : e)
     return { error: 'L’offre n’a pas pu être supprimée. Réessayez.' }

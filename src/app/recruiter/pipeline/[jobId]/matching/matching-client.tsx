@@ -19,7 +19,8 @@ import { initialUrlListSync, noteListWrite, syncFromUrl } from '@/lib/url-list-s
 import { scoreBreakdown } from '@/lib/score-breakdown'
 import type { RecruiterWeights } from '@/lib/scoring-weights'
 import { ScoreDetail, ScoringGuide, ScoreCriteriaList, criterionTone } from './score-detail'
-import { JobTabs } from '@/components/recruiter/job-tabs'
+import { JobHeaderGrid, JobTabs } from '@/components/recruiter/job-tabs'
+import { JobInfoButton } from '@/components/recruiter/job-info-button'
 import { ScoringWeightsButton } from '../scoring-weights-dialog'
 import { SOURCING_MIN_SCORE } from '@/lib/sourcing-rules'
 
@@ -458,36 +459,31 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
   return (
     <div className={selected.size > 0 || justAdded ? 'pb-[88px] min-[90rem]:pb-0' : undefined} style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <div className="sticky top-0 z-20 min-[90rem]:static" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)' }}>
-        <div className="max-w-[1000px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-6 min-[90rem]:py-4">
-          <BackLink fallbackHref={`/recruiter/offres/${jobId}`}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 min-[90rem]:mb-1.5 no-underline transition-opacity hover:opacity-80"
-            style={{ color: 'var(--hero-fg-muted)' }} />
-          <div className="flex items-center justify-between gap-4 flex-wrap min-[90rem]:flex-nowrap">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-widest mb-1 flex items-center gap-1.5" style={{ color: 'var(--hero-fg-muted)' }}>
-                <Brain className="h-3.5 w-3.5" /> Matching IA
-              </p>
-              <h1 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.5rem' }}>{jobTitle}</h1>
-              <p className="hidden min-[90rem]:block text-xs mt-0.5" style={{ color: 'var(--hero-fg-muted)' }}>{jobMeta}</p>
-            </div>
-            <JobTabs jobId={jobId} current="matching" counts={tabCounts} />
-            <span aria-hidden className="hidden min-[90rem]:block flex-1" />
-            <div className="flex items-center gap-2 flex-wrap">
-              <button type="button" onClick={refresh} disabled={isRefreshing}
-                title="Recalcule les scores de la base candidats pour cette offre, puis note les nouveaux candidats. Une candidature se recalcule sur sa carte (« Relancer »)."
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-50"
-                style={{ background: 'var(--hero-control)', color: 'var(--hero-fg)', border: '1px solid var(--hero-line)' }}>
-                {isRefreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
-                Rafraîchir
-              </button>
-              <ScoringWeightsButton scale="matching" weights={weights.matching} unreadable={weightsUnreadable} />
-              <Link href={`/recruiter/pipeline/${jobId}`}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold no-underline transition-opacity hover:opacity-85"
-                style={{ background: '#10b981', color: 'white', boxShadow: '0 6px 16px -6px rgba(16,185,129,0.6)' }}>
-                <Kanban className="h-3.5 w-3.5" /> Passer au funnel
-              </Link>
-            </div>
-          </div>
+        <div className="max-w-[1000px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 pt-6 min-[90rem]:pt-4">
+          <JobHeaderGrid
+            back={<BackLink fallbackHref={`/recruiter/offres/${jobId}`}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 min-[90rem]:mb-1.5 no-underline transition-opacity hover:opacity-80"
+              style={{ color: 'var(--hero-fg-muted)' }} />}
+            main={<>
+              <h1 className="sr-only">{jobTitle}</h1>
+              <div className="flex items-center gap-2 flex-wrap lg:justify-end">
+                <JobInfoButton view="Matching IA" title={jobTitle} meta={jobMeta} />
+                <button type="button" onClick={refresh} disabled={isRefreshing}
+                  title="Recalcule les scores de la base candidats pour cette offre, puis note les nouveaux candidats. Une candidature se recalcule sur sa carte (« Relancer »)."
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-50"
+                  style={{ background: 'var(--hero-control)', color: 'var(--hero-fg)', border: '1px solid var(--hero-line)' }}>
+                  {isRefreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
+                  Rafraîchir
+                </button>
+                <ScoringWeightsButton scale="matching" weights={weights.matching} unreadable={weightsUnreadable} />
+                <Link href={`/recruiter/pipeline/${jobId}`}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold no-underline transition-opacity hover:opacity-85"
+                  style={{ background: '#10b981', color: 'white', boxShadow: '0 6px 16px -6px rgba(16,185,129,0.6)' }}>
+                  <Kanban className="h-3.5 w-3.5" /> Passer au funnel
+                </Link>
+              </div>
+            </>}
+            tabs={<JobTabs jobId={jobId} current="matching" counts={tabCounts} />} />
         </div>
       </div>
 

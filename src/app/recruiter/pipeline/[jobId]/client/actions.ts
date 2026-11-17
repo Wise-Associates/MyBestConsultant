@@ -8,8 +8,12 @@ import { ensureColumns, getStagesForJob, logFunnelEvent } from '@/lib/appwrite/f
 import { applicationOfOrganisation } from '@/lib/screening-core'
 import { funnelForCandidate, serializeFunnel } from '@/lib/candidate-funnel'
 import { resolveStatus } from '@/lib/funnel-stage-utils'
+import { getJobById } from '@/lib/appwrite/jobs'
+import { recruiterCanOpenJob } from '@/lib/job-ownership'
+import { isJobClientsConfigured, saveJobClient } from '@/lib/appwrite/job-clients'
 import {
-  CLIENT_LIMITS, newSubmission, parseClientSubmission, retainedFunnel, serializeClientSubmission, withResponse, type ClientSubmission,
+  CLIENT_LIMITS, jobClientSchema, newSubmission, parseClientSubmission, retainedFunnel, serializeClientSubmission, withResponse,
+  type ClientSubmission, type JobClient,
 } from '@/lib/client-response'
 import { requireRecruiter } from '../actions'
 
@@ -38,7 +42,7 @@ async function applicationOfJob(applicationId: string, jobId: string, tenantId: 
 
 const SendInput = z.object({ jobId: id, applicationIds: z.array(id).min(1).max(CLIENT_LIMITS.batch) })
 
-/** « Envoyer une sélection au client » : note l'envoi de chaque candidature, avec les étapes de sa synthèse. */
+/** « Envoyer une sélection au client » : note l'envoi de chaque candidature (sauf refusée), avec les étapes de sa fiche. */
 export async function sendToClientAction(input: unknown): Promise<{ sent: string[]; refused: string[] } | { error: string }> {
   const parsed = SendInput.safeParse(input)
   if (!parsed.success) return { error: 'Sélection invalide.' }
@@ -58,7 +62,7 @@ export async function sendToClientAction(input: unknown): Promise<{ sent: string
         if (!application) { refused.push('candidature introuvable'); continue }
         const status = resolveStatus(stages, application.status as string)
         const steps = funnelForCandidate(application.funnelJson, status).steps
-        const next = newSubmission(steps, parseClientSubmission(application.clientJson), who, new Date())
+        const next = newSubmission(steps, status, parseClientSubmission(application.clientJson), who, new Date())
         if ('error' in next) { refused.push(next.error); continue }
         await databases.updateDocument(DB_ID, COLLECTIONS.APPLICATIONS, applicationId, { clientJson: serializeClientSubmission(next.submission) })
         sent.push(applicationId)
@@ -135,5 +139,29 @@ export async function recordClientResponseAction(input: unknown): Promise<{ subm
     }
     console.error('[réponse client] réponse non enregistrée', applicationId, err instanceof Error ? err.message : err)
     return { error: 'La réponse n’a pas pu être enregistrée. Réessayez.' }
+  }
+}
+
+const ClientInput = z.object({ jobId: id, client: jobClientSchema })
+
+/** Client de l'offre (société, contact, e-mail) pour l'organisation du recruteur ; tout vide : le retire. */
+export async function saveJobClientAction(input: unknown): Promise<{ client: JobClient } | { error: string }> {
+  const parsed = ClientInput.safeParse(input)
+  if (!parsed.success) {
+    const emailInvalid = parsed.error.issues.some(i => i.path.includes('email'))
+    return { error: emailInvalid ? 'Adresse e-mail du client invalide.' : 'Client invalide : société 200 caractères et contact 120 au plus.' }
+  }
+  const { jobId, client } = parsed.data
+  try {
+    const user = await requireRecruiter()
+    const job = await getJobById(jobId)
+    if (!job || !recruiterCanOpenJob(job.tenantId, user.tenantId!)) return { error: 'Offre introuvable.' }
+    if (!isJobClientsConfigured()) return { error: 'Le client de l’offre n’est pas encore activé : la base doit être mise à jour (collection job_clients). Contactez le support.' }
+    await saveJobClient(user.tenantId!, jobId, client)
+    revalidatePath(`/recruiter/pipeline/${jobId}/client`)
+    return { client }
+  } catch (err) {
+    console.error('[réponse client] client de l\'offre non enregistré', jobId, err instanceof Error ? err.message : err)
+    return { error: 'Le client n’a pas pu être enregistré. Réessayez.' }
   }
 }

@@ -25,7 +25,7 @@ const PHONE = /(?<![\w+])(?:(?:\+|00)[1-9]\d{0,2}[\s.()-]*(?:\(0\)[\s.-]*)?\d(?:
 const EMAIL = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g
 // Adresse web, ou profil / prise de contact sur un site connu écrit sans « https:// ». Pas de domaine nu en général :
 // « ASP.NET » ou « Node.js » ne sont pas des liens.
-const LINK = /(?:https?:\/\/|www\.)[^\s"'<>]+|\b(?:linkedin\.com|github\.com|gitlab\.com|malt\.(?:fr|com)|calendly\.com|wa\.me|t\.me|behance\.net|dribbble\.com|medium\.com|about\.me|twitter\.com|x\.com|stackoverflow\.com|kaggle\.com)\/[^\s"'<>]*/gi
+export const LINK = /(?:https?:\/\/|www\.)[^\s"'<>]+|\b(?:linkedin\.com|github\.com|gitlab\.com|malt\.(?:fr|com)|calendly\.com|wa\.me|t\.me|behance\.net|dribbble\.com|medium\.com|about\.me|twitter\.com|x\.com|stackoverflow\.com|kaggle\.com)\/[^\s"'<>]*/gi
 // Suite de chiffres d'un numéro, quel que soit le découpage (espaces, points, barres obliques, parenthèses).
 const DIGIT_RUN = /\+?\d[\d\s./()-]{6,}\d/g
 

@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { revalidatePath } from 'next/cache'
 import { requireAdmin } from '@/lib/appwrite/auth'
+import { deleteJobClients } from '@/lib/appwrite/job-clients'
 import { createAdminJob } from '@/lib/admin-job'
 
 export async function updateJob(
@@ -39,6 +40,7 @@ export async function deleteJob(id: string): Promise<{ ok?: boolean; error?: str
   try {
     const { databases } = createAdminClient()
     await databases.deleteDocument(DB_ID, COLLECTIONS.JOBS, id)
+    await deleteJobClients(id) // contacts des clients de l'offre effacés avec elle (ne lève jamais)
     revalidatePath('/admin/jobs')
     revalidatePath('/recruiter/dashboard')
     revalidatePath('/jobs')

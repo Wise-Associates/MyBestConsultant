@@ -2,9 +2,10 @@ import { z } from 'zod'
 import { alignToColumn, FUNNEL_LIMITS, hasReport, stepColumn, type FunnelStep } from './candidate-funnel'
 import type { FunnelStage } from '@/types'
 
-// Réponse client d'une offre (demande du 2026-11-17) : le recruteur envoie au client une sélection de candidats, avec la
-// synthèse des comptes rendus des étapes validées de leur funnel. MBC n'envoie rien lui-même (choix du 2026-11-17) : il
-// note l'envoi et donne la synthèse à imprimer (PDF), que le recruteur transmet ; puis il enregistre la réponse du client.
+// Réponse client d'une offre (demande du 2026-11-17) : le recruteur envoie au client une sélection de candidats du funnel,
+// chacun avec sa fiche (profil anonymisé, parcours, adéquation au poste, comptes rendus des étapes validées : client-sheet.ts).
+// MBC n'envoie rien lui-même (choix du 2026-11-17) : il note l'envoi et donne les fiches à imprimer (PDF), que le recruteur
+// transmet ; puis il enregistre la réponse du client.
 // « Retenu » fait passer le candidat dans « Embauchés ». Stocké dans `applications.clientJson`. Règles pures, testées dans
 // client-response.test.ts.
 
@@ -16,6 +17,8 @@ export type ClientAnswer = Exclude<ClientResponse, 'pending'>
 export const CLIENT_RESPONSE_LABEL: Record<ClientResponse, string> = {
   pending: 'En attente', interview: 'Entretien demandé', rejected: 'Refusé', retained: 'Retenu',
 }
+/** Colonne « Refusé » : ses candidats ne sont pas proposés au client. */
+export const REJECTED_COLUMN = 'rejected'
 /** Commentaire du client ; candidats envoyés en une fois. */
 export const CLIENT_LIMITS = { comment: 500, batch: 50 } as const
 
@@ -30,6 +33,35 @@ const submissionSchema = z.object({
   respondedBy: z.string().max(100).optional(),
 })
 export type ClientSubmission = z.infer<typeof submissionSchema>
+
+/**
+ * Client d'une offre (demande du 2026-11-17) : société, contact et e-mail, renseignés une fois dans « Réponse client ».
+ * MBC n'écrit pas au client : « Écrire au client » ouvre la messagerie du recruteur, adresse, objet et texte préremplis
+ * (`clientMailto`). Stocké dans la collection `job_clients` (src/lib/appwrite/job-clients.ts).
+ */
+export const jobClientSchema = z.object({
+  company: z.string().trim().max(200),
+  contactName: z.string().trim().max(120),
+  email: z.union([z.literal(''), z.string().trim().toLowerCase().email().max(254)]),
+})
+export type JobClient = z.infer<typeof jobClientSchema>
+export const isEmptyClient = (c: JobClient) => !c.company && !c.contactName && !c.email
+
+/** Lien « Écrire au client » : null sans e-mail. `count` : candidats proposés dans ce message (0 : message général). */
+export function clientMailto(client: JobClient, jobTitle: string, count: number): string | null {
+  if (!client.email) return null
+  const subject = count > 0 ? `Candidats proposés : ${jobTitle}` : jobTitle
+  const body = [
+    `Bonjour${client.contactName ? ` ${client.contactName}` : ''},`,
+    '',
+    count > 0
+      ? `Vous trouverez ci-joint ${count > 1 ? `les fiches des ${count} candidats` : 'la fiche du candidat'} que nous vous proposons pour le poste « ${jobTitle} ».`
+      : `Je reviens vers vous au sujet du poste « ${jobTitle} ».`,
+    '',
+    'Cordialement,',
+  ].join('\n')
+  return `mailto:${encodeURIComponent(client.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+}
 
 /** Envoi enregistré d'une candidature ; null si elle n'a pas été envoyée (ou si la valeur est illisible). */
 export function parseClientSubmission(raw: unknown): ClientSubmission | null {
@@ -55,15 +87,15 @@ export const sentSteps = (steps: FunnelStep[], submission: ClientSubmission) =>
   synthesisSteps(steps).filter(s => submission.stepIds.includes(s.id))
 
 /**
- * Envoi d'une candidature au client : refusé si elle l'a déjà été, ou si aucune étape de son funnel n'est validée avec un
- * compte rendu (choix du 2026-11-17 : la synthèse n'est jamais vide).
+ * Envoi d'une candidature au client : tout candidat du funnel de l'offre, sauf un candidat refusé (choix du 2026-11-17 ; le
+ * compte rendu n'est plus exigé : la fiche présente aussi le profil et l'adéquation au poste). Refusé s'il a déjà été envoyé.
+ * Les étapes validées avec un compte rendu sont notées : elles forment la partie « comptes rendus » de la fiche.
  */
-export function newSubmission(steps: FunnelStep[], existing: ClientSubmission | null, who: string, now: Date):
+export function newSubmission(steps: FunnelStep[], column: string, existing: ClientSubmission | null, who: string, now: Date):
   { submission: ClientSubmission } | { error: string } {
   if (existing) return { error: 'déjà envoyé au client' }
-  const sent = synthesisSteps(steps)
-  if (sent.length === 0) return { error: 'aucune étape validée avec un compte rendu' }
-  return { submission: { sentAt: now.toISOString(), sentBy: who.slice(0, 100), stepIds: sent.map(s => s.id), response: 'pending' } }
+  if (column === REJECTED_COLUMN) return { error: 'candidat refusé' }
+  return { submission: { sentAt: now.toISOString(), sentBy: who.slice(0, 100), stepIds: synthesisSteps(steps).map(s => s.id), response: 'pending' } }
 }
 
 /** Réponse du client et son commentaire (facultatif), enregistrés sur l'envoi. */
