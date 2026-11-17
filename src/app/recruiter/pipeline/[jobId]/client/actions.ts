@@ -9,7 +9,8 @@ import { applicationOfOrganisation } from '@/lib/screening-core'
 import { funnelForCandidate, serializeFunnel } from '@/lib/candidate-funnel'
 import { resolveStatus } from '@/lib/funnel-stage-utils'
 import { getJobById } from '@/lib/appwrite/jobs'
-import { recruiterCanOpenJob } from '@/lib/job-ownership'
+import { viewerCanOpenJob, type OfferViewer } from '@/lib/job-ownership'
+import { loadOfferViewer } from '@/lib/offer-viewer'
 import { isJobClientsConfigured, saveJobClient } from '@/lib/appwrite/job-clients'
 import {
   CLIENT_LIMITS, jobClientSchema, newSubmission, parseClientSubmission, retainedFunnel, serializeClientSubmission, withResponse,
@@ -30,13 +31,14 @@ function isMissingAttribute(err: unknown): boolean {
 }
 
 /**
- * Candidature de l'offre `jobId` que le recruteur voit (recruiterCanSeeApplication) ; null sinon. Une candidature directe
+ * Candidature de l'offre `jobId` que le recruteur voit (viewerCanSeeApplication : un membre, sur ses offres seulement) ; null sinon. Une candidature directe
  * à une offre partagée (tenantId '' des deux côtés) est vue de toutes les organisations : son unique `clientJson` serait
  * commun, elle est donc écartée.
  */
-async function applicationOfJob(applicationId: string, jobId: string, tenantId: string) {
-  const owned = await applicationOfOrganisation(applicationId, tenantId)
+async function applicationOfJob(applicationId: string, jobId: string, viewer: OfferViewer) {
+  const owned = await applicationOfOrganisation(applicationId, viewer)
   if (!owned || owned.application.jobId !== jobId) return null
+  const { tenantId } = viewer
   return owned.application.tenantId === tenantId || owned.job.tenantId === tenantId ? owned.application : null
 }
 
@@ -51,14 +53,14 @@ export async function sendToClientAction(input: unknown): Promise<{ sent: string
     const user = await requireRecruiter()
     const tenantId = user.tenantId!
     const who = `${user.firstName} ${user.lastName}`.trim()
-    const { stages } = await getStagesForJob(tenantId, jobId)
+    const [{ stages }, viewer] = await Promise.all([getStagesForJob(tenantId, jobId), loadOfferViewer(user)])
     const { databases } = createAdminClient()
     const sent: string[] = []
     const refused: string[] = []
     // Une candidature après l'autre : un échec n'annule pas les envois déjà notés, il est rapporté avec eux.
     for (const applicationId of [...new Set(applicationIds)]) {
       try {
-        const application = await applicationOfJob(applicationId, jobId, tenantId)
+        const application = await applicationOfJob(applicationId, jobId, viewer)
         if (!application) { refused.push('candidature introuvable'); continue }
         const status = resolveStatus(stages, application.status as string)
         const steps = funnelForCandidate(application.funnelJson, status).steps
@@ -105,7 +107,7 @@ export async function recordClientResponseAction(input: unknown): Promise<{ subm
     const user = await requireRecruiter()
     const tenantId = user.tenantId!
     const who = `${user.firstName} ${user.lastName}`.trim()
-    const application = await applicationOfJob(applicationId, jobId, tenantId)
+    const application = await applicationOfJob(applicationId, jobId, await loadOfferViewer(user))
     if (!application) return { error: 'Candidature introuvable.' }
     const existing = parseClientSubmission(application.clientJson)
     if (!existing) return { error: 'Ce candidat n’a pas été envoyé au client.' }
@@ -155,7 +157,7 @@ export async function saveJobClientAction(input: unknown): Promise<{ client: Job
   try {
     const user = await requireRecruiter()
     const job = await getJobById(jobId)
-    if (!job || !recruiterCanOpenJob(job.tenantId, user.tenantId!)) return { error: 'Offre introuvable.' }
+    if (!job || !viewerCanOpenJob(job, await loadOfferViewer(user))) return { error: 'Offre introuvable.' }
     if (!isJobClientsConfigured()) return { error: 'Le client de l’offre n’est pas encore activé : la base doit être mise à jour (collection job_clients). Contactez le support.' }
     await saveJobClient(user.tenantId!, jobId, client)
     revalidatePath(`/recruiter/pipeline/${jobId}/client`)

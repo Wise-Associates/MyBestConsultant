@@ -5,6 +5,8 @@ import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
 import { ID, Query } from 'node-appwrite'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { getOpenJobsOfTenant } from '@/lib/appwrite/jobs'
+import { viewerCanOpenJob } from '@/lib/job-ownership'
+import { loadOfferViewer } from '@/lib/offer-viewer'
 import { assertVivierOfferMatchesReady, deleteVivierOfferMatchesOf, syncVivierOfferMatches } from '@/lib/appwrite/vivier-offer-matches'
 import { releaseDailySlot, takeDailySlotId } from '@/lib/ao/state'
 import { revalidatePath } from 'next/cache'
@@ -102,7 +104,10 @@ async function requireVivierAccess(jobId: string | null) {
   if (jobId !== null) {
     const { databases } = createAdminClient()
     const job = await databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId).catch(err => { if (isNotFound(err)) return null; throw err })
-    if (!job || job.tenantId !== user.tenantId) throw new Refusal('Offre introuvable')
+    // Un recruteur membre : ses offres seulement (ADR 0043).
+    if (!job || job.tenantId !== user.tenantId || (user.role === 'recruiter' && !viewerCanOpenJob({ tenantId: job.tenantId, recruiterId: job.recruiterId }, await loadOfferViewer(user)))) {
+      throw new Refusal('Offre introuvable')
+    }
   }
   return { user, tenantId: user.tenantId }
 }

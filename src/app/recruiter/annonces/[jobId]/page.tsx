@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { BackLink } from '@/components/recruiter/back-link'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { getJobById } from '@/lib/appwrite/jobs'
+import { viewerCanOpenJob } from '@/lib/job-ownership'
+import { loadOfferViewer } from '@/lib/offer-viewer'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
@@ -33,7 +35,8 @@ export default async function JobReportPage({ params }: { params: Promise<{ jobI
   if (!user || user.role !== 'recruiter' || !user.tenantId) redirect('/login')
 
   const job = await getJobById(jobId)
-  if (!job || job.tenantId !== user.tenantId) notFound()
+  // Offre de l'organisation ; un membre, les siennes seulement (ADR 0043).
+  if (!job || job.tenantId !== user.tenantId || !viewerCanOpenJob(job, await loadOfferViewer(user))) notFound()
 
   const { apps: allApps, stages: rawStages, names, matches, viviers } = await loadTenantOverview(user.tenantId)
   const stageLites = rawStages.map(s => ({ slug: s.slug, label: s.label, color: s.color, order: s.order, autoAction: s.autoAction ?? null }))

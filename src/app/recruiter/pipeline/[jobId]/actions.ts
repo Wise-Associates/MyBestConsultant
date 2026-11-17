@@ -14,6 +14,8 @@ import { sanitizeStageInputs } from '@/lib/funnel-config'
 import { screenAllApplications, sendInterviewInvitationEmail } from '@/app/recruiter/screening/actions'
 import { getInterviewPrefillData, generateInterviewQuestions, createInterviewSession, type InterviewQuestion } from '@/app/recruiter/interviews/actions'
 import { applicationOfOrganisation } from '@/lib/screening-core'
+import { loadOfferViewer } from '@/lib/offer-viewer'
+import { viewerCanOpenJob } from '@/lib/job-ownership'
 import type { FunnelStage, FunnelEvent } from '@/types'
 import { revalidatePath } from 'next/cache'
 import { ScaleWeightsSchemas } from '@/lib/scoring-weights'
@@ -26,15 +28,33 @@ export async function requireRecruiter() {
 }
 
 /**
- * Candidature que le recruteur voit (recruiterCanSeeApplication : offre de son organisation, ou offre partagée et
- * candidature à lui ou directe) et qui est bien de l'offre `jobId`. Revue de sécurité du 2026-11-13 : avant, déplacer,
+ * Candidature que le recruteur voit (viewerCanSeeApplication : offre de son organisation qu'il ouvre — un membre, les
+ * siennes seulement, ADR 0043 —, ou offre partagée et candidature à lui ou directe) et qui est bien de l'offre `jobId`. Revue de sécurité du 2026-11-13 : avant, déplacer,
  * annoter ou supprimer une candidature ne vérifiait que le rôle de recruteur.
  */
-async function visibleApplication(applicationId: unknown, jobId: unknown, tenantId: string) {
-  const owned = await applicationOfOrganisation(applicationId, tenantId)
+async function visibleApplication(applicationId: unknown, jobId: unknown, user: Awaited<ReturnType<typeof requireRecruiter>>) {
+  const owned = await applicationOfOrganisation(applicationId, await loadOfferViewer(user))
   if (!owned || owned.application.jobId !== jobId) throw new Error('Non autorisé')
   return owned
 }
+
+/**
+ * Entretien de l'organisation du recruteur ; lié à une candidature, celle-ci doit être d'une offre qu'il ouvre (ADR 0043 :
+ * un membre, les siennes seulement).
+ */
+async function sessionVisible(session: Record<string, unknown>, user: Awaited<ReturnType<typeof requireRecruiter>>): Promise<boolean> {
+  if (session.tenantId !== user.tenantId) return false
+  const applicationId = typeof session.applicationId === 'string' ? session.applicationId : ''
+  return !applicationId || !!(await applicationOfOrganisation(applicationId, await loadOfferViewer(user)))
+}
+
+/**
+ * Candidature écrite par l'organisation seule : la sienne, ou sur une offre de l'organisation. Une candidature directe à
+ * une offre partagée par la plateforme (tenantId '' des deux côtés) est vue de toutes les organisations : son funnel, son
+ * statut de phase et son historique seraient communs, elle n'est donc pas modifiable ici (comme la réponse client).
+ */
+const ownedByOrganisation = (owned: { application: Record<string, unknown>; job: Record<string, unknown> }, user: { tenantId?: string }) =>
+  owned.application.tenantId === user.tenantId || owned.job.tenantId === user.tenantId
 
 // Le candidat vient de changer de colonne : son statut de phase est remis à zéro et son funnel suit (les étapes qui précèdent sont « passées »).
 async function syncFunnelToColumn(applicationId: string, columnSlug: string): Promise<void> {
@@ -55,7 +75,7 @@ export async function moveApplicationStage(
 ): Promise<{ error?: string }> {
   try {
     const user = await requireRecruiter()
-    const { application } = await visibleApplication(applicationId, jobId, user.tenantId!)
+    const { application } = await visibleApplication(applicationId, jobId, user)
     const refusal = await funnelMoveRefusal(application, user.tenantId!, jobId, stageSlug)
     if (refusal) return { error: refusal }
     await updateApplicationStatus(applicationId, stageSlug)
@@ -74,10 +94,9 @@ export async function moveApplicationStage(
 export async function logWhatsAppContactAction(applicationId: string): Promise<{ error?: string }> {
   try {
     const user = await requireRecruiter()
-    const { databases } = createAdminClient()
-    const app = await databases.getDocument(DB_ID, COLLECTIONS.APPLICATIONS, applicationId)
-    if (app.tenantId !== user.tenantId) return { error: 'Non autorisé' }
-    await logFunnelEvent(applicationId, (app.status as string) || 'pending', 'contact', 'WhatsApp', `${user.firstName} ${user.lastName}`)
+    const owned = await applicationOfOrganisation(applicationId, await loadOfferViewer(user))
+    if (!owned || !ownedByOrganisation(owned, user)) return { error: 'Non autorisé' }
+    await logFunnelEvent(applicationId, (owned.application.status as string) || 'pending', 'contact', 'WhatsApp', `${user.firstName} ${user.lastName}`)
     return {}
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur' }
@@ -91,7 +110,7 @@ export async function saveFunnelStagesAction(
   try {
     const user = await requireRecruiter()
     const job = await getJobById(jobId)
-    if (!job || (job.tenantId !== user.tenantId && job.tenantId !== '')) return { error: 'Offre introuvable.' }
+    if (!job || !viewerCanOpenJob(job, await loadOfferViewer(user))) return { error: 'Offre introuvable.' }
 
     // Le pipeline concerné est celui de l'offre (pipeline par défaut si aucun pipeline personnalisé ne lui est affecté).
     const current = await getStagesForJob(user.tenantId!, jobId)
@@ -113,8 +132,9 @@ export async function setApplicationStageStatusAction(applicationId: string, job
   try {
     const user = await requireRecruiter()
     const { databases } = createAdminClient()
-    const app = await databases.getDocument(DB_ID, COLLECTIONS.APPLICATIONS, applicationId)
-    if (app.tenantId !== user.tenantId) return { error: 'Non autorisé' }
+    const owned = await applicationOfOrganisation(applicationId, await loadOfferViewer(user))
+    if (!owned || !ownedByOrganisation(owned, user)) return { error: 'Non autorisé' }
+    const app = owned.application
     const { stages } = await getStagesForJob(user.tenantId!, app.jobId as string)
     const stage = stages.find(s => s.slug === app.status)
     const value = status.trim()
@@ -135,7 +155,7 @@ export async function updateApplicationCardAction(
 ): Promise<{ error?: string }> {
   try {
     const user = await requireRecruiter()
-    await visibleApplication(applicationId, jobId, user.tenantId!)
+    await visibleApplication(applicationId, jobId, user)
     await updateApplicationCard(applicationId, { tags: data.tags, note: data.note || undefined })
     revalidatePath(`/recruiter/pipeline/${jobId}`)
     return {}
@@ -147,7 +167,7 @@ export async function updateApplicationCardAction(
 export async function deleteApplicationAction(applicationId: string, jobId: string): Promise<{ error?: string }> {
   try {
     const user = await requireRecruiter()
-    await visibleApplication(applicationId, jobId, user.tenantId!)
+    await visibleApplication(applicationId, jobId, user)
     await deleteApplication(applicationId)
     revalidatePath(`/recruiter/pipeline/${jobId}`)
     revalidatePath('/recruiter/dashboard')
@@ -164,7 +184,7 @@ export async function launchScreeningAction(applicationId: string, jobId: string
   try {
     const user = await requireRecruiter()
     // Candidature que le recruteur voit, de cette offre (avant : seul le rôle était vérifié).
-    const { application } = await visibleApplication(applicationId, jobId, user.tenantId!)
+    const { application } = await visibleApplication(applicationId, jobId, user)
     // Phase de destination : celle demandée, sinon la phase « screening » de CE pipeline. Sans phase de ce type, la candidature ne bouge pas
     // (avant, le statut « screening » était écrit en dur : sur un funnel personnalisé la carte n'avait plus de colonne et disparaissait).
     const { stages } = await getStagesForJob(user.tenantId!, jobId)
@@ -225,7 +245,7 @@ export async function cancelInterviewAction(sessionId: string): Promise<void> {
     const { databases } = createAdminClient()
     // Entretien de l'organisation du recruteur seulement (avant : n'importe quel entretien pouvait être supprimé).
     const session = await databases.getDocument(DB_ID, COLLECTIONS.INTERVIEWS, sessionId)
-    if (session.tenantId !== user.tenantId) return
+    if (!(await sessionVisible(session, user))) return
     await databases.deleteDocument(DB_ID, COLLECTIONS.INTERVIEWS, sessionId)
   } catch (err) {
     // Nettoyage : une session préparée qui reste s'affiche comme un entretien en attente, sans autre effet.
@@ -261,7 +281,7 @@ export async function sendInterviewInviteAction(params: {
     const session = await databases.getDocument(DB_ID, COLLECTIONS.INTERVIEWS, params.sessionId)
     if (session.tenantId !== user.tenantId || session.applicationId !== params.applicationId) return { error: 'Non autorisé' }
     // L'envoi fait passer la carte dans la colonne de l'entretien : même règle du compte rendu qu'un déplacement.
-    const { application } = await visibleApplication(params.applicationId, params.jobId, user.tenantId!)
+    const { application } = await visibleApplication(params.applicationId, params.jobId, user)
     const refusal = await funnelMoveRefusal(application, user.tenantId!, params.jobId, params.targetStage)
     if (refusal) return { error: refusal }
     await databases.updateDocument(DB_ID, COLLECTIONS.INTERVIEWS, params.sessionId, {
@@ -290,7 +310,7 @@ export async function renameInterviewAction(sessionId: string, title: string): P
     const user = await requireRecruiter()
     const { databases } = createAdminClient()
     const doc = await databases.getDocument(DB_ID, COLLECTIONS.INTERVIEWS, sessionId)
-    if (doc.tenantId !== user.tenantId) return { error: 'Non autorisé' }
+    if (!(await sessionVisible(doc, user))) return { error: 'Non autorisé' }
     await databases.updateDocument(DB_ID, COLLECTIONS.INTERVIEWS, sessionId, { title: title.trim().slice(0, 120) || null })
     return {}
   } catch (e) {
@@ -302,7 +322,7 @@ export async function getEventsAction(applicationId: string): Promise<FunnelEven
   try {
     const user = await requireRecruiter()
     // Historique d'une candidature que le recruteur voit seulement (avant : celui de n'importe quelle candidature).
-    if (!(await applicationOfOrganisation(applicationId, user.tenantId!))) return []
+    if (!(await applicationOfOrganisation(applicationId, await loadOfferViewer(user)))) return []
     return await getFunnelEvents(applicationId)
   } catch (err) {
     console.error('[pipeline] historique de la candidature illisible', err instanceof Error ? err.message : String(err))
@@ -314,10 +334,9 @@ export async function getEventsAction(applicationId: string): Promise<FunnelEven
 
 async function ownApplication(applicationId: string, jobId: string) {
   const user = await requireRecruiter()
-  const { databases } = createAdminClient()
-  const app = await databases.getDocument(DB_ID, COLLECTIONS.APPLICATIONS, applicationId)
-  if (app.tenantId !== user.tenantId || app.jobId !== jobId) throw new Error('Non autorisé')
-  return { user, app, databases }
+  const owned = await visibleApplication(applicationId, jobId, user)
+  if (!ownedByOrganisation(owned, user)) throw new Error('Non autorisé')
+  return { user, app: owned.application, databases: createAdminClient().databases }
 }
 
 export type FunnelResult = { funnel?: FunnelStep[]; stages?: FunnelStage[]; next?: { id: string; label: string; column: string; autoAction?: string } | null; error?: string }

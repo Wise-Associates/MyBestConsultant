@@ -6,7 +6,7 @@ import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { notificationUserId } from '@/lib/candidate-identity'
 import { wrapEmailHtml } from '@/lib/email-template'
 import { aiInterviewDenial } from '@/lib/interview-access'
-import { recruiterCanSeeApplication } from '@/lib/job-ownership'
+import { viewerCanSeeApplication, type OfferViewer } from '@/lib/job-ownership'
 import { recommendationFor, type Judgement } from '@/lib/match-scoring'
 import { withRecommendationBonus } from '@/lib/recommendation-boost'
 import { cvScorer, finalOfferDetails, readCvForScoring } from '@/lib/sourcing-core'
@@ -20,20 +20,18 @@ const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
 const isNotFound = (err: unknown) => (err as { code?: number } | null)?.code === 404
 
 /**
- * Candidature `applicationId` et son offre, si un recruteur de l'organisation `tenantId` peut la voir
- * (recruiterCanSeeApplication : offre de son organisation, ou offre partagée et candidature à lui ou directe) ; null
- * sinon, ou si l'une est introuvable. Avant le 2026-11-13, les actions du screening, des entretiens et du pipeline
- * agissaient sur n'importe quelle candidature.
+ * Candidature `applicationId` et son offre, si ce recruteur peut la voir (viewerCanSeeApplication : offre de son
+ * organisation qu'il ouvre — toutes pour le propriétaire et les administrateurs, les siennes pour un membre, ADR 0043 —, ou
+ * offre partagée et candidature à lui ou directe) ; null sinon, ou si l'une est introuvable. Avant le 2026-11-13, les
+ * actions du screening, des entretiens et du pipeline agissaient sur n'importe quelle candidature.
  */
-export async function applicationOfOrganisation(applicationId: unknown, tenantId: string): Promise<{ application: Models.Document; job: Models.Document } | null> {
+export async function applicationOfOrganisation(applicationId: unknown, viewer: OfferViewer): Promise<{ application: Models.Document; job: Models.Document } | null> {
   if (typeof applicationId !== 'string' || !/^[\w-]{1,36}$/.test(applicationId)) return null
   const { databases } = createAdminClient()
   try {
     const application = await databases.getDocument(DB_ID, COLLECTIONS.APPLICATIONS, applicationId)
     const job = await databases.getDocument(DB_ID, COLLECTIONS.JOBS, application.jobId as string)
-    const jobTenantId = typeof job.tenantId === 'string' ? job.tenantId : ''
-    const applicationTenantId = typeof application.tenantId === 'string' ? application.tenantId : ''
-    return recruiterCanSeeApplication(jobTenantId, applicationTenantId, tenantId) ? { application, job } : null
+    return viewerCanSeeApplication({ tenantId: job.tenantId, recruiterId: job.recruiterId }, application.tenantId, viewer) ? { application, job } : null
   } catch (err) {
     if (isNotFound(err)) return null
     throw err

@@ -9,6 +9,8 @@ import { wrapEmailHtml } from '@/lib/email-template'
 import { docToEmail, type PipelineEmail } from '@/lib/appwrite/application-emails'
 import { revalidatePath } from 'next/cache'
 import { requireRecruiter } from './actions'
+import { applicationOfOrganisation } from '@/lib/screening-core'
+import { loadOfferViewer } from '@/lib/offer-viewer'
 
 function escapeHtml(s: string) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -28,8 +30,10 @@ export async function sendCandidateEmailAction(params: {
     if (!subject || !message) return { error: 'Objet et message requis' }
 
     const { databases, messaging } = createAdminClient()
-    const app = await databases.getDocument(DB_ID, COLLECTIONS.APPLICATIONS, params.applicationId)
-    if (app.tenantId !== user.tenantId) return { error: 'Non autorisé' }
+    // Candidature d'une offre que le recruteur ouvre : un membre, ses offres seulement (ADR 0043).
+    const owned = await applicationOfOrganisation(params.applicationId, await loadOfferViewer(user))
+    if (!owned || owned.application.tenantId !== user.tenantId) return { error: 'Non autorisé' }
+    const app = owned.application
     const candidate = await databases.getDocument(DB_ID, COLLECTIONS.USERS, app.candidateId as string)
     const authId = notificationUserId(candidate as unknown as Record<string, unknown>) ?? undefined // chasseur si profil de vivier
     if (!authId) return { error: 'Candidat introuvable' }
@@ -71,7 +75,7 @@ export async function setEmailRepliedAction(emailId: string, replied: boolean): 
     const user = await requireRecruiter()
     const { databases } = createAdminClient()
     const doc = await databases.getDocument(DB_ID, COLLECTIONS.APPLICATION_EMAILS, emailId)
-    if (doc.tenantId !== user.tenantId) return { error: 'Non autorisé' }
+    if (doc.tenantId !== user.tenantId || !(await applicationOfOrganisation(doc.applicationId, await loadOfferViewer(user)))) return { error: 'Non autorisé' }
     const repliedAt = replied ? new Date().toISOString() : null
     await databases.updateDocument(DB_ID, COLLECTIONS.APPLICATION_EMAILS, emailId, { repliedAt })
     return { repliedAt: repliedAt ?? undefined }

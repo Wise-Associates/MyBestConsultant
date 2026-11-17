@@ -13,6 +13,7 @@ import { jobFacts, summarize } from '@/lib/recruiter-dashboard'
 import { formatDateFr } from '@/lib/format-date'
 import { listTenantRecruiters, recruiterOptions } from '@/lib/recruiter-assignment'
 import { parseRecruiterSelection } from '@/lib/recruiter-job-filters'
+import { loadOfferViewer } from '@/lib/offer-viewer'
 import type { CandidateApp } from './applications-panel'
 import { JobsListClient, type DashboardJobRow } from './jobs-list-client'
 import { DashboardStats } from './dashboard-stats'
@@ -66,6 +67,10 @@ export default async function RecruiterDashboard({ searchParams }: {
   if (!user) redirect('/login')
   if (!user.tenantId) redirect('/login')
   const tenantId = user.tenantId
+  // ADR 0043 : le propriétaire et les administrateurs voient toutes les offres de l'organisation (et le filtre
+  // « Recruteurs ») ; un membre seulement celles qui lui sont affectées (profil, ou compte Auth pour une valeur ancienne).
+  const viewer = await loadOfferViewer(user)
+  const memberOnly = viewer.seesAllOffers ? null : { ids: [user.$id, user.userId], unassigned: false }
 
   const { latestPostsByJob, isMakeConfigured } = await import('@/lib/social')
   // Équipe, pour le recruteur affecté à chaque offre et le filtre : illisible, les offres s'affichent sans ce choix ni
@@ -75,12 +80,14 @@ export default async function RecruiterDashboard({ searchParams }: {
     return null
   })
   // Toutes les lectures partent ensemble : seules les offres attendent l'équipe, qui valide la sélection.
-  const selectionRead = recruteurs === undefined ? Promise.resolve(null)
+  const selectionRead = recruteurs === undefined || memberOnly ? Promise.resolve(null)
     : recruitersRead.then(team => parseRecruiterSelection(recruteurs, team?.map(r => r.id) ?? []))
-  const jobsAndApplications = selectionRead.then(selection => selection
-    ? getTenantJobsOfRecruiters(tenantId, selection)
-      .then(async jobs => [jobs, await getApplicationsOfJobs(tenantId, jobs.map(job => job.$id))] as const)
-    : Promise.all([getJobsByTenant(tenantId), getApplicationsByTenant(tenantId)]))
+  const jobsAndApplications = selectionRead.then(selection => {
+    const scope = memberOnly ?? selection
+    return scope
+      ? getTenantJobsOfRecruiters(tenantId, scope).then(async jobs => [jobs, await getApplicationsOfJobs(tenantId, jobs.map(job => job.$id))] as const)
+      : Promise.all([getJobsByTenant(tenantId), getApplicationsByTenant(tenantId)])
+  })
   const [selection, [jobs, allApplications], matchCountByJob, funnelStages, socialPosts, recruiters] = await Promise.all([
     selectionRead,
     jobsAndApplications,
@@ -148,7 +155,7 @@ export default async function RecruiterDashboard({ searchParams }: {
   // Au-dessus de « Mes offres ».
   const header = (
     <>
-      {recruteurs !== undefined && recruiters === null && (
+      {recruteurs !== undefined && !memberOnly && recruiters === null && (
         <p role="status" className="px-3.5 py-2.5 rounded-xl text-[13px]" style={{ background: '#b4530914', color: '#b45309' }}>
           Le filtre « Recruteurs » n’a pas pu être appliqué (équipe illisible) : toutes les offres sont affichées. Rechargez la page dans quelques instants.
         </p>
@@ -175,7 +182,7 @@ export default async function RecruiterDashboard({ searchParams }: {
           socialEnabled={isMakeConfigured()} socialUnavailable={socialPosts === null} recruiters={recruiters && recruiterOptions(recruiters)} jobsWithNew={summary.applications.jobsWithNew}
           focusJobId={typeof offre === 'string' ? offre : undefined}
           recruiterFiltered={selection !== null} recruiterChip={selectionNames.join(', ')}
-          recruiterFilter={recruiters && (
+          recruiterFilter={recruiters && !memberOnly && (
             <Suspense fallback={null}>
               <RecruiterFilter recruiters={recruiterOptions(recruiters)} selection={selection} currentRecruiterId={user.$id} />
             </Suspense>

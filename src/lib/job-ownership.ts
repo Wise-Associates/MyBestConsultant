@@ -80,3 +80,32 @@ export function recruiterCanSeeApplication(jobTenantId: string, applicationTenan
   if (!recruiterCanOpenJob(jobTenantId, tenantId)) return false
   return jobTenantId !== '' || applicationTenantId === tenantId || applicationTenantId === ''
 }
+
+/**
+ * Qui consulte les offres (ADR 0043, demande du 2026-11-17) : son organisation, son profil et son compte Auth (pour
+ * reconnaître le recruteur affecté, écrit avec l'un ou l'autre avant l'ADR 0023), et s'il voit toutes les offres de
+ * l'organisation : le propriétaire et les administrateurs (rôles de l'ADR 0033). Un membre ne voit que les siennes.
+ */
+export interface OfferViewer { tenantId: string; profileId: string; userId: string; seesAllOffers: boolean }
+
+/** L'offre est affectée à ce recruteur (recruiterId = son profil, ou son compte Auth pour une valeur ancienne). */
+export const isAssignedTo = (recruiterId: unknown, viewer: Pick<OfferViewer, 'profileId' | 'userId'>) =>
+  typeof recruiterId === 'string' && recruiterId !== '' && (recruiterId === viewer.profileId || recruiterId === viewer.userId)
+
+/**
+ * Offre que ce recruteur ouvre (détail, Matching IA, funnel, réponse client, et leurs actions) : celles que
+ * recruiterCanOpenJob permet à son organisation ; pour un membre, seulement les offres de l'organisation qui lui sont
+ * affectées (ni les autres, ni celles de la plateforme, affectées à personne).
+ */
+export function viewerCanOpenJob(job: { tenantId: unknown; recruiterId?: unknown }, viewer: OfferViewer): boolean {
+  const jobTenantId = typeof job.tenantId === 'string' ? job.tenantId : ''
+  if (!recruiterCanOpenJob(jobTenantId, viewer.tenantId)) return false
+  return viewer.seesAllOffers || (jobTenantId === viewer.tenantId && isAssignedTo(job.recruiterId, viewer))
+}
+
+/** Candidature que ce recruteur voit : offre qu'il ouvre (viewerCanOpenJob) et candidature visible de son organisation. */
+export function viewerCanSeeApplication(job: { tenantId: unknown; recruiterId?: unknown }, applicationTenantId: unknown, viewer: OfferViewer): boolean {
+  const jobTenantId = typeof job.tenantId === 'string' ? job.tenantId : ''
+  return viewerCanOpenJob(job, viewer)
+    && recruiterCanSeeApplication(jobTenantId, typeof applicationTenantId === 'string' ? applicationTenantId : '', viewer.tenantId)
+}

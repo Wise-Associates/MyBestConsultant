@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { BackLink } from '@/components/recruiter/back-link'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { getJobById } from '@/lib/appwrite/jobs'
+import { viewerCanOpenJob } from '@/lib/job-ownership'
+import { loadOfferViewer } from '@/lib/offer-viewer'
 import { getVivierForJob } from '../actions'
 import { FolderOpen, Brain } from 'lucide-react'
 import { VivierClient } from '../vivier-client'
@@ -15,7 +17,8 @@ export default async function VivierPage({ params }: { params: Promise<{ jobId: 
   if (!user || (user.role !== 'recruiter' && user.role !== 'admin') || !user.tenantId) redirect('/login')
 
   const job = await getJobById(jobId)
-  if (!job || job.tenantId !== user.tenantId) notFound()
+  // Offre de l'organisation ; un recruteur membre, les siennes seulement (ADR 0043).
+  if (!job || job.tenantId !== user.tenantId || (user.role === 'recruiter' && !viewerCanOpenJob(job, await loadOfferViewer(user)))) notFound()
 
   const [{ cvs, error }, cvExport] = await Promise.all([getVivierForJob(jobId), recruiterCvExportAccess(user)])
 

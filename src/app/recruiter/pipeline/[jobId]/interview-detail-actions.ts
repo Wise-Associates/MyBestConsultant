@@ -3,6 +3,8 @@
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
+import { applicationOfOrganisation } from '@/lib/screening-core'
+import { loadOfferViewer } from '@/lib/offer-viewer'
 import type { InterviewDetail, AdminInterviewRow } from '@/app/admin/interviews/actions'
 
 // Recruiter-scoped mirrors of the admin interview-detail actions — same data shape (so the
@@ -15,6 +17,8 @@ async function requireOwnedInterview(id: string) {
   const { databases } = createAdminClient()
   const doc = await databases.getDocument(DB_ID, COLLECTIONS.INTERVIEWS, id)
   if (doc.tenantId !== user.tenantId) throw new Error('Non autorisé')
+  // Entretien lié à une candidature : d'une offre que le recruteur ouvre (un membre, les siennes, ADR 0043).
+  if (doc.applicationId && !(await applicationOfOrganisation(doc.applicationId, await loadOfferViewer(user)))) throw new Error('Non autorisé')
   return { databases, doc }
 }
 

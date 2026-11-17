@@ -14,6 +14,7 @@ import { aoRefusal } from '@/lib/ao/tenancy'
 import { featureDenial } from '@/lib/plans'
 import { activeJobsLimitDenial, loadTenantAccess, type TenantAccess } from '@/lib/tenant-access'
 import type { UserProfile } from '@/types'
+import { viewerCanUseAoOffer } from '@/lib/offer-viewer'
 
 // Actions du tableau des appels d'offres d'une organisation (/recruiter/parametres/boites-ao). Chacune vérifie
 // elle-même le recruteur (une Server Action est un point d'entrée public) et agit sur l'organisation de SA session,
@@ -67,6 +68,7 @@ async function sourcingSlot(user: UserProfile, tenantId: string): Promise<string
 export async function recruiterAoOfferSourcing(id: string, recompute = false) {
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
+  if (!(await viewerCanUseAoOffer(me.user, id))) return { error: 'Offre introuvable : rechargez la page.' }
   return aoOfferSourcingOf(me.tenantId, id, { recompute, beforeAi: () => sourcingSlot(me.user, me.tenantId), vivierOwner: me.user.$id })
 }
 
@@ -157,6 +159,7 @@ export async function setRecruiterAoOfferStatus(id: string, status: 'to_review' 
 export async function stopRecruiterAoPublicationTasks(id: string) {
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
+  if (!(await viewerCanUseAoOffer(me.user, id))) return { error: 'Offre introuvable : rechargez la page.' }
   return stopAoPublicationTasksOf(me.tenantId, id, me.user.userId, PATH)
 }
 
@@ -196,6 +199,7 @@ export async function assignRecruiterAoOffer(id: string, recruiterId: string) {
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
   if (typeof id !== 'string' || typeof recruiterId !== 'string' || recruiterId.length > 36) return { error: 'Affectation invalide.' }
+  if (!(await viewerCanUseAoOffer(me.user, id))) return { error: 'Offre introuvable.' }
   const name = `${me.user.firstName ?? ''} ${me.user.lastName ?? ''}`.trim() || me.user.email
   return assignAoOfferOf(me.tenantId, id, recruiterId, [PATH, `${PATH}/${id}`, '/recruiter/dashboard'],
     { id: me.user.$id, userId: me.user.userId, name, offerPath: `${PATH}/${encodeURIComponent(id)}` })
