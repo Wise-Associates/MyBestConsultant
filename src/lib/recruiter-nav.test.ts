@@ -35,6 +35,7 @@ describe('menu latéral de l\'espace recruteur', () => {
 
   it('range les pages sans rubrique propre sous la rubrique d\'où elles partent', () => {
     assert.equal(recruiterSectionOf('/recruiter/pipeline/job42'), 'dashboard')
+    assert.equal(recruiterSectionOf('/recruiter/offres/job42'), 'dashboard')
     assert.equal(recruiterSectionOf('/recruiter/candidates/app7'), 'dashboard')
     assert.equal(recruiterSectionOf('/recruiter/annonces'), 'dashboard')
     assert.equal(recruiterSectionOf('/recruiter/screening/best'), 'interviews')

@@ -16,7 +16,7 @@ import { generateStepReportAction, saveCandidateFunnelAction, saveStepProgressAc
 import type { PipelineCandidate } from './pipeline-client'
 
 const ICON: Record<StepType, React.ElementType> = { screening: Brain, ai_interview: Bot, phone: Phone, video: Video, onsite: Users, other: ClipboardList, hired: BadgeCheck }
-const STATUS_LABEL: Record<StepStatus, string> = { todo: 'À faire', scheduled: 'Planifié', done: 'Réalisé', validated: 'Validé', skipped: 'Passée' }
+const STATUS_LABEL: Record<StepStatus, string> = { todo: 'À faire', scheduled: 'Planifiée', done: 'Réalisée', validated: 'Validée', skipped: 'Passée' }
 const RESULT: Record<StepResult, { label: string; color: string; Icon: React.ElementType }> = {
   positive: { label: 'Favorable', color: '#10b981', Icon: ThumbsUp },
   neutral: { label: 'Réservé', color: '#f59e0b', Icon: Scale },
@@ -237,27 +237,31 @@ export function FunnelModal({ jobId, candidate, stages, pipelineName, onClose, o
                               </div>
                               <div>
                                 <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                                  <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--color-text-muted)' }}>Compte rendu</p>
+                                  <label htmlFor={`report-${s.id}`} className="text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--color-text-muted)' }}>
+                                    Compte rendu · pourquoi le candidat avance <span aria-hidden style={{ color: '#dc2626' }}>*</span>
+                                  </label>
                                   <button type="button" onClick={generate} disabled={generating} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-60 transition-opacity hover:opacity-90" style={{ background: 'linear-gradient(135deg, #7c3aed, #6366f1)', color: 'white' }}>
                                     {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}{generating ? 'Rédaction…' : 'Générer avec l’IA'}
                                   </button>
                                 </div>
-                                <textarea value={form.report} onChange={e => setForm(f => ({ ...f, report: e.target.value, reportBy: 'manual' }))} rows={5} maxLength={FUNNEL_LIMITS.report}
+                                <textarea id={`report-${s.id}`} required aria-describedby={`report-help-${s.id}`}
+                                  value={form.report} onChange={e => setForm(f => ({ ...f, report: e.target.value, reportBy: 'manual' }))} rows={5} maxLength={FUNNEL_LIMITS.report}
                                   placeholder="Synthèse de l’échange, points forts, points de vigilance… (ou laissez l’IA le rédiger à partir de ce que l’on sait du candidat)"
                                   className="w-full rounded-xl px-3.5 py-2.5 text-sm leading-relaxed outline-none resize-y" style={input} />
-                                <div className="flex items-center justify-between text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                                  <span>{form.reportBy === 'ai' && form.report ? '✨ Rédigé par l’IA — à relire avant validation' : ''}</span><span>{form.report.length}/{FUNNEL_LIMITS.report}</span>
+                                <div id={`report-help-${s.id}`} className="flex items-center justify-between gap-3 text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                                  <span>{form.reportBy === 'ai' && form.report ? '✨ Rédigé par l’IA — à relire avant validation' : 'Obligatoire pour passer à l’étape suivante · repris dans la réponse au client'}</span>
+                                  <span className="tabular-nums" style={form.report.trim() ? { color: '#047857', fontWeight: 600 } : undefined}>{form.report.length}/{FUNNEL_LIMITS.report}</span>
                                 </div>
                               </div>
                               <div className="flex items-center justify-between gap-3 flex-wrap pt-1">
                                 <button type="button" onClick={saveProgress} disabled={pending} className="px-4 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-60" style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>Enregistrer</button>
-                                <button type="button" onClick={validate} disabled={pending || !form.result} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 transition-opacity hover:opacity-90" style={{ background: '#1c1c1e', color: 'white' }}
-                                  title={form.result ? '' : 'Choisissez un résultat pour valider'}>
+                                <button type="button" onClick={validate} disabled={pending || !form.result || !form.report.trim()} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 transition-opacity hover:opacity-90" style={{ background: '#1c1c1e', color: 'white' }}
+                                  title={!form.result ? 'Choisissez un résultat pour valider' : !form.report.trim() ? 'Rédigez le compte rendu pour valider' : ''}>
                                   {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                                   {steps[i + 1] ? <>Valider · passer à « {steps[i + 1].label} » <ArrowRight className="h-4 w-4" /></> : 'Valider et clôturer le parcours'}
                                 </button>
                               </div>
-                              <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>La validation est obligatoire pour passer à l’étape suivante : elle reste une décision du recruteur.</p>
+                              <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>Sans résultat ni compte rendu, ce bouton reste grisé : la validation reste une décision du recruteur, et elle doit être justifiée.</p>
                             </>
                           ) : (
                             <div className="pt-3 space-y-2">

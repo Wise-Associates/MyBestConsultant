@@ -3,7 +3,8 @@ import { DB_ID, COLLECTIONS } from './config'
 import { getCurrentUser } from './auth'
 import { ID, Query } from 'node-appwrite'
 import { DEFAULT_STAGE_INPUTS, DEFAULT_STATUS_LIBRARY, sanitizeStatusList, type StageInput } from '@/lib/funnel-config'
-import { COLUMN_DEFS, COLUMN_RANK } from '@/lib/candidate-funnel'
+import { COLUMN_DEFS, COLUMN_RANK, funnelForCandidate, reportRequiredMessage, stepBlockingMove } from '@/lib/candidate-funnel'
+import { resolveStatus } from '@/lib/funnel-stage-utils'
 import type { FunnelStage, FunnelPipeline, FunnelEvent, FunnelEventKind } from '@/types'
 
 type Doc = Record<string, unknown> & { $id: string }
@@ -240,4 +241,16 @@ export async function getFunnelEvents(applicationId: string): Promise<FunnelEven
   } catch {
     return []
   }
+}
+
+/**
+ * Compte rendu obligatoire (stepBlockingMove, candidate-funnel.ts) : message de refus si la candidature quitterait l'étape
+ * en cours de son funnel sans compte rendu pour la colonne `target`, sinon null. Vérifié par chaque action serveur qui
+ * déplace une carte, pas seulement par le pipeline : c'est la règle.
+ */
+export async function funnelMoveRefusal(application: Record<string, unknown>, tenantId: string, jobId: string, target: string): Promise<string | null> {
+  const { stages } = await getStagesForJob(tenantId, jobId)
+  const from = resolveStatus(stages, String(application.status ?? ''))
+  const blocking = stepBlockingMove(funnelForCandidate(application.funnelJson, from).steps, stages, from, target)
+  return blocking ? reportRequiredMessage(blocking) : null
 }

@@ -6,7 +6,7 @@ import {
   FileText, Mail, Brain, ChevronDown, ChevronUp,
   User, Calendar, Star, Video, CheckCircle2, Clock, XCircle, Archive, Loader2,
 } from 'lucide-react'
-import { setApplicationStatusAction } from './actions'
+import { moveApplicationStage } from '@/app/recruiter/pipeline/[jobId]/actions'
 
 const STATUS: Record<string, { label: string; bg: string; text: string; icon: React.ElementType }> = {
   pending:   { label: 'En attente',   bg: 'rgba(107,114,128,0.1)', text: '#6b7280', icon: Clock },
@@ -56,14 +56,24 @@ export function CandidateCard({ app }: { app: CandidateApp }) {
   const [expanded, setExpanded] = useState(false)
   const [statusOverride, setStatusOverride] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
   const currentStatus = statusOverride ?? app.status
   const status = STATUS[currentStatus] ?? STATUS.pending
   const StatusIcon = status.icon
   const date = new Date(app.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
 
+  // Même action que le funnel de l'offre : organisation vérifiée, compte rendu de l'étape en cours exigé (avant le
+  // 2026-11-17, une action sans aucun contrôle, et le refus du serveur passait inaperçu).
   function decide(next: 'accepted' | 'rejected' | 'on_hold') {
     setStatusOverride(next)
-    startTransition(() => { setApplicationStatusAction(app.appId, next) })
+    setError(null)
+    startTransition(async () => {
+      const res = await moveApplicationStage(app.appId, app.jobId, next).catch(() => ({ error: 'La décision n’a pas pu être enregistrée. Réessayez.' }))
+      if (res.error) {
+        setStatusOverride(null)
+        setError(res.error)
+      }
+    })
   }
 
   return (
@@ -150,6 +160,7 @@ export function CandidateCard({ app }: { app: CandidateApp }) {
             <Archive className="h-3.5 w-3.5" /> Vivier
           </button>
         </div>
+        {error && <p role="alert" className="text-xs mt-2 pl-[52px]" style={{ color: '#b91c1c' }}>{error}</p>}
       </div>
 
       {/* AI summary expanded */}

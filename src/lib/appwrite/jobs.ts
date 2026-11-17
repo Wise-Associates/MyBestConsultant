@@ -8,6 +8,8 @@ import { matchesKeywordRows, isExcludedByKeywordRows, type KeywordRow } from '@/
 import { estimateJobSeniorityYears, SENIORITY_MAX } from '@/lib/job-seniority'
 import type { RecruiterSelection } from '@/lib/recruiter-job-filters'
 import { valuesByFrequency } from '@/lib/cvtheque-search'
+import { recruiterCanSeeApplication } from '@/lib/job-ownership'
+import { parseClientSubmission } from '@/lib/client-response'
 
 /**
  * Offres par requête quand on lit les candidatures d'une liste d'offres : Appwrite refuse plus de 100 valeurs dans un
@@ -58,8 +60,12 @@ function docToApp(doc: Record<string, unknown>): Application {
     aiScore: doc.aiScore as number | undefined,
     aiSummary: doc.aiSummary as string | undefined,
     aiRecommendation: doc.aiRecommendation as Application['aiRecommendation'],
+    // Étiquettes et note des cartes du funnel : non reprises avant le 2026-11-17, elles disparaissaient au rechargement.
+    tags: (doc.tags as string[] | null) ?? undefined,
+    note: (doc.note as string | null) || undefined,
     stageStatus: (doc.stageStatus as string | null) || undefined,
     funnelJson: (doc.funnelJson as string | null) || undefined,
+    clientJson: (doc.clientJson as string | null) || undefined,
     createdAt: doc.$createdAt as string,
   }
 }
@@ -232,6 +238,15 @@ export async function updateJobStatus(jobId: string, isActive: boolean): Promise
   await databases.updateDocument(DB_ID, COLLECTIONS.JOBS, jobId, { isActive })
 }
 
+/** Champs modifiables d'une offre (action du recruteur, contrôles faits par l'appelant) ; null efface la valeur. */
+export async function updateJobFields(jobId: string, data: {
+  title: string; companyName: string | null; location: string; contractType?: Job['contractType']; remote?: Job['remote']
+  salary: number | null; skills: string[]; description: string
+}): Promise<void> {
+  const { databases } = createAdminClient()
+  await databases.updateDocument(DB_ID, COLLECTIONS.JOBS, jobId, data)
+}
+
 export async function deleteJob(jobId: string): Promise<void> {
   const { databases } = createAdminClient()
   await databases.deleteDocument(DB_ID, COLLECTIONS.JOBS, jobId)
@@ -324,4 +339,49 @@ export async function updateApplicationCard(
 export async function deleteApplication(applicationId: string): Promise<void> {
   const { databases } = createAdminClient()
   await databases.deleteDocument(DB_ID, COLLECTIONS.APPLICATIONS, applicationId)
+}
+
+/**
+ * Candidats déjà notés par l'IA pour chaque offre (base candidats et vivier de l'offre) : « correspondances IA » de « Mes
+ * offres » et du détail d'une offre (`jobId`). Badge seulement : illisible, il reste masqué (objet vide), la page s'affiche.
+ */
+export async function countMatchesByJob(tenantId: string, jobId?: string): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {}
+  const scope = [Query.equal('tenantId', tenantId), ...(jobId ? [Query.equal('jobId', jobId)] : [])]
+  try {
+    const { databases } = createAdminClient()
+    // Toutes les lignes (500 au plus avant), identifiants seuls.
+    const [poolDocs, vivierDocs] = await Promise.all([
+      listAllDocuments(databases, DB_ID, COLLECTIONS.JOB_MATCHES, [...scope, Query.select(['$id', 'jobId'])]),
+      // Vivier général (CV sans offre) exclu : il ne compte pas ici.
+      listAllDocuments(databases, DB_ID, COLLECTIONS.VIVIER_CVS, [...scope, Query.isNotNull('jobId'), Query.select(['$id', 'jobId', 'matchScore'])]),
+    ])
+    for (const d of poolDocs) counts[d.jobId as string] = (counts[d.jobId as string] ?? 0) + 1
+    for (const d of vivierDocs) {
+      if (d.matchScore == null) continue
+      counts[d.jobId as string] = (counts[d.jobId as string] ?? 0) + 1
+    }
+  } catch (e) {
+    console.error('[offres] correspondances IA non lues', e instanceof Error ? e.message : e)
+  }
+  return counts
+}
+
+/**
+ * Candidats du funnel d'une offre et candidats envoyés au client : pastilles des onglets de l'offre (job-tabs.tsx), pour
+ * la page qui ne lit pas les candidatures elle-même (Matching IA). Mêmes candidatures que le funnel
+ * (recruiterCanSeeApplication). Pastilles seulement : illisible, null et elles restent masquées.
+ */
+export async function jobTabCounts(job: Pick<Job, '$id' | 'tenantId'>, tenantId: string): Promise<{ funnel: number; client: number } | null> {
+  try {
+    const { databases } = createAdminClient()
+    const docs = await listAllDocuments(databases, DB_ID, COLLECTIONS.APPLICATIONS, [
+      Query.equal('jobId', job.$id), Query.select(['$id', 'tenantId', 'clientJson']),
+    ])
+    const visible = docs.filter(d => recruiterCanSeeApplication(job.tenantId, (d.tenantId as string) ?? '', tenantId))
+    return { funnel: visible.length, client: visible.filter(d => parseClientSubmission(d.clientJson)).length }
+  } catch (e) {
+    console.error('[offres] pastilles des onglets non lues', job.$id, e instanceof Error ? e.message : e)
+    return null
+  }
 }

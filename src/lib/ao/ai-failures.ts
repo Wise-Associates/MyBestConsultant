@@ -81,6 +81,24 @@ export function describeAiProblem(problem: AiProblem, err: unknown): string {
 }
 
 /**
+ * Détail d'un échec de callLLM pour les journaux : chaque modèle essayé et son erreur — la cause connue (crédits, clé,
+ * modèle…), sinon le statut et le début de la réponse de l'API (« gpt4o : HTTP 400 … Unsupported parameter … »), sinon
+ * le message. Jamais le texte envoyé à l'IA ; une clé citée par une API (`sk-…`) est masquée. Sans lui, les journaux ne
+ * disaient que « LLMChainError » (MBC Search, 2026-11-17).
+ */
+export function llmFailureDetail(err: unknown): string {
+  const failures = err instanceof LLMChainError ? err.failures : [{ provider: 'modèle', error: err }]
+  return failures.map(f => {
+    const problem = llmProblem(f.error)
+    const text = problem ? describeAiProblem(problem, f.error)
+      : f.error instanceof LLMHttpError ? `HTTP ${f.error.status} ${f.error.body.slice(0, 300)}`
+        : f.error instanceof Error ? f.error.message.slice(0, 300) || f.error.name
+          : String(f.error).slice(0, 300)
+    return `${f.provider} : ${text.replace(/\bsk-[\w*.-]+/g, 'sk-…')}`
+  }).join(' ; ')
+}
+
+/**
  * Cause d'attente quand callLLM a échoué et que TOUS les modèles essayés ont échoué gratuitement
  * (« claude : crédits épuisés ; gpt4o : service saturé ou indisponible (503) ») ; null si au moins un échec a
  * pu être facturé (délai dépassé, réponse illisible…) : l'e-mail suit alors la règle normale des essais.

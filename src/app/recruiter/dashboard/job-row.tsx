@@ -12,19 +12,13 @@ import type { DashboardJobRow } from './jobs-list-client'
 import type { FunnelStage } from '@/types'
 import type { RecruiterOption } from '@/lib/recruiter-assignment'
 import { startNavigationProgress } from '@/components/shared/navigation-progress'
-import { PREVIEW_MEDIA } from './dashboard-layout'
+import { PREVIEW_MEDIA, ROW_GRID } from './dashboard-layout'
 import { amberBadge, badge, neutralBadge } from '@/components/shared/list-styles'
 
 const CONTRACT_LABELS: Record<string, string> = {
   cdi: 'CDI', cdd: 'CDD', freelance: 'Freelance', mission: 'Mission',
 }
 
-/**
- * Colonnes de « Mes offres » à partir de 1024 px ; en dessous, la ligne passe sur deux colonnes (carte). À partir de
- * 1440 px (rail de filtres, dashboard-layout.ts) la colonne « Candidatures » s'élargit pour que « 30 correspondances IA »
- * tienne sur une ligne ; à partir de 1800 px (panneau d'aperçu) les actions gagnent le bouton « Aperçu ».
- */
-export const ROW_GRID = 'grid grid-cols-2 lg:grid-cols-[minmax(0,1fr)_124px_200px_180px_88px] min-[90rem]:grid-cols-[minmax(0,1fr)_156px_176px_200px_88px] min-[112.5rem]:grid-cols-[minmax(0,1fr)_156px_176px_200px_132px] gap-x-5'
 
 
 export function JobRow({ row, apps, stages, canPublish, recruiters, first, focused, focusRef, onOpenApplications, previewed, onPreview }: {
@@ -38,15 +32,16 @@ export function JobRow({ row, apps, stages, canPublish, recruiters, first, focus
   const { job, facts } = row
   const publish = usePublish(job.$id)
   const matchingHref = `/recruiter/pipeline/${job.$id}/matching`
+  const detailHref = `/recruiter/offres/${job.$id}`
   const stageCounts = stages
     .map(stage => ({ stage, count: apps.filter(a => a.status === stage.slug).length }))
     .filter(s => s.count > 0)
   const working = !!row.social && ['queued', 'sent', 'images_ready'].includes(row.social.status) && !row.social.stale
   const ownOnline = !row.shared && facts.state === 'online'
 
-  // Toute la ligne ouvre le matching de l'offre (comme avant) ; le titre est le lien pour le clavier et les lecteurs
-  // d'écran, les boutons et liens de la ligne gardent leur propre action. Sur un écran assez large pour le panneau
-  // d'aperçu, le clic sur la ligne l'affiche dans ce panneau (le titre ouvre toujours le matching).
+  // Toute la ligne ouvre le détail de l'offre (demande du 2026-11-17, avant : le matching) ; le titre est le lien pour le
+  // clavier et les lecteurs d'écran, les boutons et liens de la ligne gardent leur propre action. Sur un écran assez large
+  // pour le panneau d'aperçu, le clic sur la ligne l'affiche dans ce panneau (le titre ouvre toujours le détail).
   function openFromRow(e: MouseEvent<HTMLElement>) {
     if ((e.target as HTMLElement).closest('a, button, select, label, [role="menu"]')) return
     if (window.matchMedia(PREVIEW_MEDIA).matches) {
@@ -54,7 +49,7 @@ export function JobRow({ row, apps, stages, canPublish, recruiters, first, focus
       return
     }
     startNavigationProgress()
-    router.push(matchingHref)
+    router.push(detailHref)
   }
 
   return (
@@ -67,7 +62,7 @@ export function JobRow({ row, apps, stages, canPublish, recruiters, first, focus
       }}>
       <div className="col-span-2 lg:col-span-1 min-w-0 flex flex-col gap-1.5 min-[90rem]:gap-0.5">
         <div className="flex items-center gap-2 flex-wrap">
-          <Link href={matchingHref} className="text-[15px] min-[90rem]:text-sm font-semibold leading-snug no-underline group-hover:underline underline-offset-[3px] rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
+          <Link href={detailHref} className="text-[15px] min-[90rem]:text-sm font-semibold leading-snug no-underline group-hover:underline underline-offset-[3px] rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
             style={{ color: 'var(--color-text)' }}>
             {job.title}
           </Link>

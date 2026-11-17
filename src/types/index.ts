@@ -59,6 +59,8 @@ export interface Application {
   stageStatus?: string
   /** Funnel du candidat (JSON) : étapes, résultats, comptes rendus — voir lib/candidate-funnel. */
   funnelJson?: string
+  /** Envoi au client et sa réponse (JSON) — voir lib/client-response. */
+  clientJson?: string
   createdAt: string
 }
 

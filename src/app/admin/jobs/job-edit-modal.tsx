@@ -25,6 +25,11 @@ interface Props {
   job: JobRow
   onClose: () => void
   onSaved: (updated: JobRow) => void
+  /**
+   * Enregistrement de l'espace recruteur (`updateOwnJobAction`) à la place de celui de l'admin : la fenêtre cache alors
+   * le statut et la date d'expiration, que le recruteur ne règle pas ici.
+   */
+  save?: (jobId: string, data: Omit<JobRow, '$id' | 'isActive' | 'expiresAt'>) => Promise<{ error?: string }>
 }
 
 const CONTRACT_OPTS: { value: ContractType; label: string }[] = [
@@ -69,7 +74,7 @@ const LABEL_STYLE: React.CSSProperties = {
   marginBottom: 6,
 }
 
-export function JobEditModal({ job, onClose, onSaved }: Props) {
+export function JobEditModal({ job, onClose, onSaved, save: saveAsRecruiter }: Props) {
   const [form, setForm] = useState<JobRow>({ ...job })
   const [newSkill, setNewSkill] = useState('')
   const [error, setError] = useState('')
@@ -89,7 +94,7 @@ export function JobEditModal({ job, onClose, onSaved }: Props) {
   const save = () => {
     setError('')
     startTransition(async () => {
-      const res = await updateJob(form.$id, {
+      const fields = {
         title: form.title,
         companyName: form.companyName,
         location: form.location,
@@ -98,9 +103,11 @@ export function JobEditModal({ job, onClose, onSaved }: Props) {
         salary: form.salary,
         skills: form.skills,
         description: form.description,
-        isActive: form.isActive,
-        expiresAt: form.expiresAt ?? '',
-      })
+      }
+      const res = await (saveAsRecruiter
+        ? saveAsRecruiter(form.$id, fields)
+        : updateJob(form.$id, { ...fields, isActive: form.isActive, expiresAt: form.expiresAt ?? '' })
+      ).catch(() => ({ error: 'L’offre n’a pas pu être enregistrée. Réessayez.' }))
       if (res.error) { setError(res.error); return }
       onSaved(form)
     })
@@ -133,8 +140,8 @@ export function JobEditModal({ job, onClose, onSaved }: Props) {
             </h2>
           </div>
           <div className="flex items-center gap-3">
-            {/* Active toggle */}
-            <button
+            {/* Active toggle (admin ; le recruteur archive depuis le menu de l'offre) */}
+            {!saveAsRecruiter && <button
               onClick={() => set('isActive', !form.isActive)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
               style={{
@@ -147,7 +154,7 @@ export function JobEditModal({ job, onClose, onSaved }: Props) {
                 ? <ToggleRight className="h-4 w-4" />
                 : <ToggleLeft className="h-4 w-4" />}
               {form.isActive ? 'Active' : 'Inactive'}
-            </button>
+            </button>}
             <button onClick={() => !pending && onClose()}
               className="p-2 rounded-lg transition-opacity hover:opacity-60"
               style={{ color: 'rgba(255,255,255,0.3)' }}>
@@ -234,7 +241,7 @@ export function JobEditModal({ job, onClose, onSaved }: Props) {
                 onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
               />
             </div>
-            <div>
+            {!saveAsRecruiter && <div>
               <label style={LABEL_STYLE}>Disponible jusqu&apos;au</label>
               <input
                 type="date"
@@ -247,7 +254,7 @@ export function JobEditModal({ job, onClose, onSaved }: Props) {
               <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 4 }}>
                 Vide = pas de désactivation automatique. Modifiable ici uniquement (admin).
               </p>
-            </div>
+            </div>}
           </div>
 
           {/* Skills */}

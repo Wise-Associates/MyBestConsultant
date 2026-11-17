@@ -1,7 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { after } from 'next/server'
 import { getCurrentUser } from '@/lib/appwrite/auth'
-import { getJobById } from '@/lib/appwrite/jobs'
+import { getJobById, jobTabCounts } from '@/lib/appwrite/jobs'
 import { getJobMatches, unmatchedApplicationIds } from '@/lib/matching-core'
 import { autoScreenApplication } from '@/lib/screening-core'
 import { loadRecruiterWeights } from '@/lib/scoring-weights-store'
@@ -21,7 +21,7 @@ export default async function MatchingPage({ params }: { params: Promise<{ jobId
   if (job.tenantId !== user.tenantId && job.tenantId !== '') redirect('/recruiter/dashboard')
 
   // Scores aux poids personnels du recruteur (réglés depuis le pipeline de l'offre).
-  const { weights, unreadable } = await loadRecruiterWeights(user.userId)
+  const [{ weights, unreadable }, tabCounts] = await Promise.all([loadRecruiterWeights(user.userId), jobTabCounts(job, user.tenantId)])
   const { matches } = await getJobMatches(jobId, user.tenantId, user.$id, weights)
 
   // Toute candidature doit avoir son matching : celles que l'analyse automatique a manquées sont relancées en tâche de fond.
@@ -30,5 +30,5 @@ export default async function MatchingPage({ params }: { params: Promise<{ jobId
 
   // Remonté quand le recruteur change ses poids (router.refresh) : la liste, gardée dans l'état du client, reprend ses scores.
   return <MatchingClient key={JSON.stringify(weights)} jobId={jobId} jobTitle={job.title} jobMeta={jobMetaLine(job)} jobSkills={job.skills ?? []}
-    initialMatches={matches} weights={weights} weightsUnreadable={unreadable} now={new Date().toISOString()} />
+    initialMatches={matches} tabCounts={tabCounts ?? undefined} weights={weights} weightsUnreadable={unreadable} now={new Date().toISOString()} />
 }

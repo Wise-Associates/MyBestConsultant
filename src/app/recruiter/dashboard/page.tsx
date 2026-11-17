@@ -3,11 +3,10 @@ import Link from 'next/link'
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/appwrite/auth'
-import { getJobsByTenant, getApplicationsByTenant, getApplicationsOfJobs, getTenantJobsOfRecruiters } from '@/lib/appwrite/jobs'
+import { getJobsByTenant, getApplicationsByTenant, getApplicationsOfJobs, getTenantJobsOfRecruiters, countMatchesByJob } from '@/lib/appwrite/jobs'
 import { getFunnelStages } from '@/lib/appwrite/funnel'
 import { resolveStatus } from '@/lib/funnel-stage-utils'
 import { createAdminClient } from '@/lib/appwrite/client'
-import { listAllDocuments } from '@/lib/appwrite/list-all'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
 import { jobFacts, summarize } from '@/lib/recruiter-dashboard'
@@ -24,30 +23,6 @@ import type { Application } from '@/types'
 // Les Server Actions de cette page (création d'offre, import, « Publier sur les réseaux ») envoient la publication
 // en arrière-plan : photo de l'affiche par OpenAI (jusqu'à 2 min) puis envoi à Make.
 export const maxDuration = 300
-
-// "Matching IA" badge on the jobs list — how many candidates (pool + vivier) the AI has
-// already matched for each job, without opening the dedicated Matching page per job.
-async function countMatchesByJob(tenantId: string): Promise<Record<string, number>> {
-  const counts: Record<string, number> = {}
-  try {
-    const { databases } = createAdminClient()
-    // Toutes les lignes (500 au plus avant), identifiants seuls.
-    const [poolDocs, vivierDocs] = await Promise.all([
-      listAllDocuments(databases, DB_ID, COLLECTIONS.JOB_MATCHES, [Query.equal('tenantId', tenantId), Query.select(['$id', 'jobId'])]),
-      // Vivier général (CV sans offre) exclu : il ne compte pas ici.
-      listAllDocuments(databases, DB_ID, COLLECTIONS.VIVIER_CVS, [Query.equal('tenantId', tenantId), Query.isNotNull('jobId'), Query.select(['$id', 'jobId', 'matchScore'])]),
-    ])
-    for (const d of poolDocs) counts[d.jobId as string] = (counts[d.jobId as string] ?? 0) + 1
-    for (const d of vivierDocs) {
-      if (d.matchScore == null) continue
-      counts[d.jobId as string] = (counts[d.jobId as string] ?? 0) + 1
-    }
-  } catch (e) {
-    // Badge seulement : il reste masqué, le reste de la page s'affiche.
-    console.error('[dashboard] correspondances IA non lues', e instanceof Error ? e.message : e)
-  }
-  return counts
-}
 
 // 25 identifiants par requête ; seuls les 25 premiers candidats étaient lus, les autres s'affichaient par leur identifiant.
 const NAME_BATCH = 25
@@ -171,7 +146,7 @@ export default async function RecruiterDashboard({ searchParams }: {
     ...(selection.unassigned ? ['offres non affectées'] : []),
   ] : []
 
-  // En tête de la colonne de la liste : à côté du rail de filtres sur grand écran.
+  // Au-dessus de « Mes offres ».
   const header = (
     <>
       {recruteurs !== undefined && recruiters === null && (
@@ -192,15 +167,15 @@ export default async function RecruiterDashboard({ searchParams }: {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      {/* Grand écran (1440 px et plus) : toute la largeur, jusqu'à 1920 px, avec le rail de filtres et le panneau
-          d'aperçu de « Mes offres » (dashboard-layout.ts). */}
+      {/* Grand écran (1440 px et plus) : toute la largeur, jusqu'à 1920 px, avec le panneau d'aperçu de « Mes offres »
+          dès 1800 px (dashboard-layout.ts). Les filtres sont dans le panneau du bouton « Filtres » (jobs-filter-panel.tsx). */}
       <div className="max-w-6xl min-[90rem]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[90rem]:px-8 py-6 sm:py-8 min-[90rem]:py-6 space-y-6 sm:space-y-7">
-        {/* Indicateurs, « À traiter » puis « Mes offres » : les tuiles filtrent la liste, elles partagent son état. Les
-            autres outils sont dans le sous-menu de l'espace (layout recruteur). */}
+        {/* Indicateurs puis « Mes offres » ; les tuiles « À traiter » sont dans le panneau « Filtres » et filtrent la liste.
+            Les autres outils sont dans le menu latéral de l'espace (layout recruteur). */}
         <JobsListClient rows={rows} appsByJob={appsByJobRecord} funnelStages={funnelStages} header={header}
           socialEnabled={isMakeConfigured()} socialUnavailable={socialPosts === null} recruiters={recruiters && recruiterOptions(recruiters)} jobsWithNew={summary.applications.jobsWithNew}
           focusJobId={typeof offre === 'string' ? offre : undefined}
-          recruiterFiltered={selection !== null}
+          recruiterFiltered={selection !== null} recruiterChip={selectionNames.join(', ')}
           recruiterFilter={recruiters && (
             <Suspense fallback={null}>
               <RecruiterFilter recruiters={recruiterOptions(recruiters)} selection={selection} currentRecruiterId={user.$id} />

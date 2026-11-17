@@ -10,7 +10,7 @@ import { DEFAULT_CLIENT_LABEL, distinctNames, namesToHide, rawPublicOffer, revea
 import { parsePublishInput } from './publication-input'
 import Anthropic from '@anthropic-ai/sdk'
 import { LLMChainError, LLMHttpError, LLMNotConfiguredError, LLMUnreachableError } from '@/lib/ai/llm-router'
-import { claudeProblem, llmUnavailableReason, openAiProblem } from './ai-failures'
+import { claudeProblem, llmFailureDetail, llmUnavailableReason, openAiProblem } from './ai-failures'
 import { handledUidsOf, nextCheckpoint, planRead, processingOrder, type Checkpoint } from './checkpoint'
 import { readAttachments } from './extractors/chain'
 import { zipFitsWithin } from './extractors/office'
@@ -608,6 +608,20 @@ describe('IA indisponible : crédits épuisés, clé refusée, service en panne'
     assert.equal(llmUnavailableReason(mixed), null)
     assert.equal(llmUnavailableReason(claudeError(402, 'billing_error', 'Payment required')), 'modèle de Config IA : crédits épuisés')
     assert.equal(llmUnavailableReason(new Error('Pas de réponse de l\'IA après 120 s')), null)
+  })
+
+  it('détaille chaque modèle en échec pour les journaux, clé masquée', () => {
+    const chain = new LLMChainError([
+      { provider: 'claude', error: claudeError(400, 'invalid_request_error', LOW_CREDIT) },
+      { provider: 'gpt4o', error: new LLMHttpError(400, '{"error":{"message":"Unsupported parameter: \'max_tokens\' is not supported with this model."}}') },
+      { provider: 'teckia', error: new LLMHttpError(401, '{"error":{"message":"Incorrect API key provided: sk-proj-abc*****xyz9"}}') },
+      { provider: 'os-mistral', error: new LLMUnreachableError(true, 'pas de réponse après 30 s') },
+    ])
+    const detail = llmFailureDetail(chain)
+    assert.match(detail, /^claude : crédits épuisés ; gpt4o : HTTP 400 .*Unsupported parameter: 'max_tokens'/)
+    assert.match(detail, /teckia : clé refusée/)
+    assert.match(detail, /os-mistral : Modèle IA injoignable \(pas de réponse après 30 s\)$/)
+    assert.equal(llmFailureDetail(new LLMHttpError(400, 'key sk-proj-abc*****xyz9 refused')), 'modèle : HTTP 400 key sk-… refused')
   })
 
   /** Contexte de lecture qui compte les lectures réservées et rendues. */

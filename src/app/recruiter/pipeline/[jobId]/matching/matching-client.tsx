@@ -58,13 +58,15 @@ function profileHref(m: JobMatchResult): string | null {
 }
 
 /** `now` : heure du rendu par le serveur (ISO), avancée à chaque actualisation de la liste. */
-export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMatches, weights, weightsUnreadable, now }: {
+export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMatches, tabCounts, weights, weightsUnreadable, now }: {
   jobId: string; jobTitle: string
   /** Poids personnels du recruteur : les scores reçus en tiennent déjà compte, le détail de chaque score aussi. */
   weights: RecruiterWeights; weightsUnreadable: boolean
   /** « Paris · CDI · Publiée le 3 nov. 2026 », et compétences de l'offre : rappel de l'offre sur grand écran. */
   jobMeta: string; jobSkills: string[]
   initialMatches: JobMatchResult[]; now: string
+  /** Pastilles des onglets Funnel et Réponse client (absentes si illisibles). */
+  tabCounts?: { funnel: number; client: number }
 }) {
   const [matches, setMatches] = useState(initialMatches)
   const [nowMs, setNowMs] = useState(() => new Date(now).getTime())
@@ -444,7 +446,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
         ) : justAdded ? (
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm">Ajout terminé.</p>
-            <Link href={`/recruiter/pipeline/${jobId}`} className={panelButton} style={{ background: '#10b981', color: 'white' }}><Kanban className="h-4 w-4" aria-hidden /> Passer au pipeline</Link>
+            <Link href={`/recruiter/pipeline/${jobId}`} className={panelButton} style={{ background: '#10b981', color: 'white' }}><Kanban className="h-4 w-4" aria-hidden /> Passer au funnel</Link>
           </div>
         ) : (
           <p className="text-[13px]" style={{ color: 'var(--hero-fg-muted)' }}>Cochez des candidats dans la liste pour les ajouter au funnel de l’offre.</p>
@@ -457,7 +459,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
     <div className={selected.size > 0 || justAdded ? 'pb-[88px] min-[90rem]:pb-0' : undefined} style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <div className="sticky top-0 z-20 min-[90rem]:static" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)' }}>
         <div className="max-w-[1000px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-6 min-[90rem]:py-4">
-          <BackLink fallbackHref={`/recruiter/pipeline/${jobId}`}
+          <BackLink fallbackHref={`/recruiter/offres/${jobId}`}
             className="inline-flex items-center gap-1.5 text-xs font-semibold mb-3 min-[90rem]:mb-1.5 no-underline transition-opacity hover:opacity-80"
             style={{ color: 'var(--hero-fg-muted)' }} />
           <div className="flex items-center justify-between gap-4 flex-wrap min-[90rem]:flex-nowrap">
@@ -468,7 +470,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
               <h1 style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.5rem' }}>{jobTitle}</h1>
               <p className="hidden min-[90rem]:block text-xs mt-0.5" style={{ color: 'var(--hero-fg-muted)' }}>{jobMeta}</p>
             </div>
-            <JobTabs jobId={jobId} current="matching" />
+            <JobTabs jobId={jobId} current="matching" counts={tabCounts} />
             <span aria-hidden className="hidden min-[90rem]:block flex-1" />
             <div className="flex items-center gap-2 flex-wrap">
               <button type="button" onClick={refresh} disabled={isRefreshing}
@@ -482,7 +484,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
               <Link href={`/recruiter/pipeline/${jobId}`}
                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold no-underline transition-opacity hover:opacity-85"
                 style={{ background: '#10b981', color: 'white', boxShadow: '0 6px 16px -6px rgba(16,185,129,0.6)' }}>
-                <Kanban className="h-3.5 w-3.5" /> Passer au pipeline
+                <Kanban className="h-3.5 w-3.5" /> Passer au funnel
               </Link>
             </div>
           </div>
@@ -714,7 +716,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                 <Link href={`/recruiter/pipeline/${jobId}`}
                   className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold no-underline transition-opacity hover:opacity-85"
                   style={{ background: '#10b981', color: 'white' }}>
-                  <Kanban className="h-4 w-4" /> Passer au pipeline
+                  <Kanban className="h-4 w-4" /> Passer au funnel
                 </Link>
               )}
             </div>

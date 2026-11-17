@@ -1,16 +1,16 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
 import { after } from 'next/server'
 import { getCurrentUser } from '@/lib/appwrite/auth'
-import { createJob, updateJobStatus, deleteJob, updateApplicationStatus, oneMonthFromNow, getJobsByTenant, getJobById } from '@/lib/appwrite/jobs'
+import { createJob, updateJobStatus, updateJobFields, deleteJob, oneMonthFromNow, getJobsByTenant, getJobById } from '@/lib/appwrite/jobs'
 import { checkAssignee, notifyAssigneeWarning, setAoAssignee, setJobRecruiter } from '@/lib/recruiter-assignment'
 import { shouldNotifyAssignee } from '@/lib/assignment-email'
 import { jobOwnership } from '@/lib/job-ownership'
 import { PAY_NEEDS_CONTRACT } from '@/lib/job-pay'
 import { aoAccessFor } from '@/lib/ao/platform-view'
 import { activeJobsLimitDenial } from '@/lib/tenant-access'
-import type { ApplicationStatus } from '@/types'
 import type { Job } from '@/types'
 
 export async function createJobAction(formData: FormData): Promise<{ error?: string }> {
@@ -113,6 +113,43 @@ export async function toggleJobStatusAction(jobId: string, isActive: boolean): P
   return {}
 }
 
+// Champs d'une offre que le recruteur modifie (« Modifier » de « Mes offres » et du détail de l'offre). Ni le statut
+// (archiver / remettre en ligne, avec la limite de la formule) ni l'expiration (admin seulement) : réglés ailleurs.
+// Tailles : celles des attributs de `jobs` (appwrite.config.json).
+const JobEdit = z.object({
+  title: z.string().trim().min(1).max(200),
+  companyName: z.string().trim().max(1000).optional(),
+  location: z.string().trim().min(1).max(200),
+  contractType: z.enum(['cdi', 'cdd', 'freelance', 'mission']).optional(),
+  remote: z.enum(['onsite', 'hybrid', 'remote']).optional(),
+  salary: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  skills: z.array(z.string().trim().min(1).max(100)).max(10),
+  description: z.string().trim().min(1).max(65_535),
+})
+
+/**
+ * Modification d'une offre de l'organisation par un recruteur. Avant le 2026-11-17, la fenêtre appelait l'action de
+ * l'admin (`updateJob`, réservée aux admins) : l'enregistrement échouait toujours pour un recruteur.
+ */
+export async function updateOwnJobAction(jobId: unknown, input: unknown): Promise<{ error?: string }> {
+  const own = await ownJobOrError(jobId)
+  if ('error' in own) return own
+  const parsed = JobEdit.safeParse(input)
+  if (!parsed.success) return { error: 'Vérifiez le titre, la localisation et la description (obligatoires).' }
+  const data = parsed.data
+  if (data.salary && !data.contractType) return { error: PAY_NEEDS_CONTRACT }
+  try {
+    await updateJobFields(own.jobId, { ...data, companyName: data.companyName || null, salary: data.salary ?? null })
+  } catch (e) {
+    console.error('[dashboard] offre non modifiée', own.jobId, e instanceof Error ? e.message : e)
+    return { error: 'L’offre n’a pas pu être modifiée. Réessayez.' }
+  }
+  revalidatePath('/recruiter/dashboard')
+  revalidatePath(`/recruiter/offres/${own.jobId}`)
+  revalidatePath('/jobs')
+  return {}
+}
+
 export async function deleteJobAction(jobId: string): Promise<{ error?: string }> {
   const own = await ownJobOrError(jobId)
   if ('error' in own) return own
@@ -175,16 +212,6 @@ export async function assignJobAction(jobId: unknown, recruiterId: unknown): Pro
   }
   revalidatePath('/recruiter/dashboard')
   return warnings.length ? { warning: warnings.join(' ') } : {}
-}
-
-// Décision du recruteur sur une candidature — reflétée immédiatement sur le
-// tableau de bord du candidat (retenu / refusé / vivier).
-export async function setApplicationStatusAction(applicationId: string, status: ApplicationStatus): Promise<void> {
-  const user = await getCurrentUser()
-  if (!user || user.role !== 'recruiter') return
-  await updateApplicationStatus(applicationId, status)
-  revalidatePath('/recruiter/dashboard')
-  revalidatePath('/candidate/dashboard')
 }
 
 // Diffusion d'une offre sur les réseaux de la plateforme — relance manuelle, réservée aux

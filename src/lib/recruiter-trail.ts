@@ -59,8 +59,12 @@ export function parseTrail(raw: string | null): string[] {
 // Pages hors rubrique du sous-menu, dans l'ordre où les chercher : une sous-page fixe (« new », « boites ») avant la
 // page d'un élément au même niveau.
 const PAGE_LABELS: [RegExp, string][] = [
-  [/^\/recruiter\/pipeline\/[^/]+$/, 'Pipeline de l’offre'],
+  [/^\/recruiter\/offres\/[^/]+$/, 'Détail de l’offre'],
+  // Onglets d'une offre : Matching IA | Funnel | Réponse client (2026-11-17 ; le funnel s'appelait « Pipeline »).
+  [/^\/recruiter\/pipeline\/[^/]+$/, 'Funnel de l’offre'],
   [/^\/recruiter\/pipeline\/[^/]+\/matching$/, 'Matching IA'],
+  [/^\/recruiter\/pipeline\/[^/]+\/client$/, 'Réponse client'],
+  [/^\/recruiter\/pipeline\/[^/]+\/client\/synthese$/, 'Synthèse pour le client'],
   [/^\/recruiter\/candidates\/[^/]+$/, 'Fiche candidat'],
   [/^\/recruiter\/candidate-preview\/[^/]+\/[^/]+$/, 'Profil du candidat'],
   [/^\/recruiter\/annonces$/, 'Suivi des annonces'],
