@@ -15,7 +15,7 @@ describe('formules et droits des organisations', () => {
     assert.equal(STANDARD_ENTITLEMENTS.maxActiveJobs, null)
     assert.ok(FEATURES.every(f => STANDARD_ENTITLEMENTS.features[f]))
     assert.deepEqual(STANDARD_ENTITLEMENTS.dailyQuotas, {
-      mbcSearch: 60, mbcReveal: 100, cvExport: 20, aoSourcing: 20, aoRewrite: 30, aoRetry: 30, vivierMatching: 200, interviewAi: 500,
+      mbcSearch: 300, mbcReveal: 100, cvExport: 20, aoSourcing: 20, aoRewrite: 30, aoRetry: 30, vivierMatching: 200, interviewAi: 500,
     })
   })
 

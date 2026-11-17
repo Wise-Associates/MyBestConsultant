@@ -63,7 +63,7 @@ export const MISSING_CAP = 60
 /** Une liste jugée (compétences) manque sous un tiers de ses points : 2 compétences sur 12 ne font pas le profil. */
 export const LIST_MISSING_BELOW = 1 / 3
 
-interface Scale {
+export interface Scale {
   /** Poids des critères (total 100), dans l'ordre du résumé et de l'affichage. */
   weights: Partial<Record<CriterionKey, number>>
   /** Plafonds des critères rouges : critère qui manque (non), seulement voisin (partiel). */
@@ -390,12 +390,16 @@ const RELATION_ANSWERS: Record<string, TitleRelation> = {
   meme: 'meme', same: 'meme', famille: 'famille', family: 'famille', autre: 'autre', other: 'autre',
 }
 
-/** Réponse de l'IA (donnée non fiable) : une relation par paire, dans l'ordre ; illisible ou absente : null. */
-export function parseTitleRelations(content: string, count: number): (TitleRelation | null)[] {
+/**
+ * Réponse de l'IA (donnée non fiable) : une relation par paire, dans l'ordre ; illisible ou absente : null. `exact` :
+ * un tableau d'une autre longueur que `count` est refusé en entier (toutes null) — sur une longue liste (100 intitulés
+ * de MBC Search), une valeur oubliée décalerait tous les avis suivants sur l'intitulé voisin.
+ */
+export function parseTitleRelations(content: string, count: number, exact = false): (TitleRelation | null)[] {
   const json = content.match(/\[[\s\S]*\]/)
   let raw: unknown = null
   try { raw = json ? JSON.parse(json[0]) : null } catch { raw = null }
-  const values = Array.isArray(raw) ? raw : []
+  const values = Array.isArray(raw) && (!exact || raw.length === count) ? raw : []
   return Array.from({ length: count }, (_, i) => {
     const v = values[i]
     return typeof v === 'string' ? RELATION_ANSWERS[normalized(v)] ?? null : null
@@ -458,8 +462,8 @@ const tally = (values: Judgement[], listed: boolean) => {
   return `${yes} sur ${values.length}${partial ? `, ${partial} partielle${partial > 1 ? 's' : ''}` : ''}`
 }
 
-/** Chaque critère du barème des jugements, dans son ordre. */
-function criterionResults(j: MatchJudgements): CriterionResult[] {
+/** Chaque critère du barème des jugements, dans son ordre (aussi l'évaluation des profils de MBC Search, mbc-search/evaluation.ts). */
+export function criterionResults(j: MatchJudgements): CriterionResult[] {
   return scaleKeys(j.scale).map(key => {
     if (key === 'poste') {
       const fits = j.roles.map(r => r.fit)
@@ -487,9 +491,12 @@ export interface ScoreResult {
 /**
  * Score d'un barème à partir de ses critères (judgedScore, et le détail affiché qui le refait, score-breakdown.ts).
  * `weights` : poids d'un recruteur (scoring-weights.ts) à la place de ceux du barème ; les plafonds ne changent pas.
+ * `caps` : seulement MBC Search (profils Apollo, données partielles : mbc-search/evaluation.ts).
  */
-export function scoreOf(scale: ScaleName, results: CriterionResult[], weights: Partial<Record<CriterionKey, number>> = SCALES[scale].weights): ScoreResult {
-  const { caps } = SCALES[scale]
+export function scoreOf(
+  scale: ScaleName, results: CriterionResult[], weights: Partial<Record<CriterionKey, number>> = SCALES[scale].weights,
+  caps: Scale['caps'] = SCALES[scale].caps,
+): ScoreResult {
   const total = Math.round(results.reduce((sum, r) => sum + (weights[r.key] ?? 0) * r.ratio, 0))
   let lowest: ScoreResult['cap'] = null
   for (const r of results) {

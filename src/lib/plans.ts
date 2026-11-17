@@ -69,9 +69,10 @@ export interface Entitlements {
  * mesure ; les modules les reprennent comme `perOrganisation` (mbc-search/access.ts, cv-export/access.ts, ao/…).
  * `interviewAi` (appels à l'IA des entretiens et du screening manuel, interview-rules.ts) n'existait pas : ajouté par la
  * revue de sécurité du 2026-11-13, assez large pour un usage normal (une centaine de CV et une dizaine d'entretiens).
+ * `mbcSearch` passé de 60 à 300 le 2026-11-16 : un besoin part en plusieurs requêtes (ADR 0037), qui comptent chacune.
  */
 export const STANDARD_DAILY_QUOTAS: Readonly<Record<DailyQuota, number>> = {
-  mbcSearch: 60, mbcReveal: 100, cvExport: 20, aoSourcing: 20, aoRewrite: 30, aoRetry: 30, vivierMatching: 200, interviewAi: 500,
+  mbcSearch: 300, mbcReveal: 100, cvExport: 20, aoSourcing: 20, aoRewrite: 30, aoRetry: 30, vivierMatching: 200, interviewAi: 500,
 }
 
 /**

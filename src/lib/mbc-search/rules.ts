@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { TitleRelation } from '@/lib/match-scoring'
 
 // MBC Search (/recruiter/mbc-search, ADR 0018) : le recruteur décrit le profil recherché, l'IA en tire des critères
 // qu'il peut corriger, la base de personnes d'Apollo.io renvoie des profils, classés ici avec les raisons du classement.
@@ -36,7 +37,8 @@ export type MbcCriteria = z.infer<typeof criteriaSchema>
 
 export const EMPTY_CRITERIA: MbcCriteria = { titles: [], locations: [], seniorities: [], skills: [], requiredSkills: [], sectors: [] }
 
-const same = (a: string, b: string) => normalize(a) === normalize(b)
+/** Même texte à la casse et aux accents près. */
+export const same = (a: string, b: string) => normalize(a) === normalize(b)
 
 /** Compétences obligatoires encore présentes dans la liste (une compétence retirée cesse d'être obligatoire). */
 export function requiredSkillsOf(criteria: MbcCriteria): string[] {
@@ -54,18 +56,17 @@ export function apolloKeywords(criteria: MbcCriteria): string {
   return keywords.join(' ').slice(0, CRITERIA_LIMITS.keywords)
 }
 
-export const PAGE_SIZE = 25
-/** Apollo n'affiche pas plus de 500 pages ; au-delà de 40 pages de 25, un recruteur affine plutôt sa recherche. */
-export const MAX_PAGE = 40
-
 /** Une recherche sans intitulé de poste ni compétence renverrait n'importe qui : refusée avant d'appeler Apollo. */
 export function criteriaProblem(criteria: MbcCriteria): string | null {
   if (criteria.titles.length === 0 && criteria.skills.length === 0) return 'Indiquez au moins un intitulé de poste ou une compétence.'
   return null
 }
 
-/** Corps de la requête `POST /api/v1/mixed_people/api_search` d'Apollo (recherche sans crédit, sans e-mail ni téléphone). */
-export function toApolloQuery(criteria: MbcCriteria, page: number) {
+/**
+ * Corps de la requête `POST /api/v1/mixed_people/api_search` d'Apollo (recherche sans crédit, sans e-mail ni téléphone).
+ * `perPage` : 100 au plus chez Apollo.
+ */
+export function toApolloQuery(criteria: MbcCriteria, page: number, perPage: number) {
   return {
     person_titles: criteria.titles,
     person_locations: criteria.locations,
@@ -75,8 +76,26 @@ export function toApolloQuery(criteria: MbcCriteria, page: number) {
     ...(criteria.emailOnly ? { contact_email_status: ['verified', 'likely to engage', 'unverified'] } : {}),
     include_similar_titles: true,
     page,
-    per_page: PAGE_SIZE,
+    per_page: perPage,
   }
+}
+
+/** Plus longue attente acceptée avant de redemander à Apollo (le recruteur attend la réponse). */
+const MAX_RETRY_WAIT_MS = 10_000
+
+/**
+ * Attente avant un second essai d'une recherche refusée par Apollo, ou null pour ne pas réessayer. 429 : le délai de
+ * l'en-tête `retry-after` s'il est court (sans lui, Apollo est surchargé et demande une minute) ; 500, 502, 503, 504 :
+ * une seconde. Un autre refus (critères, clé, crédits) se répéterait.
+ */
+export function retryDelayMs(status: number, retryAfter: string | null): number | null {
+  if (status === 429) {
+    const seconds = Number(retryAfter)
+    if (retryAfter === null || retryAfter.trim() === '' || !Number.isFinite(seconds) || seconds < 0) return null
+    const ms = Math.ceil(seconds * 1000)
+    return ms <= MAX_RETRY_WAIT_MS ? ms : null
+  }
+  return [500, 502, 503, 504].includes(status) ? 1000 : null
 }
 
 /** Profil tel qu'Apollo le montre avant enrichissement : nom de famille masqué, ni e-mail ni téléphone. */
@@ -166,11 +185,16 @@ export interface ScoredProfile extends MbcProfile {
   points: Record<keyof typeof SCORE_WEIGHTS, number>
 }
 
+/** Part des points de l'intitulé selon la comparaison des intitulés par l'IA (title-check, ADR 0028). */
+const TITLE_FIT_RATIO: Record<TitleRelation, number> = { meme: 1, famille: 0.5, autre: 0 }
+
 /**
  * Score d'un profil (0-100) et raisons lisibles par le recruteur. Apollo a déjà filtré lieu et séniorité : le score
- * départage les profils sur ce qu'on voit d'eux. `now` est injecté pour des tests déterministes.
+ * départage les profils sur ce qu'on voit d'eux. `now` est injecté pour des tests déterministes. `titleFit` : l'IA a
+ * comparé l'intitulé du profil aux intitulés demandés (recherche en plusieurs requêtes, ADR 0037) ; elle décide des
+ * points de l'intitulé à la place des mots en commun. Sans elle (null), les mots en commun.
  */
-export function scoreProfile(profile: MbcProfile, criteria: MbcCriteria, now: Date): ScoredProfile {
+export function scoreProfile(profile: MbcProfile, criteria: MbcCriteria, now: Date, titleFit: TitleRelation | null = null): ScoredProfile {
   const reasons: string[] = []
   const titleWords = new Set(words(profile.title))
   const points = { title: 0, skills: 0, reachable: 0, fresh: 0 }
@@ -187,6 +211,15 @@ export function scoreProfile(profile: MbcProfile, criteria: MbcCriteria, now: Da
   if (criteria.titles.length === 0) {
     // Sans intitulé demandé, ce critère ne départage personne : ses points sont acquis à tous.
     points.title = SCORE_WEIGHTS.title
+  } else if (titleFit) {
+    // « Métier voisin » quand l'intitulé contient tous les mots d'un intitulé demandé (« Senior Data Engineer ») : le
+    // même métier à un autre niveau, que la séniorité filtre déjà chez Apollo ; il garde tous ses points.
+    const ratio = titleFit === 'famille' && bestTitle === 1 ? 1 : TITLE_FIT_RATIO[titleFit]
+    bestTitle = ratio
+    bestTitleLabel ||= criteria.titles[0]
+    points.title = Math.round(SCORE_WEIGHTS.title * ratio)
+    if (ratio === 1) reasons.push(`Même métier que « ${bestTitleLabel} » (intitulé comparé par l'IA)`)
+    else if (ratio > 0) reasons.push(`Métier voisin de « ${bestTitleLabel} » (intitulé comparé par l'IA)`)
   } else if (bestTitle > 0) {
     points.title = Math.round(SCORE_WEIGHTS.title * bestTitle)
     reasons.push(bestTitle === 1 ? `Intitulé conforme : « ${bestTitleLabel} »` : `Intitulé proche de « ${bestTitleLabel} »`)
@@ -222,10 +255,12 @@ export function scoreProfile(profile: MbcProfile, criteria: MbcCriteria, now: Da
   return { ...profile, score: Math.min(100, score), reasons, match, points }
 }
 
-/** Profils du meilleur au moins bon score ; à score égal, l'ordre d'Apollo est gardé. */
-export function rankProfiles(profiles: MbcProfile[], criteria: MbcCriteria, now: Date): ScoredProfile[] {
+/** Profils du meilleur au moins bon score ; à score égal, l'ordre d'Apollo est gardé. `fitOf` : voir scoreProfile. */
+export function rankProfiles(
+  profiles: MbcProfile[], criteria: MbcCriteria, now: Date, fitOf: (p: MbcProfile) => TitleRelation | null = () => null,
+): ScoredProfile[] {
   return profiles
-    .map((p, i) => ({ scored: scoreProfile(p, criteria, now), i }))
+    .map((p, i) => ({ scored: scoreProfile(p, criteria, now, fitOf(p)), i }))
     .sort((a, b) => b.scored.score - a.scored.score || a.i - b.i)
     .map(x => x.scored)
 }
@@ -303,9 +338,15 @@ export interface MbcExperience {
   start: string
   end: string
   current: boolean
+  /** Description du poste quand Apollo en a une (rare) : preuve pour l'évaluation par l'IA. Absente des profils gardés avant le 2026-11-16. */
+  description?: string
 }
 
-/** Profil complet après enrichissement (payant) : nom entier, LinkedIn, e-mail professionnel, lieu, parcours. */
+/**
+ * Profil complet après enrichissement (payant) : nom entier, LinkedIn, e-mail professionnel, lieu, parcours.
+ * `seniority` et `industry` (secteur de l'employeur actuel) : pour l'évaluation par l'IA, absents des profils gardés
+ * avant le 2026-11-16.
+ */
 export interface MbcRevealed {
   id: string
   name: string
@@ -320,6 +361,8 @@ export interface MbcRevealed {
   emailStatus: string
   photoUrl: string
   experiences: MbcExperience[]
+  seniority?: string
+  industry?: string
 }
 
 /** Corps de `POST /api/v1/people/bulk_match` : seulement les identifiants Apollo, jamais un nom ni un e-mail. */
@@ -349,15 +392,20 @@ const apolloMatchSchema = z.object({
   city: z.string().nullish(),
   state: z.string().nullish(),
   country: z.string().nullish(),
-  organization: z.object({ name: z.string().nullish(), website_url: z.string().nullish() }).nullish(),
+  seniority: z.string().nullish(),
+  organization: z.object({ name: z.string().nullish(), website_url: z.string().nullish(), industry: z.string().nullish() }).nullish(),
   employment_history: z.array(z.object({
     title: z.string().nullish(),
     organization_name: z.string().nullish(),
     start_date: z.string().nullish(),
     end_date: z.string().nullish(),
     current: z.boolean().nullish(),
+    description: z.string().nullish(),
   })).nullish(),
 })
+
+/** Longueur gardée d'une description de poste d'Apollo. */
+export const EXPERIENCE_DESCRIPTION_CHARS = 500
 
 const monthOf = (d: string | null | undefined) => (d && /^\d{4}-\d{2}/.test(d) ? d.slice(0, 7) : '')
 
@@ -393,11 +441,19 @@ export function parseApolloMatches(json: unknown): MbcRevealed[] | null {
         start: monthOf(e.start_date),
         end: monthOf(e.end_date),
         current: e.current === true,
+        // Caractères de contrôle remplacés : échappés en JSON, ils feraient dépasser au profil gardé sa taille (profileJson).
+        description: e.description?.replace(/\p{Cc}/gu, ' ').trim().slice(0, EXPERIENCE_DESCRIPTION_CHARS) ?? '',
       })).filter(e => e.title || e.company),
+      seniority: p.seniority?.trim().slice(0, 40) ?? '',
+      industry: p.organization?.industry?.trim().slice(0, 120) ?? '',
     })
   }
   return out
 }
+
+/** Canal du message d'approche : sa longueur et son ton en dépendent (apollo.ts). */
+export const OUTREACH_CHANNELS = ['email', 'linkedin', 'whatsapp'] as const
+export type OutreachChannel = typeof OUTREACH_CHANNELS[number]
 
 /** Personne envoyée au brouillon d'approche : prénom, poste et parcours seulement (ni e-mail ni lien). */
 export const outreachPersonSchema = z.object({

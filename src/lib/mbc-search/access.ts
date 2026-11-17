@@ -5,7 +5,7 @@ import { STANDARD_DAILY_QUOTAS } from '@/lib/plans'
 
 /** Recherches et analyses de brief par jour (UTC) : par organisation, et pour toutes les organisations ensemble. */
 // `perOrganisation` : quota des formules standard (plans.ts) ; une offre sur mesure peut le changer (Entitlements.dailyQuotas).
-export const MBC_SEARCH_DAILY_LIMITS = { perOrganisation: STANDARD_DAILY_QUOTAS.mbcSearch, allOrganisations: 600 } as const
+export const MBC_SEARCH_DAILY_LIMITS = { perOrganisation: STANDARD_DAILY_QUOTAS.mbcSearch, allOrganisations: 3000 } as const
 
 export const MBC_SEARCH_QUOTA_MESSAGE = {
   organisation: (limit: number) => `Limite de ${limit} recherches MBC Search par jour atteinte pour votre organisation : réessayez demain.`,

@@ -5,15 +5,28 @@ import { getCurrentUser } from '@/lib/appwrite/auth'
 import { releaseDailySlot, takeDailySlotId } from '@/lib/ao/state'
 import {
   ApolloSearchError, briefQuestionsText, briefToCriteriaText, outreachDraftText, refineCriteriaText, revealApolloPeople, searchApolloPeople,
+  evaluationText, strategiesText, titleFitsText,
 } from '@/lib/mbc-search/apollo'
+import { parseTitleRelations, type TitleRelation } from '@/lib/match-scoring'
+import { STRATEGY_LIMITS, parseStrategies, titleKey, titlePairs, type MbcStrategy } from '@/lib/mbc-search/strategies'
+import { takeBurstSlot } from '@/lib/mbc-search/burst'
+import {
+  APOLLO_EVALUATION_ADDENDUM, evaluationOf, needAsOffer, parseEvaluationExtras, profileText, similarBrief, similarNeed, type MbcEvaluation,
+} from '@/lib/mbc-search/evaluation'
+import {
+  criteriaCounts, cvTextForScoring, parseJudgements, parseScoringNotes, scoringSystemPrompt, scoringUserMessage,
+} from '@/lib/match-scoring'
+import { withCheckedTitles } from '@/lib/title-check'
+import { loadRecruiterWeights } from '@/lib/scoring-weights-store'
 import {
   MBC_REVEAL_DAILY_LIMITS, MBC_REVEAL_QUOTA_MESSAGE, MBC_SEARCH_DAILY_LIMITS, MBC_SEARCH_QUOTA_MESSAGE, mbcSearchDenial,
 } from '@/lib/mbc-search/access'
 import { featureDenial } from '@/lib/plans'
 import { loadTenantAccess } from '@/lib/tenant-access'
 import {
-  APOLLO_PERSON_ID, CRITERIA_LIMITS, MAX_PAGE, REVEAL_BATCH, cleanOutreachDraft, criteriaProblem, criteriaSchema, outreachNeedText,
-  outreachPersonSchema, outreachPersonText, parseBriefCriteria, rankProfiles, type MbcCriteria, type MbcRevealed, type ScoredProfile,
+  APOLLO_PERSON_ID, CRITERIA_LIMITS, REVEAL_BATCH, cleanOutreachDraft, criteriaProblem, criteriaSchema, outreachNeedText,
+  OUTREACH_CHANNELS, outreachPersonSchema, outreachPersonText, parseBriefCriteria, rankProfiles, type MbcCriteria, type MbcProfile, type MbcRevealed,
+  type ScoredProfile,
 } from '@/lib/mbc-search/rules'
 import {
   answersSchema, briefForAi, briefWithAnswers, criteriaForAi, parseQuestionsAnswer, parseRefinement, refineMessageSchema, type MbcQuestion,
@@ -22,7 +35,10 @@ import { SAVED_SEARCHES_MAX, searchIdSchema, searchNameSchema, type MbcSearchEnt
 import { deleteMbcSearch, isMbcHistoryConfigured, recordMbcSearch, setMbcSearchPinned } from '@/lib/mbc-search/history-store'
 import { isMbcRevealStoreConfigured, saveReveals, storedReveals, vivierTargetsOf } from '@/lib/mbc-search/reveal-store'
 import { SAVED_PEOPLE_MAX, searchRowSchema, type MbcSavedPerson } from '@/lib/mbc-search/saved'
-import { countSavedPeople, deleteSavedPerson, isMbcSavedStoreConfigured, saveSavedPerson, savedPerson } from '@/lib/mbc-search/saved-store'
+import {
+  MbcFollowUnavailableError, countSavedPeople, deleteSavedPerson, isMbcSavedStoreConfigured, saveSavedPerson, savedPerson, updateSavedFollow,
+} from '@/lib/mbc-search/saved-store'
+import { followSchema, type MbcFollow } from '@/lib/mbc-search/follow'
 
 // Actions de MBC Search (/recruiter/mbc-search, ADR 0018). Chacune vérifie elle-même le recruteur : une Server Action
 // est un point d'entrée public. Les pages de résultats ne sont pas enregistrées : seuls sont écrits les places de quota,
@@ -32,14 +48,21 @@ import { countSavedPeople, deleteSavedPerson, isMbcSavedStoreConfigured, saveSav
 
 const SESSION_EXPIRED = 'Session expirée : rechargez la page et reconnectez-vous.'
 
+// Appels récents de chaque recruteur (burst.ts) : propres à ce processus serveur, perdus à son redémarrage.
+const recentCalls = new Map<string, number[]>()
+
 /**
- * Recruteur de la session, formule qui comprend MBC Search, abonnement actif et adresse vérifiée, puis une place sur
- * les quotas du jour (celui de la formule de l'organisation, puis celui de toutes). Une demande qui échoue ensuite
- * compte quand même (l'IA a pu être facturée, Apollo limite le débit).
+ * Recruteur de la session, débit de ses appels (20 par minute, burst.ts), formule qui comprend MBC Search, abonnement
+ * actif et adresse vérifiée, puis une place sur les quotas du jour (celui de la formule de l'organisation, puis celui
+ * de toutes). Une demande qui échoue ensuite compte quand même (l'IA a pu être facturée, Apollo limite le débit).
  */
 async function searchSlot(): Promise<{ error: string } | null> {
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) return { error: SESSION_EXPIRED }
+  if (!takeBurstSlot(recentCalls, user.userId, Date.now())) {
+    console.warn('[mbc-search] trop d\'appels en une minute pour un recruteur')
+    return { error: 'Trop de demandes en une minute : patientez quelques secondes, puis relancez.' }
+  }
   const tenantId = user.tenantId
   try {
     const access = await loadTenantAccess(tenantId)
@@ -137,15 +160,66 @@ export async function refineMbcSearch(input: unknown): Promise<{ reply?: string;
   return res
 }
 
-const pageSchema = z.number().int().min(1).max(MAX_PAGE)
-
-const historyBriefSchema = z.string().max(CRITERIA_LIMITS.brief)
+const planSchema = z.object({ brief: z.string().max(CRITERIA_LIMITS.brief), criteria: criteriaSchema })
 
 /**
- * « Rechercher » : profils d'Apollo pour ces critères, classés avec les raisons du score. La première page est notée
- * dans l'historique du recruteur (`entry`) ; un historique indisponible n'empêche pas la recherche (`historyError`).
+ * Requêtes d'un besoin (ADR 0037) : celle des critères du recruteur, puis jusqu'à 4 autres proposées par l'IA (autres
+ * intitulés du même métier). Un appel à l'IA, une place du quota. L'IA indisponible ou illisible n'empêche pas la
+ * recherche : la requête du recruteur seule, et `note` le dit.
  */
-export async function searchMbcProfiles(criteria: unknown, page: unknown = 1, brief: unknown = ''): Promise<{
+export async function planMbcStrategies(input: unknown): Promise<{ strategies?: MbcStrategy[]; note?: string; error?: string }> {
+  const parsed = planSchema.safeParse(input)
+  if (!parsed.success) return { error: 'Critères invalides : rechargez la page.' }
+  const problem = criteriaProblem(parsed.data.criteria)
+  if (problem) return { error: problem }
+  const refused = await searchSlot()
+  if (refused) return refused
+  const only = 'Je n\'ai pas pu préparer d\'autres recherches : je cherche avec vos critères seulement.'
+  try {
+    const strategies = parseStrategies(await strategiesText(parsed.data), parsed.data.criteria)
+    return strategies.length > 1 ? { strategies } : { strategies, note: 'Vos critères suffisent : une seule recherche.' }
+  } catch (err) {
+    console.error('[mbc-search] requêtes supplémentaires impossibles', err instanceof Error ? err.name : 'inconnu')
+    return { strategies: parseStrategies('', parsed.data.criteria), note: only }
+  }
+}
+
+const searchSchema = z.object({
+  /** Critères du recruteur : la note de chaque profil, et la ligne de son historique. */
+  criteria: criteriaSchema,
+  /** Critères de la requête envoyée à Apollo (une des requêtes de planMbcStrategies, ou les critères eux-mêmes). */
+  query: criteriaSchema,
+  page: z.number().int().min(1).max(STRATEGY_LIMITS.maxPage),
+  brief: z.string().max(CRITERIA_LIMITS.brief),
+  /** Noter la recherche dans l'historique du recruteur (première page de la requête de ses critères). */
+  record: z.boolean(),
+})
+
+/**
+ * Comparaison par l'IA des intitulés de la page au métier demandé (title-check) : relation par intitulé (clé
+ * `titleKey`). `failed` : l'IA indisponible ou illisible (réponse d'une autre longueur que la liste comprise), les mots
+ * en commun départagent les intitulés.
+ */
+async function titleFits(criteria: MbcCriteria, profiles: MbcProfile[]): Promise<{ fits: Map<string, TitleRelation | null>; failed: boolean }> {
+  const pairs = titlePairs(criteria, profiles)
+  if (pairs.length === 0) return { fits: new Map(), failed: false }
+  try {
+    const relations = parseTitleRelations(await titleFitsText(pairs), pairs.length, true)
+    if (relations.every(r => r === null)) console.warn('[mbc-search] comparaison des intitulés illisible : mots en commun')
+    return { fits: new Map(pairs.map((p, i) => [titleKey(p.intitule), relations[i]])), failed: relations.every(r => r === null) }
+  } catch (err) {
+    console.error('[mbc-search] comparaison des intitulés impossible : mots en commun', err instanceof Error ? err.name : 'inconnu')
+    return { fits: new Map(), failed: true }
+  }
+}
+
+/**
+ * « Rechercher » : une page (100 profils) d'une des requêtes du besoin, notée sur les critères du recruteur avec les
+ * intitulés comparés par l'IA, et classée. Une place du quota par page. `stop` : refus qui se répéterait pour les
+ * requêtes suivantes (session, formule, quota, clé ou crédits Apollo, débit) : la page arrête la recherche. Notée dans
+ * l'historique si `record` (`entry`) ; un historique indisponible n'empêche pas la recherche (`historyError`).
+ */
+export async function searchMbcProfiles(input: unknown): Promise<{
   profiles?: ScoredProfile[]
   total?: number
   entry?: MbcSearchEntry
@@ -154,23 +228,26 @@ export async function searchMbcProfiles(criteria: unknown, page: unknown = 1, br
   revealed?: MbcRevealed[]
   /** Personnes de la page déjà dans un vivier du recruteur : « general » ou l'offre. */
   inVivier?: Record<string, string[]>
+  /** Intitulés comparés sans l'IA (indisponible) : classement par mots en commun. */
+  titleCheckFailed?: boolean
+  stop?: true
   error?: string
 }> {
-  const c = criteriaSchema.safeParse(criteria)
-  const p = pageSchema.safeParse(page)
-  const b = historyBriefSchema.safeParse(brief)
-  if (!c.success || !p.success || !b.success) return { error: 'Critères invalides : rechargez la page.' }
-  const problem = criteriaProblem(c.data)
+  const parsed = searchSchema.safeParse(input)
+  if (!parsed.success) return { error: 'Critères invalides : rechargez la page.' }
+  const { criteria, query, page, brief, record } = parsed.data
+  const problem = criteriaProblem(criteria) ?? criteriaProblem(query)
   if (problem) return { error: problem }
   const user = await getCurrentUser()
   const refused = await searchSlot()
-  if (refused || !user?.tenantId) return refused ?? { error: SESSION_EXPIRED }
-  let found: { total: number; profiles: ScoredProfile[]; revealed?: MbcRevealed[]; inVivier?: Record<string, string[]> }
+  if (refused || !user?.tenantId) return { ...(refused ?? { error: SESSION_EXPIRED }), stop: true }
+  let found: { total: number; profiles: ScoredProfile[]; titleCheckFailed: boolean; revealed?: MbcRevealed[]; inVivier?: Record<string, string[]> }
   try {
-    const { total, profiles } = await searchApolloPeople(c.data, p.data)
-    found = { total, profiles: rankProfiles(profiles, c.data, new Date()) }
+    const { total, profiles } = await searchApolloPeople(query, page, STRATEGY_LIMITS.perPage)
+    const { fits, failed } = await titleFits(criteria, profiles)
+    found = { total, titleCheckFailed: failed, profiles: rankProfiles(profiles, criteria, new Date(), p => fits.get(titleKey(p.title)) ?? null) }
   } catch (err) {
-    if (err instanceof ApolloSearchError) return { error: err.message }
+    if (err instanceof ApolloSearchError) return err.blocking ? { error: err.message, stop: true } : { error: err.message }
     console.error('[mbc-search] recherche impossible', err instanceof Error ? err.name : 'inconnu')
     return { error: 'Recherche impossible pour le moment : réessayez dans quelques instants.' }
   }
@@ -182,9 +259,9 @@ export async function searchMbcProfiles(criteria: unknown, page: unknown = 1, br
   else console.error('[mbc-search] profils déjà révélés illisibles', revealed.reason instanceof Error ? revealed.reason.message : String(revealed.reason))
   if (inVivier.status === 'fulfilled') found = { ...found, inVivier: inVivier.value }
   else console.error('[mbc-search] vivier illisible', inVivier.reason instanceof Error ? inVivier.reason.message : String(inVivier.reason))
-  if (p.data !== 1 || !isMbcHistoryConfigured()) return found
+  if (!record || !isMbcHistoryConfigured()) return found
   try {
-    const entry = await recordMbcSearch({ userId: user.userId, tenantId: user.tenantId, brief: b.data.trim(), criteria: c.data, total: found.total, now: new Date() })
+    const entry = await recordMbcSearch({ userId: user.userId, tenantId: user.tenantId, brief: brief.trim(), criteria, total: found.total, now: new Date() })
     return { ...found, entry }
   } catch (err) {
     console.error('[mbc-search] historique non mis à jour', err instanceof Error ? err.message : String(err))
@@ -318,6 +395,98 @@ async function revealForRecruiter(user: { userId: string; tenantId: string; emai
   return { profiles: [...known, ...fresh], charged: wanted.length }
 }
 
+/**
+ * Profil révélé par l'organisation (gardé 90 jours) ou enregistré par le recruteur, relu en base : l'évaluation et les
+ * profils similaires partent de ce que le serveur a payé et gardé, jamais d'un profil envoyé par le navigateur. null :
+ * pas révélé (ou plus gardé) pour cette organisation.
+ */
+async function revealedFor(user: { userId: string; tenantId: string }, id: string): Promise<MbcRevealed | null> {
+  const [stored] = await storedReveals(user.tenantId, [id], new Date())
+  if (stored) return stored
+  return isMbcSavedStoreConfigured() ? (await savedPerson(user.userId, id))?.profile ?? null : null
+}
+
+const NOT_REVEALED = 'Révélez d’abord le profil complet de cette personne.'
+
+const evaluateSchema = z.object({
+  id: z.string().regex(APOLLO_PERSON_ID),
+  brief: z.string().max(CRITERIA_LIMITS.brief),
+  criteria: criteriaSchema,
+})
+
+/**
+ * « Évaluer » un profil révélé pour le besoin (ADR 0037, phase 2) : l'IA juge le profil Apollo sur le barème du matching,
+ * comme un CV (preuves vérifiées, intitulés comparés), le code calcule le score avec les poids du recruteur, sans les
+ * critères qu'Apollo ne donne pas (evaluation.ts). Un appel à l'IA, une place du quota. Rien n'est enregistré.
+ */
+export async function evaluateMbcProfile(input: unknown): Promise<{ evaluation?: MbcEvaluation; error?: string }> {
+  const parsed = evaluateSchema.safeParse(input)
+  if (!parsed.success) return { error: 'Profil invalide : rechargez la page.' }
+  const { id, brief, criteria } = parsed.data
+  const problem = criteriaProblem(criteria)
+  if (problem) return { error: problem }
+  const user = await getCurrentUser()
+  const refused = await searchSlot()
+  if (refused || !user?.tenantId) return refused ?? { error: SESSION_EXPIRED }
+  let profile: MbcRevealed | null
+  try {
+    profile = await revealedFor({ userId: user.userId, tenantId: user.tenantId }, id)
+  } catch (err) {
+    console.error('[mbc-search] profil révélé illisible', err instanceof Error ? err.message : String(err))
+    return { error: 'Profil indisponible pour le moment : réessayez dans quelques instants.' }
+  }
+  if (!profile) return { error: NOT_REVEALED }
+  const failed = 'L\'IA n\'a pas pu évaluer ce profil : réessayez dans quelques instants.'
+  try {
+    const { weights } = await loadRecruiterWeights(user.userId)
+    const { offer, judged } = needAsOffer(brief, criteria)
+    const cvText = cvTextForScoring(profileText(profile))
+    const system = `${scoringSystemPrompt('matching', criteriaCounts(judged))}\n\n${APOLLO_EVALUATION_ADDENDUM}`
+    const content = await evaluationText({ system, user: scoringUserMessage(offer, judged, cvText) })
+    // Lu comme une notation de CV (cvScorer, sourcing-core.ts) : jugements vérifiés dans le texte lu, intitulés comparés.
+    const json = content.match(/\{[\s\S]*\}/)
+    let answer: unknown = null
+    try { answer = json ? JSON.parse(json[0]) : null } catch { answer = null }
+    const judgements = parseJudgements(answer, judged, cvText, 'matching')
+    if (!judgements) return { error: failed }
+    const [checked] = await withCheckedTitles([judgements])
+    return { evaluation: evaluationOf(checked, judged, weights.matching, parseScoringNotes(answer), parseEvaluationExtras(answer), { titleAsked: criteria.titles.length > 0 }) }
+  } catch (err) {
+    console.error('[mbc-search] évaluation impossible', err instanceof Error ? err.name : 'inconnu')
+    return { error: failed }
+  }
+}
+
+/**
+ * « Profils similaires » à un profil révélé (ADR 0038) : l'IA tire des critères de son poste, de son titre, de son
+ * parcours et du secteur de son employeur (sans son nom), comme d'un besoin ; la page lance ensuite la recherche.
+ * Un appel à l'IA, une place du quota. `brief` : besoin tiré des critères seuls (similarNeed), gardé dans l'historique.
+ */
+export async function similarMbcCriteria(id: unknown): Promise<{ criteria?: MbcCriteria; brief?: string; error?: string }> {
+  const parsed = z.string().regex(APOLLO_PERSON_ID).safeParse(id)
+  if (!parsed.success) return { error: 'Profil invalide : rechargez la page.' }
+  const user = await getCurrentUser()
+  const refused = await searchSlot()
+  if (refused || !user?.tenantId) return refused ?? { error: SESSION_EXPIRED }
+  let profile: MbcRevealed | null
+  try {
+    profile = await revealedFor({ userId: user.userId, tenantId: user.tenantId }, parsed.data)
+  } catch (err) {
+    console.error('[mbc-search] profil révélé illisible', err instanceof Error ? err.message : String(err))
+    return { error: 'Profil indisponible pour le moment : réessayez dans quelques instants.' }
+  }
+  if (!profile) return { error: NOT_REVEALED }
+  try {
+    const criteria = parseBriefCriteria(await briefToCriteriaText(similarBrief(profile)))
+    if (!criteria) return { error: 'L\'IA n\'a pas tiré de critères de ce profil : renseignez-les vous-même.' }
+    // Le parcours de la personne ne quitte pas le serveur : le besoin gardé est tiré des critères seuls (similarNeed).
+    return { criteria, brief: similarNeed(criteria) }
+  } catch (err) {
+    console.error('[mbc-search] critères de profils similaires impossibles', err instanceof Error ? err.name : 'inconnu')
+    return { error: 'L\'IA n\'a pas pu lire ce profil : réessayez dans quelques instants.' }
+  }
+}
+
 const SAVED_UNAVAILABLE = 'Personnes enregistrées indisponibles pour le moment : réessayez dans quelques instants.'
 const savedFullMessage = `${SAVED_PEOPLE_MAX} personnes enregistrées au plus : retirez-en une d'abord.`
 
@@ -377,10 +546,39 @@ export async function unsaveMbcPerson(apolloId: unknown): Promise<{ ok?: true; e
   }
 }
 
+const followInputSchema = z.object({ id: z.string().regex(APOLLO_PERSON_ID), follow: followSchema, updatedAt: z.string().max(40) })
+
+/**
+ * Suivi d'une personne enregistrée (ADR 0039) : statut, note et étiquettes du recruteur, gardés avec elle. Seulement une
+ * personne de sa liste (compte Auth de la session) ; ni crédit ni quota. `updatedAt` : la version que l'écran a lue (un
+ * suivi enregistré depuis, dans un autre onglet, n'est pas écrasé). Rendus : le suivi tel qu'enregistré et sa version.
+ */
+export async function updateMbcFollow(input: unknown): Promise<{ follow?: MbcFollow; updatedAt?: string; error?: string }> {
+  const parsed = followInputSchema.safeParse(input)
+  if (!parsed.success) return { error: 'Suivi invalide : 2 000 caractères de note et 10 étiquettes de 40 caractères au plus.' }
+  const user = await getCurrentUser()
+  if (!user || user.role !== 'recruiter' || !user.tenantId) return { error: SESSION_EXPIRED }
+  if (!isMbcSavedStoreConfigured()) return { error: SAVED_UNAVAILABLE }
+  try {
+    const res = await updateSavedFollow(user.userId, parsed.data.id, parsed.data.follow, parsed.data.updatedAt)
+    if (res === 'missing') return { error: 'Personne introuvable dans votre sélection : elle a peut-être été retirée.' }
+    if (res === 'stale') return { error: 'Suivi modifié ailleurs (un autre onglet ?) : rechargez la page avant de l’enregistrer.' }
+    return { follow: parsed.data.follow, updatedAt: res.updatedAt }
+  } catch (err) {
+    if (err instanceof MbcFollowUnavailableError) {
+      console.error('[mbc-search] suivi impossible : attributs followStatus / followNote / followTags absents (schema:push)', err.message)
+      return { error: 'Le suivi des personnes n\'est pas encore activé sur la plateforme. Contactez le support.' }
+    }
+    console.error('[mbc-search] suivi non enregistré', err instanceof Error ? err.message : String(err))
+    return { error: SAVED_UNAVAILABLE }
+  }
+}
+
 const outreachSchema = z.object({
   brief: z.string().max(CRITERIA_LIMITS.brief),
   criteria: criteriaSchema,
   person: outreachPersonSchema,
+  channel: z.enum(OUTREACH_CHANNELS).default('email'),
 })
 
 /**
@@ -397,7 +595,7 @@ export async function draftMbcOutreach(input: unknown): Promise<{ message?: stri
   if (refused || !user) return refused ?? { error: SESSION_EXPIRED }
   try {
     const recruiter = [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Le recruteur'
-    const message = cleanOutreachDraft(await outreachDraftText({ need, recruiter, person: outreachPersonText(parsed.data.person) }))
+    const message = cleanOutreachDraft(await outreachDraftText({ need, recruiter, person: outreachPersonText(parsed.data.person), channel: parsed.data.channel }))
     if (!message) return { error: 'L\'IA n\'a pas rédigé de message : réessayez.' }
     return { message }
   } catch (err) {

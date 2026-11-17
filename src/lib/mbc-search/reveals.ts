@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
-import { APOLLO_PERSON_ID, PLAIN_EMAIL, type MbcRevealed } from './rules'
+import { APOLLO_PERSON_ID, EXPERIENCE_DESCRIPTION_CHARS, PLAIN_EMAIL, type MbcRevealed } from './rules'
 
 // Profils complets déjà révélés par une organisation (collection mbc_reveals, ADR 0018) : règles pures, testées.
 // Un profil payé (un crédit Apollo) est gardé MBC_REVEAL_RETENTION_DAYS jours pour toute l'organisation : il s'affiche
@@ -35,7 +35,12 @@ const revealedSchema = z.object({
   email: z.string().max(320).refine(v => v === '' || PLAIN_EMAIL.test(v)),
   emailStatus: text(40),
   photoUrl: https,
-  experiences: z.array(z.object({ title: text(300), company: text(300), start: text(7), end: text(7), current: z.boolean() })).max(8),
+  // description, seniority, industry : profils gardés depuis le 2026-11-16 seulement (vides avant).
+  experiences: z.array(z.object({
+    title: text(300), company: text(300), start: text(7), end: text(7), current: z.boolean(), description: text(EXPERIENCE_DESCRIPTION_CHARS).default(''),
+  })).max(8),
+  seniority: text(40).default(''),
+  industry: text(120).default(''),
 })
 
 /** Texte enregistré pour un profil : champs bornés comme à la relecture (l'attribut profileJson fait 20 000 caractères). */
@@ -45,7 +50,10 @@ export function revealJson(profile: MbcRevealed): string {
     ...profile,
     name: cut(profile.name, 200), title: cut(profile.title, 300), headline: cut(profile.headline, 500),
     company: cut(profile.company, 300), location: cut(profile.location, 300), emailStatus: cut(profile.emailStatus, 40),
-    experiences: profile.experiences.slice(0, 8).map(e => ({ ...e, title: cut(e.title, 300), company: cut(e.company, 300) })),
+    experiences: profile.experiences.slice(0, 8).map(e => ({
+      ...e, title: cut(e.title, 300), company: cut(e.company, 300), description: cut(e.description ?? '', EXPERIENCE_DESCRIPTION_CHARS),
+    })),
+    seniority: cut(profile.seniority ?? '', 40), industry: cut(profile.industry ?? '', 120),
   }
   return JSON.stringify(p)
 }

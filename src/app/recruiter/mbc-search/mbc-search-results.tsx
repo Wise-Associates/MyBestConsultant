@@ -1,10 +1,68 @@
 // Composant client : importé seulement par mbc-search-client.tsx (« use client »), qui en fait du code navigateur.
-import { Bookmark, Check, ExternalLink, Loader2, Mail, RotateCcw, SlidersHorizontal, Star, UserRound } from 'lucide-react'
+import {
+  Bookmark, Check, Circle, Download, ExternalLink, Loader2, Mail, RotateCcw, Search, SlidersHorizontal, Sparkles, Star, UserRound, X,
+} from 'lucide-react'
 import { REVEAL_BATCH, SENIORITIES, requiredSkillsOf, type MbcCriteria, type ScoredProfile, type Seniority } from '@/lib/mbc-search/rules'
+import type { StrategyRun } from '@/lib/mbc-search/strategies'
+import { DEFAULT_POOL_FILTERS, hasActiveFilters, type PoolFilters, type PoolSort } from '@/lib/mbc-search/results-view'
+import { FOLLOW_STATUSES, type MbcFollow } from '@/lib/mbc-search/follow'
 import { Avatar, ChipField, Toggle, orangeTint, surface, type Reveal, type SaveButton } from './mbc-search-ui'
 
-// Profils trouvés, dans le fil de la conversation de MBC Search : lignes classées par score (révéler, enregistrer,
-// ouvrir le profil), sélection pour « Révéler la sélection », pages, et critères de la recherche, modifiables à la main.
+// Profils trouvés, dans le fil de la conversation de MBC Search : requêtes du besoin et leur avancement (ADR 0037),
+// lignes classées par score (révéler, enregistrer, ouvrir le profil), sélection pour « Révéler la sélection », suite de
+// la liste, et critères de la recherche, modifiables à la main.
+
+const plural = (n: number, one: string, many: string) => `${n.toLocaleString('fr-FR')} ${n > 1 ? many : one}`
+
+/** Ce qu'une requête demande à Apollo : intitulés, puis mots-clés obligatoires (★). */
+function queryText(criteria: MbcCriteria): string {
+  return [...criteria.titles, ...requiredSkillsOf(criteria).map(s => `★ ${s}`)].join(' · ')
+}
+
+/** Requêtes du besoin et leur avancement : profils trouvés, nouveaux pour la liste, échec ou arrêt. */
+function StrategyList({ runs, running, stopping, onStop }: { runs: StrategyRun[]; running: boolean; stopping: boolean; onStop: () => void }) {
+  const finished = runs.filter(r => r.status !== 'waiting' && r.status !== 'running').length
+  return (
+    <div className="rounded-xl px-3 py-2.5 space-y-2" style={{ background: 'var(--color-background)' }}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <p className="text-xs font-bold" style={{ color: 'var(--color-text)' }}>
+          {plural(runs.length, 'recherche', 'recherches')}{running ? ` · ${finished} sur ${runs.length} terminée${finished > 1 ? 's' : ''}` : ''}
+        </p>
+        <span className="flex-1" />
+        {running && (
+          <button type="button" onClick={onStop} disabled={stopping}
+            className="px-2.5 py-1 rounded-lg text-xs font-bold disabled:opacity-60" style={{ ...surface, color: 'var(--color-text)' }}>
+            {stopping ? 'Arrêt après la recherche en cours…' : 'Arrêter'}
+          </button>
+        )}
+      </div>
+      <ol className="space-y-1.5" aria-label="Recherches lancées pour ce besoin">
+        {runs.map((r, i) => (
+          <li key={i} className="flex items-start gap-2 text-xs">
+            <span className="mt-0.5 shrink-0" aria-hidden>
+              {r.status === 'done' ? <Check className="h-3.5 w-3.5" style={{ color: 'var(--color-brand-orange)' }} />
+                : r.status === 'running' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" style={{ color: 'var(--color-brand-orange)' }} />
+                  : r.status === 'error' ? <X className="h-3.5 w-3.5" style={{ color: 'var(--color-text-muted)' }} />
+                    : <Circle className="h-3.5 w-3.5" style={{ color: 'var(--color-border)' }} />}
+            </span>
+            <span className="flex-1 min-w-0">
+              <span className="font-semibold" style={{ color: 'var(--color-text)' }}>{r.strategy.label}</span>
+              <span className="block truncate" style={{ color: 'var(--color-text-muted)' }} title={queryText(r.strategy.criteria)}>{queryText(r.strategy.criteria)}</span>
+              {r.error && <span className="block" style={{ color: 'var(--color-text-muted)' }}>{r.status === 'done' ? `Page suivante : ${r.error}` : r.error}</span>}
+            </span>
+            <span className="shrink-0 text-right tabular-nums" style={{ color: 'var(--color-text-muted)' }}
+              title={r.status === 'done' ? `${r.total.toLocaleString('fr-FR')} profils chez Apollo pour cette recherche` : undefined}>
+              {r.status === 'done' ? `${plural(r.found, 'trouvé', 'trouvés')} · ${plural(r.added, 'nouveau', 'nouveaux')}`
+                : r.status === 'running' ? 'Recherche…'
+                  : r.status === 'error' ? 'Échec'
+                    : r.status === 'stopped' ? 'Arrêtée' : 'En attente'}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
 
 /** Score sur 100 dans un anneau rempli d'autant. */
 function ScoreRing({ score }: { score: number }) {
@@ -35,8 +93,77 @@ function CriteriaPills({ p, criteria }: { p: ScoredProfile; criteria: MbcCriteri
   )
 }
 
-export function ResultRow({ p, criteria, reveal, active, selected, save, inVivier, busy, onOpen, onSelect, onReveal }: {
-  p: ScoredProfile; criteria: MbcCriteria; reveal?: Reveal; active: boolean; selected: boolean; save: SaveButton; inVivier: boolean; busy: boolean
+const SCORE_STEPS = [0, 40, 55, 65, 85]
+const SORTS: { id: PoolSort; label: string }[] = [
+  { id: 'score', label: 'Tri : score' }, { id: 'ai', label: 'Tri : score IA' }, { id: 'recent', label: 'Tri : mis à jour' },
+]
+const selectStyle = { ...surface, color: 'var(--color-text)' }
+
+/** Filtres et tri de la liste (results-view.ts), appliqués dans le navigateur aux profils déjà chargés. */
+function PoolFilterBar({ filters, onChange, strategies, shown, total, onExport }: {
+  filters: PoolFilters; onChange: (f: PoolFilters) => void; strategies: string[]; shown: number; total: number; onExport: () => void
+}) {
+  const set = <K extends keyof PoolFilters>(key: K, value: PoolFilters[K]) => onChange({ ...filters, [key]: value })
+  const chip = (key: 'emailOnly' | 'revealedOnly' | 'evaluatedOnly', label: string) => (
+    <button type="button" aria-pressed={filters[key]} onClick={() => set(key, !filters[key])}
+      className="px-2.5 py-1 rounded-full text-xs font-semibold"
+      style={filters[key] ? { background: orangeTint(12), border: '1px solid var(--color-brand-orange)', color: 'var(--color-text)' } : { ...surface, color: 'var(--color-text-muted)' }}>
+      {label}
+    </button>
+  )
+  return (
+    <div className="px-4 py-2.5 space-y-2" style={{ borderTop: '1px solid var(--color-border)' }}>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="relative flex-1 min-w-[12rem]">
+          <span className="sr-only">Filtrer par nom, intitulé, employeur ou lieu</span>
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5" style={{ color: 'var(--color-text-muted)' }} aria-hidden />
+          <input value={filters.text} onChange={e => set('text', e.target.value)} placeholder="Nom, intitulé, employeur, lieu…" maxLength={80}
+            className="w-full rounded-lg pl-8 pr-2.5 py-1.5 text-xs outline-none" style={selectStyle} />
+        </label>
+        <select aria-label="Score minimal" value={filters.minScore} onChange={e => set('minScore', Number(e.target.value))} className="rounded-lg px-2 py-1.5 text-xs" style={selectStyle}>
+          {SCORE_STEPS.map(s => <option key={s} value={s}>{s === 0 ? 'Tous les scores' : `Score ${s} et plus`}</option>)}
+        </select>
+        {strategies.length > 1 && (
+          <select aria-label="Recherche" value={filters.strategy ?? ''} onChange={e => set('strategy', e.target.value === '' ? null : Number(e.target.value))}
+            className="rounded-lg px-2 py-1.5 text-xs max-w-[12rem]" style={selectStyle}>
+            <option value="">Toutes les recherches</option>
+            {strategies.map((label, i) => <option key={i} value={i}>{label}</option>)}
+          </select>
+        )}
+        <select aria-label="Tri" value={filters.sort} onChange={e => set('sort', e.target.value as PoolSort)} className="rounded-lg px-2 py-1.5 text-xs" style={selectStyle}>
+          {SORTS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {chip('emailOnly', 'E-mail disponible')}
+        {chip('revealedOnly', 'Révélés')}
+        {chip('evaluatedOnly', 'Évalués')}
+        {hasActiveFilters(filters) && (
+          <>
+            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{shown} sur {total}</span>
+            <button type="button" onClick={() => onChange({ ...DEFAULT_POOL_FILTERS, sort: filters.sort })} className="text-xs font-semibold underline underline-offset-2" style={{ color: 'var(--color-text)' }}>
+              Effacer les filtres
+            </button>
+          </>
+        )}
+        <span className="flex-1" />
+        <button type="button" onClick={onExport} disabled={shown === 0}
+          title="Les profils affichés par les filtres ; nom complet, e-mail et LinkedIn seulement pour un profil révélé"
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold disabled:opacity-40" style={selectStyle}>
+          <Download className="h-3.5 w-3.5" /> Exporter (CSV)
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Ligne d'une personne. `selectMode` : la case sert à « Révéler la sélection » (personnes pas encore révélées), ou, dans
+ * la sélection, à « Comparer » (personnes révélées). `follow` : suivi d'une personne enregistrée (statut, étiquettes).
+ */
+export function ResultRow({ p, criteria, reveal, aiScore, follow, selectMode = 'reveal', active, selected, save, inVivier, busy, onOpen, onSelect, onReveal }: {
+  p: ScoredProfile; criteria: MbcCriteria; reveal?: Reveal; aiScore?: number; follow?: MbcFollow; selectMode?: 'reveal' | 'compare'
+  active: boolean; selected: boolean; save: SaveButton; inVivier: boolean; busy: boolean
   onOpen: () => void; onSelect: () => void; onReveal: () => void
 }) {
   const full = reveal?.state === 'done' ? reveal.profile : null
@@ -45,8 +172,9 @@ export function ResultRow({ p, criteria, reveal, active, selected, save, inVivie
   return (
     <li className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] sm:grid-cols-[auto_auto_minmax(0,1fr)_minmax(0,13rem)_auto_auto] items-center gap-x-3 gap-y-2 px-4 py-3"
       style={{ borderTop: '1px solid var(--color-border)', background: active ? orangeTint(6) : undefined }}>
-      <input type="checkbox" checked={selected} onChange={onSelect} disabled={Boolean(full) || reveal?.state === 'missing'}
-        aria-label={`Sélectionner ${name}`} className="w-4 h-4 accent-[var(--color-brand-orange)] disabled:opacity-30" />
+      <input type="checkbox" checked={selected} onChange={onSelect}
+        disabled={selectMode === 'compare' ? !full : Boolean(full) || reveal?.state === 'missing'}
+        aria-label={selectMode === 'compare' ? `Comparer ${name}` : `Sélectionner ${name}`} className="w-4 h-4 accent-[var(--color-brand-orange)] disabled:opacity-30" />
       <Avatar name={name} photoUrl={full?.photoUrl} />
       <button type="button" onClick={onOpen} className="min-w-0 text-left" aria-current={active ? 'true' : undefined}>
         <span className="flex items-center gap-1.5 flex-wrap">
@@ -54,6 +182,20 @@ export function ResultRow({ p, criteria, reveal, active, selected, save, inVivie
             {full ? name : <>{p.firstName || 'Profil'} <span style={{ color: 'var(--color-text-muted)', fontWeight: 500 }}>{p.lastNameMasked}</span></>}
           </span>
           {full && <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: orangeTint(14), color: 'var(--color-text)' }}>Révélé</span>}
+          {follow && (
+            <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: 'var(--color-background)', color: 'var(--color-text)' }}>
+              {FOLLOW_STATUSES[follow.status]}
+            </span>
+          )}
+          {follow?.tags.slice(0, 3).map(t => (
+            <span key={t} className="text-xs px-1.5 py-0.5 rounded" style={{ ...surface, color: 'var(--color-text-muted)' }}>#{t}</span>
+          ))}
+          {aiScore !== undefined && (
+            <span className="text-xs font-bold px-1.5 py-0.5 rounded inline-flex items-center gap-0.5" title="Score de l’évaluation par l’IA, sur ce qu’Apollo montre"
+              style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
+              <Sparkles className="h-3 w-3" aria-hidden /> IA {aiScore}
+            </span>
+          )}
           {inVivier && <span className="text-xs font-bold px-1.5 py-0.5 rounded inline-flex items-center gap-0.5" style={{ border: '1px solid var(--color-brand-orange)', color: 'var(--color-text)' }}><Check className="h-3 w-3" /> Dans votre vivier</span>}
           {reveal?.state === 'missing' && <span className="text-xs px-1.5 py-0.5 rounded" style={{ ...surface, color: 'var(--color-text-muted)' }}>Introuvable chez Apollo</span>}
         </span>
@@ -166,16 +308,25 @@ export function CriteriaEditor({ criteria, onChange, onRun, running, disabled, p
   )
 }
 
-/** Bloc des profils de la dernière recherche, dans le fil : en-tête, critères, lignes, pages. */
+/**
+ * Bloc des profils de la dernière recherche, dans le fil : en-tête, requêtes et leur avancement, critères, lignes,
+ * suite de la liste (`remaining`, déjà chargés) et « Chercher plus loin » (pages suivantes des requêtes, `deeper`).
+ */
 export function ResultsBlock({
-  total, page, lastPage, listed, hiddenByRecent, criteria, busy, editing, onToggleEditing, editor, selectable, selected, quotaLeft,
-  renderRow, onSelectAll, onRevealSelection, onPage,
+  total, listed, remaining, hiddenByRecent, runs, running, stopping, titleCheckFailed, deeper, criteria, busy, editing, onToggleEditing,
+  editor, selectable, selected, quotaLeft, renderRow, onSelectAll, onRevealSelection, onShowMore, onStop, onDeeper,
+  filters, onFilters, filtered, onExport, toEvaluate, evaluating, onEvaluateAll,
 }: {
-  total: number; page: number; lastPage: number; listed: ScoredProfile[]; hiddenByRecent: number; criteria: MbcCriteria; busy: boolean
-  editing: boolean; onToggleEditing: () => void; editor: React.ReactNode
+  total: number; listed: ScoredProfile[]; remaining: number; hiddenByRecent: number
+  runs: StrategyRun[]; running: boolean; stopping: boolean; titleCheckFailed: boolean; deeper: number
+  criteria: MbcCriteria; busy: boolean; editing: boolean; onToggleEditing: () => void; editor: React.ReactNode
   selectable: string[]; selected: string[]; quotaLeft: number | null
   renderRow: (p: ScoredProfile) => React.ReactNode
-  onSelectAll: (ids: string[]) => void; onRevealSelection: () => void; onPage: (page: number) => void
+  onSelectAll: (ids: string[]) => void; onRevealSelection: () => void; onShowMore: () => void; onStop: () => void; onDeeper: () => void
+  /** Filtres de la liste ; `filtered` : profils qui les passent (avant « Afficher plus »). */
+  filters: PoolFilters; onFilters: (f: PoolFilters) => void; filtered: number; onExport: () => void
+  /** Profils révélés de la liste filtrée pas encore évalués (10 au plus par clic) ; `evaluating` : avancement en cours. */
+  toEvaluate: number; evaluating: { done: number; total: number } | null; onEvaluateAll: () => void
 }) {
   const allSelected = selectable.length > 0 && selectable.every(id => selected.includes(id))
   const short = quotaLeft !== null && quotaLeft < selected.length
@@ -184,8 +335,7 @@ export function ResultsBlock({
       <div className="px-4 pt-4 pb-3 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
           <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-            <strong style={{ color: 'var(--color-text)' }}>{total.toLocaleString('fr-FR')} profil{total > 1 ? 's' : ''}</strong>
-            {lastPage > 0 && <> · page {page} sur {lastPage}</>} · classés par score
+            <strong style={{ color: 'var(--color-text)' }}>{plural(total, 'profil', 'profils')}</strong> sans doublon · classés par score
           </p>
           <span className="flex-1" />
           <button type="button" onClick={onToggleEditing} aria-expanded={editing}
@@ -194,8 +344,18 @@ export function ResultsBlock({
           </button>
         </div>
         <CriteriaSummary criteria={criteria} />
+        <StrategyList runs={runs} running={running} stopping={stopping} onStop={onStop} />
+        {titleCheckFailed && (
+          <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            L’IA n’a pas pu comparer certains intitulés au métier demandé : ils sont classés sur les mots en commun.
+          </p>
+        )}
       </div>
       {editing && editor}
+
+      {total > 0 && (
+        <PoolFilterBar filters={filters} onChange={onFilters} strategies={runs.map(r => r.strategy.label)} shown={filtered} total={total} onExport={onExport} />
+      )}
 
       <div className="flex items-center gap-2 flex-wrap px-4 py-2.5" style={{ borderTop: '1px solid var(--color-border)' }}>
         {selectable.length > 0 && (
@@ -206,6 +366,14 @@ export function ResultsBlock({
           </label>
         )}
         <span className="flex-1" />
+        {(toEvaluate > 0 || evaluating) && (
+          <button type="button" onClick={onEvaluateAll} disabled={busy || evaluating !== null}
+            title="L’IA juge chaque profil révélé sur le barème du matching, avec vos poids (une recherche du quota du jour par profil)"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-60 whitespace-nowrap" style={{ ...surface, color: 'var(--color-text)' }}>
+            {evaluating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            {evaluating ? `Évaluation ${evaluating.done + 1} sur ${evaluating.total}…` : `Évaluer les profils révélés · ${toEvaluate}`}
+          </button>
+        )}
         <button type="button" onClick={onRevealSelection} disabled={busy || selected.length === 0 || short}
           title={short && quotaLeft !== null ? `Il vous reste ${quotaLeft} profil${quotaLeft > 1 ? 's' : ''} complet${quotaLeft > 1 ? 's' : ''} aujourd'hui.` : undefined}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-40 whitespace-nowrap"
@@ -216,27 +384,38 @@ export function ResultsBlock({
 
       {listed.length === 0 ? (
         <p className="px-6 py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)', borderTop: '1px solid var(--color-border)' }}>
-          {hiddenByRecent > 0
-            ? 'Aucun profil récent sur cette page : retirez le filtre « Mis à jour depuis moins de 6 mois » ou passez à la page suivante.'
-            : 'Aucun profil pour ces critères. Dites-moi ce qui peut être assoupli (lieu, séniorité, compétence obligatoire), ou modifiez les critères.'}
+          {running ? 'Les profils arrivent au fil des recherches…'
+            : !runs.some(r => r.status === 'done') ? 'Aucune recherche n’a abouti : voir le détail ci-dessus, puis relancez.'
+            : total > 0 && hasActiveFilters(filters) ? 'Aucun profil ne passe ces filtres : élargissez-les ou effacez-les.'
+            : hiddenByRecent > 0
+              ? 'Aucun profil récent : retirez le filtre « Mis à jour depuis moins de 6 mois », ou cherchez plus loin.'
+              : 'Aucun profil pour ces critères. Dites-moi ce qui peut être assoupli (lieu, séniorité, compétence obligatoire), ou modifiez les critères.'}
         </p>
       ) : (
-        <ul style={{ opacity: busy ? 0.5 : 1 }}>{listed.map(renderRow)}</ul>
+        // Pendant la recherche, la liste se remplit : elle reste lisible ; grisée seulement pendant une autre action.
+        <ul style={{ opacity: busy && !running ? 0.5 : 1 }}>{listed.map(renderRow)}</ul>
       )}
 
-      <nav className="flex items-center justify-between gap-3 flex-wrap px-4 py-3 text-xs" style={{ borderTop: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }} aria-label="Pages de résultats">
+      <nav className="flex items-center justify-between gap-3 flex-wrap px-4 py-3 text-xs" style={{ borderTop: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }} aria-label="Suite des résultats">
         <span>
           Nom de famille masqué tant que le profil n’est pas révélé
           {hiddenByRecent > 0 ? ` · ${hiddenByRecent} profil${hiddenByRecent > 1 ? 's' : ''} ancien${hiddenByRecent > 1 ? 's' : ''} masqué${hiddenByRecent > 1 ? 's' : ''}` : ''}
         </span>
-        {lastPage > 1 && (
-          <span className="flex gap-2">
-            <button type="button" onClick={() => onPage(page - 1)} disabled={busy || page <= 1}
-              className="px-3 py-1.5 rounded-lg font-semibold disabled:opacity-40" style={{ ...surface, color: 'var(--color-text)' }}>Précédente</button>
-            <button type="button" onClick={() => onPage(page + 1)} disabled={busy || page >= lastPage}
-              className="px-3 py-1.5 rounded-lg font-semibold disabled:opacity-40" style={{ ...surface, color: 'var(--color-text)' }}>Suivante</button>
-          </span>
-        )}
+        <span className="flex gap-2 flex-wrap">
+          {remaining > 0 && (
+            <button type="button" onClick={onShowMore}
+              className="px-3 py-1.5 rounded-lg font-semibold" style={{ ...surface, color: 'var(--color-text)' }}>
+              Afficher {plural(Math.min(remaining, 50), 'profil', 'profils')} de plus
+            </button>
+          )}
+          {deeper > 0 && !running && (
+            <button type="button" onClick={onDeeper} disabled={busy}
+              title="Pages suivantes des recherches qui ont encore des profils chez Apollo (une recherche du quota du jour chacune)."
+              className="px-3 py-1.5 rounded-lg font-semibold disabled:opacity-40" style={{ ...surface, color: 'var(--color-text)' }}>
+              Chercher plus loin · {plural(deeper, 'recherche', 'recherches')}
+            </button>
+          )}
+        </span>
       </nav>
     </section>
   )

@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import type { MbcProfile, MbcRevealed } from './rules'
 import { SAVED_PEOPLE_MAX, parseSavedPersonDoc, savedPersonDocId, savedPersonFields, type MbcSavedPerson } from './saved'
+import { followFields, type MbcFollow } from './follow'
 
 // Personnes enregistrées par un recruteur dans MBC Search (collection mbc_saved_people, sans permission client : seul
 // le serveur la lit). Toute lecture et toute écriture portent sur le compte du recruteur de la session (`userId`,
@@ -101,6 +102,36 @@ export async function saveSavedPerson(input: {
   const saved = parseSavedPersonDoc(doc as unknown as Record<string, unknown>)
   if (!saved) throw new MbcSavedStoreError('Personne enregistrée illisible.')
   return saved
+}
+
+/** Attributs du suivi pas encore créés sur ce projet (`schema:push`, ADR 0039) : enregistrer le suivi est impossible. */
+export class MbcFollowUnavailableError extends Error {}
+
+/**
+ * Enregistre le suivi (statut, note, étiquettes) d'une personne de la liste du recruteur, si le document n'a pas changé
+ * depuis que l'écran l'a lu (`expectedUpdatedAt`) : sinon 'stale' — un autre onglet a enregistré entre-temps, sa note
+ * serait écrasée sans prévenir. 'missing' : elle n'est pas dans la liste (retirée, ou d'un autre recruteur). Appwrite
+ * 1.7 n'a pas d'écriture conditionnelle : il reste un intervalle de quelques millisecondes, acceptable pour la liste
+ * personnelle d'un seul recruteur.
+ */
+export async function updateSavedFollow(
+  userId: string, apolloId: string, follow: MbcFollow, expectedUpdatedAt: string,
+): Promise<'missing' | 'stale' | { updatedAt: string }> {
+  const { databases } = createAdminClient()
+  const id = savedPersonDocId(userId, apolloId)
+  try {
+    const doc = await databases.getDocument(DB_ID, collection(), id, [Query.select(['$id', '$updatedAt', 'userId'])])
+    if (doc.userId !== userId) return 'missing'
+    if (doc.$updatedAt !== expectedUpdatedAt) return 'stale'
+    const updated = await databases.updateDocument(DB_ID, collection(), id, followFields(follow))
+    return { updatedAt: updated.$updatedAt }
+  } catch (err) {
+    if (codeOf(err) === 404) return 'missing'
+    // Attribut inconnu d'Appwrite : la structure n'a pas été poussée sur ce projet.
+    const message = err instanceof Error ? err.message : String(err)
+    if (typeOf(err) === 'document_invalid_structure' && message.includes('Unknown attribute')) throw new MbcFollowUnavailableError(message)
+    throw err
+  }
 }
 
 /** Retire la personne de la liste du recruteur ; false : elle n'y était pas. */

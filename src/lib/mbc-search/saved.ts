@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { APOLLO_PERSON_ID, type MbcProfile, type MbcRevealed } from './rules'
 import { parseRevealedJson, revealJson } from './reveals'
+import { parseFollow, type MbcFollow } from './follow'
 
 // Personnes enregistrées par un recruteur dans MBC Search (collection mbc_saved_people, ADR 0018) : règles pures,
 // testées. Enregistrer une personne la révèle (un crédit Apollo si l'organisation ne l'a pas déjà révélée) et la garde
@@ -18,6 +19,10 @@ export interface MbcSavedPerson {
   search: MbcProfile
   profile: MbcRevealed
   savedAt: string
+  /** Statut, note et étiquettes du recruteur (follow.ts) ; « À examiner » tant qu'il n'a rien changé. */
+  follow: MbcFollow
+  /** Dernière écriture du document (`$updatedAt`) : renvoyée avec le suivi, elle refuse d'écraser un suivi plus récent. */
+  updatedAt: string
 }
 
 /**
@@ -65,5 +70,8 @@ export function parseSavedPersonDoc(doc: Record<string, unknown>): MbcSavedPerso
   try { raw = JSON.parse(typeof doc.searchJson === 'string' ? doc.searchJson : '') } catch { return null }
   const search = searchRowSchema.safeParse(raw)
   if (!search.success || search.data.id !== profile.id) return null
-  return { search: search.data, profile, savedAt: typeof doc.savedAt === 'string' ? doc.savedAt : '' }
+  return {
+    search: search.data, profile, savedAt: typeof doc.savedAt === 'string' ? doc.savedAt : '', follow: parseFollow(doc),
+    updatedAt: typeof doc.$updatedAt === 'string' ? doc.$updatedAt : '',
+  }
 }
