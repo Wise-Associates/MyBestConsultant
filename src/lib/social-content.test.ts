@@ -29,7 +29,7 @@ const job: JobLite = {
 const copy: CopyDraft = {
   hook: 'Gouvernance des données', tagline: 'Rejoignez un projet stratégique', pitch: '',
   missionBullets: ['Définir un cadre de gouvernance des données'], profileBullets: ['Capacité à travailler en équipe pluridisciplinaire'],
-  context: '', hashtags: [],
+  context: '', pole: '', hashtags: [],
 }
 const opts = { baseUrl: 'https://exemple.test', calendlyUrl: 'https://calendly.com/exemple' }
 const applyLine = '👉 Voir l’offre et postuler : https://exemple.test/jobs/ao123?utm_source=linkedin'
@@ -97,21 +97,30 @@ describe('texte LinkedIn d’une offre', () => {
 })
 
 describe('contexte en tête de la publication LinkedIn', () => {
-  const objective = '🔎 Pourquoi cette publication : nous recherchons un consultant ou une consultante pour cette mission. Vous avez ce profil, ou vous connaissez la bonne personne ? Postulez ou partagez cette publication.'
+  const platform: JobLite = { ...job, fromPlatform: true, title: 'Consultant gouvernance des données (H/F)' }
+  const recruit = (team: string) => `Dans le cadre de son développement, Wise Associates recherche un consultant gouvernance des données pour rejoindre ${team} et intervenir auprès de ses clients du secteur financier et de l’assurance.`
   const head = (j: JobLite, c: CopyDraft = copy, cfg = DEFAULT_SOCIAL_CONFIG) =>
     buildContent(j, c, cfg, opts).captions.linkedin.split('\n\n🎯 Au programme')[0]
 
-  it('offre de la plateforme : présente Wise Associates, le projet rédigé par l’IA et l’objectif, sans répéter l’accroche', () => {
+  it('offre de la plateforme : présente Wise Associates, sa phrase de recrutement avec le pôle, puis le projet rédigé par l’IA', () => {
     const context = 'Une DSI structure la gouvernance de ses données et sa feuille de route SI.'
-    const linkedin = buildContent({ ...job, fromPlatform: true }, { ...copy, context }, DEFAULT_SOCIAL_CONFIG, opts).captions.linkedin
+    const linkedin = buildContent(platform, { ...copy, context, pole: 'Data et intelligence artificielle' }, DEFAULT_SOCIAL_CONFIG, opts).captions.linkedin
     assert.ok(linkedin.includes([
-      '📍 Paris (75) · Mission · Présentiel', '', DEFAULT_PUBLISHER_INTRO, '', `🧭 Le projet : ${context}`, objective, '', '🎯 Au programme',
+      '📍 Paris (75) · Mission · Présentiel', '', DEFAULT_PUBLISHER_INTRO, '',
+      recruit('son pôle d’expertise Data et intelligence artificielle'), '', `🧭 Le projet : ${context}`, '', '🎯 Au programme',
     ].join('\n')), linkedin)
     assert.ok(!linkedin.includes('Une direction des systèmes d’information structure'), 'accroche répétée')
+    assert.ok(!linkedin.includes('Pourquoi cette publication'), linkedin)
   })
 
-  it('sans texte de l’IA, l’accroche de la description sert de projet, reprise telle quelle', () => {
-    assert.ok(head({ ...job, fromPlatform: true }).endsWith(`\n\n🧭 Une direction des systèmes d’information structure sa gouvernance des données.\n${objective}`))
+  it('sans pôle ni texte de l’IA : « ses équipes », et l’accroche de la description sert de projet', () => {
+    assert.ok(head(platform).endsWith(`\n\n${recruit('ses équipes')}\n\n🧭 Une direction des systèmes d’information structure sa gouvernance des données.`), head(platform))
+  })
+
+  it('intitulé repris sans « Consultant » en tête, « H/F » ni parenthèses', () => {
+    const text = head({ ...platform, title: 'Consultante SAP FI H/F (Paris)' })
+    assert.ok(text.includes('recherche un consultant SAP FI pour rejoindre'), text)
+    assert.ok(head({ ...platform, title: 'Ingénieur DevOps / Cloud AWS' }).includes('recherche un consultant Ingénieur DevOps / Cloud AWS pour'))
   })
 
   it('offre d’une organisation cliente : l’organisation recrute, pas Wise Associates ; CDI annoncé', () => {
@@ -124,11 +133,22 @@ describe('contexte en tête de la publication LinkedIn', () => {
   it('présentation vidée par l’admin : aucune ligne de présentation', () => {
     const cfg = sanitizeSocialConfig({ ...DEFAULT_SOCIAL_CONFIG, publisherIntro: '  ' })
     assert.equal(cfg.publisherIntro, '')
-    assert.ok(head({ ...job, fromPlatform: true }, copy, cfg).includes('Présentiel\n\n🧭 Une direction'))
+    assert.ok(head(platform, copy, cfg).includes('Présentiel\n\nDans le cadre de son développement'))
   })
 
-  it('réglage enregistré avant la présentation : celle par défaut', () => {
+  it('réglage enregistré avant la présentation, ou avec l’ancienne par défaut : celle par défaut ; une présentation modifiée est gardée', () => {
     assert.equal(sanitizeSocialConfig({ hashtags: ['emploi'] }).publisherIntro, DEFAULT_PUBLISHER_INTRO)
+    const previous = 'Wise Associates est un cabinet de conseil qui accompagne entreprises, organismes publics et investisseurs dans leurs transformations commerciales et numériques : stratégie, risques, data & IA.'
+    assert.equal(sanitizeSocialConfig({ publisherIntro: previous }).publisherIntro, DEFAULT_PUBLISHER_INTRO)
+    assert.equal(sanitizeSocialConfig({ publisherIntro: 'Texte de l’admin.' }).publisherIntro, 'Texte de l’admin.')
+  })
+
+  it('pôle de l’IA gardé seulement s’il est l’un des pôles de Wise Associates, écrit comme dans la liste', () => {
+    assert.equal(normalizeCopy({ pole: ' data et INTELLIGENCE artificielle ' }, job).pole, 'Data et intelligence artificielle')
+    assert.equal(normalizeCopy({ pole: 'Strategie' }, job).pole, 'Stratégie')
+    assert.equal(normalizeCopy({ pole: 'Cybersécurité' }, job).pole, '')
+    assert.equal(normalizeCopy({ pole: 3 }, job).pole, '')
+    assert.equal(normalizeCopy({}, job).pole, '')
   })
 
   it('une introduction longue ou en plusieurs paragraphes reste dans le corps, sans ligne « projet »', () => {

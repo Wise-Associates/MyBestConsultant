@@ -28,9 +28,14 @@ export interface SocialConfig {
   publisherIntro: string
 }
 
-/** Termes repris de wise-associates.fr (« Le conseil qui tient le cap »), sans nom de client. Modifiable dans /admin/social. */
-export const DEFAULT_PUBLISHER_INTRO = 'Wise Associates est un cabinet de conseil qui accompagne entreprises, organismes publics et investisseurs dans leurs transformations commerciales et numériques : stratégie, risques, data & IA.'
+/** Texte de la direction (2026-11-17), modifiable dans /admin/social. */
+export const DEFAULT_PUBLISHER_INTRO = 'Wise Associates est un cabinet de conseil en management destiné aux institutions financières et aux compagnies d’assurance. Le cabinet a développé des expertises en stratégie, gestion des risques, finance et conformité, Data et intelligence artificielle, ainsi qu’en transformation digitale des organisations.'
+/** Présentation par défaut précédente : un réglage enregistré sans la modifier reçoit la nouvelle. */
+const PREVIOUS_PUBLISHER_INTRO = 'Wise Associates est un cabinet de conseil qui accompagne entreprises, organismes publics et investisseurs dans leurs transformations commerciales et numériques : stratégie, risques, data & IA.'
 const PUBLISHER_INTRO_MAX = 400
+
+/** Pôles d'expertise de Wise Associates, nommés dans les publications de ses offres ; l'IA en choisit un, ou aucun. */
+export const WISE_POLES = ['Stratégie', 'Gestion des risques', 'Finance et conformité', 'Data et intelligence artificielle', 'Transformation digitale'] as const
 
 export const DEFAULT_SOCIAL_CONFIG: SocialConfig = {
   autoPublish: false,
@@ -54,8 +59,10 @@ export function sanitizeSocialConfig(raw: unknown): SocialConfig {
     hashtags: Array.isArray(r.hashtags)
       ? [...new Set((r.hashtags as unknown[]).map(h => String(h).replace(/^#/, '').replace(/[^\p{L}\p{N}_]/gu, '').slice(0, 30)).filter(Boolean))].slice(0, 10)
       : DEFAULT_SOCIAL_CONFIG.hashtags,
-    // Absente (réglage enregistré avant elle) : celle par défaut ; vidée par l'admin : aucune.
-    publisherIntro: typeof r.publisherIntro === 'string' ? r.publisherIntro.replace(/\s+/g, ' ').trim().slice(0, PUBLISHER_INTRO_MAX) : DEFAULT_PUBLISHER_INTRO,
+    // Absente (réglage enregistré avant elle) ou restée l'ancienne par défaut : celle par défaut ; vidée par l'admin : aucune.
+    publisherIntro: typeof r.publisherIntro === 'string' && r.publisherIntro.trim() !== PREVIOUS_PUBLISHER_INTRO
+      ? r.publisherIntro.replace(/\s+/g, ' ').trim().slice(0, PUBLISHER_INTRO_MAX)
+      : DEFAULT_PUBLISHER_INTRO,
   }
 }
 
@@ -82,6 +89,7 @@ export interface CopyDraft {
   missionBullets: string[] // 3 puces
   profileBullets: string[] // 3-5 puces
   context: string          // 1-2 phrases sur le projet ou la mission (LinkedIn) ; vide = accroche de la description
+  pole: string             // pôle de Wise Associates (WISE_POLES) dont relève le poste ; vide = aucun ne convient
   hashtags: string[]       // expertises proposées par l'IA, vérifiées contre l'offre (offerHashtags)
 }
 
@@ -124,8 +132,16 @@ export function fallbackCopy(job: JobLite): CopyDraft {
     missionBullets: (sentences.slice(0, 3).length ? sentences.slice(0, 3) : [`Rejoignez ${job.company || 'une équipe ambitieuse'} sur cette mission.`]).map(s => s.replace(/[.!?]+$/, '')),
     profileBullets: job.skills.slice(0, 5).length ? job.skills.slice(0, 5) : ['Profil senior', 'Autonomie', 'Esprit d’équipe'],
     context: '',
+    pole: '',
     hashtags: [],
   }
+}
+
+const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim()
+
+/** Pôle proposé par l'IA, gardé seulement s'il est l'un de WISE_POLES (écrit comme dans la liste) ; sinon aucun. */
+function knownPole(value: unknown): string {
+  return typeof value === 'string' ? WISE_POLES.find(p => fold(p) === fold(value)) ?? '' : ''
 }
 
 /** Nettoie/borne un brouillon reçu de l'IA ; complète avec le repli pour les champs manquants. */
@@ -143,6 +159,7 @@ export function normalizeCopy(raw: unknown, job: JobLite): CopyDraft {
     missionBullets: mission.length ? mission : fb.missionBullets,
     profileBullets: profile.length ? profile : fb.profileBullets,
     context: typeof r.context === 'string' ? clip(plain(r.context), 320) : '',
+    pole: knownPole(r.pole),
     hashtags: list(r.hashtags, 10).map(h => h.slice(0, 60)),
   }
 }
@@ -245,9 +262,19 @@ function publisherLine(job: JobLite, cfg: SocialConfig): string {
   return job.company ? `📣 ${job.company} recrute via ${via}.` : `📣 Offre diffusée par ${via}.`
 }
 
-/** Objectif de la publication, selon qui recrute et le type de contrat. */
+/**
+ * Offre de la plateforme : phrase de la direction (2026-11-17), intitulé sans « H/F », parenthèses ni « Consultant »
+ * en tête (« Consultant SAP FI (H/F) » → « un consultant SAP FI ») ; sans pôle, « ses équipes ».
+ */
+function recruitLine(job: JobLite, pole: string): string {
+  const title = job.title.replace(/\([^)]*\)/g, ' ').replace(/\b[HF]\s*\/\s*[HF]\b/gi, ' ').replace(/^\s*consultant(e|\(e\))?\s+/i, '').replace(/\s+/g, ' ').trim()
+  const team = pole ? `son pôle d’expertise ${pole}` : 'ses équipes'
+  return `Dans le cadre de son développement, Wise Associates recherche un consultant ${title} pour rejoindre ${team} et intervenir auprès de ses clients du secteur financier et de l’assurance.`
+}
+
+/** Objectif de la publication d'une organisation cliente, selon le type de contrat. */
 function objectiveLine(job: JobLite): string {
-  const who = job.fromPlatform ? 'nous recherchons' : `${job.company || 'cette entreprise'} recherche`
+  const who = `${job.company || 'cette entreprise'} recherche`
   const contract = job.contractType === 'cdi' || job.contractType === 'cdd' ? CONTRACT[job.contractType] : ''
   const what = contract ? `un candidat ou une candidate pour ce poste en ${contract}` : 'un consultant ou une consultante pour cette mission'
   return `🔎 Pourquoi cette publication : ${who} ${what}. Vous avez ce profil, ou vous connaissez la bonne personne ? Postulez ou partagez cette publication.`
@@ -400,7 +427,11 @@ export function buildContent(job: JobLite, copy: CopyDraft, cfg: SocialConfig, o
   // candidat : « Pilotez… ») ; dans les deux cas l'accroche n'est pas répétée dans le corps.
   const { lead, rest } = splitLead(job.description)
   const project = copy.context ? `🧭 Le projet : ${copy.context}` : lead && `🧭 ${lead}`
-  const context = join(publisherLine(job, cfg), [project, objectiveLine(job)].filter(Boolean).join('\n'))
+  // Offre de la plateforme : présentation de Wise, sa phrase de recrutement, puis le projet, chacun son paragraphe ;
+  // organisation cliente : qui recrute, puis le projet et l'objectif de la publication.
+  const context = job.fromPlatform
+    ? join(publisherLine(job, cfg), recruitLine(job, copy.pole), project)
+    : join(publisherLine(job, cfg), [project, objectiveLine(job)].filter(Boolean).join('\n'))
   const liEnd = join([cta(urls.linkedin), rdv].filter(Boolean).join('\n'), tags.linkedin.join(' '))
   const liTop = hasDescription ? join(head, meta, context) : join(head, copy.tagline, meta, context)
   const liBody = hasDescription ? fitDescription(lead ? rest : job.description, LINKEDIN_MAX_CHARS - liTop.length - liEnd.length - 4) : join(program, profile)
