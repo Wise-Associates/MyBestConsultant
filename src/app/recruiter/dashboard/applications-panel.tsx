@@ -11,7 +11,7 @@ import { moveApplicationStage } from '@/app/recruiter/pipeline/[jobId]/actions'
 const STATUS: Record<string, { label: string; bg: string; text: string; icon: React.ElementType }> = {
   pending:   { label: 'En attente',   bg: 'rgba(107,114,128,0.1)', text: '#6b7280', icon: Clock },
   screening: { label: 'Screening IA', bg: 'rgba(139,92,246,0.1)',  text: '#8b5cf6', icon: Brain },
-  interview: { label: 'Entretien',    bg: 'rgba(59,130,246,0.1)',  text: '#3b82f6', icon: Video },
+  interview: { label: 'Entretien IA', bg: 'rgba(59,130,246,0.1)',  text: '#3b82f6', icon: Video },
   accepted:  { label: 'Accepté',      bg: 'rgba(16,185,129,0.1)',  text: '#10b981', icon: CheckCircle2 },
   rejected:  { label: 'Refusé',       bg: 'rgba(239,68,68,0.1)',   text: '#ef4444', icon: XCircle },
   on_hold:   { label: 'Vivier',       bg: 'rgba(245,158,11,0.1)',  text: '#f59e0b', icon: Archive },

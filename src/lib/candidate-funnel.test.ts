@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { customizedFunnel, stepBlockingMove, stepColumn, type FunnelStep } from './candidate-funnel'
+import { customizedFunnel, funnelForCandidate, stepBlockingMove, stepColumn, type FunnelStep } from './candidate-funnel'
 
 const step = (id: string, type: FunnelStep['type'], extra: Partial<FunnelStep> = {}): FunnelStep =>
   ({ id, type, label: id, status: 'todo', ...extra })
@@ -85,5 +85,17 @@ describe('funnel personnalisé reçu du navigateur', () => {
     const fresh = [step('a', 'screening', { status: 'skipped' }), step('b', 'phone', { status: 'skipped' }), step('c', 'video')]
     const r = customizedFunnel(fresh, { steps: [], saved: false }, 'phone_interview')
     assert.deepEqual(r.map(s => s.status), ['skipped', 'todo', 'todo'])
+  })
+})
+
+describe('funnel d’un candidat jamais enregistré', () => {
+  it('donne les mêmes étapes à chaque lecture (la page et le serveur retrouvent la même)', () => {
+    const page = funnelForCandidate(undefined, 'video_interview')
+    const server = funnelForCandidate('', 'video_interview')
+    assert.equal(page.saved, false)
+    assert.deepEqual(server.steps, page.steps)
+    assert.deepEqual(page.steps.map(s => s.id), ['dft0', 'dft1', 'dft2', 'dft3', 'dft4', 'dft5'])
+    // Aligné sur la colonne : les étapes d'avant sont passées, la visio est l'étape en cours.
+    assert.deepEqual(page.steps.map(s => s.status), ['skipped', 'skipped', 'skipped', 'todo', 'todo', 'todo'])
   })
 })
