@@ -115,7 +115,7 @@ export function SocialClient({ initialConfig, initialPosts, jobs, env, devPanel 
         <div>
           <label htmlFor="social-publisher-intro" className="block text-sm font-semibold text-white/90 mb-1.5">Présentation de Wise Associates (LinkedIn)</label>
           <textarea id="social-publisher-intro" value={cfg.publisherIntro} onChange={e => set('publisherIntro', e.target.value)} maxLength={400} rows={3} placeholder="Laisser vide pour ne pas présenter Wise Associates" className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-y" style={field} />
-          <p className="text-[11px] mt-1" style={{ color: 'rgba(255,255,255,0.35)' }}>En tête des publications LinkedIn des offres de la plateforme (appels d’offres, offres de l’admin), avant le projet et l’objectif de la publication. Les offres d’une organisation cliente sont présentées à son nom. 400 caractères au plus.</p>
+          <p className="text-[11px] mt-1" style={{ color: 'rgba(255,255,255,0.35)' }}>En tête des publications LinkedIn des offres de la plateforme (appels d’offres, offres de l’admin), avant la phrase « Wise Associates recherche un consultant… » (pôle d’expertise choisi par l’IA) et le projet. Les offres d’une organisation cliente sont présentées à son nom. 400 caractères au plus.</p>
         </div>
         <div>
           <label htmlFor="social-hashtags" className="block text-sm font-semibold text-white/90 mb-1.5">Hashtags par défaut</label>
