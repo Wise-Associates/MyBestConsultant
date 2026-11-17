@@ -93,7 +93,9 @@ describe('relecture des pages notées dans l\'onglet', () => {
 describe('nom de la page d\'origine', () => {
   it('nomme les pages de l\'espace recruteur', () => {
     assert.equal(recruiterPageLabel('/recruiter/dashboard?q=java'), 'Job board')
-    assert.equal(recruiterPageLabel('/recruiter/pipeline/job42'), 'Pipeline de l’offre')
+    assert.equal(recruiterPageLabel('/recruiter/pipeline/job42'), 'Funnel de l’offre')
+    assert.equal(recruiterPageLabel('/recruiter/offres/job42'), 'Détail de l’offre')
+    assert.equal(recruiterPageLabel('/recruiter/pipeline/job42/client'), 'Réponse client')
     assert.equal(recruiterPageLabel('/recruiter/pipeline/job42/matching'), 'Matching IA')
     assert.equal(recruiterPageLabel('/recruiter/candidates/app7'), 'Fiche candidat')
     assert.equal(recruiterPageLabel('/recruiter/candidate-preview/vivier/cv9'), 'Profil du candidat')

@@ -698,6 +698,15 @@
                     "size": 20000,
                     "default": null,
                     "encrypt": false
+                },
+                {
+                    "key": "clientJson",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 2000,
+                    "default": null,
+                    "encrypt": false
                 }
             ],
             "indexes": [

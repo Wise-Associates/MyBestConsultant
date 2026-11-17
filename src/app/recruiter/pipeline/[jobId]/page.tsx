@@ -18,6 +18,7 @@ import type { FunnelStage } from '@/types'
 import { loadRecruiterWeights } from '@/lib/scoring-weights-store'
 import { personalScore } from '@/lib/scoring-weights'
 import { recommendationFor } from '@/lib/match-scoring'
+import { parseClientSubmission } from '@/lib/client-response'
 
 // Every interview per application (a recruiter can launch as many as they want for the
 // same candidate) — shown as sub-card results on the Kanban card, most recent first. Carries
@@ -126,5 +127,5 @@ export default async function PipelinePage({ params }: { params: Promise<{ jobId
     stages.find(x => x.slug === s.slug) ?? { $id: `orphan-${s.slug}`, tenantId: user.tenantId!, slug: s.slug, label: s.label, color: s.color, order: s.order })
 
   // Remonté quand le recruteur change ses poids (router.refresh) : les cartes, gardées dans l'état du client, reprennent leurs scores.
-  return <PipelineClient key={JSON.stringify(weights)} jobId={jobId} tenantId={user.tenantId} jobTitle={job.title} jobMeta={jobMetaLine(job)} initialCandidates={candidates} initialStages={boardStages} initialEmails={emails} pipeline={pipeline} weights={weights} weightsUnreadable={unreadable} />
+  return <PipelineClient key={JSON.stringify(weights)} jobId={jobId} tenantId={user.tenantId} jobTitle={job.title} jobMeta={jobMetaLine(job)} initialCandidates={candidates} initialStages={boardStages} initialEmails={emails} clientCount={apps.filter(a => parseClientSubmission(a.clientJson)).length} pipeline={pipeline} weights={weights} weightsUnreadable={unreadable} />
 }

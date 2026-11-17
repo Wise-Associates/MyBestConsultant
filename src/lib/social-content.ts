@@ -370,3 +370,26 @@ export function buildContent(job: JobLite, copy: CopyDraft, cfg: SocialConfig, o
 
   return { jobUrl: urls.linkedin.split('?')[0], calendlyUrl: calendly, hashtags: cfg.hashtags, captions: { linkedin, instagram, facebook, x }, image }
 }
+
+/**
+ * État de la dernière diffusion d'une offre, en une phrase (aperçu de « Mes offres », détail de l'offre) ; le bouton qui
+ * la lance ou la relance est dans la ligne de l'offre. `shared` : offre de la plateforme.
+ */
+export function diffusionText(
+  info: { status: string; results: { network: Network; status: string }[]; stale?: boolean; sentOn?: string } | undefined,
+  shared: boolean, state: 'online' | 'expired' | 'archived',
+): string {
+  if (shared) return 'Gérée par la plateforme'
+  if (state !== 'online') return 'Hors ligne'
+  if (!info) return 'Pas encore diffusée'
+  const networks = info.results
+    .filter(r => r.status === 'published' || r.status === 'scheduled')
+    .map(r => NETWORK_LABEL[r.network])
+    .join(', ')
+  switch (info.status) {
+    case 'published': return `${networks || 'Réseaux sociaux'} : publiée le ${info.sentOn}`
+    case 'partial': return `En partie publiée le ${info.sentOn}${networks ? ` (${networks})` : ''}`
+    case 'failed': return 'Échec de la dernière diffusion : relancez-la depuis la ligne de l’offre'
+    default: return info.stale ? 'Envoyée, sans confirmation' : 'Publication en cours…'
+  }
+}

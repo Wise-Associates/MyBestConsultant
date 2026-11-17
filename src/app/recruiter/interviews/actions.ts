@@ -14,6 +14,7 @@ import { updateApplicationStatus } from '@/lib/appwrite/jobs'
 import { aiInterviewRecruiter, takeInterviewAiSlot } from '@/lib/interview-access'
 import { analysisInputSchema, followUpInputSchema, questionsInputSchema, sessionInputSchema } from '@/lib/interview-rules'
 import { applicationOfOrganisation } from '@/lib/screening-core'
+import { funnelMoveRefusal } from '@/lib/appwrite/funnel'
 
 export interface InterviewPrefill {
   candidateName: string
@@ -302,7 +303,8 @@ export async function createInterviewSession(
     if ('error' in me) return { error: me.error }
     // Candidature liée : d'une offre de l'organisation du recruteur (ou partagée par la plateforme) seulement. Un
     // entretien créé sans candidature (« Nouvel entretien ») n'en a pas.
-    if (applicationId && !(await applicationOfOrganisation(applicationId, me.tenantId))) return { error: 'Candidature introuvable' }
+    const owned = applicationId ? await applicationOfOrganisation(applicationId, me.tenantId) : null
+    if (applicationId && !owned) return { error: 'Candidature introuvable' }
     // Textes repris dans l'invitation au candidat : bornés et validés (adresse e-mail, 30 questions au plus).
     const input = sessionInputSchema.safeParse({ candidateName, candidateEmail, jobTitle, questions })
     if (!input.success) return { error: 'Entretien invalide : vérifiez le candidat, son adresse e-mail, le poste et les questions.' }
@@ -322,8 +324,11 @@ export async function createInterviewSession(
     })
 
     // Reflect the invite on the application so the candidate dashboard shows
-    // "Entretien" instead of staying stuck on "En attente" forever.
-    if (applicationId) await updateApplicationStatus(applicationId, 'interview')
+    // "Entretien" instead of staying stuck on "En attente" forever. Sauf si la règle du compte rendu (ADR 0040) l'interdit :
+    // l'entretien est créé, la carte reste dans son étape du funnel.
+    if (applicationId && owned && !(await funnelMoveRefusal(owned.application, me.tenantId, owned.application.jobId as string, 'interview'))) {
+      await updateApplicationStatus(applicationId, 'interview')
+    }
 
     revalidatePath('/recruiter/interviews')
     revalidatePath('/candidate/dashboard')

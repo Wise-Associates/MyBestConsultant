@@ -91,7 +91,7 @@ export function RecruiterFilter({ recruiters, selection, currentRecruiterId }: {
       }}>
       <button ref={triggerRef} type="button" aria-haspopup="dialog" aria-expanded={open} aria-controls={panelId}
         onClick={() => (open ? close() : openPanel())}
-        className="w-full sm:w-auto min-[90rem]:w-full h-11 sm:h-10 px-3 rounded-xl inline-flex items-center gap-2 text-[13px] font-medium cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-text)"
+        className="w-full h-11 sm:h-10 px-3 rounded-xl inline-flex items-center gap-2 text-[13px] font-medium cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-text)"
         style={{
           background: chosen.length ? 'color-mix(in srgb, var(--color-primary) 6%, var(--color-surface))' : 'var(--color-surface)',
           border: `1px solid ${chosen.length ? 'var(--color-primary)' : 'var(--color-border)'}`,

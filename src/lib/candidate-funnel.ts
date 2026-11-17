@@ -2,6 +2,8 @@
 // visio / présentiel, embauche…), dans l'ordre et en nombre libres. Le pipeline (vue Kanban de l'offre) en est la vue globale :
 // chaque type d'étape correspond à une colonne. Pur (aucun accès base) : partagé entre l'écran et le serveur.
 
+import type { FunnelStage } from '@/types'
+
 export type StepType = 'screening' | 'ai_interview' | 'phone' | 'video' | 'onsite' | 'other' | 'hired'
 export type StepStatus = 'todo' | 'scheduled' | 'done' | 'validated' | 'skipped'
 export type StepResult = 'positive' | 'neutral' | 'negative'
@@ -98,6 +100,33 @@ export function currentIndex(steps: FunnelStep[]): number {
 
 export const columnOf = (step: FunnelStep) => STEP_TYPES[step.type].column
 
+/** Colonne du pipeline d'une étape : la colonne « screening » / « interview » peut porter un autre identifiant. */
+export function stepColumn(step: FunnelStep, stages: Pick<FunnelStage, 'slug' | 'autoAction'>[]): string {
+  if (step.type === 'screening') return stages.find(s => s.autoAction === 'screening')?.slug ?? columnOf(step)
+  if (step.type === 'ai_interview') return stages.find(s => s.autoAction === 'interview')?.slug ?? columnOf(step)
+  return columnOf(step)
+}
+
+/** Compte rendu rédigé (saisi ou proposé par l'IA puis relu). */
+export const hasReport = (step: FunnelStep) => !!step.report?.trim()
+
+/**
+ * Compte rendu obligatoire (demande du 2026-11-17) : un candidat ne quitte l'étape en cours de son funnel qu'une fois son
+ * compte rendu rédigé (« pourquoi il avance »), quel que soit le déplacement : étape suivante, embauche, mais aussi refus,
+ * vivier ou mise en attente (choix du 2026-11-17). Restent libres : rejoindre la colonne de l'étape en cours (arrivée en
+ * Screening) et un parcours terminé. Renvoie l'étape qui bloque le passage de `from` à `to`, sinon null.
+ */
+export function stepBlockingMove(steps: FunnelStep[], stages: Pick<FunnelStage, 'slug' | 'autoAction'>[], from: string, to: string): FunnelStep | null {
+  if (from === to) return null
+  const i = currentIndex(steps)
+  if (i < 0 || hasReport(steps[i])) return null
+  return stepColumn(steps[i], stages) === to ? null : steps[i]
+}
+
+/** Refus d'un déplacement bloqué par `stepBlockingMove`, affiché tel quel (pipeline et serveur). */
+export const reportRequiredMessage = (step: FunnelStep) =>
+  `Rédigez d’abord le compte rendu de l’étape « ${step.label} » (bouton « Funnel » de la carte) : il explique pourquoi le candidat avance.`
+
 export function progress(steps: FunnelStep[]): { done: number; total: number; current: FunnelStep | null } {
   const done = steps.filter(s => s.status === 'validated' || s.status === 'skipped').length
   const i = currentIndex(steps)
@@ -112,6 +141,24 @@ export function alignToColumn(steps: FunnelStep[], columnSlug: string): FunnelSt
   const target = steps.findIndex(s => columnOf(s) === columnSlug && s.status !== 'validated' && s.status !== 'skipped')
   if (target < 0) return steps
   return steps.map((s, i) => (i < target && s.status !== 'validated' && s.status !== 'skipped' ? { ...s, status: 'skipped' as StepStatus } : s))
+}
+
+/**
+ * Funnel personnalisé reçu du navigateur (« Personnaliser le funnel ») : une étape validée enregistrée reste telle quelle,
+ * et le navigateur ne peut ni valider ni passer une étape — seules la validation (avec compte rendu) et les déplacements
+ * le font. Sinon la règle du compte rendu et la synthèse envoyée au client seraient contournées (revue de sécurité du
+ * 2026-11-17). Funnel jamais enregistré : ses étapes « passées » sont recalculées d'après la colonne actuelle.
+ */
+export function customizedFunnel(incoming: FunnelStep[], stored: { steps: FunnelStep[]; saved: boolean }, column: string): FunnelStep[] {
+  const before = new Map(stored.steps.map(s => [s.id, s]))
+  const steps = incoming.map((s): FunnelStep => {
+    const old = before.get(s.id)
+    if (old?.status === 'validated') return old
+    const keepSkip = s.status === 'skipped' && old?.status === 'skipped'
+    // Date et auteur d'une validation : seule validateStepAction les écrit.
+    return { ...s, status: s.status === 'validated' || (s.status === 'skipped' && !keepSkip) ? 'todo' : s.status, validatedAt: undefined, validatedBy: undefined }
+  })
+  return stored.saved ? steps : alignToColumn(steps, column)
 }
 
 const STATUS_VALUES: StepStatus[] = ['todo', 'scheduled', 'done', 'validated', 'skipped']

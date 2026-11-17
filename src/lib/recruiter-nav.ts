@@ -32,10 +32,11 @@ export const RECRUITER_SECTIONS: RecruiterSection[] = [
   { key: 'mbcsearch', label: 'MBC Search', href: '/recruiter/mbc-search', group: 'recherche', also: [] },
   { key: 'cvtheque', label: 'CV Thèque', href: '/recruiter/cvtheque', group: 'recherche', also: [] },
   { key: 'vivier', label: 'Mon vivier', href: '/recruiter/vivier', group: 'recherche', also: [] },
-  // Pipeline d'une offre, fiche candidat, import et suivi des annonces (lien « Suivi & rapports » de « Mes offres », sans
-  // rubrique depuis le 2026-10-30) partent des offres du tableau de bord.
+  // Détail d'une offre (2026-11-17), ses onglets (matching, funnel, réponse client), fiche candidat, import et suivi des
+  // annonces (lien « Suivi & rapports » de « Mes offres », sans rubrique depuis le 2026-10-30) partent des offres du
+  // tableau de bord.
   // Libellé « Job board » (demande du 2026-11-13, à la place de « Tableau de bord ») : aussi dans les liens « Retour ».
-  { key: 'dashboard', label: 'Job board', href: '/recruiter/dashboard', group: 'recrutement', also: ['/recruiter/pipeline', '/recruiter/candidates', '/recruiter/candidate-preview', '/recruiter/import', '/recruiter/annonces'] },
+  { key: 'dashboard', label: 'Job board', href: '/recruiter/dashboard', group: 'recrutement', also: ['/recruiter/offres', '/recruiter/pipeline', '/recruiter/candidates', '/recruiter/candidate-preview', '/recruiter/import', '/recruiter/annonces'] },
   { key: 'ao', label: 'Appels d’offres', href: '/recruiter/parametres/boites-ao', group: 'recrutement', also: [] },
   // Le screening des CV n'a pas de rubrique : il est rangé avec les entretiens IA (lien sur leur page).
   { key: 'interviews', label: 'Entretiens IA', href: '/recruiter/interviews', group: 'recrutement', also: ['/recruiter/screening'] },

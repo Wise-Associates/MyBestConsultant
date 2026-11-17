@@ -2,8 +2,8 @@
 
 import { useEffect, useId, useRef, useState, useTransition, type KeyboardEvent } from 'react'
 import Link from 'next/link'
-import { Loader2, Pencil, MoreHorizontal, RefreshCw, Sparkles, Archive, ArchiveRestore, Trash2, ExternalLink } from 'lucide-react'
-import { toggleJobStatusAction, deleteJobAction } from './actions'
+import { Loader2, Pencil, MoreHorizontal, RefreshCw, Sparkles, Archive, ArchiveRestore, Trash2, ExternalLink, Kanban, Brain } from 'lucide-react'
+import { toggleJobStatusAction, deleteJobAction, updateOwnJobAction } from './actions'
 import { JobEditModal } from '@/app/admin/jobs/job-edit-modal'
 import type { JobState } from '@/lib/recruiter-dashboard'
 import type { Job } from '@/types'
@@ -11,8 +11,9 @@ import type { Job } from '@/types'
 const iconButton = 'w-10 h-10 rounded-[10px] flex items-center justify-center transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text) disabled:opacity-50'
 const item = 'w-full h-[38px] px-2.5 rounded-[9px] flex items-center gap-2.5 text-left text-[13px] font-medium no-underline transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_5%,transparent)] focus-visible:outline-none focus-visible:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)]'
 
-// Actions d'une ligne de « Mes offres » : « Modifier » et le menu « Autres actions ». Une offre partagée de la plateforme
-// (tenantId '') n'a que « Voir l'offre » et « Voir le matching IA » : le serveur refuse de la modifier pour un recruteur.
+// Actions d'une ligne de « Mes offres » : « Voir pipeline » (demande du 2026-11-17 ; une icône seule sous 1440 px), le
+// Matching IA (dès 1440 px ; avant, dans le menu, où il reste), « Modifier » et le menu « Autres actions ». Une offre
+// partagée de la plateforme (tenantId '') n'a ni « Modifier » ni archivage : le serveur refuse de la modifier.
 // « Voir l'offre » ouvre la page publique de l'offre (/jobs/<id>, affichée même archivée) dans un nouvel onglet, pour
 // garder la liste filtrée (demande du 2026-11-05).
 export function JobActions({ job, state, shared, matchingHref, canRepublish, onRepublish }: {
@@ -79,6 +80,16 @@ export function JobActions({ job, state, shared, matchingHref, canRepublish, onR
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex items-center gap-1">
+        <Link href={`/recruiter/pipeline/${job.$id}`} title="Voir pipeline"
+          className="h-10 w-10 min-[90rem]:w-auto min-[90rem]:px-3 rounded-[10px] inline-flex items-center justify-center gap-2 text-[13px] font-semibold no-underline transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_5%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
+          style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
+          <Kanban className="h-4 w-4" aria-hidden />
+          <span className="sr-only min-[90rem]:not-sr-only">Voir pipeline</span><span className="sr-only"> de l’offre {job.title}</span>
+        </Link>
+        <Link href={matchingHref} aria-label={`Matching IA de l’offre ${job.title}`} title="Matching IA"
+          className={`${iconButton} hidden min-[90rem]:flex`} style={{ color: 'var(--color-text-muted)' }}>
+          <Brain className="h-4 w-4" aria-hidden />
+        </Link>
         {!shared && (
           <button type="button" onClick={() => setEditing(true)} aria-label={`Modifier l’offre ${job.title}`} title="Modifier"
             className={iconButton} style={{ color: 'var(--color-text-muted)' }}>
@@ -142,6 +153,7 @@ export function JobActions({ job, state, shared, matchingHref, canRepublish, onR
           }}
           onClose={() => setEditing(false)}
           onSaved={() => { setEditing(false); window.location.reload() }}
+          save={updateOwnJobAction}
         />
       )}
     </div>

@@ -1,4 +1,5 @@
 import { Skeleton, SkeletonRegion } from '@/components/shared/skeleton'
+import { ROW_GRID } from '@/app/recruiter/dashboard/dashboard-layout'
 
 // Formes de chargement des pages de l'espace recruteur (loading.tsx des routes) : la page en gris, à la place du voile
 // plein écran d'avant. Même structure que les pages (bandeau, cartes, listes, tableaux) pour que rien ne saute à
@@ -142,24 +143,11 @@ export function SectionPageSkeleton({ content = 'list' }: { content?: 'list' | '
 /** Tableau de bord : chiffres, filtres et « Créer une offre », puis « Mes offres ». */
 /** Tableau de bord : indicateurs séparés par un filet, tuiles « À traiter », puis « Mes offres ». */
 export function DashboardSkeleton() {
-  // Même mise en page que la page : rail de filtres à partir de 1440 px, panneau d'aperçu à partir de 1800 px
-  // (src/app/recruiter/dashboard/dashboard-layout.ts).
+  // Même mise en page que la page (dashboard-layout.ts) : indicateurs puis « Mes offres », dont l'en-tête porte la
+  // recherche et le bouton « Filtres » (le rail de gauche a été retiré le 2026-11-17) ; panneau d'aperçu dès 1800 px.
   return (
     <SkeletonRegion label="Chargement du tableau de bord…" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <div className="max-w-6xl min-[90rem]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[90rem]:px-8 py-6 sm:py-8 min-[90rem]:py-6 flex flex-col gap-6 sm:gap-7 min-[90rem]:grid min-[90rem]:grid-cols-[248px_minmax(0,1fr)] min-[112.5rem]:grid-cols-[248px_minmax(0,1fr)_340px] min-[90rem]:gap-6 min-[90rem]:items-start">
-        <div className="hidden min-[90rem]:flex flex-col gap-3.5">
-          <Skeleton className="h-10 w-full rounded-xl" />
-          <div className="rounded-[20px] p-3.5 space-y-2" style={card}>
-            <Skeleton className="h-3 w-20" />
-            {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-12 w-full rounded-xl" />)}
-          </div>
-          <div className="rounded-[20px] p-3.5 space-y-2" style={card}>
-            <Skeleton className="h-3 w-16" />
-            {Array.from({ length: 3 }, (_, i) => <Skeleton key={i} className="h-8 w-full rounded-lg" />)}
-            <Skeleton className="h-10 w-full rounded-xl" />
-            <Skeleton className="h-10 w-full rounded-xl" />
-          </div>
-        </div>
+      <div className="max-w-6xl min-[90rem]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[90rem]:px-8 py-6 sm:py-8 min-[90rem]:py-6 flex flex-col gap-6 sm:gap-7 min-[112.5rem]:grid min-[112.5rem]:grid-cols-[minmax(0,1fr)_340px] min-[112.5rem]:gap-6 min-[112.5rem]:items-start">
         <div className="min-w-0 flex flex-col gap-6 sm:gap-7 min-[90rem]:gap-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-px rounded-[20px] overflow-hidden" style={{ background: 'var(--color-border)', border: '1px solid var(--color-border)' }}>
             {Array.from({ length: 4 }, (_, i) => (
@@ -170,35 +158,23 @@ export function DashboardSkeleton() {
               </div>
             ))}
           </div>
-          <div className="space-y-3 min-[90rem]:hidden">
-            <Skeleton className="h-4 w-24" />
-            <div className="flex gap-2.5 overflow-hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:gap-3">
-              {Array.from({ length: 4 }, (_, i) => (
-                <div key={i} className="flex-none w-57.5 sm:w-auto flex items-center gap-3.5 px-4 py-3.5 rounded-2xl" style={card}>
-                  <Skeleton className="w-10 h-10 rounded-xl shrink-0" />
-                  <div className="space-y-2 flex-1">
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-3 w-1/2" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
           <div className="rounded-[20px] overflow-hidden" style={card}>
-            <div className="px-4 sm:px-6 pt-5 pb-4 flex flex-wrap items-center justify-between gap-3">
-              <Skeleton className="h-5 w-36" />
-              <div className="flex gap-2.5 w-full sm:w-auto">
-                <Skeleton className="h-10 w-36 rounded-[10px]" />
-                <Skeleton className="h-10 flex-1 sm:flex-none sm:w-40 rounded-xl" />
+            <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 min-[90rem]:px-5 min-[90rem]:py-3.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <Skeleton className="h-6 w-32" />
+                <Skeleton className="h-5 w-9 rounded-full" />
+              </div>
+              {/* Recherche, « Filtres », tri, « Suivi & rapports », « Créer une offre ». */}
+              <div className="flex items-center gap-2.5 flex-wrap w-full lg:w-auto">
+                <Skeleton className="h-11 sm:h-10 flex-1 min-w-0 sm:min-w-60 rounded-xl" />
+                <Skeleton className="h-11 sm:h-10 w-28 rounded-xl" />
+                <Skeleton className="h-11 sm:h-10 w-36 rounded-xl" />
+                <Skeleton className="h-11 sm:h-10 w-36 rounded-[10px]" />
+                <Skeleton className="h-11 sm:h-10 flex-1 sm:flex-none sm:w-40 rounded-xl" />
               </div>
             </div>
-            <div className="px-4 sm:px-6 pb-4 flex flex-col sm:flex-row gap-2.5 min-[90rem]:hidden">
-              <Skeleton className="h-11 sm:h-10 flex-1 rounded-xl" />
-              <Skeleton className="h-11 sm:h-10 sm:w-64 rounded-xl" />
-              <Skeleton className="h-11 sm:h-10 sm:w-80 rounded-xl" />
-            </div>
             {Array.from({ length: 5 }, (_, i) => (
-              <div key={i} className="px-4 sm:px-6 py-4 min-[90rem]:px-5 min-[90rem]:py-2.5 grid grid-cols-2 lg:grid-cols-[minmax(0,1fr)_124px_200px_180px_88px] min-[90rem]:grid-cols-[minmax(0,1fr)_156px_176px_200px_88px] min-[112.5rem]:grid-cols-[minmax(0,1fr)_156px_176px_200px_132px] gap-x-5 gap-y-4 items-center" style={{ borderTop: '1px solid var(--color-border)' }}>
+              <div key={i} className={`${ROW_GRID} px-4 sm:px-6 py-4 min-[90rem]:px-5 min-[90rem]:py-2.5 gap-y-4 items-center`} style={{ borderTop: '1px solid var(--color-border)' }}>
                 <div className="col-span-2 lg:col-span-1 space-y-2">
                   <Skeleton className="h-4 w-3/5" />
                   <Skeleton className="h-3 w-2/5" />
@@ -206,7 +182,13 @@ export function DashboardSkeleton() {
                 <Skeleton className="h-6 w-16" />
                 <Skeleton className="h-1.5 w-full rounded-full" />
                 <Skeleton className="hidden lg:block h-8 w-36" />
-                <Skeleton className="hidden lg:block h-8 w-20 justify-self-end" />
+                {/* « Voir pipeline » (icône seule sous 1440 px), Matching IA dès 1440 px, Modifier, menu. */}
+                <div className="hidden lg:flex justify-end gap-1">
+                  <Skeleton className="h-10 w-10 min-[90rem]:w-30 rounded-[10px]" />
+                  <Skeleton className="hidden min-[90rem]:block h-10 w-10 rounded-[10px]" />
+                  <Skeleton className="h-10 w-10 rounded-[10px]" />
+                  <Skeleton className="h-10 w-10 rounded-[10px]" />
+                </div>
               </div>
             ))}
           </div>
@@ -336,24 +318,24 @@ export function AoOfferSkeleton() {
 }
 
 /**
- * Bandeau du Pipeline et du Matching IA d'une offre : retour, surtitre, titre, ligne de l'offre, puis à partir de
- * 1440 px les onglets « Matching IA / Pipeline ». Le Pipeline a un bandeau réduit (sans surtitre au-delà de 1440 px).
+ * Bandeau des onglets d'une offre (Matching IA, Funnel, Réponse client) : retour, surtitre, titre, ligne de l'offre, les
+ * trois onglets (à toutes les largeurs depuis le 2026-11-17), puis les boutons de la page (`actions` : leurs largeurs).
+ * `compact` : bandeau réduit du Funnel ; `pad` : marges de la page.
  */
-function JobHeroSkeleton({ narrow, compact }: { narrow: string; compact?: boolean }) {
+function JobHeroSkeleton({ narrow, compact, actions = ['w-28', 'w-36'], pad = 'px-6' }: { narrow: string; compact?: boolean; actions?: string[]; pad?: string }) {
   return (
     <div style={{ background: 'var(--hero-bg)' }}>
-      <div className={`${narrow} min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 ${compact ? 'py-4 min-[90rem]:py-3' : 'py-6 min-[90rem]:py-4'}`}>
+      <div className={`${narrow} min-[90rem]:max-w-[1920px] mx-auto ${pad} min-[90rem]:px-8 ${compact ? 'py-4 min-[90rem]:py-3' : 'py-6 min-[90rem]:py-4'}`}>
         <Skeleton style={onHero} className="h-3 w-36 mb-3 min-[90rem]:mb-2" />
         <div className="flex items-center justify-between gap-4 flex-wrap min-[90rem]:flex-nowrap">
           <div className="space-y-2 min-w-0">
-            <Skeleton style={onHero} className={`h-3 w-28 ${compact ? 'min-[90rem]:hidden' : ''}`} />
+            <Skeleton style={onHero} className="h-3 w-28" />
             <Skeleton style={onHero} className="h-7 w-64 sm:w-md min-[90rem]:w-xl max-w-full" />
             <Skeleton style={onHero} className="h-3 w-56 min-[90rem]:w-72" />
           </div>
-          <Skeleton style={onHero} className="hidden min-[90rem]:block h-10 w-54 rounded-xl shrink-0 mr-auto" />
+          <Skeleton style={onHero} className="h-10 w-80 max-w-full rounded-xl shrink-0 min-[90rem]:mr-auto" />
           <div className="flex gap-2">
-            <Skeleton style={onHero} className="h-8 w-28 rounded-lg" />
-            <Skeleton style={onHero} className="h-8 w-36 rounded-lg" />
+            {actions.map((width, i) => <Skeleton key={i} style={onHero} className={`h-8 ${width} rounded-lg`} />)}
           </div>
         </div>
       </div>
@@ -388,7 +370,7 @@ const MATCHING_ROW = 'grid items-center grid-cols-[52px_minmax(0,1fr)_140px_124p
 export function MatchingSkeleton() {
   return (
     <SkeletonRegion label="Chargement du matching…" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <JobHeroSkeleton narrow="max-w-[1000px]" />
+      <JobHeroSkeleton narrow="max-w-[1000px]" actions={['w-24', 'w-28', 'w-36']} />
       <div className="max-w-[1000px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-8 min-[90rem]:py-5 min-[90rem]:grid min-[90rem]:grid-cols-[240px_minmax(0,1fr)_320px] min-[112.5rem]:grid-cols-[264px_minmax(0,1fr)_360px] min-[90rem]:gap-5 min-[90rem]:items-start">
         <div className="hidden min-[90rem]:flex flex-col gap-3">
           <Skeleton className="h-10 w-full rounded-xl" />
@@ -491,12 +473,15 @@ export function MatchingSkeleton() {
   )
 }
 
-/** Pipeline d'une offre : colonnes de cartes repliées ; rail à partir de 1440 px, panneau de la carte à partir de 1800 px. */
+/**
+ * Funnel (pipeline) d'une offre : rappel de la règle du compte rendu, colonnes de cartes repliées ; rail à partir de
+ * 1440 px, panneau de la carte à partir de 1800 px.
+ */
 export function PipelineSkeleton() {
   const columns = [3, 2, 0, 1, 2]
   return (
-    <SkeletonRegion label="Chargement du pipeline…" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
-      <JobHeroSkeleton narrow="max-w-[1400px]" compact />
+    <SkeletonRegion label="Chargement du funnel…" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
+      <JobHeroSkeleton narrow="max-w-[1400px]" compact actions={['w-28', 'w-24', 'w-20']} />
       <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-8 min-[90rem]:py-5 min-[90rem]:grid min-[90rem]:grid-cols-[256px_minmax(0,1fr)] min-[112.5rem]:grid-cols-[256px_minmax(0,1fr)_340px] min-[90rem]:gap-5 min-[90rem]:items-start">
         <div className="hidden min-[90rem]:flex flex-col gap-3">
           <Skeleton className="h-10 w-full rounded-xl" />
@@ -504,7 +489,10 @@ export function PipelineSkeleton() {
           <RailCardSkeleton lines={2} />
           <RailCardSkeleton lines={3} />
         </div>
-        <div className="min-w-0 flex gap-4 min-[90rem]:gap-3 overflow-hidden">
+        <div className="min-w-0">
+        {/* Rappel de la règle du compte rendu (2026-11-17), au-dessus des colonnes. */}
+        <Skeleton className="h-10 w-full rounded-xl mb-4" />
+        <div className="flex gap-4 min-[90rem]:gap-3 overflow-hidden">
           {columns.map((cards, i) => cards === 0 ? (
             // Phase vide : bande étroite à partir de 1440 px, colonne vide en dessous.
             <div key={i} className="flex-none w-[300px] min-[90rem]:w-9 h-80 rounded-2xl"
@@ -529,15 +517,181 @@ export function PipelineSkeleton() {
                     <Skeleton className="w-3.5 h-3.5 rounded shrink-0" />
                   </div>
                   <Skeleton className="h-5 w-16 rounded-full" />
+                  {/* Compte rendu de l'étape en cours, puis « Funnel » et « Étape suivante ». */}
+                  <Skeleton className="h-8 w-full rounded-lg" />
+                  <div className="flex gap-1.5">
+                    <Skeleton className="h-8 flex-1 rounded-lg" />
+                    <Skeleton className="h-8 flex-1 rounded-lg" />
+                  </div>
                 </div>
               ))}
             </div>
           ))}
         </div>
+        </div>
         <div className="hidden min-[112.5rem]:block rounded-[20px] p-4 space-y-2.5" style={card}>
           <Skeleton className="h-3 w-full" />
           <Skeleton className="h-3 w-4/5" />
           <Skeleton className="h-3 w-3/5" />
+        </div>
+      </div>
+    </SkeletonRegion>
+  )
+}
+
+/**
+ * Détail d'une offre (/recruiter/offres/<id>, 2026-11-17) : bandeau (retour, titre, statut et boutons), description à
+ * gauche, suivi, informations clés et diffusion à droite dès 1024 px.
+ */
+export function JobDetailSkeleton() {
+  return (
+    <SkeletonRegion label="Chargement de l’offre…" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
+      <div style={{ background: 'var(--hero-bg)' }}>
+        <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[90rem]:px-8 py-4">
+          <Skeleton style={onHero} className="h-3 w-36 mb-3" />
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="space-y-2 min-w-0">
+              <Skeleton style={onHero} className="h-3 w-32" />
+              <Skeleton style={onHero} className="h-7 w-64 sm:w-md max-w-full" />
+              <Skeleton style={onHero} className="h-3 w-56" />
+            </div>
+            {/* Statut, « Voir l'offre publiée », « Modifier », « Matching IA », « Voir pipeline ». */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Skeleton style={onHero} className="h-7 w-20 rounded-full" />
+              {['w-44', 'w-28', 'w-32', 'w-32'].map((width, i) => <Skeleton key={i} style={onHero} className={`h-10 ${width} rounded-[10px]`} />)}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[90rem]:px-8 py-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] min-[90rem]:grid-cols-[minmax(0,1fr)_400px] items-start">
+        <div className="rounded-[20px] p-5 sm:p-6 space-y-6" style={card}>
+          {[3, 4, 3].map((lines, i) => (
+            <div key={i} className="space-y-2.5">
+              <Skeleton className="h-5 w-40" />
+              {Array.from({ length: lines }, (_, j) => <Skeleton key={j} className={`h-3.5 ${j === lines - 1 ? 'w-3/5' : 'w-full'}`} />)}
+            </div>
+          ))}
+          <div className="flex flex-wrap gap-2 pt-5" style={{ borderTop: '1px solid var(--color-border)' }}>
+            {['w-16', 'w-28', 'w-36', 'w-12', 'w-14', 'w-16'].map((width, i) => <Skeleton key={i} className={`h-7 ${width} rounded-lg`} />)}
+          </div>
+        </div>
+        <div className="flex flex-col gap-4">
+          <div className="rounded-[20px] p-5 sm:p-6 space-y-3" style={card}>
+            <Skeleton className="h-3 w-28" />
+            <div className="grid grid-cols-3 gap-2">
+              {Array.from({ length: 3 }, (_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
+            </div>
+            {Array.from({ length: 5 }, (_, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <Skeleton className="h-3.5 flex-1" />
+                <Skeleton className="h-1.5 w-24 rounded-full" />
+                <Skeleton className="h-3.5 w-5" />
+              </div>
+            ))}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <Skeleton className="h-10 rounded-[10px]" />
+              <Skeleton className="h-10 rounded-[10px]" />
+            </div>
+          </div>
+          <div className="rounded-[20px] p-5 sm:p-6 space-y-2.5" style={card}>
+            <Skeleton className="h-3 w-32" />
+            {Array.from({ length: 5 }, (_, i) => (
+              <div key={i} className="flex gap-6">
+                <Skeleton className="h-3.5 w-24" />
+                <Skeleton className="h-3.5 flex-1" />
+              </div>
+            ))}
+          </div>
+          <div className="rounded-[20px] p-5 sm:p-6 space-y-2.5" style={card}>
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-3.5 w-3/4" />
+          </div>
+        </div>
+      </div>
+    </SkeletonRegion>
+  )
+}
+
+/**
+ * Onglet « Réponse client » d'une offre (2026-11-17) : bandeau des onglets, candidats envoyés au client (tableau) et, dès
+ * 1024 px, la synthèse et la réponse du candidat choisi à droite.
+ */
+export function ClientResponseSkeleton() {
+  return (
+    <SkeletonRegion label="Chargement de la réponse client…" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
+      <JobHeroSkeleton narrow="max-w-[1400px]" compact pad="px-4 sm:px-6" actions={['w-60']} />
+      <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[90rem]:px-8 py-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px] min-[90rem]:grid-cols-[minmax(0,1fr)_440px] items-start">
+        <div className="rounded-[20px] overflow-hidden" style={card}>
+          <div className="px-5 sm:px-6 py-4 flex items-center gap-2.5">
+            <Skeleton className="h-5 w-56" />
+            <Skeleton className="h-5 w-8 rounded-full" />
+          </div>
+          {/* Candidat, envoyé le (dès 640 px), réponse, commentaire (dès 768 px). */}
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="px-5 sm:px-6 py-3 grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_120px_auto] md:grid-cols-[minmax(0,1fr)_120px_140px_minmax(0,1fr)] gap-4 items-center" style={{ borderTop: '1px solid var(--color-border)' }}>
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-36" />
+                <Skeleton className="h-3 w-44 max-w-full" />
+              </div>
+              <Skeleton className="hidden sm:block h-3.5 w-20" />
+              <Skeleton className="h-6 w-28 rounded-full" />
+              <Skeleton className="hidden md:block h-3.5 w-4/5" />
+            </div>
+          ))}
+        </div>
+        <div className="rounded-[20px] p-5 space-y-4" style={card}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-2 flex-1">
+              <Skeleton className="h-5 w-2/3" />
+              <Skeleton className="h-3 w-1/2" />
+            </div>
+            <Skeleton className="h-6 w-24 rounded-full" />
+          </div>
+          <Skeleton className="h-3 w-44" />
+          {Array.from({ length: 3 }, (_, i) => (
+            <div key={i} className="space-y-2 pl-3" style={{ borderLeft: '2px solid var(--color-border)' }}>
+              <Skeleton className="h-3 w-40" />
+              <Skeleton className="h-3.5 w-full" />
+              <Skeleton className="h-3.5 w-4/5" />
+            </div>
+          ))}
+          <Skeleton className="h-3 w-52" />
+          <div className="grid grid-cols-3 gap-2">
+            {Array.from({ length: 3 }, (_, i) => <Skeleton key={i} className="h-10 rounded-[10px]" />)}
+          </div>
+          <Skeleton className="h-10 w-full rounded-[10px]" />
+        </div>
+      </div>
+    </SkeletonRegion>
+  )
+}
+
+/** Synthèse imprimable pour le client (2026-11-17) : titre de l'offre, puis une carte par candidat. */
+export function ClientSynthesisSkeleton() {
+  return (
+    <SkeletonRegion label="Chargement de la synthèse…" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
+      <div className="max-w-[820px] mx-auto px-4 sm:px-6 py-8">
+        <div className="flex items-start justify-between gap-4 mb-6">
+          <div className="space-y-2 min-w-0 flex-1">
+            <Skeleton className="h-3 w-40" />
+            <Skeleton className="h-7 w-3/4" />
+            <Skeleton className="h-3.5 w-1/2" />
+          </div>
+          <Skeleton className="h-10 w-36 rounded-xl" />
+        </div>
+        <div className="flex flex-col gap-5">
+          {Array.from({ length: 2 }, (_, i) => (
+            <div key={i} className="rounded-2xl p-5 space-y-3" style={card}>
+              <Skeleton className="h-5 w-48" />
+              {Array.from({ length: 3 }, (_, j) => (
+                <div key={j} className="space-y-2">
+                  <Skeleton className="h-3 w-52" />
+                  <Skeleton className="h-3.5 w-full" />
+                  <Skeleton className="h-3.5 w-3/5" />
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       </div>
     </SkeletonRegion>

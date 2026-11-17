@@ -10,6 +10,8 @@ import {
 import { parseTitleRelations, type TitleRelation } from '@/lib/match-scoring'
 import { STRATEGY_LIMITS, parseStrategies, titleKey, titlePairs, type MbcStrategy } from '@/lib/mbc-search/strategies'
 import { takeBurstSlot } from '@/lib/mbc-search/burst'
+// Cause de chaque modèle essayé dans les journaux (jamais le texte envoyé à l'IA) : « claude : crédits épuisés ; gpt4o : HTTP 400 … ».
+import { llmFailureDetail } from '@/lib/ao/ai-failures'
 import {
   APOLLO_EVALUATION_ADDENDUM, evaluationOf, needAsOffer, parseEvaluationExtras, profileText, similarBrief, similarNeed, type MbcEvaluation,
 } from '@/lib/mbc-search/evaluation'
@@ -101,7 +103,7 @@ export async function askMbcQuestions(brief: unknown): Promise<{ reply?: string;
   try {
     text = await briefQuestionsText(parsed.data)
   } catch (err) {
-    console.error('[mbc-search] questions sur le brief impossibles', err instanceof Error ? err.name : 'inconnu')
+    console.error('[mbc-search] questions sur le brief impossibles', llmFailureDetail(err))
     return { error: 'L\'IA n\'a pas pu préparer ses questions : réessayez, ou lancez la recherche sans questions.' }
   }
   const res = parseQuestionsAnswer(text)
@@ -124,7 +126,7 @@ export async function analyseMbcBrief(brief: unknown, answers: unknown = []): Pr
   try {
     text = await briefToCriteriaText(briefWithAnswers(parsed.data, replies.data))
   } catch (err) {
-    console.error('[mbc-search] analyse du brief impossible', err instanceof Error ? err.name : 'inconnu')
+    console.error('[mbc-search] analyse du brief impossible', llmFailureDetail(err))
     return { error: 'L\'IA n\'a pas pu lire le brief : réessayez, ou renseignez les critères vous-même.' }
   }
   const criteria = parseBriefCriteria(text)
@@ -152,7 +154,7 @@ export async function refineMbcSearch(input: unknown): Promise<{ reply?: string;
   try {
     text = await refineCriteriaText({ brief: briefForAi(brief), criteria: criteriaForAi(criteria), message })
   } catch (err) {
-    console.error('[mbc-search] ajustement des critères impossible', err instanceof Error ? err.name : 'inconnu')
+    console.error('[mbc-search] ajustement des critères impossible', llmFailureDetail(err))
     return { error: 'L\'IA n\'a pas pu ajuster la recherche : réessayez, ou modifiez les critères vous-même.' }
   }
   const res = parseRefinement(text, criteria)
@@ -179,7 +181,7 @@ export async function planMbcStrategies(input: unknown): Promise<{ strategies?: 
     const strategies = parseStrategies(await strategiesText(parsed.data), parsed.data.criteria)
     return strategies.length > 1 ? { strategies } : { strategies, note: 'Vos critères suffisent : une seule recherche.' }
   } catch (err) {
-    console.error('[mbc-search] requêtes supplémentaires impossibles', err instanceof Error ? err.name : 'inconnu')
+    console.error('[mbc-search] requêtes supplémentaires impossibles', llmFailureDetail(err))
     return { strategies: parseStrategies('', parsed.data.criteria), note: only }
   }
 }
@@ -208,7 +210,7 @@ async function titleFits(criteria: MbcCriteria, profiles: MbcProfile[]): Promise
     if (relations.every(r => r === null)) console.warn('[mbc-search] comparaison des intitulés illisible : mots en commun')
     return { fits: new Map(pairs.map((p, i) => [titleKey(p.intitule), relations[i]])), failed: relations.every(r => r === null) }
   } catch (err) {
-    console.error('[mbc-search] comparaison des intitulés impossible : mots en commun', err instanceof Error ? err.name : 'inconnu')
+    console.error('[mbc-search] comparaison des intitulés impossible : mots en commun', llmFailureDetail(err))
     return { fits: new Map(), failed: true }
   }
 }
@@ -452,7 +454,7 @@ export async function evaluateMbcProfile(input: unknown): Promise<{ evaluation?:
     const [checked] = await withCheckedTitles([judgements])
     return { evaluation: evaluationOf(checked, judged, weights.matching, parseScoringNotes(answer), parseEvaluationExtras(answer), { titleAsked: criteria.titles.length > 0 }) }
   } catch (err) {
-    console.error('[mbc-search] évaluation impossible', err instanceof Error ? err.name : 'inconnu')
+    console.error('[mbc-search] évaluation impossible', llmFailureDetail(err))
     return { error: failed }
   }
 }
@@ -482,7 +484,7 @@ export async function similarMbcCriteria(id: unknown): Promise<{ criteria?: MbcC
     // Le parcours de la personne ne quitte pas le serveur : le besoin gardé est tiré des critères seuls (similarNeed).
     return { criteria, brief: similarNeed(criteria) }
   } catch (err) {
-    console.error('[mbc-search] critères de profils similaires impossibles', err instanceof Error ? err.name : 'inconnu')
+    console.error('[mbc-search] critères de profils similaires impossibles', llmFailureDetail(err))
     return { error: 'L\'IA n\'a pas pu lire ce profil : réessayez dans quelques instants.' }
   }
 }
@@ -599,7 +601,7 @@ export async function draftMbcOutreach(input: unknown): Promise<{ message?: stri
     if (!message) return { error: 'L\'IA n\'a pas rédigé de message : réessayez.' }
     return { message }
   } catch (err) {
-    console.error('[mbc-search] rédaction de l\'approche impossible', err instanceof Error ? err.name : 'inconnu')
+    console.error('[mbc-search] rédaction de l\'approche impossible', llmFailureDetail(err))
     return { error: 'L\'IA n\'a pas pu rédiger le message : réessayez dans quelques instants.' }
   }
 }

@@ -4,8 +4,11 @@ import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { updateApplicationStatus, updateApplicationCard, deleteApplication, getJobById } from '@/lib/appwrite/jobs'
-import { logFunnelEvent, getFunnelEvents, getStagesForJob, replaceStages, ensureColumns } from '@/lib/appwrite/funnel'
-import { alignToColumn, columnOf, currentIndex, funnelForCandidate, sanitizeFunnel, serializeFunnel, STEP_TYPES, type FunnelStep, type StepResult, type StepStatus } from '@/lib/candidate-funnel'
+import { logFunnelEvent, getFunnelEvents, getStagesForJob, replaceStages, ensureColumns, funnelMoveRefusal } from '@/lib/appwrite/funnel'
+import {
+  alignToColumn, columnOf, currentIndex, customizedFunnel, funnelForCandidate, sanitizeFunnel, serializeFunnel, stepColumn,
+  STEP_TYPES, type FunnelStep, type StepResult, type StepStatus,
+} from '@/lib/candidate-funnel'
 import { callLLM } from '@/lib/ai/llm-router'
 import { sanitizeStageInputs } from '@/lib/funnel-config'
 import { screenAllApplications, sendInterviewInvitationEmail } from '@/app/recruiter/screening/actions'
@@ -52,7 +55,9 @@ export async function moveApplicationStage(
 ): Promise<{ error?: string }> {
   try {
     const user = await requireRecruiter()
-    await visibleApplication(applicationId, jobId, user.tenantId!)
+    const { application } = await visibleApplication(applicationId, jobId, user.tenantId!)
+    const refusal = await funnelMoveRefusal(application, user.tenantId!, jobId, stageSlug)
+    if (refusal) return { error: refusal }
     await updateApplicationStatus(applicationId, stageSlug)
     await syncFunnelToColumn(applicationId, stageSlug)
     await logFunnelEvent(applicationId, stageSlug, 'stage_change', undefined, `${user.firstName} ${user.lastName}`)
@@ -158,13 +163,18 @@ export async function deleteApplicationAction(applicationId: string, jobId: stri
 export async function launchScreeningAction(applicationId: string, jobId: string, stageSlug?: string): Promise<{ score?: number; recommendation?: string; summary?: string; error?: string }> {
   try {
     const user = await requireRecruiter()
-    const { results, errors } = await screenAllApplications(jobId, [applicationId])
-    if (errors.length > 0) return { error: errors[0] }
+    // Candidature que le recruteur voit, de cette offre (avant : seul le rôle était vérifié).
+    const { application } = await visibleApplication(applicationId, jobId, user.tenantId!)
     // Phase de destination : celle demandée, sinon la phase « screening » de CE pipeline. Sans phase de ce type, la candidature ne bouge pas
     // (avant, le statut « screening » était écrit en dur : sur un funnel personnalisé la carte n'avait plus de colonne et disparaissait).
     const { stages } = await getStagesForJob(user.tenantId!, jobId)
     const target = (stageSlug && stages.some(s => s.slug === stageSlug) ? stageSlug : undefined)
       ?? stages.find(s => s.autoAction === 'screening')?.slug ?? stages.find(s => s.slug === 'screening')?.slug
+    // Refusé avant l'analyse (payante) : la carte ne pourrait pas rejoindre la colonne du screening.
+    const refusal = target ? await funnelMoveRefusal(application, user.tenantId!, jobId, target) : null
+    if (refusal) return { error: refusal }
+    const { results, errors } = await screenAllApplications(jobId, [applicationId])
+    if (errors.length > 0) return { error: errors[0] }
     if (target) { await updateApplicationStatus(applicationId, target); await syncFunnelToColumn(applicationId, target) }
     await logFunnelEvent(applicationId, target ?? 'screening', 'screening', results[0] ? `Score: ${results[0].score}/100` : undefined)
     revalidatePath(`/recruiter/pipeline/${jobId}`)
@@ -250,6 +260,10 @@ export async function sendInterviewInviteAction(params: {
     const { databases } = createAdminClient()
     const session = await databases.getDocument(DB_ID, COLLECTIONS.INTERVIEWS, params.sessionId)
     if (session.tenantId !== user.tenantId || session.applicationId !== params.applicationId) return { error: 'Non autorisé' }
+    // L'envoi fait passer la carte dans la colonne de l'entretien : même règle du compte rendu qu'un déplacement.
+    const { application } = await visibleApplication(params.applicationId, params.jobId, user.tenantId!)
+    const refusal = await funnelMoveRefusal(application, user.tenantId!, params.jobId, params.targetStage)
+    if (refusal) return { error: refusal }
     await databases.updateDocument(DB_ID, COLLECTIONS.INTERVIEWS, params.sessionId, {
       questions: JSON.stringify(questions),
       title: params.title?.trim().slice(0, 120) || null,
@@ -306,13 +320,6 @@ async function ownApplication(applicationId: string, jobId: string) {
   return { user, app, databases }
 }
 
-/** Colonne du pipeline qui correspond à une étape (la colonne « screening » / « interview » peut porter un autre identifiant). */
-function columnFor(step: FunnelStep, stages: FunnelStage[]): string {
-  if (step.type === 'screening') return stages.find(s => s.autoAction === 'screening')?.slug ?? columnOf(step)
-  if (step.type === 'ai_interview') return stages.find(s => s.autoAction === 'interview')?.slug ?? columnOf(step)
-  return columnOf(step)
-}
-
 export type FunnelResult = { funnel?: FunnelStep[]; stages?: FunnelStage[]; next?: { id: string; label: string; column: string; autoAction?: string } | null; error?: string }
 
 async function persist(applicationId: string, jobId: string, tenantId: string, steps: FunnelStep[]): Promise<FunnelStage[]> {
@@ -326,17 +333,18 @@ async function persist(applicationId: string, jobId: string, tenantId: string, s
 }
 
 /** Enregistre le funnel personnalisé d'un candidat (étapes, ordre, nombre). Une étape déjà validée ne peut pas être supprimée. */
-export async function saveCandidateFunnelAction(applicationId: string, jobId: string, steps: unknown): Promise<FunnelResult> {
+export async function saveCandidateFunnelAction(applicationId: string, jobId: string, input: unknown): Promise<FunnelResult> {
   try {
     const { user, app } = await ownApplication(applicationId, jobId)
-    const parsed = sanitizeFunnel(steps)
+    const parsed = sanitizeFunnel(input)
     if (!parsed.steps) return { error: parsed.error }
     const stored = funnelForCandidate(app.funnelJson, app.status as string)
     const kept = new Set(parsed.steps.map(s => s.id))
     if (stored.saved && stored.steps.some(s => s.status === 'validated' && !kept.has(s.id))) return { error: 'Une étape déjà validée ne peut pas être supprimée.' }
-    const stages = await persist(applicationId, jobId, user.tenantId!, parsed.steps)
-    await logFunnelEvent(applicationId, app.status as string, 'stage_change', `Funnel personnalisé : ${parsed.steps.map(s => s.label).join(' → ')}`.slice(0, 1900), `${user.firstName} ${user.lastName}`)
-    return { funnel: parsed.steps, stages }
+    const steps = customizedFunnel(parsed.steps, stored, app.status as string)
+    const stages = await persist(applicationId, jobId, user.tenantId!, steps)
+    await logFunnelEvent(applicationId, app.status as string, 'stage_change', `Funnel personnalisé : ${steps.map(s => s.label).join(' → ')}`.slice(0, 1900), `${user.firstName} ${user.lastName}`)
+    return { funnel: steps, stages }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur lors de l\'enregistrement du funnel' }
   }
@@ -382,13 +390,15 @@ export async function validateStepAction(applicationId: string, jobId: string, s
     if (idx !== currentIndex(f.steps)) return { error: 'Seule l’étape en cours peut être validée.' }
     const merged = applyPatch(f.steps[idx], patch)
     if (!merged.result) return { error: 'Choisissez un résultat (favorable, réservé ou défavorable) avant de valider.' }
+    // Compte rendu obligatoire (2026-11-17) : il dit pourquoi le candidat avance et forme la synthèse de la réponse client.
+    if (!merged.report) return { error: 'Rédigez le compte rendu de l’étape (pourquoi le candidat avance) avant de la valider.' }
     const who = `${user.firstName} ${user.lastName}`.trim()
     const steps = f.steps.map((s, i) => (i === idx ? { ...merged, status: 'validated' as StepStatus, validatedAt: new Date().toISOString(), validatedBy: who } : s))
     const stages = await persist(applicationId, jobId, user.tenantId!, steps)
     const ni = currentIndex(steps)
     const nextStep = ni >= 0 ? steps[ni] : null
-    const column = nextStep ? columnFor(nextStep, stages) : null
-    await logFunnelEvent(applicationId, columnFor(merged, stages), 'stage_change', `Étape validée : ${merged.label} (${merged.result === 'positive' ? 'favorable' : merged.result === 'neutral' ? 'réservé' : 'défavorable'})`, who)
+    const column = nextStep ? stepColumn(nextStep, stages) : null
+    await logFunnelEvent(applicationId, stepColumn(merged, stages), 'stage_change', `Étape validée : ${merged.label} (${merged.result === 'positive' ? 'favorable' : merged.result === 'neutral' ? 'réservé' : 'défavorable'})`, who)
     return {
       funnel: steps, stages,
       next: nextStep && column ? { id: nextStep.id, label: nextStep.label, column, autoAction: stages.find(s => s.slug === column)?.autoAction } : null,

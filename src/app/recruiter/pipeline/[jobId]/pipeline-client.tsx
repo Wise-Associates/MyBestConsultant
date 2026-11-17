@@ -9,12 +9,12 @@ import {
   FileText, ArrowDownWideNarrow, ArrowUpWideNarrow, Settings2, Plus, X,
   Brain, Video, Pencil, Trash2, History, Loader2, GripVertical, Tag as TagIcon,
   StickyNote, CheckCircle2, ChevronDown, ChevronUp, Sparkles, AlertCircle,
-  Archive, ThumbsUp, ThumbsDown, Mail, Copy, ExternalLink, Edit3, Send, ChevronRight, GitBranch, Search, ChartColumn,
+  Archive, ThumbsUp, ThumbsDown, Mail, Copy, ExternalLink, Edit3, Send, ChevronRight, GitBranch, Search, ChartColumn, Kanban, Lock, ArrowRight,
 } from 'lucide-react'
 import {
   moveApplicationStage, saveFunnelStagesAction, updateApplicationCardAction,
   deleteApplicationAction, launchScreeningAction, prepareInterviewAction, sendInterviewInviteAction,
-  cancelInterviewAction, renameInterviewAction, getEventsAction, setApplicationStageStatusAction,
+  cancelInterviewAction, renameInterviewAction, getEventsAction, setApplicationStageStatusAction, validateStepAction,
 } from './actions'
 import { sendCandidateEmailAction, setEmailRepliedAction } from './email-actions'
 import { WhatsAppContact, WhatsAppIcon } from '@/components/recruiter/whatsapp-contact'
@@ -28,7 +28,9 @@ import { FunnelModal } from './funnel-modal'
 import { ScoringWeightsButton } from './scoring-weights-dialog'
 import { personalScore, type RecruiterWeights } from '@/lib/scoring-weights'
 import { recommendationFor } from '@/lib/match-scoring'
-import { progress as funnelProgress, STEP_TYPES, currentIndex as funnelCurrent, type FunnelStep } from '@/lib/candidate-funnel'
+import {
+  progress as funnelProgress, STEP_TYPES, currentIndex as funnelCurrent, hasReport, reportRequiredMessage, stepBlockingMove, type FunnelStep,
+} from '@/lib/candidate-funnel'
 
 export interface PipelineInterview {
   id: string
@@ -218,7 +220,7 @@ function CardLoader({ label, color }: { label: string; color: string }) {
 function CandidateCard({
   candidate, jobId, jobTitle, stages, stageColor, suggestedAction, autoOpenInterview, onAutoOpened, interviewTargetStage,
   busyLabel, onRunScreening, onInterviewSent, onRenameInterview, onEmailSent, onQuickMove,
-  onDragStart, onOpenEdit, onOpenHistory, onDelete, onOpenProcess,
+  onDragStart, onOpenEdit, onOpenHistory, onDelete, onOpenProcess, onNextStep,
 }: {
   candidate: PipelineCandidate
   jobId: string
@@ -240,6 +242,8 @@ function CandidateCard({
   onOpenHistory: () => void
   onDelete: () => void
   onOpenProcess: () => void
+  /** « Étape suivante » : valide l'étape en cours (compte rendu rédigé), sinon ouvre le funnel du candidat. */
+  onNextStep: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
   // Carte repliée par défaut (demande du 2026-11-06) : nom, score, étape et poignée ; le reste (parcours, contacts,
@@ -266,6 +270,7 @@ function CandidateCard({
 
   const hasResults = candidate.aiSummary || candidate.interviews.length > 0
   const stepLabel = candidate.funnel && candidate.funnel.length > 0 ? (funnelProgress(candidate.funnel).current ? `Étape ${funnelCurrent(candidate.funnel) + 1}/${candidate.funnel.length} · ${funnelProgress(candidate.funnel).current!.label}` : 'Parcours terminé') : null
+  const currentStep = candidate.funnel ? candidate.funnel[funnelCurrent(candidate.funnel)] : undefined
   const screeningDone = candidate.aiScore !== undefined
   const latestInterview = candidate.interviews[0]
   const interviewInProgress = candidate.interviews.some(i => i.status === 'pending' || i.status === 'in_progress' || i.status === 'completed')
@@ -357,6 +362,39 @@ function CandidateCard({
         </button>
       )}
 
+      {/* Compte rendu de l'étape en cours (obligatoire depuis le 2026-11-17) : sans lui, « Étape suivante » est verrouillé et
+          tout déplacement de la carte refusé (stepBlockingMove). */}
+      {currentStep && (
+        <div className="mt-2.5 flex flex-col gap-2">
+          {hasReport(currentStep) ? (
+            <p className="text-[11px] leading-snug line-clamp-3 rounded-lg px-2.5 py-1.5" title={currentStep.report}
+              style={{ background: 'rgba(16,185,129,0.08)', color: 'var(--color-text)' }}>
+              « {currentStep.report} »
+            </p>
+          ) : (
+            <p className="flex items-start gap-1.5 text-[11px] font-semibold leading-snug rounded-lg px-2.5 py-1.5"
+              style={{ border: '1px dashed rgba(220,38,38,0.45)', background: 'rgba(220,38,38,0.05)', color: '#b91c1c' }}>
+              <Lock className="h-3 w-3 mt-px shrink-0" aria-hidden />Compte rendu de « {currentStep.label} » à rédiger avant l’étape suivante
+            </p>
+          )}
+          <div className="flex gap-1.5">
+            <button type="button" onClick={onOpenProcess} title="Funnel de recrutement du candidat : étapes, comptes rendus, personnalisation"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-2 rounded-lg text-[11.5px] font-semibold transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_5%,transparent)] focus-visible:outline-2 focus-visible:outline-(--color-text)"
+              style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
+              <GitBranch className="h-3 w-3" aria-hidden />Funnel
+            </button>
+            <button type="button" onClick={onNextStep} disabled={!hasReport(currentStep) || !!busyLabel}
+              title={hasReport(currentStep) ? `Valider « ${currentStep.label} » et passer à l’étape suivante` : `Rédigez d’abord le compte rendu de « ${currentStep.label} »`}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-2 rounded-lg text-[11.5px] font-semibold transition-opacity hover:opacity-90 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
+              style={hasReport(currentStep)
+                ? { background: 'var(--color-primary)', color: 'var(--color-primary-fg)', border: '1px solid var(--color-primary)' }
+                : { background: 'transparent', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}>
+              {hasReport(currentStep) ? <>Étape suivante<ArrowRight className="h-3 w-3" aria-hidden /></> : <><Lock className="h-3 w-3" aria-hidden />Étape suivante</>}
+            </button>
+          </div>
+        </div>
+      )}
+
       {detailsOpen && (<>
       {/* Progression sur le funnel — une barre segmentée, un segment par étape, colorée
           jusqu'à l'étape actuelle de la carte. */}
@@ -395,10 +433,12 @@ function CandidateCard({
             <FileText className="h-2.5 w-2.5" /> CV
           </a>
         )}
-        <button type="button" onClick={e => { e.stopPropagation(); onOpenProcess() }} title="Funnel de recrutement du candidat : étapes, comptes rendus, personnalisation"
-          className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-full transition-opacity hover:opacity-80" style={{ background: `${stageColor}16`, color: stageColor }}>
-          <GitBranch className="h-2.5 w-2.5" /> Funnel{candidate.funnel ? ` ${funnelProgress(candidate.funnel).done}/${candidate.funnel.length}` : ''}
-        </button>
+        {!currentStep && (
+          <button type="button" onClick={e => { e.stopPropagation(); onOpenProcess() }} title="Funnel de recrutement du candidat : étapes, comptes rendus, personnalisation"
+            className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-full transition-opacity hover:opacity-80" style={{ background: `${stageColor}16`, color: stageColor }}>
+            <GitBranch className="h-2.5 w-2.5" /> Funnel{candidate.funnel ? ` ${funnelProgress(candidate.funnel).done}/${candidate.funnel.length}` : ''}
+          </button>
+        )}
         {/* Contact direct WhatsApp — toujours visible ; grisé quand aucun numéro n'est renseigné */}
         {candidate.whatsapp ? (
           <WhatsAppContact size="chip" name={candidate.candidateName} number={candidate.whatsapp} jobTitle={jobTitle} applicationId={candidate.appId}
@@ -991,12 +1031,14 @@ function EmailCard({ candidate, emails, onReplied }: {
 }
 
 export function PipelineClient({
-  jobId, jobTitle, jobMeta, initialCandidates, initialStages, initialEmails, pipeline = null, weights, weightsUnreadable,
+  jobId, jobTitle, jobMeta, initialCandidates, initialStages, initialEmails, clientCount, pipeline = null, weights, weightsUnreadable,
 }: {
   jobId: string; tenantId: string; jobTitle: string
   /** « Paris · CDI · Publiée le 3 nov. 2026 » : rappel de l'offre dans le bandeau, sur grand écran. */
   jobMeta: string
   initialCandidates: PipelineCandidate[]; initialStages: FunnelStage[]; initialEmails: PipelineEmail[]; pipeline?: { id: string; name: string } | null
+  /** Candidats envoyés au client : pastille de l'onglet « Réponse client ». */
+  clientCount: number
   /** Poids personnels du recruteur (scoring-weights.ts) : scores reçus déjà recalculés, nouveaux scores recalculés ici. */
   weights: RecruiterWeights; weightsUnreadable: boolean
 }) {
@@ -1037,6 +1079,27 @@ export function PipelineClient({
     moveCard(appId, column)
   }
 
+  // « Étape suivante » d'une carte : valide l'étape en cours avec son résultat et son compte rendu enregistrés, puis la
+  // carte suit son funnel ; sans résultat enregistré, le funnel du candidat s'ouvre pour le choisir.
+  function nextStep(appId: string) {
+    const steps = candidates.find(c => c.appId === appId)?.funnel
+    const step = steps?.[funnelCurrent(steps)]
+    if (!step || busy[appId]) return
+    if (!step.result || !hasReport(step)) { setProcessFor(appId); return }
+    setCardBusy(appId, 'Validation en cours')
+    const fail = (message: string) => {
+      setCardBusy(appId, null)
+      setGlobalError(message)
+      setTimeout(() => setGlobalError(null), 6000)
+    }
+    validateStepAction(appId, jobId, step.id, {}).then(res => {
+      if (res.error || !res.funnel) { fail(res.error ?? 'Validation impossible. Réessayez.'); return }
+      setCardBusy(appId, null)
+      handleFunnelChange(appId, res.funnel, res.stages)
+      if (res.next) moveFromFunnel(appId, res.next.column, res.next.autoAction)
+    }, () => fail('Validation impossible. Réessayez.'))
+  }
+
   // Après une modification des phases : une candidature dont la phase a disparu garde sa colonne (elle ne doit jamais « disparaître »).
   function withOrphans(list: FunnelStage[]): FunnelStage[] {
     return withOrphanStages(list, candidates.map(c => c.status)).map(x =>
@@ -1071,6 +1134,15 @@ export function PipelineClient({
   // recruiter to notice and click a separate suggestion pill.
   function moveCard(appId: string, stageSlug: string) {
     const autoAction = getStageAutoAction(stages.find(s => s.slug === stageSlug))
+    const candidate = candidates.find(c => c.appId === appId)
+
+    // Compte rendu obligatoire avant de quitter l'étape en cours (règle vérifiée aussi par le serveur).
+    const blocking = candidate?.funnel ? stepBlockingMove(candidate.funnel, stages, candidate.status, stageSlug) : null
+    if (blocking) {
+      setGlobalError(reportRequiredMessage(blocking))
+      setTimeout(() => setGlobalError(null), 6000)
+      return
+    }
 
     // Interview: never move the card just because it was dropped here — the card only
     // really belongs in this stage once the invite is actually sent (handleInterviewSent
@@ -1081,8 +1153,7 @@ export function PipelineClient({
       return
     }
 
-    const previousStatus = candidates.find(c => c.appId === appId)?.status
-    const candidate = candidates.find(c => c.appId === appId)
+    const previousStatus = candidate?.status
     handleMoved(appId, stageSlug)
 
     const screeningFollows = autoAction === 'screening' && candidate?.aiScore === undefined
@@ -1270,8 +1341,8 @@ export function PipelineClient({
             style={{ color: 'var(--hero-fg-muted)' }} />
           <div className="flex items-center justify-between gap-4 flex-wrap min-[90rem]:flex-nowrap">
             <div className="min-w-0">
-              <p className="min-[90rem]:hidden text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--hero-fg-muted)' }}>
-                Pipeline de recrutement
+              <p className="text-xs font-semibold uppercase tracking-widest mb-1 flex items-center gap-1.5" style={{ color: 'var(--hero-fg-muted)' }}>
+                <Kanban className="h-3.5 w-3.5" aria-hidden /> Funnel
               </p>
               <h1 className="min-[90rem]:truncate" style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.375rem', lineHeight: 1.3 }}>{jobTitle}</h1>
               {/* Offre et colonnes sur une seule ligne (demande du 2026-11-06 : bandeau réduit). */}
@@ -1283,7 +1354,7 @@ export function PipelineClient({
                 </Link>
               </p>
             </div>
-            <JobTabs jobId={jobId} current="pipeline" />
+            <JobTabs jobId={jobId} current="pipeline" counts={{ funnel: candidates.length, client: clientCount }} />
             <div className="flex items-center gap-3 flex-wrap min-[90rem]:shrink-0">
               <label className="flex min-[90rem]:hidden items-center gap-2 text-xs font-medium" style={{ color: 'var(--hero-fg-muted)' }}>
                 Score min.
@@ -1297,11 +1368,6 @@ export function PipelineClient({
                 {sortDir === 'desc' ? <ArrowDownWideNarrow className="h-3.5 w-3.5" /> : <ArrowUpWideNarrow className="h-3.5 w-3.5" />}
                 Score
               </button>
-              <Link href={`/recruiter/pipeline/${jobId}/matching`}
-                className="inline-flex min-[90rem]:hidden items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold no-underline transition-opacity hover:opacity-80"
-                style={{ background: 'rgba(139,92,246,0.15)', color: '#7c3aed', border: '1px solid rgba(139,92,246,0.3)' }}>
-                <Brain className="h-3.5 w-3.5" /> Matching IA
-              </Link>
               <StageStatsButton stats={stageStats} total={candidates.length} />
               <ScoringWeightsButton scale="final" weights={weights.final} unreadable={weightsUnreadable} />
               <button onClick={() => setConfigOpen(true)}
@@ -1317,6 +1383,10 @@ export function PipelineClient({
       <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-8 min-[90rem]:py-5 min-[90rem]:grid min-[90rem]:grid-cols-[256px_minmax(0,1fr)] min-[112.5rem]:grid-cols-[256px_minmax(0,1fr)_340px] min-[90rem]:gap-5 min-[90rem]:items-start">
         {rail}
         <div className="min-w-0">
+        <p className="flex items-start gap-2 mb-4 px-4 py-2.5 rounded-xl text-[13px]" style={{ background: '#b4530910', color: '#92400e', border: '1px solid #b4530933' }}>
+          <Lock className="h-3.5 w-3.5 mt-0.5 shrink-0" aria-hidden />
+          <span>À chaque étape, un compte rendu explique pourquoi le candidat avance : sans lui, « Étape suivante » et les déplacements de sa carte restent bloqués. Les comptes rendus sont repris dans la réponse au client.</span>
+        </p>
         {globalError && (
           <div className="flex items-center gap-2 mb-4 px-4 py-2.5 rounded-lg text-sm font-semibold" style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
             <AlertCircle className="h-4 w-4 shrink-0" /> {globalError}
@@ -1396,7 +1466,7 @@ export function PipelineClient({
                       busyLabel={busy[c.appId]} onRunScreening={appId => triggerScreening(appId)} onInterviewSent={handleInterviewSent} onRenameInterview={handleRenameInterview} onEmailSent={handleEmailSent}
                       onQuickMove={moveCard} onDragStart={setDragging}
                       onOpenEdit={() => setEditingId(c.appId)} onOpenHistory={() => setHistoryId(c.appId)}
-                      onOpenProcess={() => setProcessFor(c.appId)}
+                      onOpenProcess={() => setProcessFor(c.appId)} onNextStep={() => nextStep(c.appId)}
                       onDelete={() => handleDelete(c.appId)} />
                     </div>
                   ))}

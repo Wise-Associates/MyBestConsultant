@@ -3,7 +3,7 @@
 import { useId, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { MapPin, Sparkles, Share2, ChevronDown } from 'lucide-react'
-import { NETWORK_LABEL } from '@/lib/social-content'
+import { diffusionText } from '@/lib/social-content'
 import type { CandidateApp } from './applications-panel'
 import type { DashboardJobRow } from './jobs-list-client'
 import type { FunnelStage } from '@/types'
@@ -170,27 +170,9 @@ export function JobPreviewPanel({ row, apps, stages, onOpenApplications }: {
         <h3 className={heading} style={headingStyle}>Diffusion</h3>
         <p className="flex items-center gap-2.5 text-[13px]" style={{ color: 'var(--color-text)' }}>
           <Share2 className="h-3.5 w-3.5 shrink-0" aria-hidden style={muted} />
-          <span>{diffusionText(row)}</span>
+          <span>{diffusionText(row.social, row.shared, row.facts.state)}</span>
         </p>
       </div>
     </section>
   )
-}
-
-/** État de la dernière diffusion, en une phrase (le bouton qui la lance ou la relance est dans la ligne de l'offre). */
-function diffusionText(row: DashboardJobRow): string {
-  const info = row.social
-  if (row.shared) return 'Gérée par la plateforme'
-  if (row.facts.state !== 'online') return 'Hors ligne'
-  if (!info) return 'Pas encore diffusée'
-  const networks = info.results
-    .filter(r => r.status === 'published' || r.status === 'scheduled')
-    .map(r => NETWORK_LABEL[r.network])
-    .join(', ')
-  switch (info.status) {
-    case 'published': return `${networks || 'Réseaux sociaux'} : publiée le ${info.sentOn}`
-    case 'partial': return `En partie publiée le ${info.sentOn}${networks ? ` (${networks})` : ''}`
-    case 'failed': return 'Échec de la dernière diffusion : relancez-la depuis la ligne de l’offre'
-    default: return info.stale ? 'Envoyée, sans confirmation' : 'Publication en cours…'
-  }
 }
