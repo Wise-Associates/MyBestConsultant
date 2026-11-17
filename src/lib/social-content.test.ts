@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  DEFAULT_PUBLISHER_INTRO, DEFAULT_SOCIAL_CONFIG, buildContent, normalizeCopy, offerHashtags, sanitizeSocialConfig, toHashtag,
+  DEFAULT_PUBLISHER_INTRO, DEFAULT_SOCIAL_CONFIG, boldText, buildContent, networkHashtags, normalizeCopy, offerHashtags, roleHashtag, sanitizeSocialConfig, toHashtag,
   type CopyDraft, type JobLite,
 } from './social-content'
 
@@ -33,8 +33,9 @@ const copy: CopyDraft = {
 }
 const opts = { baseUrl: 'https://exemple.test', calendlyUrl: 'https://calendly.com/exemple' }
 const applyLine = '👉 Voir l’offre et postuler : https://exemple.test/jobs/ao123?utm_source=linkedin'
-// Sans hashtag proposé par l'IA : les compétences de l'offre, puis ceux du réglage.
-const tagLine = '#GouvernanceDesDonnees #StrategieSI #recrutement #emploi #IT #consulting'
+// Intitulé trop long pour un hashtag ; sans hashtag proposé par l'IA : les compétences de l'offre, le contrat (une
+// mission → Freelance), puis ceux du réglage ; 5 en tout.
+const tagLine = '#GouvernanceDesDonnees #StrategieSI #Freelance #Recrutement #Emploi'
 
 describe('texte LinkedIn d’une offre', () => {
   it('publie toute la description de l’offre, titres et puces mis en forme pour LinkedIn', () => {
@@ -53,7 +54,7 @@ describe('texte LinkedIn d’une offre', () => {
       '📋 Modalités',
       '• Durée : 12 mois',
     ].join('\n')), linkedin)
-    assert.ok(linkedin.startsWith('🚀 Accompagnement du projet Gouvernance des données — Entreprise exemple\n\n📍 Paris (75) · Mission · Présentiel\n\n📣 Entreprise exemple recrute via'), linkedin)
+    assert.ok(linkedin.startsWith(`🚀 ${boldText('Accompagnement du projet Gouvernance des données')} — Entreprise exemple\n\n📍 Paris (75) · Mission · Présentiel\n\n📣 Entreprise exemple recrute via`), linkedin)
     assert.ok(!linkedin.includes('###') && !linkedin.includes('**') && !linkedin.includes('…') && !linkedin.includes('➕'), linkedin)
     assert.ok(linkedin.endsWith(`${applyLine}\n📅 Envie d’en discuter ? Réservez un échange : https://calendly.com/exemple\n\n${tagLine}`), linkedin)
   })
@@ -167,11 +168,80 @@ describe('hashtags d’expertise', () => {
     assert.equal(offerHashtags(many, []).length, 6)
   })
 
-  it('LinkedIn : hashtags de l’offre d’abord, puis ceux du réglage, sans doublon, 10 au plus', () => {
-    const cfg = { ...DEFAULT_SOCIAL_CONFIG, hashtags: ['recrutement', 'alm', 'emploi', 'IT', 'consulting', 'finance', 'banque', 'risque'] }
-    const linkedin = buildContent(alm, { ...copy, hashtags: ['ALM', 'RisqueDeLiquidite', 'CFP'] }, cfg, opts).captions.linkedin
-    const tags = linkedin.slice(linkedin.lastIndexOf('\n') + 1).split(' ')
-    assert.deepEqual(tags, ['#ALM', '#RisqueDeLiquidite', '#CFP', '#recrutement', '#emploi', '#IT', '#consulting', '#finance', '#banque', '#risque'])
+})
+
+describe('hashtags de chaque réseau', () => {
+  const dev: JobLite = {
+    ...job, title: 'Développeur Full Stack Java / Angular', contractType: 'mission',
+    skills: ['Java', 'Spring Boot', 'Angular', 'PostgreSQL', 'Docker'], description: 'Développer en Java / Spring Boot et Angular, en équipe full stack.',
+  }
+  const proposed = ['Java', 'Angular', 'SpringBoot', 'FullStack']
+  const last = (text: string) => text.slice(text.lastIndexOf('\n') + 1)
+
+  it('LinkedIn et Instagram : le poste, 3 expertises, le contrat ; Facebook : 2 expertises et le contrat ; X : 2 expertises', () => {
+    assert.deepEqual(networkHashtags(dev, proposed, DEFAULT_SOCIAL_CONFIG), {
+      linkedin: ['#DeveloppeurFullStackJava', '#Java', '#Angular', '#SpringBoot', '#Freelance'],
+      instagram: ['#DeveloppeurFullStackJava', '#Java', '#Angular', '#SpringBoot', '#Freelance'],
+      facebook: ['#Java', '#Angular', '#Freelance'],
+      x: ['#Java', '#Angular'],
+    })
+  })
+
+  it('écrit ces hashtags en dernière ligne de chaque publication', () => {
+    const { captions } = buildContent(dev, { ...copy, hashtags: proposed }, DEFAULT_SOCIAL_CONFIG, opts)
+    assert.equal(last(captions.linkedin), '#DeveloppeurFullStackJava #Java #Angular #SpringBoot #Freelance')
+    assert.equal(last(captions.instagram), '#DeveloppeurFullStackJava #Java #Angular #SpringBoot #Freelance')
+    assert.equal(last(captions.facebook), '#Java #Angular #Freelance')
+    assert.equal(last(captions.x), '#Java #Angular')
+  })
+
+  it('un CDI ou un CDD donne son hashtag de contrat', () => {
+    assert.deepEqual(networkHashtags({ ...dev, contractType: 'cdi' }, proposed, DEFAULT_SOCIAL_CONFIG).facebook, ['#Java', '#Angular', '#CDI'])
+    assert.deepEqual(networkHashtags({ ...dev, contractType: 'cdd' }, proposed, DEFAULT_SOCIAL_CONFIG).facebook, ['#Java', '#Angular', '#CDD'])
+  })
+
+  it('tire le poste de l’intitulé, avant « / » ou « - », sans H/F ; rien s’il est trop long', () => {
+    assert.deepEqual(
+      ['Ingénieur DevOps / Cloud AWS', 'Chef de projet Data - Power BI', 'Consultant SAP FI (H/F)', 'Développeur Java H/F', 'Product Owner, assurance'].map(roleHashtag),
+      ['IngenieurDevOps', 'ChefDeProjetData', 'ConsultantSAPFI', 'DeveloppeurJava', 'ProductOwner'],
+    )
+    assert.equal(roleHashtag('Accompagnement du projet Gouvernance des données'), '')
+  })
+
+  it('écarte une expertise qui n’est que le début du poste', () => {
+    const data = { ...dev, title: 'Chef de projet Data / Power BI', contractType: 'cdi', skills: ['Power BI', 'SQL'], description: 'Chef de projet data, Power BI et SQL.' }
+    assert.deepEqual(networkHashtags(data, ['ChefDeProjet', 'Data', 'PowerBI', 'SQL'], DEFAULT_SOCIAL_CONFIG).linkedin, ['#ChefDeProjetData', '#Data', '#PowerBI', '#SQL', '#CDI'])
+  })
+
+  it('poste trop long : une expertise de plus, pas les hashtags du réglage', () => {
+    const tags = networkHashtags({ ...dev, title: 'Accompagnement du projet de modernisation de l’espace client' }, proposed, DEFAULT_SOCIAL_CONFIG)
+    assert.deepEqual(tags.linkedin, ['#Java', '#Angular', '#SpringBoot', '#Freelance', '#FullStack'])
+  })
+
+  it('sans poste, expertise ni contrat, la place va aux hashtags du réglage', () => {
+    const tags = networkHashtags({ ...dev, title: 'Accompagnement du projet de modernisation', contractType: undefined, skills: [] }, [], DEFAULT_SOCIAL_CONFIG)
+    assert.deepEqual(tags.linkedin, ['#Recrutement', '#Emploi', '#IT', '#Consulting'])
+    assert.deepEqual(tags.x, ['#Recrutement', '#Emploi'])
+  })
+
+  it('un hashtag déjà présent n’est pas répété', () => {
+    const tags = networkHashtags({ ...dev, title: 'Java' }, proposed, { ...DEFAULT_SOCIAL_CONFIG, hashtags: ['java', 'recrutement'] })
+    assert.deepEqual(tags.linkedin, ['#Java', '#Angular', '#SpringBoot', '#FullStack', '#Freelance'])
+  })
+})
+
+describe('intitulé en gras', () => {
+  it('passe lettres et chiffres en gras Unicode, accents et ponctuation gardés', () => {
+    assert.equal(boldText('Az 09'), '𝗔𝘇 𝟬𝟵')
+    assert.equal(boldText('é'), '𝗲́')
+    assert.equal(boldText('C# / .NET'), '𝗖# / .𝗡𝗘𝗧')
+  })
+
+  it('met l’intitulé en gras sur LinkedIn, Facebook et Instagram ; pas sur X, qui reprend l’accroche', () => {
+    const { captions } = buildContent(job, copy, DEFAULT_SOCIAL_CONFIG, opts)
+    const head = `🚀 ${boldText(job.title)} — Entreprise exemple\n\n`
+    for (const text of [captions.linkedin, captions.facebook, captions.instagram]) assert.ok(text.startsWith(head), text)
+    assert.ok(captions.x.startsWith('🚀 Gouvernance des données\n'), captions.x)
   })
 })
 
