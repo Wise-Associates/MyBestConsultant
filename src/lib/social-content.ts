@@ -257,7 +257,6 @@ function objectiveLine(job: JobLite): string {
 
 const HASHTAG_MAX_CHARS = 30
 const OFFER_HASHTAGS_MAX = 6
-const LINKEDIN_HASHTAGS_MAX = 10
 const SMALL_WORDS = new Set(['a', 'au', 'aux', 'd', 'de', 'des', 'du', 'en', 'et', 'l', 'la', 'le', 'les', 'pour', 'and', 'of', 'the'])
 
 /** Mots d'un texte, sans accents. Les graphies dont la ponctuation porte le sens sont écrites en toutes lettres (C# → CSharp). */
@@ -307,6 +306,60 @@ function uniqueTags(tags: string[]): string[] {
   return tags.filter(t => { const k = words(t).join('').toLowerCase(); return k && !seen.has(k) && seen.add(k) })
 }
 
+/** Hashtag du type de contrat : une mission se cherche sous « Freelance ». */
+const CONTRACT_HASHTAG: Record<string, string> = { cdi: 'CDI', cdd: 'CDD', freelance: 'Freelance', mission: 'Freelance' }
+
+/**
+ * Hashtags de chaque réseau (règle validée par la direction le 2026-11-17) : peu de hashtags, ciblés sur l'offre.
+ * LinkedIn et Instagram : le poste, 3 expertises et le contrat, 5 en tout (le poste a remplacé « #Recrutement ») ;
+ * Facebook, où ils servent peu : 2 expertises et le contrat ; X, où la place manque : 2 expertises.
+ */
+const NETWORK_HASHTAGS: Record<Network, { total: number; role: boolean; expertise: number }> = {
+  linkedin: { total: 5, role: true, expertise: 3 }, instagram: { total: 5, role: true, expertise: 3 },
+  facebook: { total: 3, role: false, expertise: 2 }, x: { total: 2, role: false, expertise: 2 },
+}
+
+/**
+ * Hashtag du poste : l'intitulé avant « / », « - », « | » ou la première virgule, sans « H/F » ni parenthèses
+ * (« Ingénieur DevOps / Cloud AWS » → IngenieurDevOps). Vide si le poste ne tient pas en un hashtag (30 caractères).
+ */
+export function roleHashtag(title: string): string {
+  const role = title.replace(/\([^)]*\)/g, ' ').replace(/\b[HF]\s*\/\s*[HF]\b/gi, ' ').split(/\s[/|–—-]\s|,/)[0]
+  return toHashtag(role)
+}
+
+/**
+ * Hashtags (avec « # ») de chaque réseau. Avec le poste, une expertise qui n'en est que le début est écartée
+ * (#ChefDeProjet à côté de #ChefDeProjetData). Il en manque (poste trop long, peu d'expertises, pas de contrat) : les
+ * expertises suivantes, puis les hashtags du réglage complètent.
+ */
+export function networkHashtags(job: JobLite, proposed: string[], cfg: SocialConfig): Record<Network, string[]> {
+  const expertise = offerHashtags(job, proposed)
+  const role = roleHashtag(job.title)
+  const contract = CONTRACT_HASHTAG[job.contractType ?? ''] ?? ''
+  return Object.fromEntries(NETWORKS.map(n => {
+    const { total, role: withRole, expertise: first } = NETWORK_HASHTAGS[n]
+    const own = withRole && role ? expertise.filter(e => !role.toLowerCase().startsWith(e.toLowerCase())) : expertise
+    const ordered = [withRole ? role : '', ...own.slice(0, first), contract, ...own.slice(first), ...cfg.hashtags.map(toHashtag)]
+    return [n, uniqueTags(ordered.filter(Boolean)).slice(0, total).map(t => `#${t}`)]
+  })) as Record<Network, string[]>
+}
+
+/**
+ * Texte en gras pour les réseaux, qui n'affichent pas le markdown : lettres et chiffres en caractères gras Unicode
+ * (Mathematical Sans-Serif Bold). Une lettre accentuée devient la lettre grasse suivie de son accent combinant ; le
+ * reste (ponctuation, « œ »…) est gardé tel quel.
+ */
+export function boldText(text: string): string {
+  return Array.from(text.normalize('NFD'), ch => {
+    const c = ch.codePointAt(0) ?? 0
+    if (c >= 0x41 && c <= 0x5a) return String.fromCodePoint(0x1d5d4 + c - 0x41)
+    if (c >= 0x61 && c <= 0x7a) return String.fromCodePoint(0x1d5ee + c - 0x61)
+    if (c >= 0x30 && c <= 0x39) return String.fromCodePoint(0x1d7ec + c - 0x30)
+    return ch
+  }).join('')
+}
+
 /** Longueur d'un tweet telle que X la compte : chaque URL vaut 23 caractères. */
 export function xLength(text: string): number {
   return text.replace(/https?:\/\/\S+/g, 'x'.repeat(23)).length
@@ -315,7 +368,7 @@ export function xLength(text: string): number {
 export function buildContent(job: JobLite, copy: CopyDraft, cfg: SocialConfig, opts: { baseUrl: string; calendlyUrl: string }): SocialContent {
   const calendly = cfg.includeCalendly ? opts.calendlyUrl : ''
   const conditions = conditionLines(job)
-  const tags = cfg.hashtags.map(h => `#${h}`)
+  const tags = networkHashtags(job, copy.hashtags, cfg)
   const urls = Object.fromEntries(NETWORKS.map(n => [n, jobUrl(opts.baseUrl, job.id, n)])) as Record<Network, string>
 
   // ── Affiche unique ──
@@ -329,7 +382,8 @@ export function buildContent(job: JobLite, copy: CopyDraft, cfg: SocialConfig, o
   // Même trame partout (accroche, lieu et conditions, missions, profil, liens), adaptée à la longueur et aux usages de chaque réseau.
   const rate = job.salary ? payText(job.salary, job.contractType) : ''
   const meta = [job.location && `📍 ${job.location}`, job.contractType ? CONTRACT[job.contractType] ?? job.contractType : '', job.remote ? REMOTE[job.remote] ?? job.remote : '', rate].filter(Boolean).join(' · ')
-  const head = `🚀 ${job.title}${job.company ? ` — ${job.company}` : ''}`
+  // Intitulé en gras (demande de la direction du 2026-11-17) ; X reprend l'accroche, pas cette ligne.
+  const head = `🚀 ${boldText(job.title)}${job.company ? ` — ${job.company}` : ''}`
   const bullets = copy.missionBullets.map(b => `• ${b}`).join('\n')
   const skills = copy.profileBullets.slice(0, 5).join(' · ')
   const program = bullets ? `🎯 Au programme\n${bullets}` : ''
@@ -347,20 +401,19 @@ export function buildContent(job: JobLite, copy: CopyDraft, cfg: SocialConfig, o
   const { lead, rest } = splitLead(job.description)
   const project = copy.context ? `🧭 Le projet : ${copy.context}` : lead && `🧭 ${lead}`
   const context = join(publisherLine(job, cfg), [project, objectiveLine(job)].filter(Boolean).join('\n'))
-  const liTags = uniqueTags([...offerHashtags(job, copy.hashtags), ...cfg.hashtags]).slice(0, LINKEDIN_HASHTAGS_MAX).map(h => `#${h}`)
-  const liEnd = join([cta(urls.linkedin), rdv].filter(Boolean).join('\n'), liTags.join(' '))
+  const liEnd = join([cta(urls.linkedin), rdv].filter(Boolean).join('\n'), tags.linkedin.join(' '))
   const liTop = hasDescription ? join(head, meta, context) : join(head, copy.tagline, meta, context)
   const liBody = hasDescription ? fitDescription(lead ? rest : job.description, LINKEDIN_MAX_CHARS - liTop.length - liEnd.length - 4) : join(program, profile)
   const linkedin = clip(join(liTop, liBody, liEnd), LINKEDIN_MAX_CHARS)
-  const facebook = clip(join(head, copy.tagline, meta, program, [cta(urls.facebook), rdv].filter(Boolean).join('\n'), tags.slice(0, 3).join(' ')), 2900)
+  const facebook = clip(join(head, copy.tagline, meta, program, [cta(urls.facebook), rdv].filter(Boolean).join('\n'), tags.facebook.join(' ')), 2900)
   // Instagram : les liens des légendes ne sont pas cliquables → on renvoie vers le lien de la bio.
-  const instagram = clip(join(head, copy.tagline, meta, program, profile, ['👉 Postuler : lien dans la bio 🔗 mybestconsultant.fr', rdv].filter(Boolean).join('\n'), tags.join(' ')), 2100)
+  const instagram = clip(join(head, copy.tagline, meta, program, profile, ['👉 Postuler : lien dans la bio 🔗 mybestconsultant.fr', rdv].filter(Boolean).join('\n'), tags.instagram.join(' ')), 2100)
 
   // X : on retire progressivement les éléments optionnels jusqu'à tenir dans 280 caractères.
   const xLink = `👉 ${urls.x}`
   const xCal = calendly ? `\n📅 ${calendly}` : ''
   const xVariants = [
-    `🚀 ${copy.hook}\n${meta}\n\n${xLink}${xCal}\n${tags.slice(0, 3).join(' ')}`,
+    `🚀 ${copy.hook}\n${meta}\n\n${xLink}${xCal}\n${tags.x.join(' ')}`,
     `🚀 ${copy.hook}\n${meta}\n\n${xLink}${xCal}`,
     `🚀 ${copy.hook}\n\n${xLink}${xCal}`,
     `🚀 ${copy.hook}\n\n${xLink}`,

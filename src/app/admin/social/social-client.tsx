@@ -120,7 +120,7 @@ export function SocialClient({ initialConfig, initialPosts, jobs, env, devPanel 
         <div>
           <label htmlFor="social-hashtags" className="block text-sm font-semibold text-white/90 mb-1.5">Hashtags par défaut</label>
           <input id="social-hashtags" value={hashtags} onChange={e => { setHashtags(e.target.value); setSaved(false) }} placeholder="recrutement emploi IT consulting" className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={field} />
-          <p className="text-[11px] mt-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Sur LinkedIn, ils suivent les hashtags des expertises de chaque offre, tirés de ses compétences (10 hashtags au plus).</p>
+          <p className="text-[11px] mt-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Chaque publication a ses propres hashtags, tirés de l’offre : 5 sur LinkedIn et Instagram (le poste, 3 expertises, le contrat : #CDI, #CDD ou #Freelance), 3 sur Facebook (2 expertises et le contrat), 2 sur X (2 expertises). Ceux-ci ne complètent que s’il en manque, dans cet ordre.</p>
         </div>
         <div className="flex items-center justify-end gap-3">
           {saved && <span className="text-xs text-emerald-400 inline-flex items-center gap-1"><Check className="h-3.5 w-3.5" />Enregistré</span>}
