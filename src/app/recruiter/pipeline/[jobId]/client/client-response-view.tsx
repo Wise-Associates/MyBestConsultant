@@ -2,16 +2,21 @@
 
 import { useState, useTransition, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Loader2, Printer, Send, ThumbsUp, X } from 'lucide-react'
+import Link from 'next/link'
+import { Building2, Check, FileText, Loader2, Mail, Pencil, Printer, Send, ThumbsUp, X } from 'lucide-react'
 import { BackLink } from '@/components/recruiter/back-link'
-import { JobTabs } from '@/components/recruiter/job-tabs'
+import { JobHeaderGrid, JobTabs } from '@/components/recruiter/job-tabs'
+import { JobInfoButton } from '@/components/recruiter/job-info-button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { CLIENT_LIMITS, CLIENT_RESPONSE_LABEL, type ClientAnswer, type ClientResponse } from '@/lib/client-response'
-import { recordClientResponseAction, sendToClientAction } from './actions'
-import type { ClientRow } from './data'
+import { CLIENT_LIMITS, CLIENT_RESPONSE_LABEL, clientMailto, type ClientAnswer, type ClientResponse, type JobClient } from '@/lib/client-response'
+import { recordClientResponseAction, saveJobClientAction, sendToClientAction } from './actions'
+import type { ClientRow, ClientState } from './data'
+import { EsnExportDialog } from '@/components/cv-export/esn-export-dialog'
+import { getRecruiterCvExportVersions } from '@/app/recruiter/cvtheque/actions'
+import type { CvExportAccess } from '@/lib/cv-export/recruiter'
 
-// Écran de l'onglet « Réponse client » (maquette du 2026-11-17) : candidats envoyés au client à gauche, synthèse et
-// réponse du candidat choisi à droite ; « Envoyer une sélection au client » note un envoi et donne la synthèse à imprimer.
+// Écran de l'onglet « Réponse client » (maquette du 2026-11-17) : candidats envoyés au client à gauche, comptes rendus envoyés
+// et réponse du candidat choisi à droite ; « Envoyer une sélection au client » note un envoi et donne les fiches à imprimer.
 
 const muted: CSSProperties = { color: 'var(--color-text-muted)' }
 const card = 'rounded-[20px]'
@@ -37,37 +42,45 @@ function ResponseBadge({ response }: { response: ClientResponse }) {
   return <span className="inline-flex text-xs font-semibold rounded-full px-2.5 py-0.5 whitespace-nowrap" style={RESPONSE_STYLE[response]}>{CLIENT_RESPONSE_LABEL[response]}</span>
 }
 
-export function ClientResponseView({ jobId, jobTitle, jobMeta, rows }: { jobId: string; jobTitle: string; jobMeta: string; rows: ClientRow[] }) {
+export function ClientResponseView({ jobId, jobTitle, jobMeta, rows, cvExport, client: initialClient }: {
+  jobId: string; jobTitle: string; jobMeta: string; rows: ClientRow[]
+  /** Export « CV format cabinet » de l'organisation ; null : indisponible (stockage non configuré ou état illisible). */
+  cvExport: CvExportAccess | null
+  /** Client de l'offre (société, contact, e-mail). */
+  client: ClientState
+}) {
+  const [client, setClient] = useState(initialClient)
+  const known = client && typeof client === 'object' ? client : null
   const router = useRouter()
   const sent = rows.filter(r => r.submission).sort((a, b) => b.submission!.sentAt.localeCompare(a.submission!.sentAt))
-  const eligible = rows.filter(r => !r.submission && r.steps.length > 0)
+  // Tout candidat du funnel pas encore envoyé, sauf refusé (choix du 2026-11-17).
+  const eligible = rows.filter(r => !r.submission && !r.rejected && !r.shared)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selected = sent.find(r => r.appId === selectedId) ?? sent[0] ?? null
   const [sendOpen, setSendOpen] = useState(false)
+  const [exportFor, setExportFor] = useState<ClientRow | null>(null)
   const [notice, setNotice] = useState<{ text: string; ids?: string[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <div style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)' }}>
-        <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[90rem]:px-8 py-4">
-          <BackLink fallbackHref={`/recruiter/offres/${jobId}`}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold mb-2 no-underline transition-opacity hover:opacity-80"
-            style={{ color: 'var(--hero-fg-muted)' }} />
-          <div className="flex items-center justify-between gap-4 flex-wrap min-[90rem]:flex-nowrap">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-widest mb-1 flex items-center gap-1.5" style={{ color: 'var(--hero-fg-muted)' }}>
-                <Send className="h-3.5 w-3.5" aria-hidden /> Réponse client
-              </p>
-              <h1 className="min-[90rem]:truncate" style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.375rem', lineHeight: 1.3 }}>{jobTitle}</h1>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--hero-fg-muted)' }}>{jobMeta}</p>
-            </div>
-            <JobTabs jobId={jobId} current="client" counts={{ funnel: rows.length, client: sent.length }} />
-            <button type="button" onClick={() => { setError(null); setSendOpen(true) }} className={button}
-              style={{ background: 'var(--color-primary)', color: 'var(--color-primary-fg)', border: '1px solid var(--color-primary)' }}>
-              <Send className="h-4 w-4" aria-hidden />Envoyer une sélection au client
-            </button>
-          </div>
+        <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[90rem]:px-8 pt-4">
+          <JobHeaderGrid
+            back={<BackLink fallbackHref={`/recruiter/offres/${jobId}`}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold mb-2 no-underline transition-opacity hover:opacity-80"
+              style={{ color: 'var(--hero-fg-muted)' }} />}
+            main={<>
+              <h1 className="sr-only">{jobTitle}</h1>
+              <div className="flex items-center gap-2 flex-wrap lg:justify-end">
+                <JobInfoButton view="Réponse client" title={jobTitle} meta={jobMeta} />
+                <button type="button" onClick={() => { setError(null); setSendOpen(true) }} className={button}
+                  style={{ background: 'var(--color-primary)', color: 'var(--color-primary-fg)', border: '1px solid var(--color-primary)' }}>
+                  <Send className="h-4 w-4" aria-hidden />Envoyer une sélection au client
+                </button>
+              </div>
+            </>}
+            tabs={<JobTabs jobId={jobId} current="client" counts={{ funnel: rows.length, client: sent.length }} />} />
         </div>
       </div>
 
@@ -78,11 +91,18 @@ export function ClientResponseView({ jobId, jobTitle, jobMeta, rows }: { jobId: 
             <span>{error ?? notice?.text}</span>
             {!error && notice?.ids && notice.ids.length > 0 && (
               <a href={synthesisHref(jobId, notice.ids)} target="_blank" rel="noopener noreferrer" className="font-semibold underline underline-offset-2" style={{ color: 'inherit' }}>
-                Imprimer leur synthèse (PDF)<span className="sr-only"> (nouvel onglet)</span>
+                Imprimer {notice.ids.length > 1 ? 'leurs fiches' : 'sa fiche'} (PDF)<span className="sr-only"> (nouvel onglet)</span>
+              </a>
+            )}
+            {!error && notice?.ids && notice.ids.length > 0 && known && clientMailto(known, jobTitle, notice.ids.length) && (
+              <a href={clientMailto(known, jobTitle, notice.ids.length)!} className="font-semibold underline underline-offset-2" style={{ color: 'inherit' }}>
+                puis écrire à {known.contactName || known.email}<span className="sr-only"> (ouvre votre messagerie)</span>
               </a>
             )}
           </p>
         )}
+
+        <ClientCard jobId={jobId} jobTitle={jobTitle} client={client} onSaved={setClient} />
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px] min-[90rem]:grid-cols-[minmax(0,1fr)_440px] items-start">
           <section aria-labelledby="envoyes" className={card} style={cardStyle}>
@@ -92,8 +112,8 @@ export function ClientResponseView({ jobId, jobTitle, jobMeta, rows }: { jobId: 
             </div>
             {sent.length === 0 ? (
               <p className="px-5 sm:px-6 pb-6 text-[13px]" style={muted}>
-                Aucun candidat envoyé pour l’instant. « Envoyer une sélection au client » propose les candidats dont au moins une étape du funnel est validée avec un compte rendu
-                {eligible.length > 0 ? ` (${plural(eligible.length, 'candidat prêt', 'candidats prêts')}).` : ' : aucun pour l’instant.'}
+                Aucun candidat envoyé pour l’instant. « Envoyer une sélection au client » propose les candidats du funnel, sauf ceux refusés
+                {eligible.length > 0 ? ` (${plural(eligible.length, 'candidat', 'candidats')}).` : ' : aucun pour l’instant.'}
               </p>
             ) : (
               <table className="w-full border-collapse text-left">
@@ -135,6 +155,7 @@ export function ClientResponseView({ jobId, jobTitle, jobMeta, rows }: { jobId: 
 
           {selected && (
             <ClientPanel key={`${selected.appId}-${selected.submission!.response}-${selected.submission!.respondedAt ?? ''}`} jobId={jobId} row={selected}
+              cabinetCv={!selected.hunterProfile && cvExport ? (cvExport.template ? () => setExportFor(selected) : 'setup') : undefined}
               onDone={(text, failed) => {
                 if (failed) { setError(text); setNotice(null); return }
                 setError(null)
@@ -145,7 +166,14 @@ export function ClientResponseView({ jobId, jobTitle, jobMeta, rows }: { jobId: 
         </div>
       </div>
 
-      <SendDialog open={sendOpen} jobId={jobId} eligible={eligible} waiting={rows.filter(r => !r.submission && r.steps.length === 0).length}
+      {cvExport?.template && (
+        // key : choix et compte rendu remis à zéro pour chaque candidat
+        <EsnExportDialog key={exportFor?.appId ?? 'none'} candidate={exportFor && { id: exportFor.candidateId, name: exportFor.name }}
+          onClose={() => setExportFor(null)} endpoint="/api/recruiter/cv-export" loadVersions={getRecruiterCvExportVersions}
+          esn={cvExport.template.esn} generationDenied={cvExport.generationDenied} quotaLimited />
+      )}
+
+      <SendDialog open={sendOpen} jobId={jobId} eligible={eligible} client={known} rejected={rows.filter(r => !r.submission && r.rejected).length}
         onClose={() => setSendOpen(false)}
         onSent={(ids, refused) => {
           setSendOpen(false)
@@ -161,8 +189,13 @@ export function ClientResponseView({ jobId, jobTitle, jobMeta, rows }: { jobId: 
   )
 }
 
-/** Synthèse envoyée et réponse du client du candidat choisi. */
-function ClientPanel({ jobId, row, onDone }: { jobId: string; row: ClientRow; onDone: (text: string, failed?: boolean) => void }) {
+/** Documents pour le client (fiche, CV format cabinet), comptes rendus envoyés et réponse du client du candidat choisi. */
+function ClientPanel({ jobId, row, cabinetCv, onDone }: {
+  jobId: string; row: ClientRow
+  /** « CV format cabinet » : ouvre l'export ; 'setup' : modèle du cabinet à déposer d'abord (CV Thèque) ; absent : indisponible. */
+  cabinetCv?: (() => void) | 'setup'
+  onDone: (text: string, failed?: boolean) => void
+}) {
   const submission = row.submission!
   const [comment, setComment] = useState(submission.comment ?? '')
   const [pending, start] = useTransition()
@@ -187,15 +220,29 @@ function ClientPanel({ jobId, row, onDone }: { jobId: string; row: ClientRow; on
         <ResponseBadge response={submission.response} />
       </div>
 
+      {/* Documents à transmettre au client : la fiche (PDF) et le CV dans le modèle Word du cabinet. */}
+      <div className="flex flex-wrap gap-2">
+        <a href={synthesisHref(jobId, [row.appId])} target="_blank" rel="noopener noreferrer" className={button}
+          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
+          <Printer className="h-4 w-4" aria-hidden />Fiche PDF<span className="sr-only"> : imprimer la fiche de {row.name} (nouvel onglet)</span>
+        </a>
+        {cabinetCv === 'setup' ? (
+          <Link href="/recruiter/cvtheque" className={button} title="Déposez d’abord le modèle Word de votre cabinet dans la CV Thèque"
+            style={{ background: 'var(--color-surface)', border: '1px dashed var(--color-border)', color: 'var(--color-text)' }}>
+            <FileText className="h-4 w-4" aria-hidden />CV format cabinet : déposer le modèle
+          </Link>
+        ) : cabinetCv && (
+          <button type="button" onClick={cabinetCv} className={button}
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
+            <FileText className="h-4 w-4" aria-hidden />CV format cabinet
+          </button>
+        )}
+      </div>
+
       <section aria-labelledby="synthese">
-        <div className="flex items-center justify-between gap-3 mb-2">
-          <h3 id="synthese" className="font-semibold uppercase" style={headingStyle}>Synthèse envoyée au client</h3>
-          <a href={synthesisHref(jobId, [row.appId])} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs font-semibold no-underline hover:underline" style={{ color: 'var(--color-primary)' }}>
-            <Printer className="h-3.5 w-3.5" aria-hidden />PDF<span className="sr-only"> : imprimer la synthèse de {row.name} (nouvel onglet)</span>
-          </a>
-        </div>
-        <ol className="flex flex-col gap-3 pl-3" style={{ borderLeft: '2px solid var(--color-border)' }}>
+        <h3 id="synthese" className="font-semibold uppercase mb-2" style={headingStyle}>Comptes rendus envoyés</h3>
+        {row.steps.length === 0 && <p className="text-[13px]" style={muted}>Aucun compte rendu envoyé : la fiche présente le profil, le parcours et l’adéquation au poste.</p>}
+        <ol className="flex flex-col gap-3 pl-3" style={{ borderLeft: '2px solid var(--color-border)' }} hidden={row.steps.length === 0}>
           {row.steps.map(s => (
             <li key={s.id}>
               <p className="text-[11px] font-semibold uppercase tracking-wide" style={muted}>{s.label}{s.validatedBy ? ` · ${s.validatedBy}` : ''}</p>
@@ -231,11 +278,12 @@ function ClientPanel({ jobId, row, onDone }: { jobId: string; row: ClientRow; on
   )
 }
 
-/** Choix des candidats à envoyer : ceux dont au moins une étape est validée avec un compte rendu, pas encore envoyés. */
-function SendDialog({ open, jobId, eligible, waiting, onClose, onSent }: {
+/** Choix des candidats à envoyer : ceux du funnel pas encore envoyés, sauf refusés. */
+function SendDialog({ open, jobId, eligible, client, rejected, onClose, onSent }: {
   open: boolean; jobId: string; eligible: ClientRow[]
-  /** Candidats sans étape validée avec compte rendu : pas encore envoyables. */
-  waiting: number
+  client: JobClient | null
+  /** Candidats refusés, jamais proposés. */
+  rejected: number
   onClose: () => void
   onSent: (ids: string[], refused: string[]) => void
 }) {
@@ -267,11 +315,12 @@ function SendDialog({ open, jobId, eligible, waiting, onClose, onSent }: {
         <DialogHeader>
           <DialogTitle style={{ fontSize: '1.05rem', fontWeight: 700 }}>Envoyer une sélection au client</DialogTitle>
           <DialogDescription style={muted}>
-            MBC note l’envoi et prépare la synthèse de leurs comptes rendus, à imprimer en PDF et à transmettre au client.
+            MBC note l’envoi et prépare la fiche de chaque candidat (initiales, sans coordonnées : profil, parcours, adéquation au poste et comptes rendus validés), à imprimer en PDF et à transmettre au client.
+            {client && ` Destinataire : ${[client.contactName, client.company].filter(Boolean).join(', ')}${client.email ? ` (${client.email})` : ''}.`}
           </DialogDescription>
         </DialogHeader>
         {eligible.length === 0 ? (
-          <p className="text-[13px]" style={muted}>Aucun candidat prêt : validez au moins une étape de son funnel avec un compte rendu.</p>
+          <p className="text-[13px]" style={muted}>Aucun candidat à proposer : tous ceux du funnel ont déjà été envoyés ou sont refusés.</p>
         ) : (
           <fieldset className="flex flex-col gap-1">
             <legend className="sr-only">Candidats à envoyer</legend>
@@ -281,15 +330,15 @@ function SendDialog({ open, jobId, eligible, waiting, onClose, onSent }: {
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-semibold truncate">{r.name}</span>
                   <span className="block text-xs" style={muted}>
-                    {r.stageLabel}{r.score !== undefined ? ` · score ${r.score}` : ''} · {plural(r.steps.length, 'compte rendu', 'comptes rendus')}
+                    {r.stageLabel}{r.score !== undefined ? ` · score ${r.score}` : ''} · {r.steps.length ? plural(r.steps.length, 'compte rendu', 'comptes rendus') : 'aucun compte rendu'}
                   </span>
                 </span>
               </label>
             ))}
           </fieldset>
         )}
-        {waiting > 0 && (
-          <p className="text-xs" style={muted}>{plural(waiting, 'autre candidat n’a', 'autres candidats n’ont')} pas encore d’étape validée avec un compte rendu.</p>
+        {rejected > 0 && (
+          <p className="text-xs" style={muted}>{plural(rejected, 'candidat refusé n’est pas proposé', 'candidats refusés ne sont pas proposés')}.</p>
         )}
         {error && <p role="alert" className="text-[13px]" style={{ color: '#b91c1c' }}>{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
@@ -302,5 +351,100 @@ function SendDialog({ open, jobId, eligible, waiting, onClose, onSent }: {
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+const EMPTY_CLIENT: JobClient = { company: '', contactName: '', email: '' }
+const fieldStyle: CSSProperties = { background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }
+const secondary: CSSProperties = { background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }
+
+/** Client de l'offre (demande du 2026-11-17) : société, contact et e-mail, renseignés une fois ; « Écrire au client » ouvre la messagerie du recruteur. */
+function ClientCard({ jobId, jobTitle, client, onSaved }: {
+  jobId: string; jobTitle: string; client: ClientState; onSaved: (client: JobClient | null) => void
+}) {
+  const known = client && typeof client === 'object' ? client : null
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<JobClient>(known ?? EMPTY_CLIENT)
+  const [error, setError] = useState<string | null>(null)
+  const [pending, start] = useTransition()
+  const mailto = known && clientMailto(known, jobTitle, 0)
+
+  function save() {
+    setError(null)
+    start(async () => {
+      const res = await saveJobClientAction({ jobId, client: draft }).catch(() => ({ error: 'Le client n’a pas pu être enregistré. Réessayez.' }))
+      if ('error' in res) { setError(res.error); return }
+      const empty = !res.client.company && !res.client.contactName && !res.client.email
+      onSaved(empty ? null : res.client)
+      setEditing(false)
+    })
+  }
+
+  if (client === 'off' || client === 'unavailable') {
+    return (
+      <p className="text-[13px] px-1" style={muted}>
+        <Building2 className="inline h-4 w-4 mr-1.5 -mt-0.5" aria-hidden />
+        {client === 'off' ? 'Client de l’offre : pas encore activé (mise à jour de la base à faire).' : 'Client de l’offre momentanément illisible : rechargez la page.'}
+      </p>
+    )
+  }
+
+  return (
+    <section aria-labelledby="client-offre" className={`${card} px-5 sm:px-6 py-4`} style={cardStyle}>
+      {!editing ? (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="min-w-0 flex items-start gap-3">
+            <Building2 className="h-5 w-5 mt-0.5 shrink-0" style={muted} aria-hidden />
+            <div className="min-w-0">
+              <h2 id="client-offre" className="font-semibold uppercase" style={headingStyle}>Client de l’offre</h2>
+              {known ? (
+                <p className="text-sm" style={{ color: 'var(--color-text)' }}>
+                  <span className="font-semibold">{known.company || 'Société non renseignée'}</span>
+                  {known.contactName && <> · {known.contactName}</>}
+                  {known.email && <span style={muted}> · {known.email}</span>}
+                </p>
+              ) : (
+                <p className="text-[13px]" style={muted}>Aucun client renseigné : indiquez à qui les fiches sont destinées.</p>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {mailto && (
+              <a href={mailto} className={button} style={secondary}>
+                <Mail className="h-4 w-4" aria-hidden />Écrire au client<span className="sr-only"> (ouvre votre messagerie)</span>
+              </a>
+            )}
+            <button type="button" onClick={() => { setDraft(known ?? EMPTY_CLIENT); setError(null); setEditing(true) }} className={button} style={secondary}>
+              <Pencil className="h-4 w-4" aria-hidden />{known ? 'Modifier' : 'Renseigner le client'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={e => { e.preventDefault(); save() }} className="flex flex-col gap-3">
+          <h2 id="client-offre" className="font-semibold uppercase" style={headingStyle}>Client de l’offre</h2>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {([
+              ['company', 'Société', 200, 'organization', 'text'],
+              ['contactName', 'Nom du contact', 120, 'name', 'text'],
+              ['email', 'E-mail du contact', 254, 'email', 'email'],
+            ] as const).map(([key, label, max, autoComplete, type]) => (
+              <label key={key} className="flex flex-col gap-1">
+                <span className="text-xs font-semibold" style={muted}>{label}</span>
+                <input type={type} value={draft[key]} maxLength={max} autoComplete={autoComplete} disabled={pending}
+                  onChange={e => setDraft(d => ({ ...d, [key]: e.target.value }))}
+                  className="h-10 px-3 rounded-[10px] text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-text)" style={fieldStyle} />
+              </label>
+            ))}
+          </div>
+          {error && <p role="alert" className="text-[13px]" style={{ color: '#b91c1c' }}>{error}</p>}
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setEditing(false)} disabled={pending} className={button} style={secondary}>Annuler</button>
+            <button type="submit" disabled={pending} className={button} style={{ background: 'var(--color-primary)', color: 'var(--color-primary-fg)', border: '1px solid var(--color-primary)' }}>
+              {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}Enregistrer
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
   )
 }

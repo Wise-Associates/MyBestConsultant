@@ -1,4 +1,5 @@
 import { Skeleton, SkeletonRegion } from '@/components/shared/skeleton'
+import { JobHeaderGrid } from '@/components/recruiter/job-tabs'
 import { ROW_GRID } from '@/app/recruiter/dashboard/dashboard-layout'
 
 // Formes de chargement des pages de l'espace recruteur (loading.tsx des routes) : la page en gris, à la place du voile
@@ -312,19 +313,22 @@ export function AoOfferSkeleton() {
 function JobHeroSkeleton({ narrow, compact, actions = ['w-28', 'w-36'], pad = 'px-6' }: { narrow: string; compact?: boolean; actions?: string[]; pad?: string }) {
   return (
     <div style={{ background: 'var(--hero-bg)' }}>
-      <div className={`${narrow} min-[90rem]:max-w-[1920px] mx-auto ${pad} min-[90rem]:px-8 ${compact ? 'py-4 min-[90rem]:py-3' : 'py-6 min-[90rem]:py-4'}`}>
-        <Skeleton style={onHero} className="h-3 w-36 mb-3 min-[90rem]:mb-2" />
-        <div className="flex items-center justify-between gap-4 flex-wrap min-[90rem]:flex-nowrap">
-          <div className="space-y-2 min-w-0">
-            <Skeleton style={onHero} className="h-3 w-28" />
-            <Skeleton style={onHero} className="h-7 w-64 sm:w-md min-[90rem]:w-xl max-w-full" />
-            <Skeleton style={onHero} className="h-3 w-56 min-[90rem]:w-72" />
-          </div>
-          <Skeleton style={onHero} className="h-10 w-80 max-w-full rounded-xl shrink-0 min-[90rem]:mr-auto" />
-          <div className="flex gap-2">
-            {actions.map((width, i) => <Skeleton key={i} style={onHero} className={`h-8 ${width} rounded-lg`} />)}
-          </div>
-        </div>
+      <div className={`${narrow} min-[90rem]:max-w-[1920px] mx-auto ${pad} min-[90rem]:px-8 ${compact ? 'pt-4 min-[90rem]:pt-3' : 'pt-6 min-[90rem]:pt-4'}`}>
+        {/* Même grille que le bandeau (JobHeaderGrid) : retour et sous-menu à gauche, actions à droite dès 1024 px. */}
+        <JobHeaderGrid
+          back={<Skeleton style={onHero} className="h-3 w-36 mb-3 min-[90rem]:mb-2" />}
+          main={
+            // Bouton « i » des détails de l'offre (JobInfoButton), puis les actions de la page.
+            <div className="flex gap-2">
+              <Skeleton style={onHero} className="h-8 w-8 rounded-lg" />
+              {actions.map((width, i) => <Skeleton key={i} style={onHero} className={`h-8 ${width} rounded-lg`} />)}
+            </div>
+          }
+          tabs={
+            <div className="flex gap-5 sm:gap-7 mt-4 pb-3.5">
+              {['w-24', 'w-20', 'w-32'].map(width => <Skeleton key={width} style={onHero} className={`h-4 ${width}`} />)}
+            </div>
+          } />
       </div>
     </div>
   )
@@ -648,7 +652,13 @@ export function ClientResponseSkeleton() {
   return (
     <SkeletonRegion label="Chargement de la réponse client…" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <JobHeroSkeleton narrow="max-w-[1400px]" compact pad="px-4 sm:px-6" actions={['w-60']} />
-      <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[90rem]:px-8 py-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px] min-[90rem]:grid-cols-[minmax(0,1fr)_440px] items-start">
+      <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-4 sm:px-6 min-[90rem]:px-8 py-6 flex flex-col gap-4">
+      {/* Client de l'offre (2026-11-17) : société, contact, e-mail, puis « Écrire au client » et « Modifier ». */}
+      <div className="rounded-[20px] px-5 sm:px-6 py-4 flex items-center justify-between gap-3 flex-wrap" style={card}>
+        <div className="space-y-2"><Skeleton className="h-3 w-32" /><Skeleton className="h-4 w-72 max-w-full" /></div>
+        <div className="flex gap-2"><Skeleton className="h-10 w-36 rounded-[10px]" /><Skeleton className="h-10 w-28 rounded-[10px]" /></div>
+      </div>
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px] min-[90rem]:grid-cols-[minmax(0,1fr)_440px] items-start">
         <div className="rounded-[20px] overflow-hidden" style={card}>
           <div className="px-5 sm:px-6 py-4 flex items-center gap-2.5">
             <Skeleton className="h-5 w-56" />
@@ -690,34 +700,37 @@ export function ClientResponseSkeleton() {
           <Skeleton className="h-10 w-full rounded-[10px]" />
         </div>
       </div>
+      </div>
     </SkeletonRegion>
   )
 }
 
-/** Synthèse imprimable pour le client (2026-11-17) : titre de l'offre, puis une carte par candidat. */
+/** Fiches candidats pour le client (2026-11-17) : consigne d'impression, puis une fiche par candidat (en-tête, initiales et score, rubriques). */
 export function ClientSynthesisSkeleton() {
   return (
-    <SkeletonRegion label="Chargement de la synthèse…" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
+    <SkeletonRegion label="Chargement des fiches…" style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <div className="max-w-[820px] mx-auto px-4 sm:px-6 py-8">
-        <div className="flex items-start justify-between gap-4 mb-6">
+        <div className="flex items-center justify-between gap-4 mb-6">
           <div className="space-y-2 min-w-0 flex-1">
-            <Skeleton className="h-3 w-40" />
-            <Skeleton className="h-7 w-3/4" />
-            <Skeleton className="h-3.5 w-1/2" />
+            <Skeleton className="h-3 w-48" />
+            <Skeleton className="h-3.5 w-2/3" />
           </div>
           <Skeleton className="h-10 w-36 rounded-xl" />
         </div>
-        <div className="flex flex-col gap-5">
-          {Array.from({ length: 2 }, (_, i) => (
-            <div key={i} className="rounded-2xl p-5 space-y-3" style={card}>
-              <Skeleton className="h-5 w-48" />
-              {Array.from({ length: 3 }, (_, j) => (
-                <div key={j} className="space-y-2">
-                  <Skeleton className="h-3 w-52" />
-                  <Skeleton className="h-3.5 w-full" />
-                  <Skeleton className="h-3.5 w-3/5" />
-                </div>
-              ))}
+        <div className="rounded-2xl p-6 sm:p-8" style={card}>
+          <div className="flex items-start justify-between gap-4 pb-4">
+            <div className="space-y-2 flex-1"><Skeleton className="h-3 w-36" /><Skeleton className="h-4 w-1/2" /></div>
+            <Skeleton className="h-8 w-20" />
+          </div>
+          <div className="flex items-start justify-between gap-4 pt-5">
+            <div className="space-y-2 flex-1"><Skeleton className="h-8 w-24" /><Skeleton className="h-4 w-1/2" /><Skeleton className="h-3.5 w-1/3" /></div>
+            <Skeleton className="h-16 w-24 rounded-xl" />
+          </div>
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="pt-4 mt-4 space-y-2" style={{ borderTop: '1px solid var(--color-border)' }}>
+              <Skeleton className="h-3 w-28" />
+              <Skeleton className="h-3.5 w-full" />
+              <Skeleton className="h-3.5 w-4/5" />
             </div>
           ))}
         </div>

@@ -4,12 +4,13 @@ import { Fragment, useId, useMemo, useRef, useState, useTransition, useEffect } 
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { BackLink } from '@/components/recruiter/back-link'
-import { JobTabs } from '@/components/recruiter/job-tabs'
+import { JobHeaderGrid, JobTabs } from '@/components/recruiter/job-tabs'
+import { JobInfoButton } from '@/components/recruiter/job-info-button'
 import {
   FileText, ArrowDownWideNarrow, ArrowUpWideNarrow, Settings2, Plus, X,
   Brain, Video, Pencil, Trash2, History, Loader2, GripVertical, Tag as TagIcon,
   StickyNote, CheckCircle2, ChevronDown, ChevronUp, Sparkles, AlertCircle,
-  Archive, ThumbsUp, ThumbsDown, Mail, Copy, ExternalLink, Edit3, Send, ChevronRight, GitBranch, Search, ChartColumn, Kanban, Lock, ArrowRight,
+  Archive, ThumbsUp, ThumbsDown, Mail, Copy, ExternalLink, Edit3, Send, ChevronRight, GitBranch, Search, ChartColumn, Lock, ArrowRight,
 } from 'lucide-react'
 import {
   moveApplicationStage, saveFunnelStagesAction, updateApplicationCardAction,
@@ -25,6 +26,9 @@ import { getInterviewDetailForRecruiter, analyzeInterviewForRecruiter } from './
 import type { FunnelStage, FunnelEvent } from '@/types'
 import { withOrphanStages } from '@/lib/funnel-stage-utils'
 import { FunnelModal } from './funnel-modal'
+import { EsnExportDialog } from '@/components/cv-export/esn-export-dialog'
+import { getRecruiterCvExportVersions } from '@/app/recruiter/cvtheque/actions'
+import type { CvExportAccess } from '@/lib/cv-export/recruiter'
 import { ScoringWeightsButton } from './scoring-weights-dialog'
 import { personalScore, type RecruiterWeights } from '@/lib/scoring-weights'
 import { recommendationFor } from '@/lib/match-scoring'
@@ -50,6 +54,8 @@ export interface PipelineInterview {
 
 export interface PipelineCandidate {
   appId: string
+  /** Document « users » du candidat (export « CV format cabinet »). */
+  candidateId: string
   candidateName: string
   candidateEmail: string
   photoUrl?: string
@@ -220,7 +226,7 @@ function CardLoader({ label, color }: { label: string; color: string }) {
 function CandidateCard({
   candidate, jobId, jobTitle, stages, stageColor, suggestedAction, autoOpenInterview, onAutoOpened, interviewTargetStage,
   busyLabel, onRunScreening, onInterviewSent, onRenameInterview, onEmailSent, onQuickMove,
-  onDragStart, onOpenEdit, onOpenHistory, onDelete, onOpenProcess, onNextStep,
+  onDragStart, onOpenEdit, onOpenHistory, onDelete, onOpenProcess, onNextStep, cabinetCv,
 }: {
   candidate: PipelineCandidate
   jobId: string
@@ -244,6 +250,8 @@ function CandidateCard({
   onOpenProcess: () => void
   /** « Étape suivante » : valide l'étape en cours (compte rendu rédigé), sinon ouvre le funnel du candidat. */
   onNextStep: () => void
+  /** Candidat embauché : « CV format cabinet » ouvre l'export ; 'setup' : modèle du cabinet à déposer d'abord (CV Thèque). */
+  cabinetCv?: (() => void) | 'setup'
 }) {
   const [expanded, setExpanded] = useState(false)
   // Carte repliée par défaut (demande du 2026-11-06) : nom, score, étape et poignée ; le reste (parcours, contacts,
@@ -361,6 +369,20 @@ function CandidateCard({
           <Sparkles className="h-3 w-3" /> Action suggérée : {AUTO_ACTION_LABEL[suggestedAction]}
         </button>
       )}
+
+      {/* Candidat embauché (demande du 2026-11-17) : son CV dans le modèle Word du cabinet, comme depuis la CV Thèque. */}
+      {cabinetCv && (cabinetCv === 'setup' ? (
+        <Link href="/recruiter/cvtheque" className="flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg text-[11px] font-semibold no-underline transition-opacity hover:opacity-80"
+          style={{ color: 'var(--color-primary)', border: '1px dashed color-mix(in srgb, var(--color-primary) 40%, transparent)' }}>
+          <FileText className="h-3 w-3" aria-hidden /> CV format cabinet : déposez d’abord votre modèle
+        </Link>
+      ) : (
+        <button type="button" onClick={cabinetCv}
+          className="flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-opacity hover:opacity-80"
+          style={{ background: 'color-mix(in srgb, var(--color-primary) 8%, transparent)', color: 'var(--color-primary)', border: '1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)' }}>
+          <FileText className="h-3 w-3" aria-hidden /> CV format cabinet
+        </button>
+      ))}
 
       {/* Compte rendu de l'étape en cours (obligatoire depuis le 2026-11-17) : sans lui, « Étape suivante » est verrouillé et
           tout déplacement de la carte refusé (stepBlockingMove). */}
@@ -1032,7 +1054,7 @@ function EmailCard({ candidate, emails, onReplied }: {
 }
 
 export function PipelineClient({
-  jobId, jobTitle, jobMeta, initialCandidates, initialStages, initialEmails, clientCount, pipeline = null, weights, weightsUnreadable,
+  jobId, jobTitle, jobMeta, initialCandidates, initialStages, initialEmails, clientCount, pipeline = null, weights, weightsUnreadable, cvExport,
 }: {
   jobId: string; tenantId: string; jobTitle: string
   /** « Paris · CDI · Publiée le 3 nov. 2026 » : rappel de l'offre dans le bandeau, sur grand écran. */
@@ -1042,8 +1064,11 @@ export function PipelineClient({
   clientCount: number
   /** Poids personnels du recruteur (scoring-weights.ts) : scores reçus déjà recalculés, nouveaux scores recalculés ici. */
   weights: RecruiterWeights; weightsUnreadable: boolean
+  /** Export « CV format cabinet » de l'organisation ; null : indisponible (stockage non configuré ou état illisible). */
+  cvExport: CvExportAccess | null
 }) {
   const [candidates, setCandidates] = useState(initialCandidates)
+  const [exportFor, setExportFor] = useState<PipelineCandidate | null>(null)
   const [emails, setEmails] = useState(initialEmails)
   const [stages, setStages] = useState(initialStages)
   const [minScore, setMinScore] = useState(0)
@@ -1341,48 +1366,41 @@ export function PipelineClient({
   return (
     <div style={{ minHeight: '100vh', background: 'var(--page-bg)' }}>
       <div className="sticky top-0 z-20 min-[90rem]:static" style={{ background: 'var(--hero-bg)', borderBottom: '1px solid var(--hero-line)' }}>
-        <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 py-4 min-[90rem]:py-3">
-          <BackLink fallbackHref="/recruiter/dashboard"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold mb-2 min-[90rem]:mb-1 no-underline transition-opacity hover:opacity-80"
-            style={{ color: 'var(--hero-fg-muted)' }} />
-          <div className="flex items-center justify-between gap-4 flex-wrap min-[90rem]:flex-nowrap">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-widest mb-1 flex items-center gap-1.5" style={{ color: 'var(--hero-fg-muted)' }}>
-                <Kanban className="h-3.5 w-3.5" aria-hidden /> Funnel
-              </p>
-              <h1 className="min-[90rem]:truncate" style={{ color: 'var(--hero-fg)', fontWeight: 300, fontSize: '1.375rem', lineHeight: 1.3 }}>{jobTitle}</h1>
-              {/* Offre et colonnes sur une seule ligne (demande du 2026-11-06 : bandeau réduit). */}
-              <p className="flex items-center gap-x-1.5 gap-y-0.5 flex-wrap text-[11px] mt-0.5" style={{ color: 'var(--hero-fg-muted)' }}>
-                <span className="hidden min-[90rem]:inline">{jobMeta}</span>
-                <span aria-hidden className="hidden min-[90rem]:inline">·</span>
-                <Link href={`/recruiter/funnel?tab=phases${pipeline ? `&pipeline=${pipeline.id}` : ''}`} className="font-semibold no-underline transition-opacity hover:opacity-80" style={{ color: 'var(--hero-fg-muted)' }}>
-                  Colonnes : <span style={{ color: 'var(--hero-accent)' }}>{pipeline?.name ?? 'Pipeline par défaut'}</span> · gérer
-                </Link>
-              </p>
-            </div>
-            <JobTabs jobId={jobId} current="pipeline" counts={{ funnel: candidates.length, client: clientCount }} />
-            <div className="flex items-center gap-3 flex-wrap min-[90rem]:shrink-0">
-              <label className="flex min-[90rem]:hidden items-center gap-2 text-xs font-medium" style={{ color: 'var(--hero-fg-muted)' }}>
-                Score min.
-                <input type="range" min={0} max={100} step={5} value={minScore}
-                  onChange={e => setMinScore(Number(e.target.value))} />
-                <span style={{ color: 'var(--hero-fg)', fontWeight: 700, minWidth: 26, display: 'inline-block' }}>{minScore}</span>
-              </label>
-              <button onClick={() => setSortDir(d => (d === 'desc' ? 'asc' : 'desc'))}
-                className="inline-flex min-[90rem]:hidden items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80"
-                style={{ background: 'var(--hero-control)', color: 'var(--hero-fg)', border: '1px solid var(--hero-line)' }}>
-                {sortDir === 'desc' ? <ArrowDownWideNarrow className="h-3.5 w-3.5" /> : <ArrowUpWideNarrow className="h-3.5 w-3.5" />}
-                Score
-              </button>
-              <StageStatsButton stats={stageStats} total={candidates.length} />
-              <ScoringWeightsButton scale="final" weights={weights.final} unreadable={weightsUnreadable} />
-              <button onClick={() => setConfigOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80"
-                style={{ background: 'rgba(232,163,61,0.15)', color: 'var(--hero-accent)', border: '1px solid rgba(232,163,61,0.3)' }}>
-                <Settings2 className="h-3.5 w-3.5" /> Étapes
-              </button>
-            </div>
-          </div>
+        <div className="max-w-[1400px] min-[90rem]:max-w-[1920px] mx-auto px-6 min-[90rem]:px-8 pt-4 min-[90rem]:pt-3">
+          <JobHeaderGrid
+            back={<BackLink fallbackHref="/recruiter/dashboard"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold mb-2 min-[90rem]:mb-1 no-underline transition-opacity hover:opacity-80"
+              style={{ color: 'var(--hero-fg-muted)' }} />}
+            main={<>
+              <h1 className="sr-only">{jobTitle}</h1>
+              <div className="flex items-center gap-3 flex-wrap lg:justify-end">
+                <JobInfoButton view="Funnel" title={jobTitle} meta={jobMeta}>
+                  <Link href={`/recruiter/funnel?tab=phases${pipeline ? `&pipeline=${pipeline.id}` : ''}`} className="text-xs font-semibold no-underline hover:underline mt-1" style={{ color: 'var(--color-primary)' }}>
+                    Colonnes : {pipeline?.name ?? 'Pipeline par défaut'} · gérer
+                  </Link>
+                </JobInfoButton>
+                <label className="flex min-[90rem]:hidden items-center gap-2 text-xs font-medium" style={{ color: 'var(--hero-fg-muted)' }}>
+                  Score min.
+                  <input type="range" min={0} max={100} step={5} value={minScore}
+                    onChange={e => setMinScore(Number(e.target.value))} />
+                  <span style={{ color: 'var(--hero-fg)', fontWeight: 700, minWidth: 26, display: 'inline-block' }}>{minScore}</span>
+                </label>
+                <button onClick={() => setSortDir(d => (d === 'desc' ? 'asc' : 'desc'))}
+                  className="inline-flex min-[90rem]:hidden items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80"
+                  style={{ background: 'var(--hero-control)', color: 'var(--hero-fg)', border: '1px solid var(--hero-line)' }}>
+                  {sortDir === 'desc' ? <ArrowDownWideNarrow className="h-3.5 w-3.5" /> : <ArrowUpWideNarrow className="h-3.5 w-3.5" />}
+                  Score
+                </button>
+                <StageStatsButton stats={stageStats} total={candidates.length} />
+                <ScoringWeightsButton scale="final" weights={weights.final} unreadable={weightsUnreadable} />
+                <button onClick={() => setConfigOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80"
+                  style={{ background: 'rgba(232,163,61,0.15)', color: 'var(--hero-accent)', border: '1px solid rgba(232,163,61,0.3)' }}>
+                  <Settings2 className="h-3.5 w-3.5" /> Étapes
+                </button>
+              </div>
+            </>}
+            tabs={<JobTabs jobId={jobId} current="pipeline" counts={{ funnel: candidates.length, client: clientCount }} />} />
         </div>
       </div>
 
@@ -1473,6 +1491,8 @@ export function PipelineClient({
                       onQuickMove={moveCard} onDragStart={setDragging}
                       onOpenEdit={() => setEditingId(c.appId)} onOpenHistory={() => setHistoryId(c.appId)}
                       onOpenProcess={() => setProcessFor(c.appId)} onNextStep={() => nextStep(c.appId)}
+                      // Profil d'un chasseur : pas de compte candidat, l'export ne le connaît pas (loadCandidate).
+                      cabinetCv={c.status === 'accepted' && !c.hunterName && cvExport ? (cvExport.template ? () => setExportFor(c) : 'setup') : undefined}
                       onDelete={() => handleDelete(c.appId)} />
                     </div>
                   ))}
@@ -1500,6 +1520,12 @@ export function PipelineClient({
         )}
       </div>
 
+      {cvExport?.template && (
+        // key : choix et compte rendu remis à zéro pour chaque candidat
+        <EsnExportDialog key={exportFor?.appId ?? 'none'} candidate={exportFor && { id: exportFor.candidateId, name: exportFor.candidateName }}
+          onClose={() => setExportFor(null)} endpoint="/api/recruiter/cv-export" loadVersions={getRecruiterCvExportVersions}
+          esn={cvExport.template.esn} generationDenied={cvExport.generationDenied} quotaLimited />
+      )}
       {configOpen && (
         <StagesConfigModal jobId={jobId} stages={stages} onClose={() => setConfigOpen(false)} onSaved={saved => setStages(withOrphans(saved))} />
       )}

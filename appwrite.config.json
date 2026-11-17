@@ -4606,6 +4606,72 @@
             ]
         },
         {
+            "$id": "job_clients",
+            "$permissions": [],
+            "databaseId": "bestconsultant-dev",
+            "name": "job clients",
+            "enabled": true,
+            "documentSecurity": false,
+            "attributes": [
+                {
+                    "key": "tenantId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "jobId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "company",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 200,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "contactName",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 120,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "email",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 254,
+                    "default": null,
+                    "encrypt": false
+                }
+            ],
+            "indexes": [
+                {
+                    "key": "jobId_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "jobId"
+                    ],
+                    "orders": []
+                }
+            ]
+        },
+        {
             "$id": "veille_runs",
             "$permissions": [],
             "databaseId": "bestconsultant-dev",

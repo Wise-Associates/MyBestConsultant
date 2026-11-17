@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { stepBlockingMove, type FunnelStep } from './candidate-funnel'
 import {
-  newSubmission, parseClientSubmission, retainedFunnel, sentSteps, serializeClientSubmission, synthesisSteps, withResponse,
+  clientMailto, isEmptyClient, jobClientSchema, newSubmission, parseClientSubmission, retainedFunnel, sentSteps, serializeClientSubmission, synthesisSteps, withResponse,
   type ClientSubmission,
 } from './client-response'
 
@@ -16,24 +16,26 @@ describe('envoi au client', () => {
   const funnel = [validated('scr', 'screening', '7 ans d’AMOA.'), validated('ia', 'ai_interview', 'Réponses précises.'), step('tel', 'phone', { report: 'Brouillon' }), step('emb', 'hired')]
 
   it('reprend les seules étapes validées avec un compte rendu', () => {
-    const r = newSubmission(funnel, null, 'Camille Exemple', now)
+    const r = newSubmission(funnel, 'interview', null, 'Camille Exemple', now)
     assert.ok('submission' in r)
     assert.deepEqual(r.submission, { sentAt: now.toISOString(), sentBy: 'Camille Exemple', stepIds: ['scr', 'ia'], response: 'pending' })
   })
 
-  it('refuse une candidature sans étape validée avec compte rendu', () => {
-    const r = newSubmission([validated('scr', 'screening'), step('tel', 'phone', { report: 'Brouillon' })], null, 'Camille', now)
-    assert.deepEqual(r, { error: 'aucune étape validée avec un compte rendu' })
+  it('envoie un candidat du funnel sans compte rendu, mais jamais un candidat refusé', () => {
+    const r = newSubmission([validated('scr', 'screening'), step('tel', 'phone', { report: 'Brouillon' })], 'pending', null, 'Camille', now)
+    assert.ok('submission' in r)
+    assert.deepEqual(r.submission.stepIds, [])
+    assert.deepEqual(newSubmission(funnel, 'rejected', null, 'Camille', now), { error: 'candidat refusé' })
   })
 
   it('refuse un second envoi', () => {
-    const first = newSubmission(funnel, null, 'Camille', now)
+    const first = newSubmission(funnel, 'interview', null, 'Camille', now)
     assert.ok('submission' in first)
-    assert.deepEqual(newSubmission(funnel, first.submission, 'Camille', now), { error: 'déjà envoyé au client' })
+    assert.deepEqual(newSubmission(funnel, 'interview', first.submission, 'Camille', now), { error: 'déjà envoyé au client' })
   })
 
   it('garde la synthèse envoyée même si le funnel avance', () => {
-    const sent = newSubmission(funnel, null, 'Camille', now)
+    const sent = newSubmission(funnel, 'interview', null, 'Camille', now)
     assert.ok('submission' in sent)
     const later = [...funnel.slice(0, 2), validated('tel', 'phone', 'Mobilité confirmée.'), step('emb', 'hired')]
     assert.deepEqual(sentSteps(later, sent.submission).map(s => s.id), ['scr', 'ia'])
@@ -86,5 +88,27 @@ describe('candidat retenu par le client', () => {
   it('ne revalide pas une embauche déjà validée', () => {
     const hiredAlready = [validated('scr', 'screening', 'ok'), validated('emb', 'hired', 'Embauché.')]
     assert.equal(retainedFunnel(hiredAlready, stages, '', 'Camille', now).steps, hiredAlready)
+  })
+})
+
+describe('client de l\'offre', () => {
+  it('valide société, contact et e-mail, l\'e-mail restant facultatif', () => {
+    assert.deepEqual(jobClientSchema.parse({ company: ' Société Exemple ', contactName: 'Camille Client', email: ' Camille@Exemple.FR ' }),
+      { company: 'Société Exemple', contactName: 'Camille Client', email: 'camille@exemple.fr' })
+    assert.ok(jobClientSchema.safeParse({ company: 'Société Exemple', contactName: '', email: '' }).success)
+    assert.ok(!jobClientSchema.safeParse({ company: '', contactName: '', email: 'pas-une-adresse' }).success)
+    assert.ok(!jobClientSchema.safeParse({ company: 'x'.repeat(201), contactName: '', email: '' }).success)
+    assert.ok(isEmptyClient({ company: '', contactName: '', email: '' }))
+  })
+
+  it('prépare le message au client sans rien envoyer', () => {
+    const client = { company: 'Société Exemple', contactName: 'Camille Client', email: 'camille@exemple.fr' }
+    const href = clientMailto(client, 'Chef de projet & PMO', 2)
+    assert.ok(href?.startsWith('mailto:camille%40exemple.fr?subject='))
+    const params = new URLSearchParams(href!.split('?')[1])
+    assert.equal(params.get('subject'), 'Candidats proposés : Chef de projet & PMO')
+    assert.match(params.get('body') ?? '', /^Bonjour Camille Client,\n\nVous trouverez ci-joint les fiches des 2 candidats .*« Chef de projet & PMO »/)
+    assert.match(new URLSearchParams(clientMailto(client, 'PMO', 1)!.split('?')[1]).get('body') ?? '', /la fiche du candidat/)
+    assert.equal(clientMailto({ ...client, email: '' }, 'PMO', 1), null)
   })
 })
