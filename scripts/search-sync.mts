@@ -36,8 +36,16 @@ if (!file) {
 }
 const apply = flags.includes('--apply')
 const env = readEnv(file)
-for (const name of ['APPWRITE_ENDPOINT', 'APPWRITE_PROJECT_ID', 'APPWRITE_API_KEY', 'APPWRITE_DB_ID', 'APPWRITE_COLLECTION_CV_CLASSIFICATIONS', 'MEILI_URL', 'MEILI_API_KEY']) {
-  if (!env[name]) { console.error(`${name} manquant dans ${file}`); process.exit(1) }
+// Toutes les variables lues par le script (collections, bucket des CV, index), vérifiées avant toute lecture : toutes
+// les manquantes d'un coup, par leur nom seulement.
+const missing = [
+  'APPWRITE_ENDPOINT', 'APPWRITE_PROJECT_ID', 'APPWRITE_API_KEY', 'APPWRITE_DB_ID', 'APPWRITE_COLLECTION_USERS',
+  'APPWRITE_COLLECTION_VIVIER_CVS', 'APPWRITE_COLLECTION_CV_CLASSIFICATIONS', 'APPWRITE_STORAGE_CVS', 'MEILI_URL', 'MEILI_API_KEY',
+].filter(name => !env[name])
+if (missing.length) {
+  console.error(`Variables manquantes dans ${file} : ${missing.join(', ')}.`)
+  console.error('Valeurs : celles du même projet (production : /etc/mybestconsultant/app.env et search.env sur le serveur).')
+  process.exit(1)
 }
 // Garde sur le projet visé, pas sur le nom du fichier : une copie renommée du .env de production ne passe pas.
 if (env.APPWRITE_PROJECT_ID !== DEV_PROJECT_ID && !flags.includes('--prod')) {
