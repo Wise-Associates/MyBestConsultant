@@ -470,9 +470,37 @@ des heures de travail quand `/var/run/reboot-required` existe (correctifs du noy
 - **Node.js** : version et empreinte exactes dans `Dockerfile` (`NODE_IMAGE`), à monter ensemble par une pull
   request ; l'empreinte d'une version : `docker buildx imagetools inspect node:<version>-trixie-slim` (ligne Digest).
 - **Caddy** : même chose dans `deploy/compose.proxy.yml`, puis `sudo -u deploy mbc-deploy proxy` (partie 8).
+- **Meilisearch** : même chose dans `deploy/compose.search.yml`, puis `sudo -u deploy mbc-deploy search` ; lire les notes
+  de version avant (une montée majeure peut demander de recréer l'index : `npm run search:sync -- … --apply`).
 - **Mettre à jour mbc-deploy** : quand `deploy/mbc-deploy.sh` change, le journal du déploiement affiche
   « ATTENTION : deploy/mbc-deploy.sh diffère de la copie installée ». Après ce déploiement :
   `sudo install -m 755 /opt/mybestconsultant/repo/deploy/mbc-deploy.sh /usr/local/bin/mbc-deploy`.
+
+### Index de recherche des CV (Meilisearch, facultatif)
+
+Préfiltre du matching et statistiques des CV (ADR 0044, phase 2) : conteneur `mbc-search` (`deploy/compose.search.yml`),
+sur le réseau interne `mbc`, **aucun port publié**. Sans lui, l'application marche comme avant (le matching prend les
+candidats les plus récents). Mise en place, une fois, après un déploiement qui contient `compose.search.yml` :
+
+```bash
+# 1. Clé maîtresse (hors du dépôt) : sert seulement à créer la clé de l'application.
+sudo install -m 640 -o root -g deploy /dev/null /etc/mybestconsultant/search.env
+echo "MEILI_MASTER_KEY=$(openssl rand -hex 32)" | sudo tee /etc/mybestconsultant/search.env > /dev/null
+# 2. Démarrage (et plus tard : application d'un changement de compose.search.yml).
+sudo -u deploy mbc-deploy search
+# 3. Clé de l'application : seulement l'index « cvs » et les actions dont elle a besoin. Recopier la valeur de "key".
+sudo docker exec mbc-search sh -c 'curl -s -X POST http://127.0.0.1:7700/keys -H "Authorization: Bearer $MEILI_MASTER_KEY" -H "Content-Type: application/json" --data "{\"name\":\"mybestconsultant-app\",\"actions\":[\"search\",\"documents.add\",\"documents.get\",\"documents.delete\",\"indexes.create\",\"indexes.get\",\"settings.update\",\"tasks.get\"],\"indexes\":[\"cvs\"],\"expiresAt\":null}"'
+```
+
+4. Dans `/etc/mybestconsultant/app.env` : `MEILI_URL=http://mbc-search:7700` et `MEILI_API_KEY=<clé de l'étape 3>`
+   (jamais la clé maîtresse), puis un déploiement (ou `rollback` sur le commit en ligne) pour que l'application les lise.
+5. Remplir l'index depuis un poste d'administration : `npm run search:sync -- .env --prod` (simulation), puis avec
+   `--apply`. Le poste doit joindre Meilisearch : tunnel SSH vers le conteneur, par exemple
+   `ssh -L 7700:<IP du conteneur mbc-search>:7700 admin@<vps>` (`sudo docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' mbc-search`),
+   et `MEILI_URL=http://127.0.0.1:7700` dans le fichier passé au script.
+
+Données : volume Docker `mbc-search_meili_data` ; elles se reconstruisent entièrement par `npm run search:sync` (Appwrite
+reste la source), pas de sauvegarde à prévoir. Montée de version : voir le commentaire de `compose.search.yml`.
 
 ### Site Wise Associates
 

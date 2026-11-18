@@ -94,7 +94,8 @@ console.log('Notation en cours (un appel d\'IA, rien n\'est enregistré)…\n')
 const result = await cvScorer({
   title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? ''),
   details: scale === 'final' ? await finalOfferDetails(job) : offerDetails(job),
-}, scale)(cvText)
+  // Toujours un vrai appel d'IA : le script montre ce que l'IA répond, jamais une notation gardée (ADR 0044).
+}, scale, { useCache: false })(cvText)
 if (!result) {
   console.error('Réponse de l\'IA sans jugement lisible : relancez (l\'application laisserait ce CV à noter).')
   process.exit(1)

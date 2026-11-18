@@ -9,6 +9,7 @@ import { deleteMbcSearchesForUser } from '@/lib/mbc-search/history-store'
 import { deleteSavedPeopleForUser } from '@/lib/mbc-search/saved-store'
 import { cvExportErrorName, deleteCvExportsForCandidate, isCvExportStorageConfigured, isCvExportStorageMissing } from '@/lib/cv-export/store'
 import { revalidatePath } from 'next/cache'
+import { deleteClassification } from '@/lib/appwrite/cv-classifications'
 import type { UserRole } from '@/types'
 
 async function requireAdmin() {
@@ -166,6 +167,7 @@ export async function deleteUserAccount(authId: string, listedProfileId: string 
       try {
         await databases.deleteDocument(DB_ID, COLLECTIONS.USERS, profileId)
       } catch { /* profile doc may already be gone */ }
+      await deleteClassification('candidate', profileId) // classification du CV (ADR 0044) ; ne lève jamais
       // Second passage : un export terminé pendant la suppression a pu être enregistré entre-temps (saveCvExports
       // revérifie l'existence du candidat après avoir écrit). Un échec ici est journalisé : fichiers
       // « <profileId>_*.docx » du bucket et documents de ce candidat dans cv_exports, à supprimer à la main.

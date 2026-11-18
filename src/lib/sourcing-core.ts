@@ -4,7 +4,10 @@
 // to check). This file is NOT 'use server' on purpose — everything exported from
 // a 'use server' file becomes a remotely-callable action, and these functions
 // skip the admin auth check, so they must never be reachable directly from a client.
-import { callLLM } from '@/lib/ai/llm-router'
+import { callLLM, primaryModel } from '@/lib/ai/llm-router'
+import { scoreCacheId } from '@/lib/score-cache'
+import { readCachedScore, writeCachedScore } from '@/lib/appwrite/score-cache'
+import { PREFILTER_KEEP, offerLocation, prefilterPool } from '@/lib/search/prefilter'
 import { SCORING_AI } from '@/lib/ai/models'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
@@ -241,14 +244,24 @@ export interface CvScore {
  * `final` pour une candidature. Consignes et listes de l'offre préparées une fois, puis un appel d'IA par CV. `cvText` :
  * readCvForScoring (ou le profil d'un CV du vivier sans fichier). null : réponse sans jugement lisible (journalisé par
  * l'appelant) ; une erreur de l'IA est levée.
+ * ADR 0044 : une notation déjà faite pour exactement les mêmes consignes, offre, CV et modèle est reprise du cache
+ * (`useCache` : false pour `matching:explain`, qui montre ce que l'IA répond) ; consignes et offre, début identique de
+ * chaque appel, sont mises en cache chez Claude.
  */
-export function cvScorer(offer: OfferForMatching, scale: ActiveScale): (cvText: string) => Promise<CvScore | null> {
+export function cvScorer(offer: OfferForMatching, scale: ActiveScale, { useCache = true }: { useCache?: boolean } = {}): (cvText: string) => Promise<CvScore | null> {
   // Exigences tirées de la description et compétences : les mêmes listes pour tous les CV notés pour cette offre.
   const criteria = offerCriteria(offer.skills, offer.description)
   const system = scoringSystemPrompt(scale, criteriaCounts(criteria))
+  const offerPrefix = scoringUserMessage(offer, criteria, '')
   return async cvText => {
+    const user = scoringUserMessage(offer, criteria, cvText)
+    const model = useCache ? await primaryModel(SCORING_AI) : null
+    const cacheId = model && scoreCacheId({ model: model.signature, scale, system, user })
+    const cached = cacheId ? await readCachedScore(cacheId, scale) : null
+    if (cached) return { ...cached, criteria }
+
     // Une preuve par élément jugé : réponse plus longue qu'une note (et la réflexion du modèle compte dans la limite).
-    const { content, provider } = await callLLM([{ role: 'user', content: scoringUserMessage(offer, criteria, cvText) }], system, { ...SCORING_AI, maxTokens: 8000, timeoutMs: 120_000 })
+    const { content, provider } = await callLLM([{ role: 'user', content: user }], system, { ...SCORING_AI, maxTokens: 8000, timeoutMs: 120_000, cachePrefix: offerPrefix })
     const json = content.match(/\{[\s\S]*\}/)
     let answer: unknown = null
     try { answer = json ? JSON.parse(json[0]) : null } catch { answer = null }
@@ -258,11 +271,16 @@ export function cvScorer(offer: OfferForMatching, scale: ActiveScale): (cvText: 
     if (!parsed) return null
     const [judgements] = await withCheckedTitles([parsed])
     const notes = parseScoringNotes(answer)
-    return {
+    const scored: CvScore = {
       score: judgedScore(judgements),
       reason: `${judgementSummary(judgements)}${notes.reason ? ` — ${notes.reason}` : ''}`,
       judgements, criteria, notes, provider, answer,
     }
+    // Gardée seulement si elle vient du modèle choisi : la réponse d'un modèle de repli n'est pas reprise ensuite.
+    if (cacheId && model && provider === model.provider) {
+      await writeCachedScore(cacheId, { score: scored.score, reason: scored.reason, judgements, notes, provider, answer })
+    }
+    return scored
   }
 }
 
@@ -320,11 +338,18 @@ export async function matchCandidatesForOffer(
     }
     if (only) await scoreBatch(await scorableCandidates(only, excludeCandidateIds))
     else {
+      // ADR 0044 phase 2 : les CV de toute la base les plus proches de l'offre (index de recherche), revérifiés dans
+      // Appwrite (CV, désinscription, exclusions) ; null sans préfiltre (non configuré ou en panne) : comme avant.
+      const prefiltered = await prefilterPool(
+        { title: offer.title, skills: offer.skills, location: offerLocation(offer.details) }, excludeCandidateIds)
+      if (prefiltered?.length) await scoreBatch(await scorableCandidates(prefiltered, excludeCandidateIds))
+      // Places restantes (préfiltre absent, ou moins de CV classés que de places) : les candidats les plus récents.
       // Un CV illisible (PDF scanné…) ne compte pas : le passage continue avec les candidats suivants, sinon les mêmes
       // CV illisibles bloqueraient la notation des nouveaux candidats à chaque clic. 3 tours au plus.
-      const tried = new Set(excludeCandidateIds)
-      for (let round = 0; round < 3 && scanned < MAX_CANDIDATES; round++) {
-        const batch = await candidatesToScore(tried, MAX_CANDIDATES - scanned)
+      const target = prefiltered ? PREFILTER_KEEP : MAX_CANDIDATES
+      const tried = new Set([...excludeCandidateIds, ...considered])
+      for (let round = 0; round < 3 && scanned < target; round++) {
+        const batch = await candidatesToScore(tried, target - scanned)
         if (batch.length === 0) break
         for (const d of batch) tried.add(d.$id)
         await scoreBatch(batch)

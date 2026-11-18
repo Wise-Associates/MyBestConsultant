@@ -2,6 +2,8 @@
 
 import { cvProfileJsonError, parseCandidateProfileInput, type ProfileField, type ProfileInput } from '@/lib/candidate-profile-input'
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
+import { classifySourceInBackground } from '@/lib/cv-classify'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
@@ -27,6 +29,8 @@ export async function saveCvFileId(fileId: string): Promise<void> {
       })
     }
   } catch { /* profile stays as-is — candidate can still fill it in manually */ }
+  // Classification du nouveau CV (ADR 0044), en arrière-plan : jamais bloquante, un échec est journalisé.
+  after(() => classifySourceInBackground('candidate', user.$id))
 
   revalidatePath('/candidate/dashboard')
 }

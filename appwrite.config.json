@@ -4672,6 +4672,129 @@
             ]
         },
         {
+            "$id": "score_cache",
+            "$permissions": [],
+            "databaseId": "bestconsultant-dev",
+            "name": "score cache",
+            "enabled": true,
+            "documentSecurity": false,
+            "attributes": [
+                {
+                    "key": "result",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 60000,
+                    "default": null,
+                    "encrypt": false
+                }
+            ],
+            "indexes": []
+        },
+        {
+            "$id": "cv_classifications",
+            "$permissions": [],
+            "databaseId": "bestconsultant-dev",
+            "name": "cv classifications",
+            "enabled": true,
+            "documentSecurity": false,
+            "attributes": [
+                {
+                    "key": "kind",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 10,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "sourceId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "tenantId",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "ownerId",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "sourceKey",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 80,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "version",
+                    "type": "integer",
+                    "required": false,
+                    "array": false,
+                    "min": 0,
+                    "max": 1000,
+                    "default": null
+                },
+                {
+                    "key": "model",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 40,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "data",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 12000,
+                    "default": null,
+                    "encrypt": false
+                }
+            ],
+            "indexes": [
+                {
+                    "key": "sourceId_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "sourceId"
+                    ],
+                    "orders": []
+                },
+                {
+                    "key": "tenant_kind_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "tenantId",
+                        "kind"
+                    ],
+                    "orders": []
+                }
+            ]
+        },
+        {
             "$id": "veille_runs",
             "$permissions": [],
             "databaseId": "bestconsultant-dev",

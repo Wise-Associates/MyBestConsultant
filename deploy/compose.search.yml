@@ -1,0 +1,48 @@
+# Index de recherche des CV (Meilisearch, ADR 0044 phase 2, docs/deploiement-vps.md « Index de recherche »).
+# Joignable seulement par l'application, sur le réseau interne « mbc » (http://mbc-search:7700) : aucun port publié.
+# Démarré et mis à jour par `sudo -u deploy mbc-deploy search`, jamais pendant un déploiement. Sans lui (ou sans
+# MEILI_URL dans app.env), l'application marche comme avant : le matching prend les candidats les plus récents.
+services:
+  meilisearch:
+    # Version et empreinte exactes (index multi-plateforme), comme Caddy. Les monter ensemble par une pull request
+    # (docker buildx imagetools inspect getmeili/meilisearch:<version>), puis `mbc-deploy search` ; lire les notes de
+    # version avant (une montée de version peut demander un export / import des données).
+    image: getmeili/meilisearch:v1.56.2@sha256:9600db22be3fcbf3d506176d3a73dd70a65c5719d9aa1d2837355b75afb8f4fb
+    container_name: mbc-search
+    restart: unless-stopped
+    # MEILI_MASTER_KEY (au moins 16 caractères, sert seulement à créer la clé de l'application ; jamais dans app.env).
+    env_file: ${MBC_SEARCH_ENV_FILE:-/etc/mybestconsultant/search.env}
+    environment:
+      MEILI_ENV: production
+      MEILI_NO_ANALYTICS: "true"
+    # Système en lecture seule : les données vont dans le volume /meili_data (essayé le 2026-11-18 avec cette version).
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # Quelques dizaines de milliers de CV classés tiennent largement ; à côté des deux couleurs de l'application.
+    mem_limit: 1g
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:7700/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      start_interval: 1s
+      retries: 3
+    volumes:
+      - meili_data:/meili_data
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
+    networks: [mbc]
+
+volumes:
+  meili_data:
+
+networks:
+  mbc:
+    external: true

@@ -10,6 +10,9 @@ import { loadOfferViewer } from '@/lib/offer-viewer'
 import { assertVivierOfferMatchesReady, deleteVivierOfferMatchesOf, syncVivierOfferMatches } from '@/lib/appwrite/vivier-offer-matches'
 import { releaseDailySlot, takeDailySlotId } from '@/lib/ao/state'
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
+import { classifySourceInBackground } from '@/lib/cv-classify'
+import { deleteClassification } from '@/lib/appwrite/cv-classifications'
 import { z } from 'zod'
 import type { CvProfile, CvExperience, CvEducation, CvLanguage } from '@/lib/cv-profile-extract'
 import { CvExportError, loadOwnVivierCv } from '@/lib/cv-export/export'
@@ -199,6 +202,8 @@ export async function attachVivierCv(jobIdInput: string | null, fileIdInput: str
     // Profil créé automatiquement à partir du CV (identité, compétences, expériences…) puis Matching IA.
     const profile = await buildProfile(doc.$id, fileId)
     const notice = profile ? await matchProfile(user, tenantId, jobId, doc.$id, profile) : null
+    // Classification du CV (ADR 0044), en arrière-plan : jamais bloquante.
+    after(() => classifySourceInBackground('vivier', doc.$id))
 
     revalidateVivier(jobId)
     const fresh = await databases.getDocument(DB_ID, COLLECTIONS.VIVIER_CVS, doc.$id)
@@ -278,6 +283,7 @@ export async function addMbcProfileToVivier(input: unknown): Promise<{ id?: stri
       ...(p.apolloId ? { apolloId: p.apolloId } : {}),
     })
     const notice = await matchProfile(user, tenantId, jobId, doc.$id, cvProfile)
+    after(() => classifySourceInBackground('vivier', doc.$id))
     revalidateVivier(jobId)
     return { id: doc.$id, notice: notice ?? undefined }
   } catch (e) {
@@ -439,6 +445,7 @@ export async function deleteVivierCv(jobId: string | null, docId: string): Promi
       if (sharing.total <= 1) await storage.deleteFile(BUCKETS.VIVIER_CVS, doc.cvFileId as string).catch(() => {})
     }
     await databases.deleteDocument(DB_ID, COLLECTIONS.VIVIER_CVS, docId)
+    await deleteClassification('vivier', docId) // ne lève jamais : un reste est purgé par npm run cv:classify
     // Correspondances aux offres (vivier général, ADR 0026) après le CV : supprimées avant, un échec de sa suppression
     // l'aurait retiré du Matching IA sans que rien ne les recrée. Restées, elles sont écartées à la lecture (CV absent)
     // et purgées par npm run vivier:matches.

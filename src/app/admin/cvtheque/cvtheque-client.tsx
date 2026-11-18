@@ -3,8 +3,9 @@
 import { useMemo, useState, useTransition } from 'react'
 import {
   Search, Users, FileText, Sparkles, ScanSearch, ExternalLink, AlertCircle,
-  Loader2, MapPin, Navigation, Building2, Briefcase, Mail, Phone, FolderSearch, FileDown,
+  Loader2, MapPin, Navigation, Building2, Briefcase, Mail, Phone, FolderSearch, FileDown, ChartColumn,
 } from 'lucide-react'
+import Link from 'next/link'
 import { scanCandidateCv, getCvthequeCandidates, getCvExportVersions, saveCvTemplate, deleteCvTemplate, type CvThequeCandidate } from './actions'
 import { EsnExportDialog } from '@/components/cv-export/esn-export-dialog'
 import { CvTemplateManager, type CvTemplateView } from '@/components/cv-export/cv-template-manager'
@@ -74,7 +75,15 @@ export function CvthequeClient({ initialCandidates, loadError, exportEsn, templa
   return (
     <div className="min-h-full">
       <AdminPageHeader title="CV Thèque" description="Recherchez les candidats de la base par compétence, ville ou nom"
-        actions={template && <CvTemplateManager kind="platform" template={template} storage={templateStorage} save={saveCvTemplate} remove={deleteCvTemplate} />} />
+        actions={<>
+          {/* Statistiques des CV classés de la plateforme (ADR 0044, phase 3). */}
+          <Link href="/admin/cvtheque/statistiques"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold no-underline transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white"
+            style={{ color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.2)' }}>
+            <ChartColumn className="h-3.5 w-3.5" aria-hidden />Statistiques
+          </Link>
+          {template && <CvTemplateManager kind="platform" template={template} storage={templateStorage} save={saveCvTemplate} remove={deleteCvTemplate} />}
+        </>} />
 
       {/* Search/filter row — only this compact bar stays pinned, and only once it fits on one line.
           Opaque navy (the admin background colour) so the list scrolls under it. */}

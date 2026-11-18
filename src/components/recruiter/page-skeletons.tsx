@@ -739,6 +739,56 @@ export function ClientSynthesisSkeleton() {
   )
 }
 
+/** CV Thèque · Statistiques (2026-11-18) : bandeau, ligne de contexte, 4 chiffres clés, fraîcheur et tendances, cartes de barres. */
+export function CvStatsSkeleton() {
+  return (
+    <SkeletonRegion label="Chargement des statistiques…" className="min-h-[calc(100vh-68px)]" style={{ background: 'var(--color-background)' }}>
+      <div className="flex items-center gap-3 min-h-16 px-4 sm:px-6 py-3" style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)' }}>
+        <Skeleton className="h-5 w-5 rounded-md" />
+        <Skeleton className="h-5 w-56" />
+        <span className="flex-1" />
+        <Skeleton className="h-11 w-60 rounded-xl" />
+      </div>
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 flex flex-col gap-5">
+        <Skeleton className="h-3.5 w-2/3" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="rounded-2xl px-4 py-3.5 space-y-2" style={card}>
+              <Skeleton className="h-3 w-24" /><Skeleton className="h-6 w-20" /><Skeleton className="h-2.5 w-32" />
+            </div>
+          ))}
+        </div>
+        {/* Fraîcheur et tendances : colonnes des dépôts par mois, puis deux listes. */}
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3 items-start">
+          <div className="rounded-2xl p-4 sm:p-5 space-y-3" style={card}>
+            <Skeleton className="h-4 w-40" />
+            <div className="flex items-end gap-0.5 h-32">
+              {[30, 45, 20, 60, 80, 55, 70, 40, 90, 65, 50, 35].map((h, i) => <Skeleton key={i} className="flex-1 rounded-sm" style={{ height: `${h}%` }} />)}
+            </div>
+            <Skeleton className="h-3 w-48" />
+          </div>
+          {Array.from({ length: 2 }, (_, i) => (
+            <div key={i} className="rounded-2xl p-4 sm:p-5 space-y-3" style={card}>
+              <Skeleton className="h-4 w-40" />
+              {Array.from({ length: 4 }, (_, j) => <Skeleton key={j} className="h-3 w-full" />)}
+            </div>
+          ))}
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3 items-start">
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className="rounded-2xl p-4 sm:p-5 space-y-3" style={card}>
+              <Skeleton className="h-4 w-40" />
+              {Array.from({ length: 5 }, (_, j) => (
+                <div key={j} className="space-y-1.5"><Skeleton className="h-3 w-full" /><Skeleton className="h-1.5 rounded-sm" style={{ width: `${90 - j * 15}%` }} /></div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </SkeletonRegion>
+  )
+}
+
 /**
  * CV Thèque (refonte du 2026-11-13) : ligne de titre, barre de recherche, filtres à gauche dès 1024 px, profils à droite.
  */
