@@ -18,11 +18,11 @@ export const isCvClassificationsConfigured = () => !!COLLECTIONS.CV_CLASSIFICATI
 export const classificationId = (kind: ClassifiedKind, sourceId: string) =>
   `cl${createHash('sha256').update(`${kind}:${sourceId}`).digest('hex').slice(0, 34)}`
 
-/** Version de CV et version des consignes de la classification enregistrée ; null s'il n'y en a pas. */
-export async function storedClassificationVersion(kind: ClassifiedKind, sourceId: string): Promise<{ sourceKey: string; version: number } | null> {
+/** Version de CV, version des consignes et modèle (« rules-v1 » : par les règles) de la classification enregistrée ; null s'il n'y en a pas. */
+export async function storedClassificationVersion(kind: ClassifiedKind, sourceId: string): Promise<{ sourceKey: string; version: number; model: string } | null> {
   try {
     const doc = await createAdminClient().databases.getDocument(DB_ID, COLLECTIONS.CV_CLASSIFICATIONS, classificationId(kind, sourceId))
-    return { sourceKey: String(doc.sourceKey ?? ''), version: Number(doc.version ?? 0) }
+    return { sourceKey: String(doc.sourceKey ?? ''), version: Number(doc.version ?? 0), model: String(doc.model ?? '') }
   } catch (err) {
     if (err instanceof AppwriteException && err.code === 404) return null
     throw err

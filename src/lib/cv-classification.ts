@@ -73,6 +73,21 @@ export function seniorityOf(years: number | null): Seniority | null {
   return years < 3 ? 'junior' : years < 8 ? 'confirme' : years < 15 ? 'senior' : 'expert'
 }
 
+/**
+ * Modèle enregistré pour une classification faite sans IA, par les règles (cv-classification-rules.ts) : toujours à
+ * refaire par l'IA (isUpToDate). Tout modèle « rules-… » est traité ainsi, pour une prochaine version des règles aussi.
+ */
+export const RULES_MODEL = 'rules-v1'
+
+/**
+ * La classification enregistrée vaut pour cette version de CV et ces consignes, et vient de l'IA ; une classification
+ * par les règles est refaite par l'IA dès qu'elle répond (au dépôt suivant, ou par npm run cv:classify).
+ * `acceptRules` : une classification par les règles suffit aussi (classement sans IA, npm run cv:classify -- --rules).
+ */
+export const isUpToDate = (
+  stored: { sourceKey: string; version: number; model?: string } | null, sourceKey: string, { acceptRules = false } = {},
+) => !!stored && stored.version === CLASSIFICATION_VERSION && stored.sourceKey === sourceKey && (acceptRules || !stored.model?.startsWith('rules-'))
+
 /** Version d'un CV : son fichier (identifiant immuable), sinon l'empreinte du texte de son profil (CV sans fichier). */
 export function classificationSourceKey(cvFileId: string | null | undefined, profileText = ''): string {
   return cvFileId ? `f:${cvFileId}` : `p:${createHash('sha256').update(profileText).digest('hex').slice(0, 24)}`
