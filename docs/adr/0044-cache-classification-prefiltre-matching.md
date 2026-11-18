@@ -76,6 +76,43 @@ Trois phases.
      aussi les classifications sans CV. Production : lancé par un humain.
    - Variable `APPWRITE_COLLECTION_CV_CLASSIFICATIONS` ; vide : rien n'est classé.
    - Reste à faire : garder le texte retranscrit des CV (ne plus relire les fichiers) — utile surtout à l'index (phase 2).
+4. **Classement par règles, sans IA** (2026-11-18, demande de l'utilisateur : « en cas d'IA indisponible, un algorithme
+   de classification ») : quand aucune IA n'a pu répondre — Claude indisponible puis GPT-4o mini en échec
+   (`LLMChainError` : pannes, crédits, aucune clé) —, `classifyWithFallback` (`cv-classify.ts`, testé avec une IA
+   simulée) classe le même texte par des règles (`classifyCvByRules`, `src/lib/cv-classification-rules.ts`, pur, `now`
+   injecté, testé avec des CV fictifs ; listes dans `src/lib/cv-classification-rules-data.ts`). But : le préfiltre et
+   les statistiques continuent de fonctionner ; ce n'est jamais la classification finale. Une réponse illisible (l'IA a
+   répondu) ou une requête refusée pour elle-même gardent la règle d'avant : erreur journalisée, CV à classer de nouveau
+   (revue du 2026-11-18 : les classer par les règles cachait ces CV).
+   - Enregistré avec le modèle **`rules-v1`** (`RULES_MODEL`) ; `isUpToDate` (`cv-classification.ts`) tient tout
+     modèle « rules-… » pour à refaire : l'IA le reclasse au dépôt suivant ou par `npm run cv:classify` (qui les compte
+     à part). Le script s'arrête (code 1) après 10 CV d'affilée classés par les règles : l'IA ne répond plus, inutile
+     d'attendre ses délais pour chaque CV. `npm run cv:classify -- <env> --apply --rules` classe par les règles sans
+     aucun appel d'IA (IA absente ou en panne ; un CV déjà classé, par l'IA ou les règles, n'est pas refait).
+   - Champs : **compétences** (vocabulaire : listes de départ par famille de métiers, plus les 100 compétences et métiers
+     les plus fréquents de l'index — issus des classifications par l'IA —, sans qualité personnelle, donnée sensible
+     ni phrase ; relu au plus une fois par heure, une minute si l'index était illisible), **métiers** (en-tête et lignes datées du
+     parcours), **famille** (du premier métier, sinon des compétences), **années d'expérience** (écrites dans
+     l'en-tête, sinon durée réunie des périodes du parcours, formation exclue ; « Environnement technique : … » entre
+     deux expériences ne coupe pas le parcours) et séniorité, **niveau d'études** (rubrique Formation ; sans elle,
+     seulement les lignes qui parlent d'un diplôme ou d'une école), **langues** et niveaux (rubrique Langues, sinon seulement
+     avec un niveau écrit), **certifications** (rubrique ou ligne « certif… »), **ville et pays** (code postal ou grande
+     ville de `regions.ts` dans l'en-tête), **disponibilité** (forme fermée : « Immédiate », « Préavis de 3 mois »,
+     « À partir de janvier 2027 »), **TJM**, **secteurs** (mots et grandes entreprises du
+     secteur, expressions trompeuses effacées : « assurance qualité », « banque de données »). **Ni clients ni résumé**
+     (trop risqués à deviner).
+   - Mots courants qui sont aussi des outils jamais reconnus seuls (« Chef », « Go », « Vue », « Spring »…) ; un
+     passage reconnu n'est pas recompté par un terme plus court (« BI » dans « Power BI »). Toutes les écritures d'une
+     liste en une expression compilée une fois (un motif par terme prenait 2 s au premier CV ; 70 ms puis 5 ms par CV).
+   - **Revue de sécurité du 2026-11-18** : le vocabulaire prenait aussi les compétences des offres actives de toutes
+     les organisations. Retiré : saisies librement par n'importe quel recruteur (organisation créée à l'inscription),
+     elles lui permettaient (1) de faire de n'importe quel mot des CV des autres organisations une « compétence »
+     indexée et filtrable — un nom, une donnée de santé (« RQTH ») — et (2) de figer le serveur : un terme fait de
+     tirets (« - - - a ») donnait des répétitions qui se recouvrent, et un CV plein de tirets bloquait le classement des
+     dizaines de secondes (ReDoS). Corrigé aussi dans le motif : les mots sont découpés sur les espaces et les tirets,
+     un séparateur n'est jamais à côté d'un tiret ; un terme ajouté a une lettre ou un chiffre dans chaque mot, aucune
+     donnée sensible (`SENSITIVE_WORDS`). Testé avec un vocabulaire piégé. Une classification ne contient que des termes
+     écrits dans le CV lui-même ; la disponibilité n'en recopie plus le texte (une date de naissance y passait).
 
 ### Phase 2 — index de recherche : Meilisearch
 
