@@ -40,6 +40,10 @@ export const COLLECTIONS = {
   PLAN_OFFERS: process.env.APPWRITE_COLLECTION_PLAN_OFFERS ?? '',
   // Client de chaque offre (« Réponse client », ADR 0040) ; vide : client non renseignable, le reste de l'onglet marche.
   JOB_CLIENTS: process.env.APPWRITE_COLLECTION_JOB_CLIENTS ?? '',
+  // Notations gardées du matching (ADR 0044) ; vide : pas de cache, chaque notation appelle l'IA.
+  SCORE_CACHE: process.env.APPWRITE_COLLECTION_SCORE_CACHE ?? '',
+  // Classifications des CV (ADR 0044) ; vide : pas de classification (rien d'autre ne change).
+  CV_CLASSIFICATIONS: process.env.APPWRITE_COLLECTION_CV_CLASSIFICATIONS ?? '',
   CV_EXPORTS: process.env.APPWRITE_COLLECTION_CV_EXPORTS!,
   CV_TEMPLATES: process.env.APPWRITE_COLLECTION_CV_TEMPLATES!,
   VEILLE_CONFIG: process.env.APPWRITE_COLLECTION_VEILLE_CONFIG!,

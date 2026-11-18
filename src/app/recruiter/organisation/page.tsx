@@ -10,11 +10,16 @@ import { subscriptionView } from '@/lib/subscription-view'
 import { TEAM_ROLE_LABEL, canManageTeam, roleOf } from '@/lib/team-roles'
 import { loadTenantAccess } from '@/lib/tenant-access'
 import { OrganisationForm } from './organisation-form'
+import { loadCvStats } from '@/lib/search/cv-stats-store'
+import { CvStatsBody } from '@/components/stats/cv-stats-sections'
 
 export const metadata = { title: 'Organisation' }
 
 // Organisation du recruteur (ADR 0033) : identité, propriétaire, utilisateurs, formule ; nom et logo modifiables par
 // le propriétaire et les administrateurs. Le slug ne change pas (page publique /entreprises/<slug>).
+// Statistiques des CV des viviers de l'organisation, tous ses recruteurs réunis (ADR 0044, demande du 2026-11-18) :
+// pour le propriétaire et les administrateurs seulement (un vivier est personnel ; comptes sans nom), organisation de la
+// session ; un membre retrouve les siens dans CV Thèque › Statistiques › Mon vivier.
 
 const surface = { background: 'var(--color-surface)', border: '1px solid var(--color-border)' } as const
 
@@ -25,8 +30,10 @@ export default async function OrganisationPage() {
   const { databases } = createAdminClient()
   const tenant = await databases.getDocument(DB_ID, COLLECTIONS.TENANTS, user.tenantId) as unknown as Record<string, unknown>
   const ownerId = typeof tenant.recruiterId === 'string' ? tenant.recruiterId : ''
+  const role = roleOf(user.userId, tenant)
+  const seesOrganisationStats = canManageTeam(role)
   // Propriétaire et nombre d'utilisateurs : facultatifs, la page s'affiche sans.
-  const [owner, team, maxUsers] = await Promise.all([
+  const [owner, team, maxUsers, stats] = await Promise.all([
     ownerId
       ? databases.listDocuments(DB_ID, COLLECTIONS.USERS, [Query.equal('userId', ownerId), Query.limit(1)]).then(r => r.documents[0])
         .catch(err => { console.error('[organisation] propriétaire illisible', err instanceof Error ? err.message : String(err)); return undefined })
@@ -35,12 +42,13 @@ export default async function OrganisationPage() {
       .catch(err => { console.error('[organisation] équipe illisible', err instanceof Error ? err.message : String(err)); return null }),
     loadTenantAccess(user.tenantId).then(a => a.entitlements.maxUsers)
       .catch(err => { console.error('[organisation] droits de la formule illisibles', err instanceof Error ? err.message : String(err)); return null }),
+    // Ne lève jamais : un index absent ou en panne donne son propre état (CvStatsBody).
+    seesOrganisationStats ? loadCvStats({ kind: 'tenant', tenantId: user.tenantId }) : null,
   ])
 
   const name = typeof tenant.name === 'string' ? tenant.name : ''
   const logoUrl = typeof tenant.logoUrl === 'string' ? tenant.logoUrl : ''
   const slug = typeof tenant.slug === 'string' ? tenant.slug : ''
-  const role = roleOf(user.userId, tenant)
   const sub = subscriptionView(tenant)
   const ownerName = owner ? `${owner.firstName ?? ''} ${owner.lastName ?? ''}`.trim() || (owner.email as string) : '—'
   const createdAt = typeof tenant.$createdAt === 'string' ? formatDateFr(tenant.$createdAt) : '—'
@@ -111,6 +119,21 @@ export default async function OrganisationPage() {
           {canManageTeam(role)
             ? <OrganisationForm initialName={name} initialLogoUrl={logoUrl} />
             : <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Seuls le propriétaire et les administrateurs de l’organisation peuvent modifier le nom et le logo.</p>}
+        </section>
+
+        <section className="lg:col-span-2 flex flex-col gap-4" aria-labelledby="org-stats">
+          <div>
+            <h2 id="org-stats" style={{ color: 'var(--color-text)', fontSize: '1rem', fontWeight: 600, lineHeight: 1.4 }}>Statistiques des CV de l’organisation</h2>
+            <p className="text-sm mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+              CV des viviers de tous vos recruteurs, réunis : métiers, compétences, séniorité, fraîcheur… Aucun nom n’y figure.
+            </p>
+          </div>
+          {stats
+            ? <CvStatsBody result={stats} scopeName="les viviers de l’organisation" emptyHint="Ils apparaîtront ici dès que vos recruteurs importeront des CV dans leurs viviers." />
+            : <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                Réservées au propriétaire et aux administrateurs de l’organisation. Les statistiques de vos propres CV sont dans{' '}
+                <Link href="/recruiter/cvtheque/statistiques?perimetre=vivier" className="underline" style={{ color: 'var(--color-text)' }}>CV Thèque › Statistiques › Mon vivier</Link>.
+              </p>}
         </section>
       </div>
     </div>

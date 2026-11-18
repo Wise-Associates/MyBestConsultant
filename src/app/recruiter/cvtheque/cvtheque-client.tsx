@@ -5,7 +5,7 @@ import { WhatsAppContact } from '@/components/recruiter/whatsapp-contact'
 import { useMemo, useState } from 'react'
 import {
   Users, ExternalLink, AlertCircle, Mail, Phone, MapPin, Navigation, Building2, FolderSearch, Maximize2, FileDown, Search, Info,
-  SlidersHorizontal, ArrowRight,
+  SlidersHorizontal, ArrowRight, ChartColumn,
 } from 'lucide-react'
 import { deleteRecruiterCvTemplate, getRecruiterCvExportVersions, saveRecruiterCvTemplate, type CvThequeCandidate } from './actions'
 import { EsnExportDialog } from '@/components/cv-export/esn-export-dialog'
@@ -70,6 +70,12 @@ export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExpor
         {/* Taille écrite ici : la règle globale des titres (globals.css, modèle du site) l'emporte sur les classes. */}
         <h1 style={{ color: 'var(--color-text)', fontSize: '1.125rem', fontWeight: 600, lineHeight: 1.4 }}>CV Thèque</h1>
         <span className="flex-1" />
+        {/* Statistiques des CV classés (ADR 0044, phase 3). */}
+        <Link href="/recruiter/cvtheque/statistiques"
+          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13px] font-semibold no-underline transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_5%,transparent)] focus-visible:outline-2 focus-visible:outline-(--color-text)"
+          style={{ color: 'var(--color-text)', border: '1px solid var(--color-border)' }}>
+          <ChartColumn className="h-4 w-4" aria-hidden />Statistiques
+        </Link>
         {cvExport && (
           <CvTemplateManager kind="organisation" template={cvExport.template} storage uploadDenied={cvExport.uploadDenied}
             save={saveRecruiterCvTemplate} remove={deleteRecruiterCvTemplate} />

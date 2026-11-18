@@ -85,10 +85,18 @@ async function loadRuntimeConfig(): Promise<RuntimeConfig> {
   }
 }
 
-/** Bornes d'un appel : longueur de la réponse et délai (défauts : 4096 jetons ; 55 s, ou le délai du SDK pour Claude). */
+/**
+ * Bornes d'un appel : longueur de la réponse et délai (défauts : 4096 jetons ; 55 s, ou le délai du SDK pour Claude), et
+ * début du premier message à mettre en cache chez Claude (`cachePrefix`, voir CallLLMOptions).
+ */
 interface CallLimits {
   maxTokens?: number
   timeoutMs?: number
+  cachePrefix?: string
+  /** Modèle précis du fournisseur, à la place de celui de Config IA (voir CallLLMOptions.model). */
+  model?: string
+  /** Effort de réflexion de Claude (voir CallLLMOptions.effort). */
+  effort?: 'low' | 'medium' | 'high'
 }
 
 async function callClaude(messages: LLMMessage[], systemPrompt: string | undefined, model: string, apiKey: string, limits: CallLimits): Promise<string> {
@@ -97,11 +105,24 @@ async function callClaude(messages: LLMMessage[], systemPrompt: string | undefin
   const client = new Anthropic({ apiKey })
   // Délai imposé par l'appelant : pas de nouvel essai automatique, qui le dépasserait.
   const requestOptions = limits.timeoutMs ? { timeout: limits.timeoutMs, maxRetries: 0 } : undefined
+  const prefix = limits.cachePrefix
   const response = await client.messages.create({
     model,
     max_tokens: limits.maxTokens ?? 4096,
+    ...(limits.effort ? { output_config: { effort: limits.effort } } : {}),
     system: systemPrompt,
-    messages: messages.map(m => ({ role: m.role === 'system' ? 'user' : m.role, content: m.content })),
+    messages: messages.map((m, i): Anthropic.MessageParam => {
+      const role = m.role === 'system' ? 'user' : m.role
+      // Premier message qui commence par le préfixe partagé : deux blocs de texte, le premier marqué pour le cache de
+      // prompt (consignes + préfixe lus à ~10 % du prix par les appels suivants, 5 minutes). Texte envoyé identique.
+      if (i === 0 && prefix && m.content.startsWith(prefix) && m.content.length > prefix.length) {
+        return { role, content: [
+          { type: 'text', text: prefix, cache_control: { type: 'ephemeral' } },
+          { type: 'text', text: m.content.slice(prefix.length) },
+        ] }
+      }
+      return { role, content: m.content }
+    }),
   }, requestOptions)
   // Tous les blocs de texte, dans l'ordre ; une réponse sans texte (refus, contenu vide) donne une chaîne vide.
   return response.content.flatMap(block => (block.type === 'text' ? [block.text] : [])).join('')
@@ -213,19 +234,19 @@ async function tryCall(
     const m = findCustom(cfg, provider)
     if (!m) throw new LLMNotConfiguredError(`Modèle ${provider} introuvable ou désactivé (voir /admin/llm-config)`)
     if (!m.apiUrl) throw new LLMNotConfiguredError(`Modèle « ${m.label} » : URL de l'API manquante (voir /admin/llm-config)`)
-    return callOpenAICompat(messages, systemPrompt, m.model, m.apiUrl, m.apiKey, limits)
+    return callOpenAICompat(messages, systemPrompt, limits.model || m.model, m.apiUrl, m.apiKey, limits)
   }
   switch (provider) {
     case 'gpt4o':
-      return callOpenAICompat(messages, systemPrompt, cfg.gpt4oModel, 'https://api.openai.com/v1', cfg.openaiApiKey, limits)
+      return callOpenAICompat(messages, systemPrompt, limits.model || cfg.gpt4oModel, 'https://api.openai.com/v1', cfg.openaiApiKey, limits)
     case 'teckia':
       // An empty apiUrl becomes a relative URL server-side ("fetch failed", not a
       // real HTTP error) — fail fast with a message that actually explains why.
       if (!cfg.teckiaApiUrl) throw new LLMNotConfiguredError('TeckiA non configuré (URL manquante dans /admin/llm-config)')
-      return callOpenAICompat(messages, systemPrompt, cfg.teckiaModel, cfg.teckiaApiUrl, cfg.teckiaApiKey, limits)
+      return callOpenAICompat(messages, systemPrompt, limits.model || cfg.teckiaModel, cfg.teckiaApiUrl, cfg.teckiaApiKey, limits)
     case 'claude':
     default:
-      return callClaude(messages, systemPrompt, cfg.claudeModel, cfg.claudeApiKey, limits)
+      return callClaude(messages, systemPrompt, limits.model || cfg.claudeModel, cfg.claudeApiKey, limits)
   }
 }
 
@@ -242,6 +263,32 @@ export interface CallLLMOptions {
   maxTokens?: number
   /** Délai de chaque modèle essayé (ms) ; défaut : 55 s pour les API compatibles OpenAI, délai du SDK pour Claude. */
   timeoutMs?: number
+  /**
+   * Début du premier message, identique d'un appel à l'autre (ex. l'offre, avant le CV) : mis en cache chez Claude avec
+   * les consignes (ADR 0044). Sans effet sur les autres fournisseurs, ni si le message ne commence pas par lui.
+   */
+  cachePrefix?: string
+  /**
+   * Modèle précis du fournisseur `provider` (ex. « claude-haiku-5-5 », « gpt-4o-mini ») à la place de celui de Config IA ;
+   * clé et adresse restent celles de Config IA. À utiliser avec `provider` et `strict` : sans repli vers un autre modèle.
+   */
+  model?: string
+  /** Effort de réflexion de Claude (`output_config.effort`) ; ignoré par les autres fournisseurs. */
+  effort?: 'low' | 'medium' | 'high'
+}
+
+/**
+ * Modèle qu'un appel avec ces options utilisera d'abord (« fournisseur:modèle », ex. « claude:claude-sonnet-4-6 ») : sert
+ * à ne pas reprendre une notation gardée faite par un autre modèle (ADR 0044). `provider` : celui que callLLM renverra.
+ */
+export async function primaryModel(opts: Pick<CallLLMOptions, 'provider' | 'module' | 'moduleDefault'>): Promise<{ provider: string; signature: string }> {
+  const cfg = await getRuntimeConfig()
+  const provider = pickPrimary(cfg, opts)
+  const model = isCustomId(provider) ? findCustom(cfg, provider)?.model ?? ''
+    : provider === 'gpt4o' ? cfg.gpt4oModel
+    : provider === 'teckia' ? cfg.teckiaModel
+    : cfg.claudeModel
+  return { provider, signature: `${provider}:${model}` }
 }
 
 /** callLLM lié à un module : `const callLLM = callLLMForModule('interview')` suffit à router tout un fichier. */
@@ -267,7 +314,7 @@ export async function callLLM(
     if (requested && requested !== primary) throw new LLMNotConfiguredError(`Modèle ${requested} introuvable ou désactivé (voir /admin/llm-config)`)
   }
 
-  const limits: CallLimits = { maxTokens: opts.maxTokens, timeoutMs: opts.timeoutMs }
+  const limits: CallLimits = { maxTokens: opts.maxTokens, timeoutMs: opts.timeoutMs, cachePrefix: opts.cachePrefix, model: opts.model, effort: opts.effort }
   // Try primary provider first
   try {
     const content = await tryCall(primary, cfg, messages, systemPrompt, limits)
@@ -282,7 +329,8 @@ export async function callLLM(
 
     for (const fallback of fallbacks) {
       try {
-        const content = await tryCall(fallback, cfg, messages, systemPrompt, limits)
+        // Le modèle forcé (`model`) est celui du fournisseur demandé : un modèle de repli garde le sien.
+        const content = await tryCall(fallback, cfg, messages, systemPrompt, { ...limits, model: undefined })
         return { content, provider: fallback }
       } catch (fallbackErr) {
         failures.push({ provider: fallback, error: fallbackErr })

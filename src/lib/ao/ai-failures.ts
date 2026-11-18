@@ -37,6 +37,20 @@ export function claudeProblem(err: unknown): AiProblem | null {
   return null
 }
 
+/**
+ * Claude n'a pas pu répondre — compte ou configuration (crédits, clé, modèle, non configuré), panne, délai dépassé — :
+ * raison lisible, pour passer la main à un autre modèle (classification des CV, ADR 0044). null pour une requête refusée
+ * pour elle-même (400, 413…) : un autre modèle ne la réparerait pas, l'erreur doit remonter. Contrairement à
+ * claudeProblem, un délai dépassé compte : la question n'est pas de savoir si l'appel a été facturé, mais si Claude répond.
+ */
+export function claudeUnavailableReason(err: unknown): string | null {
+  if (err instanceof LLMNotConfiguredError) return AI_PROBLEM_LABEL.config
+  if (err instanceof Anthropic.APIConnectionTimeoutError || err instanceof Anthropic.APIUserAbortError) return 'sans réponse dans le délai'
+  if (err instanceof Anthropic.APIError && err.status === 504) return 'sans réponse dans le délai (504)'
+  const problem = claudeProblem(err)
+  return problem ? describeAiProblem(problem, err) : null
+}
+
 /** Code d'erreur d'une réponse JSON d'API compatible OpenAI (`{"error":{"code"|"type": …}}`) ; null si ce n'en est pas une. */
 function openAiErrorCode(body: string): string | null {
   try {

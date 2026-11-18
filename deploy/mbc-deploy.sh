@@ -8,6 +8,7 @@
 #   sudo -u deploy mbc-deploy status             version en ligne, conteneurs, images
 #   sudo -u deploy mbc-deploy rollback <commit>  remet une version dont l'image est encore sur le serveur
 #   sudo -u deploy mbc-deploy proxy              applique un changement de deploy/compose.proxy.yml (version de Caddy…)
+#   sudo -u deploy mbc-deploy search             démarre ou met à jour l'index de recherche (deploy/compose.search.yml)
 #
 # Déroulé : image chargée → fichiers deploy/ du même commit (git) → nouvelle couleur (bleue / verte) démarrée et en
 # bonne santé → Caddy passe dessus → l'ancienne couleur finit ses requêtes et ses tâches, puis s'arrête.
@@ -37,6 +38,10 @@ app_compose() { # couleur commit arguments…
 proxy_compose() {
   docker compose -p mbc-proxy -f "$REPO/deploy/compose.proxy.yml" "$@"
 }
+# Index de recherche des CV (Meilisearch, ADR 0044) : facultatif, démarré seulement par « search ».
+search_compose() {
+  docker compose -p mbc-search -f "$REPO/deploy/compose.search.yml" "$@"
+}
 reload_caddy() {
   docker exec mbc-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 }
@@ -62,14 +67,14 @@ case $action in
     show_status
     exit 0
     ;;
-  proxy)
-    [[ ${#args[@]} -eq 1 ]] || die "usage : proxy"
+  proxy | search)
+    [[ ${#args[@]} -eq 1 ]] || die "usage : $action"
     ;;
   deploy | rollback)
     [[ ${#args[@]} -eq 2 && $commit =~ ^[0-9a-f]{40}$ ]] || die "usage : $action <commit complet de 40 caractères>"
     ;;
   *)
-    die "usage : deploy <commit> | rollback <commit> | proxy | status"
+    die "usage : deploy <commit> | rollback <commit> | proxy | search | status"
     ;;
 esac
 
@@ -100,6 +105,15 @@ if [[ $action == proxy ]]; then
     caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile || die "Caddyfile refusé ; Caddy n'est pas modifié"
   log "remplacement de Caddy selon deploy/compose.proxy.yml (coupure de quelques secondes)"
   proxy_compose up --detach --wait --wait-timeout 60 || die "Caddy ne démarre pas : docker logs mbc-caddy"
+  log "terminé"
+  exit 0
+fi
+
+if [[ $action == search ]]; then
+  # Fichiers du commit en ligne (comme « proxy ») ; la clé maîtresse reste hors du dépôt, dans search.env (root:deploy, 640).
+  [[ -r ${MBC_SEARCH_ENV_FILE:-/etc/mybestconsultant/search.env} ]] || die "fichier search.env absent ou illisible (guide, « Index de recherche »)"
+  log "démarrage ou mise à jour de l'index de recherche selon deploy/compose.search.yml"
+  search_compose up --detach --wait --wait-timeout 120 || die "l'index de recherche ne démarre pas : docker logs mbc-search"
   log "terminé"
   exit 0
 fi
@@ -183,6 +197,12 @@ wanted_proxy=$(proxy_compose config --hash caddy)
 running_proxy=$(docker container inspect --format '{{index .Config.Labels "com.docker.compose.config-hash"}}' mbc-caddy)
 if [[ $wanted_proxy != "caddy $running_proxy" ]]; then
   log "ATTENTION : deploy/compose.proxy.yml a changé ; pour l'appliquer : sudo -u deploy mbc-deploy proxy"
+fi
+# Index de recherche installé (facultatif) dont la configuration a changé : jamais appliqué pendant un déploiement.
+if running_search=$(docker container inspect --format '{{index .Config.Labels "com.docker.compose.config-hash"}}' mbc-search 2> /dev/null); then
+  if [[ $(search_compose config --hash meilisearch) != "meilisearch $running_search" ]]; then
+    log "ATTENTION : deploy/compose.search.yml a changé ; pour l'appliquer : sudo -u deploy mbc-deploy search"
+  fi
 fi
 
 if [[ -n $active ]] && docker container inspect "mbc-app-$active" > /dev/null 2>&1; then

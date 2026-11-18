@@ -100,6 +100,19 @@ services:
     volumes:
       - appwrite-redis:/data
 
+  # Index de recherche des CV (ADR 0044) pour le développement local : http://127.0.0.1:7700, clé = MEILI_MASTER_KEY.
+  meilisearch:
+    image: getmeili/meilisearch:v1.56.2@sha256:9600db22be3fcbf3d506176d3a73dd70a65c5719d9aa1d2837355b75afb8f4fb
+    container_name: mbc-search-local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7700:7700"
+    environment:
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-dev-master-key-change-me-0000}
+      - MEILI_NO_ANALYTICS=true
+    volumes:
+      - meili-data:/meili_data
+
 networks:
   appwrite:
     driver: bridge
@@ -107,3 +120,4 @@ networks:
 volumes:
   appwrite-mariadb:
   appwrite-redis:
+  meili-data:

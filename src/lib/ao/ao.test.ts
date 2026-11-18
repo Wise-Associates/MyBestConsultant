@@ -10,7 +10,7 @@ import { DEFAULT_CLIENT_LABEL, distinctNames, namesToHide, rawPublicOffer, revea
 import { parsePublishInput } from './publication-input'
 import Anthropic from '@anthropic-ai/sdk'
 import { LLMChainError, LLMHttpError, LLMNotConfiguredError, LLMUnreachableError } from '@/lib/ai/llm-router'
-import { claudeProblem, llmFailureDetail, llmUnavailableReason, openAiProblem } from './ai-failures'
+import { claudeProblem, claudeUnavailableReason, llmFailureDetail, llmUnavailableReason, openAiProblem } from './ai-failures'
 import { handledUidsOf, nextCheckpoint, planRead, processingOrder, type Checkpoint } from './checkpoint'
 import { readAttachments } from './extractors/chain'
 import { zipFitsWithin } from './extractors/office'
@@ -576,6 +576,22 @@ describe('IA indisponible : crédits épuisés, clé refusée, service en panne'
     assert.equal(claudeProblem(claudeError(504, 'timeout_error', 'Gateway timeout')), null)
     assert.equal(claudeProblem(claudeError(400, 'invalid_request_error', 'PDF has too many pages')), null)
     assert.equal(claudeProblem(new Error(LOW_CREDIT)), null)
+  })
+
+  it('passe la main à un autre modèle quand Claude ne répond pas, pas quand il refuse la requête elle-même', () => {
+    assert.equal(claudeUnavailableReason(claudeError(400, 'invalid_request_error', LOW_CREDIT)), 'crédits épuisés')
+    assert.equal(claudeUnavailableReason(claudeError(401, 'authentication_error', 'invalid x-api-key')), 'clé refusée')
+    assert.equal(claudeUnavailableReason(claudeError(404, 'not_found_error', 'model: claude-x')), 'modèle introuvable ou non autorisé')
+    assert.equal(claudeUnavailableReason(claudeError(529, 'overloaded_error', 'Overloaded')), 'service saturé ou indisponible (529)')
+    assert.equal(claudeUnavailableReason(claudeError(429, 'rate_limit_error', 'Too many requests')), 'service saturé ou indisponible (429)')
+    assert.equal(claudeUnavailableReason(new Anthropic.APIConnectionError({ message: 'Connection error.' })), 'service saturé ou indisponible')
+    assert.equal(claudeUnavailableReason(new Anthropic.APIConnectionTimeoutError()), 'sans réponse dans le délai')
+    assert.equal(claudeUnavailableReason(claudeError(504, 'timeout_error', 'Gateway timeout')), 'sans réponse dans le délai (504)')
+    assert.equal(claudeUnavailableReason(new LLMNotConfiguredError('Claude non configuré (clé manquante dans /admin/llm-config)')), 'non configuré dans Config IA')
+    // Requête refusée pour elle-même, ou erreur qui ne vient pas de l'API : elle remonte telle quelle.
+    assert.equal(claudeUnavailableReason(claudeError(400, 'invalid_request_error', 'prompt is too long')), null)
+    assert.equal(claudeUnavailableReason(claudeError(413, 'request_too_large', 'Request exceeds the maximum size')), null)
+    assert.equal(claudeUnavailableReason(new TypeError('x is undefined')), null)
   })
 
   it('reconnaît les échecs gratuits des API compatibles OpenAI ; refus de compte seulement en JSON', () => {

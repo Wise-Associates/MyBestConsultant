@@ -9,6 +9,8 @@ import { HUNTER_PROFILE_ROLE } from '@/lib/candidate-identity'
 import { getJobById, hasApplied } from '@/lib/appwrite/jobs'
 import { autoScreenApplication } from '@/lib/screening-core'
 import { after } from 'next/server'
+import { classifySourceInBackground } from '@/lib/cv-classify'
+import { deleteClassification } from '@/lib/appwrite/cv-classifications'
 
 // Profil Chasseur de têtes (Module 14).
 // Le vivier d'un chasseur est stocké comme des documents « users » de rôle `hunter_profile` (sans compte de
@@ -116,6 +118,11 @@ function buildStored(existing: StoredProfile, input: ProfileInput): StoredProfil
   }
 }
 
+/** Classification du profil (ADR 0044) après la réponse ; hors requête (script), tout de suite, sans attendre. */
+function classifyLater(profileId: string) {
+  try { after(() => classifySourceInBackground('candidate', profileId)) } catch { void classifySourceInBackground('candidate', profileId) }
+}
+
 async function insertProfile(hunter: Hunter, input: ProfileInput, base: StoredProfile, cvFileId: string): Promise<HunterProfile> {
   const { databases } = createAdminClient()
   const key = randomBytes(8).toString('hex')
@@ -127,6 +134,7 @@ async function insertProfile(hunter: Hunter, input: ProfileInput, base: StoredPr
     city: clip(input.city, 100) || null, phone: stored.candidatePhone ?? null, cvFileId: cvFileId || null,
     cvProfileJson: JSON.stringify(stored), desiredRoles: stored.hunter?.title ?? '', openToWork: false, optedOutOfOutreach: true,
   })
+  classifyLater(doc.$id)
   return docToProfile(doc)
 }
 
@@ -169,6 +177,7 @@ export async function updateHunterProfile(hunter: Hunter, profileId: string, inp
       city: input.city !== undefined ? clip(input.city, 100) || null : (doc.city as string | null),
       phone: stored.candidatePhone ?? null, desiredRoles: stored.hunter?.title ?? '', cvProfileJson: JSON.stringify(stored),
     })
+    classifyLater(profileId) // profil sans fichier modifié : son texte a changé (déjà à jour sinon, rien n'est refait)
     return { profile: docToProfile(updated, (await countProposals([profileId])).get(profileId) ?? 0) }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur' }
@@ -182,6 +191,7 @@ export async function deleteHunterProfile(hunter: Hunter, profileId: string): Pr
     if (((await countProposals([profileId])).get(profileId) ?? 0) > 0) return { error: 'Ce profil a déjà été proposé à un recruteur : il ne peut plus être supprimé.' }
     const { databases, storage } = createAdminClient()
     await databases.deleteDocument(DB_ID, COLLECTIONS.USERS, profileId)
+    await deleteClassification('candidate', profileId) // ne lève jamais
     if (doc.cvFileId) { try { await storage.deleteFile(BUCKETS.CVS, doc.cvFileId as string) } catch { /* déjà supprimé */ } }
     return {}
   } catch (e) {
