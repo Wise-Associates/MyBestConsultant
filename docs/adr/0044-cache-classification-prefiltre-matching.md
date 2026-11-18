@@ -49,12 +49,16 @@ Trois phases.
    autres fournisseurs (texte envoyé identique). Les 5 premiers appels d'un passage, simultanés, écrivent chacun le
    cache ; les suivants le lisent.
 3. **Classification des CV** (fait le 2026-11-18, choix de l'utilisateur : **Claude Haiku**, `claude-haiku-5-5`, effort
-   bas ; **GPT-4o mini** quand Claude ne répond pas — élargi le même jour à la demande de l'utilisateur, d'abord limité
-   aux crédits épuisés : crédits, clé refusée, modèle introuvable, Claude non configuré, service saturé ou en panne,
-   injoignable, sans réponse dans le délai (`claudeUnavailableReason`, `src/lib/ao/ai-failures.ts`, testé) ; une requête
-   refusée pour elle-même (400, 413…) n'est pas rattrapée par l'autre modèle, qui ne la réparerait pas : le CV reste à
-   classer ; les deux modèles en échec : `LLMChainError`, cause de chacun dans le journal). Le repli envoie le texte du
-   CV (coordonnées masquées) chez OpenAI pendant une panne de Claude. Champs normalisés (`src/lib/cv-classification.ts`, testé) :
+   bas). **Même chaîne de modèles que toute la plateforme** (demande de l'utilisateur du même jour, qui remplace un
+   repli écrit à la main Claude → GPT-4o mini) : ligne **« Classification des CV » de Config IA** (`CLASSIFICATION_AI`,
+   `src/lib/ai/models.ts` ; Claude si « Modèle par défaut »), puis le repli de `callLLM` — modèle par défaut, TeckiA,
+   GPT, modèles open source (`fallbackOrder`) —, chaque fournisseur sans clé ni URL sauté. Claude toujours en Haiku et
+   GPT en **GPT-4o mini**, au premier essai comme en repli (`CLASSIFIER_MODELS`, `cv-classify.ts`, par la nouvelle
+   option `providerModels` de `callLLM` : `requestedModel`, `models.ts`, testé) ; TeckiA et les modèles open source
+   gardent le modèle de Config IA. Toute la chaîne en échec : `LLMChainError` (cause de chaque modèle dans le journal),
+   puis classement par règles (point 4). Le texte du CV (coordonnées masquées) part chez les mêmes fournisseurs que pour
+   la notation des CV. Un modèle local à contexte court peut couper un long CV sans prévenir : la réponse est validée
+   strictement (listes fermées, bornes), une réponse illisible laisse le CV à classer. Champs normalisés (`src/lib/cv-classification.ts`, testé) :
    métiers exercés, famille de métiers, années d'expérience et séniorité (déduite par le code : moins de 3 ans junior, 3 à
    7 confirmé, 8 à 14 senior, 15 et plus expert), compétences, secteurs, clients, langues et niveaux, ville, pays, TJM,
    disponibilité, niveau d'études, certifications, résumé de 3 phrases sans nom ni coordonnées. Listes fermées (famille,
@@ -77,13 +81,13 @@ Trois phases.
    - Variable `APPWRITE_COLLECTION_CV_CLASSIFICATIONS` ; vide : rien n'est classé.
    - Reste à faire : garder le texte retranscrit des CV (ne plus relire les fichiers) — utile surtout à l'index (phase 2).
 4. **Classement par règles, sans IA** (2026-11-18, demande de l'utilisateur : « en cas d'IA indisponible, un algorithme
-   de classification ») : quand aucune IA n'a pu répondre — Claude indisponible puis GPT-4o mini en échec
-   (`LLMChainError` : pannes, crédits, aucune clé) —, `classifyWithFallback` (`cv-classify.ts`, testé avec une IA
+   de classification ») : quand aucune IA n'a pu répondre — toute la chaîne de modèles en échec (`LLMChainError` :
+   pannes, crédits, aucune clé ni URL configurée) —, `classifyWithFallback` (`cv-classify.ts`, testé avec une IA
    simulée) classe le même texte par des règles (`classifyCvByRules`, `src/lib/cv-classification-rules.ts`, pur, `now`
    injecté, testé avec des CV fictifs ; listes dans `src/lib/cv-classification-rules-data.ts`). But : le préfiltre et
-   les statistiques continuent de fonctionner ; ce n'est jamais la classification finale. Une réponse illisible (l'IA a
-   répondu) ou une requête refusée pour elle-même gardent la règle d'avant : erreur journalisée, CV à classer de nouveau
-   (revue du 2026-11-18 : les classer par les règles cachait ces CV).
+   les statistiques continuent de fonctionner ; ce n'est jamais la classification finale. Une réponse illisible (une IA
+   a répondu) garde la règle d'avant : erreur journalisée, CV à classer de nouveau (revue du 2026-11-18 : la classer par
+   les règles cachait ces CV).
    - Enregistré avec le modèle **`rules-v1`** (`RULES_MODEL`) ; `isUpToDate` (`cv-classification.ts`) tient tout
      modèle « rules-… » pour à refaire : l'IA le reclasse au dépôt suivant ou par `npm run cv:classify` (qui les compte
      à part). Le script s'arrête (code 1) après 10 CV d'affilée classés par les règles : l'IA ne répond plus, inutile
@@ -204,8 +208,8 @@ l'index n'est pas configuré. Comptes agrégés, aucun nom. Essayé en local ave
   **puis** les variables `APPWRITE_COLLECTION_SCORE_CACHE=score_cache` et
   `APPWRITE_COLLECTION_CV_CLASSIFICATIONS=cv_classifications` (`.env.example`), puis `npm run cv:classify` (simulation,
   puis `--apply` ; d'abord avec `--limit` pour vérifier une classification). Sans les variables, rien ne change.
-- Classification : clés Claude **et** OpenAI dans Config IA pour que le repli fonctionne ; sans clé OpenAI, une panne
-  de Claude (ou des crédits épuisés) arrête la classification (journalisé, le script s'arrête après 10 échecs).
+- Classification : plus il y a de modèles configurés dans Config IA (Claude, OpenAI, TeckiA, open source), moins de CV
+  sont classés par les règles pendant une panne ; sans aucun, tout est classé par les règles, refait par l'IA ensuite.
 - Un recruteur qui « Recalcule » sans que rien n'ait changé obtient le même score (gardé), immédiatement et sans coût ;
   pour une nouvelle réponse de l'IA, il faut changer l'offre (ou attendre 30 jours).
 - Gain du cache de prompt à vérifier en production : `usage.cache_read_input_tokens` des réponses de Claude (non

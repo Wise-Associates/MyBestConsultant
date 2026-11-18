@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { LLMMessage, LLMResponse } from '@/types'
-import { fallbackOrder, pickPrimary, sanitizeOpenSourceModels, type AIModule, type OpenSourceModel } from './models'
+import { fallbackOrder, pickPrimary, requestedModel, sanitizeOpenSourceModels, type AIModule, type OpenSourceModel } from './models'
 
 interface RuntimeConfig {
   // Modèle par défaut : 'claude' | 'gpt4o' | 'teckia' ou l'id d'un modèle open source (os-…).
@@ -273,6 +273,12 @@ export interface CallLLMOptions {
    * clé et adresse restent celles de Config IA. À utiliser avec `provider` et `strict` : sans repli vers un autre modèle.
    */
   model?: string
+  /**
+   * Modèle précis par fournisseur, au premier essai comme en repli (ex. `{ claude: 'claude-haiku-5-5', gpt4o:
+   * 'gpt-4o-mini' }` pour la classification des CV) ; les fournisseurs absents gardent le modèle de Config IA.
+   * L'emporte sur `model`.
+   */
+  providerModels?: Partial<Record<string, string>>
   /** Effort de réflexion de Claude (`output_config.effort`) ; ignoré par les autres fournisseurs. */
   effort?: 'low' | 'medium' | 'high'
 }
@@ -314,7 +320,7 @@ export async function callLLM(
     if (requested && requested !== primary) throw new LLMNotConfiguredError(`Modèle ${requested} introuvable ou désactivé (voir /admin/llm-config)`)
   }
 
-  const limits: CallLimits = { maxTokens: opts.maxTokens, timeoutMs: opts.timeoutMs, cachePrefix: opts.cachePrefix, model: opts.model, effort: opts.effort }
+  const limits: CallLimits = { maxTokens: opts.maxTokens, timeoutMs: opts.timeoutMs, cachePrefix: opts.cachePrefix, model: requestedModel(primary, primary, opts), effort: opts.effort }
   // Try primary provider first
   try {
     const content = await tryCall(primary, cfg, messages, systemPrompt, limits)
@@ -329,8 +335,9 @@ export async function callLLM(
 
     for (const fallback of fallbacks) {
       try {
-        // Le modèle forcé (`model`) est celui du fournisseur demandé : un modèle de repli garde le sien.
-        const content = await tryCall(fallback, cfg, messages, systemPrompt, { ...limits, model: undefined })
+        // Le modèle forcé (`model`) est celui du fournisseur demandé : un modèle de repli garde le sien, sauf s'il est
+        // précisé dans `providerModels` (GPT-4o mini pour la classification des CV).
+        const content = await tryCall(fallback, cfg, messages, systemPrompt, { ...limits, model: requestedModel(fallback, primary, opts) })
         return { content, provider: fallback }
       } catch (fallbackErr) {
         failures.push({ provider: fallback, error: fallbackErr })

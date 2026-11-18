@@ -1,6 +1,7 @@
 import { AppwriteException } from 'node-appwrite'
 import { LLMChainError, callLLM } from '@/lib/ai/llm-router'
-import { claudeUnavailableReason, llmFailureDetail } from '@/lib/ao/ai-failures'
+import { CLASSIFICATION_AI } from '@/lib/ai/models'
+import { llmFailureDetail } from '@/lib/ao/ai-failures'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
 import {
@@ -13,41 +14,30 @@ import { buildRuleVocabulary, classifyCvByRules, type RuleVocabulary } from '@/l
 import { readCvForScoring } from '@/lib/sourcing-core'
 import { profileForAi, type ProfileToScore } from '@/lib/vivier-matching'
 
-// Classification d'un CV (ADR 0044) : Claude Haiku (choix de l'utilisateur du 2026-11-18), GPT-4o mini quand Claude ne
-// répond pas (crédits, clé, panne, délai… : claudeUnavailableReason, demande du 2026-11-18). Une fois par version de CV :
-// au dépôt (hooks des actions, en arrière-plan) et par `npm run cv:classify` (rattrapage). Le texte envoyé est celui de
-// la notation (coordonnées masquées).
+// Classification d'un CV (ADR 0044) : ligne « Classification des CV » de Config IA (Claude si « Modèle par défaut »),
+// puis la chaîne de repli de toute la plateforme (modèle par défaut, TeckiA, GPT, modèles open source : callLLM) —
+// demande du 2026-11-18 ; Claude en Haiku et GPT en GPT-4o mini (CLASSIFIER_MODELS, choix du 2026-11-18). Aucun modèle
+// disponible : classement par règles (classifyWithFallback). Une fois par version de CV : au dépôt (hooks des actions,
+// en arrière-plan) et par `npm run cv:classify` (rattrapage). Le texte envoyé est celui de la notation (coordonnées
+// masquées), aux mêmes fournisseurs que la notation des CV.
 
-export const CLASSIFIER_MODELS = { claude: 'claude-haiku-5-5', fallback: 'gpt-4o-mini' } as const
+/** Modèle précis de Claude et de GPT pour la classification ; TeckiA et les modèles open source gardent celui de Config IA. */
+export const CLASSIFIER_MODELS: Partial<Record<string, string>> = { claude: 'claude-haiku-5-5', gpt4o: 'gpt-4o-mini' }
 
 /**
- * Classe le texte d'un CV ; null si la réponse est illisible. Claude indisponible : même demande à GPT-4o mini. Lève
- * l'erreur de Claude quand la requête est refusée pour elle-même, et LLMChainError (cause de chaque modèle, à journaliser
- * par llmFailureDetail) quand les deux ont échoué.
+ * Classe le texte d'un CV par le modèle de la ligne « Classification des CV », puis la chaîne de repli ; null si la
+ * réponse est illisible. Lève LLMChainError (cause de chaque modèle, à journaliser par llmFailureDetail) quand toute la
+ * chaîne a échoué. `model` enregistré : celui de CLASSIFIER_MODELS, sinon l'identifiant du fournisseur (« teckia »,
+ * « os-… »).
  */
 export async function classifyCvText(cvText: string): Promise<{ classification: CvClassification; model: string } | null> {
-  const ask = (provider: 'claude' | 'gpt4o', model: string) => callLLM([{ role: 'user', content: cvText }], CLASSIFICATION_SYSTEM, {
-    provider, model, strict: true, maxTokens: 4000, timeoutMs: 90_000,
-    // Classement de champs : réflexion courte (Haiku 5.5 réfléchit par défaut, effort moyen).
-    ...(provider === 'claude' ? { effort: 'low' as const } : {}),
+  const { content, provider } = await callLLM([{ role: 'user', content: cvText }], CLASSIFICATION_SYSTEM, {
+    ...CLASSIFICATION_AI, providerModels: CLASSIFIER_MODELS, maxTokens: 4000, timeoutMs: 90_000,
+    // Classement de champs : réflexion courte (Haiku 5.5 réfléchit par défaut, effort moyen) ; ignoré hors Claude.
+    effort: 'low',
   })
-  let model: string = CLASSIFIER_MODELS.claude
-  let content: string
-  try {
-    content = (await ask('claude', CLASSIFIER_MODELS.claude)).content
-  } catch (claudeErr) {
-    const reason = claudeUnavailableReason(claudeErr)
-    if (!reason) throw claudeErr
-    console.warn(`[classification] Claude indisponible (${reason}) : classement par GPT-4o mini`)
-    model = CLASSIFIER_MODELS.fallback
-    try {
-      content = (await ask('gpt4o', CLASSIFIER_MODELS.fallback)).content
-    } catch (fallbackErr) {
-      throw new LLMChainError([{ provider: 'claude', error: claudeErr }, { provider: 'gpt4o', error: fallbackErr }])
-    }
-  }
   const classification = parseClassification(content)
-  return classification ? { classification, model } : null
+  return classification ? { classification, model: (CLASSIFIER_MODELS[provider] ?? provider).slice(0, 40) } : null
 }
 
 export type ClassifyOutcome = 'classified' | 'classified_by_rules' | 'invalid_answer' | 'up_to_date' | 'no_text' | 'missing' | 'off'
@@ -124,10 +114,10 @@ export interface FallbackDeps {
 const DEFAULT_DEPS: FallbackDeps = { byAi: classifyCvText, vocabulary: ruleVocabulary, now: () => new Date() }
 
 /**
- * Classification par l'IA, ou par les règles (cv-classification-rules.ts) quand aucune IA n'a pu répondre : Claude
- * indisponible puis GPT-4o mini en échec (LLMChainError : pannes, crédits, aucune clé). Enregistrée alors avec
- * RULES_MODEL et refaite par l'IA dès qu'elle répond (isUpToDate). null : réponse illisible — l'IA a répondu, le CV
- * reste à classer (journalisé en erreur). Toute autre erreur remonte (requête refusée par Claude pour elle-même…).
+ * Classification par l'IA, ou par les règles (cv-classification-rules.ts) quand aucune IA n'a pu répondre : toute la
+ * chaîne de modèles en échec (LLMChainError : pannes, crédits, aucune clé ni URL configurée). Enregistrée alors avec
+ * RULES_MODEL et refaite par l'IA dès qu'elle répond (isUpToDate). null : réponse illisible — une IA a répondu, le CV
+ * reste à classer (journalisé en erreur). Toute autre erreur remonte.
  */
 export async function classifyWithFallback(text: string, kind: ClassifiedKind, sourceId: string, deps: FallbackDeps = DEFAULT_DEPS): Promise<Classified | null> {
   let result: Classified | null

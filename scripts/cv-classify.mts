@@ -1,7 +1,7 @@
 #!/usr/bin/env -S npx tsx
 // Rattrapage de la classification des CV (collection cv_classifications, ADR 0044) : classe tous les CV de la base
-// candidats, des profils de chasseurs et des viviers qui ne le sont pas pour leur version actuelle (Claude Haiku, GPT-4o
-// mini quand Claude ne répond pas, règles sans IA quand aucun ne répond), et efface les classifications dont le CV
+// candidats, des profils de chasseurs et des viviers qui ne le sont pas pour leur version actuelle (ligne « Classification
+// des CV » de Config IA puis la chaîne de repli, règles sans IA quand aucun modèle ne répond), et efface les classifications dont le CV
 // n'existe plus. Idempotent : un CV déjà classé par l'IA n'est pas refait ; un CV classé par les règles l'est (relancer
 // le script quand l'IA est revenue). Peut être relancé après un arrêt ou une panne.
 //   npm run cv:classify -- .env.dev                       → compte ce qui serait fait, aucun appel d'IA, ne modifie rien
@@ -10,8 +10,8 @@
 //   npm run cv:classify -- .env --prod --apply            → production (à lancer par un humain)
 //   npm run cv:classify -- .env.dev --apply --rules       → par les règles, sans aucun appel d'IA (IA absente ou en panne ;
 //                                                            les CV seront reclassés par l'IA au prochain passage sans --rules)
-// Prérequis : `npm run schema:push` (collection cv_classifications), clés Claude et OpenAI dans Config IA (ou
-// ANTHROPIC_API_KEY / OPENAI_API_KEY dans le fichier). Aucune donnée de CV ni valeur secrète n'est affichée.
+// Prérequis : `npm run schema:push` (collection cv_classifications), modèles de Config IA (ou ANTHROPIC_API_KEY /
+// OPENAI_API_KEY dans le fichier) ; sans aucun, utiliser --rules. Aucune donnée de CV ni valeur secrète n'est affichée.
 
 import { readFileSync } from 'node:fs'
 
