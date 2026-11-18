@@ -87,7 +87,7 @@ export default async function AdminCvStatisticsPage({ searchParams }: { searchPa
         )}
         {result && (
           <CvStatsBody result={result} scopeName={chosen ? `les viviers de ${chosen.name}` : current.name}
-            offMessage="Index de recherche non configuré : MEILI_URL et MEILI_API_KEY, puis npm run cv:classify et npm run search:sync (docs/deploiement-vps.md, « Index de recherche des CV »)." />
+            offMessage="Index de recherche non configuré : MEILI_URL et MEILI_API_KEY, npm run cv:classify, puis la synchronisation de l'index sur le serveur (mbc-cron.sh search-sync ; docs/deploiement-vps.md, « Index de recherche des CV »)." />
         )}
       </main>
     </div>

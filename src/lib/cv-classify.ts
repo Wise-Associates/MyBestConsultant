@@ -162,7 +162,7 @@ export async function classifySource(kind: ClassifiedKind, sourceId: string, { r
   const tenantId = kind === 'vivier' ? str(doc.tenantId) : ''
   const ownerId = kind === 'vivier' ? str(doc.recruiterId) : str(doc.hunterUserId)
   await saveClassification({ kind, sourceId, sourceKey, model: result.model, classification: result.classification, tenantId, ownerId })
-  // Index de recherche (phase 2) : jamais bloquant, rattrapé par npm run search:sync.
+  // Index de recherche (phase 2) : jamais bloquant, rattrapé par la synchronisation de l'index (src/lib/search/sync.ts).
   await indexClassifiedCv({
     id: classificationId(kind, sourceId), kind, sourceId, tenantId, ownerId, classification: result.classification,
     role: kind === 'vivier' ? 'vivier' : str(doc.role), optedOut: doc.optedOutOfOutreach === true,

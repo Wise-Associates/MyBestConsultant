@@ -67,6 +67,11 @@ if (env.APPWRITE_PROJECT_ID !== DEV_PROJECT_ID && !flags.includes('--prod')) {
   console.error(`Projet ${env.APPWRITE_PROJECT_ID} : ce n'est pas le projet de développement, ajoutez --prod pour confirmer.`)
   process.exit(1)
 }
+// Index de recherche jamais écrit par ce script : en production, Meilisearch n'est joignable que depuis l'application
+// (réseau interne), chaque CV donnerait une erreur de connexion. La synchronisation du serveur (chaque nuit, ou
+// mbc-cron.sh search-sync) ou `npm run search:sync` en local l'écrit d'après les classifications.
+env.MEILI_URL = ''
+env.MEILI_API_KEY = ''
 // Les modules de l'application lisent leur configuration dans process.env, à leur chargement.
 Object.assign(process.env, env)
 
@@ -155,5 +160,8 @@ await mapLimit(planned, CONCURRENCY, async ({ kind, id }) => {
   if (++done % 25 === 0) console.log(`… ${done} / ${planned.length}`)
 })
 console.log('Terminé :', Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(' · ') || 'rien à faire')
+if (counts.classified || counts.classified_by_rules) {
+  console.log('Index de recherche : mis à jour par la synchronisation (production : chaque nuit, ou tout de suite sur le serveur `sudo -u deploy /opt/mybestconsultant/repo/deploy/mbc-cron.sh search-sync` ; local : npm run search:sync).')
+}
 if (aiDown) console.error('Arrêté : IA indisponible (voir plus haut).')
 process.exit(stopped || counts.failed ? 1 : 0)

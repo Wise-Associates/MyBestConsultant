@@ -5,3 +5,5 @@
 0 3 * * * /bin/bash /opt/mybestconsultant/repo/deploy/mbc-cron.sh deactivate-expired-jobs
 30 3 * * * /bin/bash /opt/mybestconsultant/repo/deploy/mbc-cron.sh assistant-purge
 0 6 * * * /bin/bash /opt/mybestconsultant/repo/deploy/mbc-cron.sh ao-inbox
+# Index de recherche des CV (ADR 0044) : rattrape les CV non indexés, retire ceux supprimés ; sans index installé, ne fait rien.
+15 4 * * * /bin/bash /opt/mybestconsultant/repo/deploy/mbc-cron.sh search-sync

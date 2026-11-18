@@ -2,7 +2,8 @@ import { cvSearchDocument } from './cv-search'
 import { deleteCvDocuments, isSearchConfigured, upsertCvDocuments } from './meili'
 
 // Mise à jour de l'index au fil de l'application (ADR 0044 phase 2) : un CV classé y entre, une classification effacée
-// en sort. Jamais bloquant : un échec est journalisé et `npm run search:sync` remet l'index d'accord avec Appwrite.
+// en sort. Jamais bloquant : un échec est journalisé, et la synchronisation de l'index (src/lib/search/sync.ts : chaque
+// nuit sur le serveur, ou npm run search:sync) le remet d'accord avec Appwrite.
 
 /** Ajoute ou remplace le document d'un CV classé. */
 export async function indexClassifiedCv(input: Parameters<typeof cvSearchDocument>[0]): Promise<void> {
@@ -10,7 +11,7 @@ export async function indexClassifiedCv(input: Parameters<typeof cvSearchDocumen
   try {
     await upsertCvDocuments([cvSearchDocument(input)])
   } catch (err) {
-    console.error('[recherche] CV non indexé, à rattraper par npm run search:sync', input.kind, input.sourceId, err instanceof Error ? err.message : err)
+    console.error('[recherche] CV non indexé, rattrapé par la synchronisation de l\'index', input.kind, input.sourceId, err instanceof Error ? err.message : err)
   }
 }
 
@@ -20,6 +21,6 @@ export async function removeCvFromIndex(id: string): Promise<void> {
   try {
     await deleteCvDocuments([id])
   } catch (err) {
-    console.error('[recherche] CV supprimé encore dans l\'index, à rattraper par npm run search:sync', id, err instanceof Error ? err.message : err)
+    console.error('[recherche] CV supprimé encore dans l\'index, retiré par la synchronisation de l\'index', id, err instanceof Error ? err.message : err)
   }
 }

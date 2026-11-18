@@ -471,7 +471,8 @@ des heures de travail quand `/var/run/reboot-required` existe (correctifs du noy
   request ; l'empreinte d'une version : `docker buildx imagetools inspect node:<version>-trixie-slim` (ligne Digest).
 - **Caddy** : même chose dans `deploy/compose.proxy.yml`, puis `sudo -u deploy mbc-deploy proxy` (partie 8).
 - **Meilisearch** : même chose dans `deploy/compose.search.yml`, puis `sudo -u deploy mbc-deploy search` ; lire les notes
-  de version avant (une montée majeure peut demander de recréer l'index : `npm run search:sync -- … --apply`).
+  de version avant (une montée majeure peut demander de repartir d'un index vide, que la synchronisation remplit :
+  `sudo -u deploy /opt/mybestconsultant/repo/deploy/mbc-cron.sh search-sync`).
 - **Mettre à jour mbc-deploy** : quand `deploy/mbc-deploy.sh` change, le journal du déploiement affiche
   « ATTENTION : deploy/mbc-deploy.sh diffère de la copie installée ». Après ce déploiement :
   `sudo install -m 755 /opt/mybestconsultant/repo/deploy/mbc-deploy.sh /usr/local/bin/mbc-deploy`.
@@ -494,12 +495,15 @@ sudo docker exec mbc-search sh -c 'curl -s -X POST http://127.0.0.1:7700/keys -H
 
 4. Dans `/etc/mybestconsultant/app.env` : `MEILI_URL=http://mbc-search:7700` et `MEILI_API_KEY=<clé de l'étape 3>`
    (jamais la clé maîtresse), puis un déploiement (ou `rollback` sur le commit en ligne) pour que l'application les lise.
-5. Remplir l'index depuis un poste d'administration : `npm run search:sync -- .env --prod` (simulation), puis avec
-   `--apply`. Le poste doit joindre Meilisearch : tunnel SSH vers le conteneur, par exemple
-   `ssh -L 7700:<IP du conteneur mbc-search>:7700 admin@<vps>` (`sudo docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' mbc-search`),
-   et `MEILI_URL=http://127.0.0.1:7700` dans le fichier passé au script.
+5. Remplir l'index **sur le serveur** — Meilisearch n'est joignable que depuis l'application, sur le réseau interne :
+   `sudo -u deploy /opt/mybestconsultant/repo/deploy/mbc-cron.sh search-sync` (route `/api/cron/search-sync`, avec
+   `CRON_SECRET` ; résultat : `journalctl -t mbc-cron`, nombres écrits et retirés : `docker logs mbc-app-<couleur>`,
+   ligne « index synchronisé »). Ensuite, la même synchronisation tourne chaque nuit (`deploy/crontab`, 04:15 UTC) :
+   elle rattrape les CV non indexés, retire ceux supprimés et applique un changement de réglages de l'index
+   (`CV_INDEX_SETTINGS`). À relancer aussi après un `npm run cv:classify` (le script n'écrit pas l'index). Sans index
+   installé, la tâche ne fait rien. `npm run search:sync` reste pour un poste qui joint Meilisearch (local).
 
-Données : volume Docker `mbc-search_meili_data` ; elles se reconstruisent entièrement par `npm run search:sync` (Appwrite
+Données : volume Docker `mbc-search_meili_data` ; elles se reconstruisent entièrement par la synchronisation (Appwrite
 reste la source), pas de sauvegarde à prévoir. Montée de version : voir le commentaire de `compose.search.yml`.
 
 ### Site Wise Associates
