@@ -18,6 +18,7 @@ import {
   applicationOfOrganisation, getCandidateAuthUserId, scoreApplication, sendAutoScreeningEmail, type ApplicationToScreen, type ScreeningScore,
 } from '@/lib/screening-core'
 import { finalOfferDetails } from '@/lib/sourcing-core'
+import { alertIdealCandidates } from '@/lib/recruiter-alerts-store'
 
 export type { ApplicationToScreen, ScreeningScore } from '@/lib/screening-core'
 
@@ -384,6 +385,8 @@ export async function screenAllApplications(jobId: string, appIds: string[]): Pr
       if (result.score >= 70 && appDoc.aiScore == null) {
         try { await sendAutoScreeningEmail(appId, result) } catch { /* non-blocking */ }
       }
+      // Profil idéal : le recruteur de l'offre est prévenu une fois (ADR 0044).
+      await alertIdealCandidates([{ jobId, source: 'candidature', subjectId: appId, candidateId: appDoc.candidateId as string, score: result.score }])
 
       results.push(result)
     } catch (e) {

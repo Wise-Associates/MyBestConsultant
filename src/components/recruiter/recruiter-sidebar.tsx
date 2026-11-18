@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useId, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import {
-  BarChart3, Building2, ChevronDown, CreditCard, FilePlus2, FolderOpen, FolderSearch, GitBranch, Inbox, LayoutDashboard, MessageSquare, PanelLeftClose,
+  BarChart3, Bell, Building2, ChevronDown, CreditCard, FilePlus2, FolderOpen, FolderSearch, GitBranch, Inbox, LayoutDashboard, MessageSquare, PanelLeftClose,
   PanelLeftOpen, Radar, UserCog, Users,
 } from 'lucide-react'
 import {
@@ -28,6 +28,7 @@ const ICONS: Record<RecruiterSectionKey, ComponentType<{ className?: string; str
   ao: Inbox,
   reporting: BarChart3,
   vivier: FolderOpen,
+  alertes: Bell,
   cvtheque: FolderSearch,
   mbcsearch: Radar,
   equipe: Users,

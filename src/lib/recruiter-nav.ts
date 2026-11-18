@@ -4,7 +4,7 @@
 // Règles pures, testées dans recruiter-nav.test.ts.
 
 export type RecruiterSectionKey =
-  | 'publier' | 'dashboard' | 'funnel' | 'ao' | 'reporting' | 'vivier' | 'cvtheque' | 'mbcsearch' | 'equipe' | 'interviews'
+  | 'publier' | 'dashboard' | 'funnel' | 'ao' | 'reporting' | 'vivier' | 'alertes' | 'cvtheque' | 'mbcsearch' | 'equipe' | 'interviews'
   | 'utilisateurs' | 'abonnement' | 'organisation'
 
 /** `compte` : rubriques du bas du menu (utilisateurs, abonnement, organisation), hors des groupes du haut. */
@@ -32,6 +32,8 @@ export const RECRUITER_SECTIONS: RecruiterSection[] = [
   { key: 'mbcsearch', label: 'Search', href: '/recruiter/mbc-search', group: 'recherche', also: [] },
   { key: 'cvtheque', label: 'CV Thèque', href: '/recruiter/cvtheque', group: 'recherche', also: [] },
   { key: 'vivier', label: 'Mon vivier', href: '/recruiter/vivier', group: 'recherche', also: [] },
+  // Profils notés 85 ou plus pour une offre, et réglage des e-mails (ADR 0044, demande du 2026-11-18 : sous Mon vivier).
+  { key: 'alertes', label: 'Alertes', href: '/recruiter/alertes', group: 'recherche', also: [] },
   // Création d'une offre (saisie, assistant IA, import IA / Excel) : une page à part depuis le 2026-11-17 (avant : une
   // fenêtre ouverte depuis le tableau de bord), en tête du groupe.
   { key: 'publier', label: 'Publier un job', href: '/recruiter/publier', group: 'recrutement', also: ['/recruiter/import'] },

@@ -1,11 +1,12 @@
 'use client'
 
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { WhatsAppContact } from '@/components/recruiter/whatsapp-contact'
 import { useMemo, useState } from 'react'
 import {
   Users, ExternalLink, AlertCircle, Mail, Phone, MapPin, Navigation, Building2, FolderSearch, Maximize2, FileDown, Search, Info,
-  SlidersHorizontal, ArrowRight, ChartColumn,
+  SlidersHorizontal, ArrowRight, ChartColumn, BookmarkPlus, Bell, Plus, CheckCircle2,
 } from 'lucide-react'
 import { deleteRecruiterCvTemplate, getRecruiterCvExportVersions, saveRecruiterCvTemplate, type CvThequeCandidate } from './actions'
 import { EsnExportDialog } from '@/components/cv-export/esn-export-dialog'
@@ -14,30 +15,82 @@ import type { CvExportAccess } from '@/lib/cv-export/recruiter'
 import { SECTORS } from '@/lib/candidate-taxonomy'
 import { Pagination } from '@/components/shared/pagination'
 import { CandidateAvatar } from '@/components/shared/candidate-avatar'
-import { EMPTY_FILTERS, activeFilterCount, filterCandidates, valuesByFrequency, type CvthequeFilters } from '@/lib/cvtheque-search'
+import {
+  EMPTY_FILTERS, activeFilterCount, filterCandidates, filtersFromSearchParams, hasSearchCriteria, valuesByFrequency, withFilters,
+  type CvthequeFilters,
+} from '@/lib/cvtheque-search'
+import { initialUrlListSync, noteListWrite, syncFromUrl } from '@/lib/url-list-state'
+import type { SavedSearch } from '@/lib/saved-searches'
 import { CvthequeFiltersPanel } from './cvtheque-filters'
 import { CandidateProfileModal } from './candidate-profile-modal'
+import { SaveSearchDialog } from './save-search-dialog'
 
 // CV Thèque du recruteur (refonte du 2026-11-13, à la manière des outils de recherche de profils) : plus de bandeau,
 // une ligne de titre (« Modèle CV » à droite), la barre de recherche, puis les filtres dans une colonne à gauche
 // (cvtheque-filters.tsx) et les profils à droite. Mobile : la barre, puis les filtres repliés derrière « Filtres », puis
 // les profils. Règles de recherche pures : src/lib/cvtheque-search.ts.
+// Filtres gardés dans l'adresse (rechargement, « Retour », lien partagé) et recherches enregistrées (ADR 0046) :
+// « Enregistrer la recherche » garde les filtres de la liste sous un nom ; rouverte depuis « Alertes »
+// (?recherche=<id> et ses filtres), elle redonne la même liste, recalculée sur la base actuelle.
 
 const PAGE_SIZE = 50
 
-const SEARCH_HELP = 'Tous les mots sont requis ; OR entre deux mots pour l\'un ou l\'autre ; guillemets pour une expression : java "react native" OR kotlin'
+/** Boutons secondaires de l'en-tête (Statistiques, Recherches enregistrées, Nouvelle recherche). */
+const headerButton = 'inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13px] font-semibold no-underline transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_5%,transparent)] focus-visible:outline-2 focus-visible:outline-(--color-text)'
+const headerButtonStyle = { color: 'var(--color-text)', border: '1px solid var(--color-border)' } as const
 
-export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExportError }: {
+const SEARCH_HELP ='Tous les mots sont requis ; OR entre deux mots pour l\'un ou l\'autre ; guillemets pour une expression : java "react native" OR kotlin'
+
+export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExportError, savedSearches, openSearch }: {
   initialCandidates: CvThequeCandidate[]
   loadError?: string
   cvExport: CvExportAccess | null
   cvExportError?: string
+  /** Recherches enregistrées disponibles (recruteur, collections configurées). */
+  savedSearches: boolean
+  /** Recherche enregistrée ouverte (?recherche=), vérifiée par la page. */
+  openSearch: SavedSearch | null
 }) {
   const [exportFor, setExportFor] = useState<CvThequeCandidate | null>(null)
-  const [filters, setFilters] = useState<CvthequeFilters>(EMPTY_FILTERS)
+  const searchParams = useSearchParams()
+  const urlFilters = filtersFromSearchParams(searchParams)
+  const urlQuery = withFilters(new URLSearchParams(), urlFilters).toString()
+  // Recherche ouverte sans filtres dans l'adresse (lien abrégé) : ses filtres enregistrés.
+  const [filters, setFilters] = useState<CvthequeFilters>(() => (openSearch && !urlQuery ? openSearch.filters : urlFilters))
+  const [urlSync, setUrlSync] = useState(() => initialUrlListSync(urlQuery))
+  const [current, setCurrent] = useState<SavedSearch | null>(openSearch)
+  const [saveOpen, setSaveOpen] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
   // Texte de la barre : appliqué par Entrée ou « Rechercher », pour que la liste ne saute pas pendant la frappe d'une
   // expression entre guillemets.
-  const [draft, setDraft] = useState('')
+  const [draft, setDraft] = useState(filters.query)
+  // Adresse changée sans la liste (lien « CV Thèque » du menu) : ses filtres remplacent ceux affichés.
+  if (urlQuery !== urlSync.seen) {
+    const step = syncFromUrl(urlSync, urlQuery)
+    setUrlSync(step.sync)
+    if (step.adopt) {
+      setFilters(urlFilters)
+      setDraft(urlFilters.query)
+      if (!searchParams.get('recherche')) setCurrent(null)
+    }
+  }
+  /** Filtres appliqués et recopiés dans l'adresse, sans relire la page ni ajouter d'étape à l'historique. */
+  const applyFilters = (next: CvthequeFilters, searchId?: string | null) => {
+    setFilters(next)
+    setUrlSync(sync => noteListWrite(sync, withFilters(new URLSearchParams(), next).toString()))
+    const sp = withFilters(new URLSearchParams(window.location.search), next)
+    if (searchId === null) sp.delete('recherche')
+    else if (searchId) sp.set('recherche', searchId)
+    const query = sp.toString()
+    window.history.replaceState(null, '', query ? `?${query}` : window.location.pathname)
+  }
+  const newSearch = () => {
+    setDraft('')
+    setCurrent(null)
+    setNotice(null)
+    applyFilters(EMPTY_FILTERS, null)
+    document.getElementById('cvt-query')?.focus()
+  }
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [page, setPage] = useState(1)
   const [openProfile, setOpenProfile] = useState<CvThequeCandidate | null>(null)
@@ -71,11 +124,19 @@ export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExpor
         <h1 style={{ color: 'var(--color-text)', fontSize: '1.125rem', fontWeight: 600, lineHeight: 1.4 }}>CV Thèque</h1>
         <span className="flex-1" />
         {/* Statistiques des CV classés (ADR 0044, phase 3). */}
-        <Link href="/recruiter/cvtheque/statistiques"
-          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13px] font-semibold no-underline transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_5%,transparent)] focus-visible:outline-2 focus-visible:outline-(--color-text)"
-          style={{ color: 'var(--color-text)', border: '1px solid var(--color-border)' }}>
+        <Link href="/recruiter/cvtheque/statistiques" className={headerButton} style={headerButtonStyle}>
           <ChartColumn className="h-4 w-4" aria-hidden />Statistiques
         </Link>
+        {savedSearches && (
+          <>
+            <Link href="/recruiter/alertes#recherches" className={headerButton} style={headerButtonStyle}>
+              <Bell className="h-4 w-4" aria-hidden />Recherches enregistrées
+            </Link>
+            <button type="button" onClick={newSearch} className={headerButton} style={headerButtonStyle}>
+              <Plus className="h-4 w-4" aria-hidden />Nouvelle recherche
+            </button>
+          </>
+        )}
         {cvExport && (
           <CvTemplateManager kind="organisation" template={cvExport.template} storage uploadDenied={cvExport.uploadDenied}
             save={saveRecruiterCvTemplate} remove={deleteRecruiterCvTemplate} />
@@ -88,7 +149,7 @@ export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExpor
       <div className="lg:grid lg:grid-cols-[18rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:items-start">
         <div className="lg:col-start-2 lg:row-start-1">
           <form className="flex items-center gap-2 px-4 sm:px-6 py-4" role="search" aria-label="Rechercher dans la CV Thèque"
-            onSubmit={e => { e.preventDefault(); setFilters(f => ({ ...f, query: draft })) }}>
+            onSubmit={e => { e.preventDefault(); applyFilters({ ...filters, query: draft }) }}>
             <div className="flex-1 min-w-0 flex items-center gap-2 h-11 pl-3 pr-1.5 rounded-xl transition-colors focus-within:border-[var(--color-brand-orange)]"
               style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
               <Search className="h-4 w-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} aria-hidden />
@@ -124,7 +185,7 @@ export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExpor
         <aside id="cvt-filters" aria-label="Filtres de la CV Thèque"
           className={`${filtersOpen ? 'block' : 'hidden'} lg:block lg:col-start-1 lg:row-start-1 lg:row-span-2 lg:self-start lg:sticky lg:top-[68px] lg:h-[calc(100vh-68px)] lg:overflow-y-auto px-4 sm:px-6 lg:px-5 py-5`}
           style={{ borderRight: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }}>
-          <CvthequeFiltersPanel filters={filters} onChange={setFilters} activeCount={activeCount} options={options} />
+          <CvthequeFiltersPanel filters={filters} onChange={next => applyFilters(next)} activeCount={activeCount} options={options} />
         </aside>
 
         <main className="lg:col-start-2 lg:row-start-2 min-w-0 px-4 sm:px-6 py-5 space-y-4">
@@ -141,12 +202,29 @@ export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExpor
             </div>
           )}
 
-          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }} aria-live="polite">
-            <strong style={{ color: 'var(--color-text)' }}>{filtered.length} profil{filtered.length > 1 ? 's' : ''}</strong>
-            {' '}· dont {available} disponible{available > 1 ? 's' : ''}
-            {narrowed && <> · sur {initialCandidates.length} avec CV</>}
-            {filtered.length > PAGE_SIZE && <> · {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} affichés</>}
-          </p>
+          <div className="flex items-center gap-x-3 gap-y-2 flex-wrap">
+            <p className="text-sm flex-1 min-w-0" style={{ color: 'var(--color-text-muted)' }} aria-live="polite">
+              {current && <><strong style={{ color: 'var(--color-text)' }}>{current.name}</strong> · </>}
+              <strong style={{ color: 'var(--color-text)' }}>{filtered.length} profil{filtered.length > 1 ? 's' : ''}</strong>
+              {' '}· dont {available} disponible{available > 1 ? 's' : ''}
+              {narrowed && <> · sur {initialCandidates.length} avec CV</>}
+              {filtered.length > PAGE_SIZE && <> · {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} affichés</>}
+            </p>
+            {savedSearches && (
+              <button type="button" onClick={() => { setNotice(null); setSaveOpen(true) }} disabled={!hasSearchCriteria(filters)}
+                title={hasSearchCriteria(filters) ? undefined : 'Choisissez au moins un critère (recherche, compétence, lieu…) pour enregistrer la recherche.'}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-semibold transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: 'var(--color-brand-orange)', color: 'white' }}>
+                <BookmarkPlus className="h-3.5 w-3.5" aria-hidden /> {current ? 'Modifier la recherche' : 'Enregistrer la recherche'}
+              </button>
+            )}
+          </div>
+          {notice && (
+            <p role="status" className="flex items-center gap-2 flex-wrap text-sm rounded-xl px-3 py-2" style={{ background: 'rgba(16,185,129,0.08)', color: '#047857' }}>
+              <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden /> {notice}
+              <Link href="/recruiter/alertes#recherches" className="font-semibold underline" style={{ color: '#047857' }}>Voir mes recherches</Link>
+            </p>
+          )}
 
           {filtered.length === 0 ? (
             <div className="rounded-2xl py-16 px-6 text-center space-y-3" style={{ border: '1px solid var(--color-border)' }}>
@@ -155,7 +233,7 @@ export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExpor
                 {initialCandidates.length === 0 ? 'Aucun profil avec CV dans la CV Thèque pour le moment.' : 'Aucun profil ne correspond à cette recherche.'}
               </p>
               {narrowed && (
-                <button type="button" onClick={() => { setDraft(''); setFilters(EMPTY_FILTERS) }}
+                <button type="button" onClick={newSearch}
                   className="text-sm font-semibold" style={{ color: 'var(--color-brand-orange)' }}>
                   Effacer la recherche et les filtres
                 </button>
@@ -176,6 +254,16 @@ export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExpor
       </div>
 
       {openProfile && <CandidateProfileModal candidate={openProfile} onClose={() => setOpenProfile(null)} />}
+
+      {savedSearches && saveOpen && (
+        <SaveSearchDialog open onOpenChange={setSaveOpen} filters={filters} current={current}
+          onSaved={(search, created) => {
+            setSaveOpen(false)
+            setCurrent(search)
+            applyFilters(filters, search.id)
+            setNotice(created ? `Recherche « ${search.name} » enregistrée.` : `Recherche « ${search.name} » mise à jour.`)
+          }} />
+      )}
 
       {cvExport?.template && (
         // key : choix et compte rendu remis à zéro pour chaque candidat

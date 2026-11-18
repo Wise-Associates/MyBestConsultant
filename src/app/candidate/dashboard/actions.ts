@@ -14,6 +14,9 @@ export async function saveCvFileId(fileId: string): Promise<void> {
   if (!user) return
 
   const { databases } = createAdminClient()
+  // Premier CV : le candidat entre dans la CV Thèque, il est « nouveau » pour les recherches enregistrées. Un CV remplacé
+  // ne l'est pas : le recruteur le voyait déjà (ADR 0046).
+  const firstCv = !user.cvFileId
   await databases.updateDocument(DB_ID, COLLECTIONS.USERS, user.$id, {
     cvFileId: fileId,
   })
@@ -32,6 +35,12 @@ export async function saveCvFileId(fileId: string): Promise<void> {
   // Classification du nouveau CV (ADR 0044), en arrière-plan : jamais bloquante, un échec est journalisé.
   after(() => classifySourceInBackground('candidate', user.$id))
 
+  // Recherches enregistrées des recruteurs (ADR 0046) : après la réponse, le dépôt du CV n'attend ni la comparaison ni
+  // les e-mails. Comparaison interrompue : rattrapée par le cron recruiter-alerts.
+  after(async () => {
+    const { alertSavedSearches } = await import('@/lib/saved-searches-store')
+    await alertSavedSearches(user.$id, { newCv: firstCv })
+  })
   revalidatePath('/candidate/dashboard')
 }
 
@@ -62,6 +71,11 @@ export async function updateCandidateProfile(input: ProfileInput): Promise<{ ok?
       desiredRoles: data.desiredRoles.join(', '),
       photoUrl: data.photoUrl || null,
       linkedinUrl: data.linkedinUrl || null,
+    })
+    // Profil complété (compétences, ville…) : peut maintenant répondre à une recherche enregistrée (ADR 0046).
+    after(async () => {
+      const { alertSavedSearches } = await import('@/lib/saved-searches-store')
+      await alertSavedSearches(user.$id, { newCv: false })
     })
     revalidatePath('/candidate/dashboard')
     return { ok: true }

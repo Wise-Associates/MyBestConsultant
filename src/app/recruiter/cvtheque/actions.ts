@@ -122,8 +122,12 @@ export async function getRecruiterCvthequeCandidates(): Promise<{ candidates: Cv
   try {
     await requireRecruiter()
     const { databases } = createAdminClient()
+    // Les 500 candidats avec CV les plus récents (avant : 500 sans ordre, CV compté après la limite) : un nouveau
+    // candidat signalé par une recherche enregistrée est toujours dans la liste (ADR 0045).
     const res = await databases.listDocuments(DB_ID, COLLECTIONS.USERS, [
       Query.equal('role', 'candidate'),
+      Query.isNotNull('cvFileId'),
+      Query.orderDesc('$createdAt'),
       Query.limit(500),
     ])
 

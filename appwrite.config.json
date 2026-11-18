@@ -4974,6 +4974,248 @@
                 }
             ],
             "indexes": []
+        },
+        {
+            "$id": "saved_searches",
+            "$permissions": [],
+            "databaseId": "bestconsultant-dev",
+            "name": "saved searches",
+            "enabled": true,
+            "documentSecurity": false,
+            "attributes": [
+                {
+                    "key": "tenantId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "ownerId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "name",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 100,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "filtersJson",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 10000,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "description",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 500,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "active",
+                    "type": "boolean",
+                    "required": false,
+                    "array": false,
+                    "default": true
+                },
+                {
+                    "key": "emailAlerts",
+                    "type": "boolean",
+                    "required": false,
+                    "array": false,
+                    "default": true
+                },
+                {
+                    "key": "lastMatchAt",
+                    "type": "datetime",
+                    "required": false,
+                    "array": false,
+                    "format": "",
+                    "default": null
+                },
+                {
+                    "key": "lastOpenedAt",
+                    "type": "datetime",
+                    "required": false,
+                    "array": false,
+                    "format": "",
+                    "default": null
+                }
+            ],
+            "indexes": [
+                {
+                    "key": "ownerId_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "ownerId"
+                    ],
+                    "orders": []
+                },
+                {
+                    "key": "active_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "active"
+                    ],
+                    "orders": []
+                }
+            ]
+        },
+        {
+            "$id": "recruiter_alerts",
+            "$permissions": [],
+            "databaseId": "bestconsultant-dev",
+            "name": "recruiter alerts",
+            "enabled": true,
+            "documentSecurity": false,
+            "attributes": [
+                {
+                    "key": "tenantId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "recipientId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "source",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 20,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "subjectId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "jobId",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "candidateId",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "score",
+                    "type": "integer",
+                    "required": false,
+                    "array": false,
+                    "min": 0,
+                    "max": 100,
+                    "default": null
+                },
+                {
+                    "key": "emailStatus",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 10,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "searchId",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "emailedAt",
+                    "type": "datetime",
+                    "required": false,
+                    "array": false,
+                    "format": "",
+                    "default": null
+                },
+                {
+                    "key": "emailError",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 300,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "emailAttempts",
+                    "type": "integer",
+                    "required": false,
+                    "array": false,
+                    "min": 0,
+                    "max": 100,
+                    "default": null
+                }
+            ],
+            "indexes": [
+                {
+                    "key": "searchId_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "searchId"
+                    ],
+                    "orders": []
+                },
+                {
+                    "key": "recipientId_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "recipientId"
+                    ],
+                    "orders": []
+                }
+            ]
         }
     ],
     "buckets": [

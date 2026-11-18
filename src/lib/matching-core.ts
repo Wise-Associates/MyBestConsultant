@@ -22,6 +22,7 @@ import { cvScorer, readCvForScoring, type MatchResult } from '@/lib/sourcing-cor
 import { SCORING_AI } from '@/lib/ai/models'
 import { offerDetails } from '@/lib/match-scoring'
 import { personalScore, type RecruiterWeights } from '@/lib/scoring-weights'
+import { alertIdealCandidates } from '@/lib/recruiter-alerts-store'
 
 export interface JobMatchResult {
   source: 'pool' | 'vivier' | 'application'
@@ -118,6 +119,8 @@ export async function runPoolMatching(
         if ((err as { code?: unknown }).code !== 404) throw err
       })),
     ])
+    // Profils idéaux de la base : le recruteur de l'offre est prévenu une fois par candidat (ADR 0044).
+    await alertIdealCandidates(matches.map(m => ({ jobId, source: 'base' as const, subjectId: m.candidateId, score: m.score })))
 
     // Une partie des CV non notés (IA indisponible, réponse illisible) : dit, les autres sont enregistrés.
     return { matched: matches.length, error }
@@ -163,6 +166,8 @@ export async function matchVivierCvAgainstJob(jobId: string, vivierCvId: string,
       matchScore: scored.score,
       matchReason: scored.reason.slice(0, 500),
     })
+    // Profil idéal : prévenu, le recruteur qui a importé le CV (un vivier est personnel, ADR 0044).
+    await alertIdealCandidates([{ jobId, source: 'vivier', subjectId: vivierCvId, score: scored.score, recipientId: String(doc.recruiterId ?? '') }])
   } catch (e) {
     // best-effort — a vivier CV stays usable (unscored) even if matching fails
     console.error('[matching] CV du vivier de l\'offre non noté', jobId, vivierCvId, e instanceof Error ? e.message : e)

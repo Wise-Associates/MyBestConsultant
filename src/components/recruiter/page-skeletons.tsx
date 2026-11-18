@@ -960,3 +960,32 @@ export function OrganisationSkeleton() {
     </SkeletonRegion>
   )
 }
+
+/** /recruiter/alertes (ADR 0044) : réglage des e-mails puis la liste des alertes. À changer avec la page. */
+export function AlertsSkeleton() {
+  return (
+    <SkeletonRegion label="Chargement des alertes" style={accountPage}>
+      <AccountHeaderSkeleton />
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+        <div className="rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-4" style={card}>
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-5 w-48 max-w-full" />
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-2/3" />
+          </div>
+          <Skeleton className="h-6 w-40 rounded-full" />
+        </div>
+        <Skeleton className="h-5 w-40" />
+        <div className="rounded-2xl" style={card}>
+          {Array.from({ length: 5 }, (_, i) => (
+            <div key={i} className="flex items-center gap-4 px-5 py-4" style={i > 0 ? { borderTop: line } : undefined}>
+              <Skeleton className="h-4 w-20 shrink-0" />
+              <Skeleton className="h-4 flex-1" />
+              <Skeleton className="h-4 w-12 shrink-0" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </SkeletonRegion>
+  )
+}
