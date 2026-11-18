@@ -1,13 +1,28 @@
 // Catalogue et règles de sélection des modèles IA (Module 10) — pur, sans accès base ni clé :
 // partagé par le routeur serveur (llm-router.ts) et l'écran admin /admin/llm-config.
 
-export type AIModule = 'interview' | 'matching' | 'assistant' | 'cvExport'
+export type AIModule = 'interview' | 'matching' | 'assistant' | 'cvExport' | 'classification'
 
 /**
  * Modèle de toute notation d'un candidat pour une offre : ligne « Matching IA » de Config IA, Claude si elle est sur
  * « Modèle par défaut » (ADR 0029 : une seule ligne, « Screening CV » retirée ; repli habituel si le modèle échoue).
  */
 export const SCORING_AI = { module: 'matching', moduleDefault: 'claude' } as const
+
+/**
+ * Classification des CV (ADR 0044) : ligne « Classification des CV » de Config IA, Claude si elle est sur « Modèle par
+ * défaut », puis le repli habituel ; modèles précis de Claude et de GPT dans CLASSIFIER_MODELS (cv-classify.ts).
+ */
+export const CLASSIFICATION_AI = { module: 'classification', moduleDefault: 'claude' } as const
+
+/**
+ * Modèle précis demandé pour un fournisseur de la chaîne : celui de `providerModels` (ex. Claude Haiku pour la
+ * classification, au premier essai comme en repli), sinon `model` pour le premier essai seulement ; undefined : le
+ * modèle de Config IA.
+ */
+export function requestedModel(provider: string, primary: string, opts: { model?: string; providerModels?: Partial<Record<string, string>> }): string | undefined {
+  return opts.providerModels?.[provider] ?? (provider === primary ? opts.model : undefined)
+}
 
 /** `moduleDefault` : modèle du module quand Config IA n'en choisit aucun (affiché par l'écran admin, comme pickPrimary). */
 export const AI_MODULES: { id: AIModule; label: string; description: string; moduleDefault?: string }[] = [
@@ -19,6 +34,8 @@ export const AI_MODULES: { id: AIModule; label: string; description: string; mod
   // Sans repli (callLLM strict, src/lib/cv-export/export.ts) : le CV complet du candidat ne part que chez le modèle choisi ici.
   // Modèle CV déposé (template-upload.ts) : cartographié par Claude quand aucun modèle n'est choisi ici (moduleDefault).
   { id: 'cvExport', label: 'Export CV (format cabinet)', description: 'Dossier de compétences anonymisé FR / EN (contenu du CV recopié tel quel) depuis la CV Thèque et le vivier — sans repli : en cas de panne, l’export affiche une erreur. Analyse des modèles CV déposés : Claude si « Modèle par défaut »' },
+  // ADR 0044 : Claude Haiku et GPT-4o mini plutôt que les modèles de leur ligne (CLASSIFIER_MODELS, cv-classify.ts).
+  { id: 'classification', label: 'Classification des CV', description: 'Métiers, compétences, séniorité… de chaque CV déposé, pour le préfiltre du matching et les statistiques — Claude (Haiku) si « Modèle par défaut », puis le repli habituel (GPT : GPT-4o mini) ; aucun modèle disponible : classement par règles, refait par l’IA ensuite', moduleDefault: CLASSIFICATION_AI.moduleDefault },
 ]
 
 export const BUILTIN_MODEL_IDS = ['claude', 'gpt4o', 'teckia'] as const
