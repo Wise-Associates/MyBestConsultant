@@ -1,17 +1,19 @@
 #!/usr/bin/env -S npx tsx
 // Remet l'index de recherche des CV (Meilisearch, ADR 0044 phase 2) d'accord avec Appwrite : applique les réglages de
-// l'index, y écrit chaque CV classé (cv_classifications), en retire ceux qui n'y sont plus. Idempotent ; à lancer après
-// `npm run cv:classify`, après un changement de réglages (cv-search.ts) et en cas d'avertissement « à rattraper ».
+// l'index, y écrit chaque CV classé (cv_classifications), en retire ceux qui n'y sont plus (src/lib/search/sync.ts).
+// Idempotent. Pour un poste qui joint Meilisearch : en local, celui de docker-compose.yml. En production, Meilisearch
+// n'est joignable que depuis l'application (réseau interne) : la synchronisation y tourne chaque nuit et à la demande sur
+// le serveur (`sudo -u deploy /opt/mybestconsultant/repo/deploy/mbc-cron.sh search-sync`, route /api/cron/search-sync).
 //   npm run search:sync -- .env.dev                 → compte ce qui serait fait, ne modifie rien
 //   npm run search:sync -- .env.dev --apply         → projet DEV
-//   npm run search:sync -- .env --prod --apply      → production (à lancer par un humain)
+//   npm run search:sync -- .env --prod --apply      → production, depuis un poste relié par un tunnel (à lancer par un
+//                                                     humain ; d'ordinaire inutile : le serveur la fait, voir plus haut)
 // Le fichier fournit APPWRITE_*, APPWRITE_COLLECTION_CV_CLASSIFICATIONS, MEILI_URL et MEILI_API_KEY. Aucune donnée de
 // CV ni valeur secrète n'est affichée.
 
 import { readFileSync } from 'node:fs'
 
 const DEV_PROJECT_ID = 'bestconsultant-dev'
-const BATCH = 500
 
 /** Lecture d'un fichier .env : fins de ligne Windows, guillemets simples ou doubles, commentaire en fin de valeur. */
 function readEnv(path: string): Record<string, string> {
@@ -54,75 +56,16 @@ if (env.APPWRITE_PROJECT_ID !== DEV_PROJECT_ID && !flags.includes('--prod')) {
 }
 Object.assign(process.env, env)
 
-const { Query } = await import('node-appwrite')
-const { createAdminClient } = await import('../src/lib/appwrite/client')
-const { DB_ID, COLLECTIONS, BUCKETS } = await import('../src/lib/appwrite/config')
-const { listAllDocuments, listAllByValues } = await import('../src/lib/appwrite/list-all')
-const { cvSearchDocument } = await import('../src/lib/search/cv-search')
-const meili = await import('../src/lib/search/meili')
-type Classification = import('../src/lib/cv-classification').CvClassification
+const { cvIndexUid } = await import('../src/lib/search/meili')
+const { applyCvIndexSync, planCvIndexSync } = await import('../src/lib/search/sync')
 
-const { databases, storage } = createAdminClient()
-const classifications = await listAllDocuments(databases, DB_ID, COLLECTIONS.CV_CLASSIFICATIONS, [
-  Query.select(['$id', 'kind', 'sourceId', 'tenantId', 'ownerId', 'data']),
-])
-// Rôle et désinscription des candidats et profils de chasseurs (filtres de l'index), lus d'un coup.
-const userIds = classifications.filter(d => d.kind === 'candidate').map(d => String(d.sourceId))
-const users = await listAllByValues(databases, DB_ID, COLLECTIONS.USERS, '$id', userIds, [Query.select(['$id', '$updatedAt', 'role', 'optedOutOfOutreach', 'cvFileId'])])
-const userById = new Map(users.map(u => [u.$id, u]))
-// Dates de dépôt (fraîcheur et tendances des statistiques) : CV des candidats d'après leur fichier, lus en une liste du
-// bucket plutôt qu'un appel par CV ; CV des viviers d'après leur import ; profil sans fichier : sa dernière modification.
-const fileDates = new Map<string, string>()
-for (let cursor: string | undefined; ;) {
-  const page = await storage.listFiles(BUCKETS.CVS, [Query.limit(100), ...(cursor ? [Query.cursorAfter(cursor)] : [])])
-  for (const f of page.files) fileDates.set(f.$id, f.$createdAt)
-  if (page.files.length < 100) break
-  cursor = page.files[page.files.length - 1].$id
-}
-const vivierIds = classifications.filter(d => d.kind === 'vivier').map(d => String(d.sourceId))
-const viviers = await listAllByValues(databases, DB_ID, COLLECTIONS.VIVIER_CVS, '$id', vivierIds, [Query.select(['$id', '$createdAt'])])
-const vivierDate = new Map(viviers.map(v => [v.$id, v.$createdAt]))
-
-let unreadable = 0
-const docs = classifications.flatMap(d => {
-  let classification: Classification
-  try { classification = JSON.parse(String(d.data)) as Classification } catch { unreadable++; return [] }
-  const kind = d.kind === 'vivier' ? 'vivier' as const : 'candidate' as const
-  const user = kind === 'candidate' ? userById.get(String(d.sourceId)) : undefined
-  // Candidat supprimé entre-temps : pas indexé (sa classification sera effacée par npm run cv:classify).
-  if (kind === 'candidate' && !user) return []
-  return [cvSearchDocument({
-    id: d.$id, kind, sourceId: String(d.sourceId), tenantId: String(d.tenantId ?? ''), ownerId: String(d.ownerId ?? ''),
-    role: kind === 'vivier' ? 'vivier' : String(user?.role ?? ''), optedOut: user?.optedOutOfOutreach === true, classification,
-    cvDate: kind === 'vivier' ? vivierDate.get(String(d.sourceId)) ?? null
-      : user?.cvFileId ? fileDates.get(String(user.cvFileId)) ?? null : user?.$updatedAt ?? null,
-  })]
-})
-const wanted = new Set(docs.map(d => d.id))
-let indexed: string[] = []
-try {
-  indexed = await meili.listCvDocumentIds()
-} catch (err) {
-  // Index pas encore créé : tout est à écrire.
-  if (!(err instanceof meili.MeiliError && err.status === 404)) throw err
-}
-const stale = indexed.filter(id => !wanted.has(id))
-
-console.log(`Projet ${env.APPWRITE_PROJECT_ID} — index « ${meili.cvIndexUid()} » : ${indexed.length} documents.`)
-const undated = docs.filter(d => d.cvDate === null).length
-console.log(`CV classés à écrire : ${docs.length}${undated ? ` (${undated} sans date de dépôt connue)` : ''}${unreadable ? ` (${unreadable} classification(s) illisible(s) ignorée(s))` : ''} · documents à retirer : ${stale.length}`)
+const plan = await planCvIndexSync()
+console.log(`Projet ${env.APPWRITE_PROJECT_ID} — index « ${cvIndexUid()} » : ${plan.indexed} documents.`)
+console.log(`CV classés à écrire : ${plan.docs.length}${plan.undated ? ` (${plan.undated} sans date de dépôt connue)` : ''}${plan.unreadable ? ` (${plan.unreadable} classification(s) illisible(s) ignorée(s))` : ''} · documents à retirer : ${plan.stale.length}`)
 if (!apply) {
   console.log('Simulation : rien n\'est modifié. Ajoutez --apply pour le faire.')
   process.exit(0)
 }
 
-await meili.waitForTask(await meili.applyCvIndexSettings(), 120_000)
-console.log('Réglages de l\'index appliqués.')
-for (let i = 0; i < docs.length; i += BATCH) {
-  await meili.waitForTask(await meili.upsertCvDocuments(docs.slice(i, i + BATCH)), 120_000)
-  console.log(`… ${Math.min(i + BATCH, docs.length)} / ${docs.length} écrits`)
-}
-for (let i = 0; i < stale.length; i += BATCH) {
-  await meili.waitForTask(await meili.deleteCvDocuments(stale.slice(i, i + BATCH)), 120_000)
-}
-console.log(`Terminé : ${docs.length} écrits, ${stale.length} retirés.`)
+const { written, removed } = await applyCvIndexSync(plan, (done, total) => console.log(`… ${done} / ${total} écrits`))
+console.log(`Terminé : réglages de l'index appliqués, ${written} écrits, ${removed} retirés.`)

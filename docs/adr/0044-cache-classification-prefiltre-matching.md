@@ -150,8 +150,13 @@ Mise en œuvre (2026-11-18, phase 2 a) :
   le propriétaire, le rôle, la désinscription ; **ni nom ni coordonnée**), réglages (champs cherchés : métiers,
   compétences, certifications, résumé, clients ; français ; synonymes des sigles courants), filtres.
 - **Mise à jour** : un CV classé entre dans l'index (`indexClassifiedCv`), une classification effacée en sort
-  (`removeCvFromIndex`), sans bloquer ; `npm run search:sync -- <env> [--apply] [--prod]` applique les réglages et remet
-  l'index d'accord avec `cv_classifications` (idempotent).
+  (`removeCvFromIndex`), sans bloquer ; la synchronisation (`src/lib/search/sync.ts`) applique les réglages et remet
+  l'index d'accord avec `cv_classifications` (idempotent). Elle tourne **sur le serveur** (2026-11-18, demande de
+  l'utilisateur : Meilisearch n'est joignable que depuis l'application, sur le réseau Docker interne) : route
+  `/api/cron/search-sync` (`CRON_SECRET`), chaque nuit (`deploy/crontab`, 04:15 UTC) et à la demande
+  (`sudo -u deploy …/deploy/mbc-cron.sh search-sync`) ; `npm run search:sync -- <env> [--apply] [--prod]` reste pour un
+  poste qui joint Meilisearch (local). `npm run cv:classify` n'écrit pas l'index (chaque CV aurait échoué depuis un poste) :
+  la synchronisation suivante le fait.
 - **Préfiltre de la base candidats** (`prefilterPool`, `src/lib/search/prefilter.ts`) : une requête pour le titre de
   l'offre et une par compétence demandée (12 au plus), filtrées (candidats, non désinscrits, hors candidats qui ont
   postulé ou déjà notés) ; résultats réunis puis classés par un **pré-score du code** (métier 45 %, compétences 45 %,
@@ -179,8 +184,8 @@ ordres, bornes).
 
 **Fraîcheur et tendances** (2026-11-18, même jour) : chaque document de l'index porte la **date de dépôt du CV**
 (`cvDate`, `cvMonth`) — fichier du CV actuel d'un candidat (date du fichier dans le stockage), import d'un CV du vivier,
-dernière modification d'un profil sans fichier (`cvDateOf`, `src/lib/cv-classify.ts` ; `search:sync` lit les dates de
-tout le bucket des CV en une liste). La date de classement n'aurait rien dit : le rattrapage classe tous les CV le même
+dernière modification d'un profil sans fichier (`cvDateOf`, `src/lib/cv-classify.ts` ; la synchronisation lit les dates
+de tout le bucket des CV en une liste). La date de classement n'aurait rien dit : le rattrapage classe tous les CV le même
 jour. La page ajoute : la part des CV de moins d'un an (chiffre clé), les CV déposés chaque mois sur 12 mois (colonnes,
 tableau pour les lecteurs d'écran), la fraîcheur (moins de 3 mois, 3 à 12 mois, 1 à 2 ans, plus de 2 ans, date
 inconnue) et les **compétences en hausse** : part des CV de moins de 6 mois qui les citent comparée à celle des plus
@@ -215,7 +220,8 @@ l'index n'est pas configuré. Comptes agrégés, aucun nom. Essayé en local ave
 - Gain du cache de prompt à vérifier en production : `usage.cache_read_input_tokens` des réponses de Claude (non
   journalisé aujourd'hui). Le préfixe dépasse le minimum de mise en cache des modèles Claude actuels (≈ 1 500 jetons de
   consignes, plus l'offre).
-- Après un déploiement qui change les réglages de l'index (`CV_INDEX_SETTINGS`, ex. phase 3) : `npm run search:sync
-  -- <env> --apply` les applique (sinon les statistiques des métiers et compétences restent vides).
+- Après un déploiement qui change les réglages de l'index (`CV_INDEX_SETTINGS`, ex. phase 3) : la synchronisation de la
+  nuit les applique ; tout de suite : `sudo -u deploy …/deploy/mbc-cron.sh search-sync` sur le serveur (sinon les
+  statistiques des métiers et compétences restent vides jusque-là).
 - Phases 2 et 3 : un service de plus sur le VPS (mémoire, sauvegarde, mise à jour), décidé quand la phase 1 aura donné
   ses chiffres.
