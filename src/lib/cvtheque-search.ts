@@ -83,16 +83,36 @@ export function parseQuery(text: string): string[][] {
     }
     if (!quoted && (term === 'AND' || term === 'ET')) continue
     const t = normalizeText(term)
-    if (t) groups[groups.length - 1].push(t)
+    // Terme sans lettre ni chiffre (« / », « & ») : ignoré, il répondrait à tous les profils (exclusion « stagiaire /
+    // alternant » qui viderait la liste).
+    if (words(t).length > 0) groups[groups.length - 1].push(t)
   }
   return groups.filter(g => g.length > 0)
 }
 
-/** `text` répond à la recherche `groups` (aucune recherche : oui). */
+/**
+ * Mots d'un texte normalisé : lettres, chiffres, « + » et « # » (C++, C#) ; tout le reste sépare (« Node.js » = node, js).
+ * Comparer des mots et non des morceaux de texte (demande du PO, 2026-11-18) : « Java » ne trouve plus « JavaScript ».
+ */
+export function words(s: string): string[] {
+  return normalizeText(s).split(/[^\p{L}\p{N}+#]+/u).filter(Boolean)
+}
+
+/** Les mots de `term` se suivent dans `haystack` (« react native » dans « développeur react native mobile »). */
+export function hasPhrase(haystack: string[], term: string): boolean {
+  const needle = words(term)
+  if (needle.length === 0) return true
+  for (let i = 0; i + needle.length <= haystack.length; i++) {
+    if (needle.every((w, j) => haystack[i + j] === w)) return true
+  }
+  return false
+}
+
+/** `text` répond à la recherche `groups` (aucune recherche : oui), terme par terme en mots entiers. */
 export function matchesQuery(text: string, groups: string[][]): boolean {
   if (groups.length === 0) return true
-  const h = normalizeText(text)
-  return groups.some(g => g.every(term => h.includes(term)))
+  const h = words(text)
+  return groups.some(g => g.every(term => hasPhrase(h, term)))
 }
 
 /** Tout le texte d'un profil que la barre de recherche peut viser, lieu étendu (« Tunisie » trouve « Sousse »). */
@@ -117,11 +137,11 @@ export function filterCandidates<T extends SearchableCandidate>(list: T[], f: Cv
   const titleQuery = parseQuery(f.titleQuery)
   const experienceQuery = parseQuery(f.experienceQuery)
   const locations = f.location.trim() ? expandLocationSearch(f.location) : null
-  const skills = f.skills.map(normalizeText)
+  const skills = f.skills.filter(s => words(s).length > 0)
   const sectors = new Set(f.sectors.map(normalizeText))
-  const languages = f.languages.map(normalizeText)
-  const company = normalizeText(f.company)
-  const school = normalizeText(f.school)
+  const languages = f.languages.filter(l => words(l).length > 0)
+  const company = words(f.company).length > 0 ? f.company : ''
+  const school = words(f.school).length > 0 ? f.school : ''
   const since = f.addedWithinDays > 0 ? now.getTime() - f.addedWithinDays * DAY_MS : null
 
   return list.filter(c => {
@@ -135,16 +155,16 @@ export function filterCandidates<T extends SearchableCandidate>(list: T[], f: Cv
       if (!loc || !locations.some(l => loc.includes(l) || l.includes(loc))) return false
     }
     if (skills.length > 0) {
-      const own = c.skills.map(normalizeText)
-      if (!skills.every(s => own.some(o => o.includes(s)))) return false
+      const own = c.skills.map(words)
+      if (!skills.every(s => own.some(o => hasPhrase(o, s)))) return false
     }
     if (sectors.size > 0 && !c.desiredSector.some(s => sectors.has(normalizeText(s)))) return false
     if (languages.length > 0) {
-      const own = c.languages.map(l => normalizeText(l.name))
-      if (!languages.every(l => own.some(o => o.includes(l)))) return false
+      const own = c.languages.map(l => words(l.name))
+      if (!languages.every(l => own.some(o => hasPhrase(o, l)))) return false
     }
-    if (company && !c.experiences.some(e => normalizeText(e.company).includes(company))) return false
-    if (school && !c.education.some(e => normalizeText(`${e.degree} ${e.school}`).includes(school))) return false
+    if (company && !c.experiences.some(e => hasPhrase(words(e.company), company))) return false
+    if (school && !c.education.some(e => hasPhrase(words(`${e.degree} ${e.school}`), school))) return false
     if (titleQuery.length > 0 && !matchesQuery([...c.desiredRoles, ...c.experiences.map(e => e.title)].join(' | '), titleQuery)) return false
     if (experienceQuery.length > 0 && !matchesQuery(experiencesText(c), experienceQuery)) return false
     const text = profileText(c)
@@ -177,4 +197,125 @@ export function valuesByFrequency(lists: string[][], limit = 300): string[] {
     }
   }
   return [...counts.values()].sort((a, b) => b.n - a.n || a.label.localeCompare(b.label, 'fr')).slice(0, limit).map(e => e.label)
+}
+
+// ── Filtres dans l'adresse et dans une recherche enregistrée (ADR 0045) ──────────────────────────────────────────────
+// Une recherche enregistrée garde exactement les filtres de la liste : rouverte, elle redonne la même liste, et les
+// alertes appliquent la même règle (filterCandidates) aux nouveaux candidats. Les deux sources (adresse, document
+// enregistré) sont lues comme non fiables : longueurs et nombres de valeurs bornés, valeurs inconnues ignorées.
+
+const MAX_QUERY = 300
+const MAX_FIELD = 200
+const MAX_VALUE = 80
+const MAX_VALUES = 20
+
+const clip = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '')
+const values = (v: unknown) => {
+  const list = Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of list) {
+    const value = raw.trim().slice(0, MAX_VALUE)
+    if (value && !seen.has(normalizeText(value))) {
+      seen.add(normalizeText(value))
+      out.push(value)
+    }
+    if (out.length === MAX_VALUES) break
+  }
+  return out
+}
+function range(v: unknown, max: number): [number, number] {
+  const [lo, hi] = Array.isArray(v) ? v : []
+  const int = (x: unknown, fallback: number) => (typeof x === 'number' && Number.isFinite(x) ? Math.min(max, Math.max(0, Math.round(x))) : fallback)
+  const a = int(lo, 0)
+  const b = int(hi, max)
+  return a <= b ? [a, b] : [b, a]
+}
+
+/** Filtres tirés d'une valeur non fiable (JSON d'une recherche enregistrée, saisie d'une action). */
+export function sanitizeFilters(raw: unknown): CvthequeFilters {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const added = r.addedWithinDays === 7 || r.addedWithinDays === 30 ? r.addedWithinDays : 0
+  return {
+    query: clip(r.query, MAX_QUERY), exclude: clip(r.exclude, MAX_QUERY), availableOnly: r.availableOnly === true, addedWithinDays: added,
+    experience: range(r.experience, EXPERIENCE_MAX), radius: range(r.radius, RADIUS_MAX), location: clip(r.location, MAX_FIELD),
+    skills: values(r.skills), sectors: values(r.sectors), languages: values(r.languages), company: clip(r.company, MAX_FIELD),
+    school: clip(r.school, MAX_FIELD), titleQuery: clip(r.titleQuery, MAX_FIELD), experienceQuery: clip(r.experienceQuery, MAX_FIELD),
+  }
+}
+
+/** Paramètres de l'adresse qui portent les filtres (les autres, comme `recherche`, sont gardés tels quels). */
+const PARAMS = ['q', 'exclure', 'dispo', 'ajout', 'exp', 'rayon', 'lieu', 'competence', 'secteur', 'langue', 'entreprise', 'ecole', 'intitule', 'experiences'] as const
+
+function rangeParam(v: string | null): [number, number] | undefined {
+  const m = v?.match(/^(\d{1,3})-(\d{1,3})$/)
+  return m ? [Number(m[1]), Number(m[2])] : undefined
+}
+
+/** Filtres lus dans l'adresse de la CV Thèque. */
+export function filtersFromSearchParams(sp: URLSearchParams): CvthequeFilters {
+  const ajout = Number(sp.get('ajout'))
+  return sanitizeFilters({
+    query: sp.get('q') ?? '', exclude: sp.get('exclure') ?? '', availableOnly: sp.get('dispo') === '1', addedWithinDays: ajout,
+    experience: rangeParam(sp.get('exp')), radius: rangeParam(sp.get('rayon')), location: sp.get('lieu') ?? '',
+    skills: sp.getAll('competence'), sectors: sp.getAll('secteur'), languages: sp.getAll('langue'), company: sp.get('entreprise') ?? '',
+    school: sp.get('ecole') ?? '', titleQuery: sp.get('intitule') ?? '', experienceQuery: sp.get('experiences') ?? '',
+  })
+}
+
+/** Copie de `sp` avec les filtres `f` (valeurs par défaut omises : une liste sans filtre a une adresse nue). */
+export function withFilters(sp: URLSearchParams, f: CvthequeFilters): URLSearchParams {
+  const next = new URLSearchParams(sp)
+  for (const key of PARAMS) next.delete(key)
+  const set = (key: string, value: string) => { if (value.trim()) next.set(key, value) }
+  set('q', f.query)
+  set('exclure', f.exclude)
+  if (f.availableOnly) next.set('dispo', '1')
+  if (f.addedWithinDays > 0) next.set('ajout', String(f.addedWithinDays))
+  if (f.experience[0] > 0 || f.experience[1] < EXPERIENCE_MAX) next.set('exp', f.experience.join('-'))
+  if (f.radius[0] > 0 || f.radius[1] < RADIUS_MAX) next.set('rayon', f.radius.join('-'))
+  set('lieu', f.location)
+  for (const v of f.skills) next.append('competence', v)
+  for (const v of f.sectors) next.append('secteur', v)
+  for (const v of f.languages) next.append('langue', v)
+  set('entreprise', f.company)
+  set('ecole', f.school)
+  set('intitule', f.titleQuery)
+  set('experiences', f.experienceQuery)
+  return next
+}
+
+/**
+ * Une recherche à enregistrer doit demander quelque chose : sans critère qui retient des profils (seulement « disponibles
+ * », « ajoutés depuis » ou une exclusion), chaque nouveau candidat déclencherait une alerte.
+ */
+export function hasSearchCriteria(f: CvthequeFilters): boolean {
+  return [
+    f.query, f.location, f.company, f.school, f.titleQuery, f.experienceQuery,
+  ].some(v => words(v).length > 0) || f.skills.length > 0 || f.sectors.length > 0 || f.languages.length > 0
+    || f.experience[0] > 0 || f.experience[1] < EXPERIENCE_MAX || f.radius[0] > 0 || f.radius[1] < RADIUS_MAX
+}
+
+const rangeText = ([lo, hi]: [number, number], max: number, unit: string) =>
+  hi >= max ? `${lo} ${unit} et plus` : lo === 0 ? `jusqu’à ${hi} ${unit}` : `${lo} à ${hi} ${unit}`
+
+/** Critères d'une recherche en lignes lisibles (page des alertes, e-mail). */
+export function filtersSummary(f: CvthequeFilters): string[] {
+  const out: string[] = []
+  const add = (label: string, value: string) => { if (value.trim()) out.push(`${label} : ${value.trim()}`) }
+  add('Recherche', f.query)
+  add('Intitulé', f.titleQuery)
+  add('Compétences', f.skills.join(', '))
+  if (f.experience[0] > 0 || f.experience[1] < EXPERIENCE_MAX) out.push(`Expérience : ${rangeText(f.experience, EXPERIENCE_MAX, 'ans')}`)
+  add('Lieu', f.location)
+  if (f.radius[0] > 0 || f.radius[1] < RADIUS_MAX) out.push(`Mobilité : ${rangeText(f.radius, RADIUS_MAX, 'km')}`)
+  add('Langues', f.languages.join(', '))
+  add('Secteurs', f.sectors.join(' ou '))
+  add('Entreprise', f.company)
+  add('Formation', f.school)
+  add('Expériences', f.experienceQuery)
+  if (f.availableOnly) out.push('Disponibles seulement')
+  if (f.addedWithinDays > 0) out.push(`Ajoutés depuis ${f.addedWithinDays} jours`)
+  add('Sans', f.exclude)
+  return out
 }

@@ -1,5 +1,6 @@
 'use server'
 
+import { deleteSavedSearchesOf } from '@/lib/saved-searches-store'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
@@ -140,6 +141,15 @@ export async function deleteUserAccount(authId: string, listedProfileId: string 
       console.error('[mbc-search] suppression des personnes enregistrées en échec', e instanceof Error ? e.message : String(e))
       return { error: 'Compte non supprimé : la suppression de ses personnes enregistrées dans MBC Search a échoué. Réessayez.' }
     }
+    // Recherches enregistrées de la CV Thèque (ADR 0045), même règle : avant le compte.
+    if (profileId) {
+      try {
+        await deleteSavedSearchesOf(profileId)
+      } catch (e) {
+        console.error('[recherches] suppression des recherches enregistrées en échec', e instanceof Error ? e.message : String(e))
+        return { error: 'Compte non supprimé : la suppression de ses recherches enregistrées a échoué. Réessayez.' }
+      }
+    }
     // CV au format ESN enregistrés pour ce candidat (RGPD), même règle : avant le compte.
     const hasCvExports = isCvExportStorageConfigured()
     if (profileId && hasCvExports) {
@@ -163,6 +173,11 @@ export async function deleteUserAccount(authId: string, listedProfileId: string 
     // Même raison pour une personne enregistrée dans MBC Search pendant la suppression (gardée sans limite de durée :
     // un échec ici laisse des documents mbc_saved_people de ce compte, à supprimer à la main).
     await deleteSavedPeopleForUser(authId).catch(e => console.error('[mbc-search] second passage de suppression des personnes enregistrées en échec, à supprimer à la main', e instanceof Error ? e.message : String(e)))
+    // Même raison pour une recherche enregistrée pendant la suppression (un échec laisse des documents saved_searches de ce
+    // profil, à supprimer à la main ; sans auteur, elle n'envoie plus rien).
+    if (profileId) {
+      await deleteSavedSearchesOf(profileId).catch(e => console.error('[recherches] second passage de suppression en échec, à supprimer à la main', e instanceof Error ? e.message : String(e)))
+    }
     if (profileId) {
       try {
         await databases.deleteDocument(DB_ID, COLLECTIONS.USERS, profileId)

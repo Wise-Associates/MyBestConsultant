@@ -7,3 +7,5 @@
 0 6 * * * /bin/bash /opt/mybestconsultant/repo/deploy/mbc-cron.sh ao-inbox
 # Index de recherche des CV (ADR 0044) : rattrape les CV non indexés, retire ceux supprimés ; sans index installé, ne fait rien.
 15 4 * * * /bin/bash /opt/mybestconsultant/repo/deploy/mbc-cron.sh search-sync
+# Alertes des recherches enregistrées de la CV Thèque (ADR 0046) : rattrapage toutes les 10 minutes.
+*/10 * * * * /bin/bash /opt/mybestconsultant/repo/deploy/mbc-cron.sh recruiter-alerts

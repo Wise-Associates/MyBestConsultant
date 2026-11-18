@@ -1,6 +1,9 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { EMPTY_FILTERS, EXPERIENCE_MAX, RADIUS_MAX, activeFilterCount, filterCandidates, matchesQuery, parseQuery, valuesByFrequency, type SearchableCandidate } from './cvtheque-search'
+import {
+  EMPTY_FILTERS, EXPERIENCE_MAX, RADIUS_MAX, activeFilterCount, filterCandidates, filtersFromSearchParams, filtersSummary, hasPhrase, hasSearchCriteria,
+  matchesQuery, parseQuery, sanitizeFilters, valuesByFrequency, withFilters, words, type CvthequeFilters, type SearchableCandidate,
+} from './cvtheque-search'
 
 // Profils fictifs.
 const base: SearchableCandidate = {
@@ -98,5 +101,86 @@ describe('CV Thèque : compteur et propositions', () => {
 
   it('propose les valeurs les plus fréquentes d\'abord, une fois par profil', () => {
     assert.deepEqual(valuesByFrequency([['Java', 'java', 'SQL'], ['React', 'Java'], ['React']]), ['Java', 'React', 'SQL'])
+  })
+})
+
+describe('CV Thèque : mots entiers (demande du PO, 2026-11-18)', () => {
+  it('découpe en mots, ponctuation comme séparateur, C++ et C# gardés', () => {
+    assert.deepEqual(words('Node.js, C++ / C#'), ['node', 'js', 'c++', 'c#'])
+    assert.deepEqual(words('Développeur Back-End'), ['developpeur', 'back', 'end'])
+  })
+
+  it('cherche une suite de mots, jamais un morceau de mot', () => {
+    assert.equal(hasPhrase(words('Développeur React Native'), 'react native'), true)
+    assert.equal(hasPhrase(words('JavaScript'), 'java'), false)
+    assert.equal(hasPhrase(words('Node.js'), 'node'), true)
+    assert.equal(hasPhrase(words('C++'), 'c'), false)
+    assert.equal(matchesQuery('JavaScript et TypeScript', parseQuery('java')), false)
+  })
+
+  it('ignore un terme sans lettre ni chiffre, qui répondrait à tous les profils', () => {
+    assert.deepEqual(parseQuery('stagiaire / alternant'), [['stagiaire', 'alternant']])
+    assert.deepEqual(names({ exclude: 'stagiaire / alternant' }), ['Camille Durand', 'Hugo Martin'])
+    assert.deepEqual(names({ company: '&' }), ['Camille Durand', 'Hugo Martin'])
+    assert.deepEqual(names({ school: '.' }), ['Camille Durand', 'Hugo Martin'])
+  })
+
+  it('distingue C, C++ et C#, et ne confond pas un mot avec son pluriel', () => {
+    assert.equal(hasPhrase(words('C#, .NET'), 'c#'), true)
+    assert.equal(hasPhrase(words('C++'), 'c#'), false)
+    assert.equal(hasPhrase(words('Développeurs Java'), 'développeur'), false)
+  })
+
+  it('« Java » ne retient plus un profil JavaScript', () => {
+    const js: SearchableCandidate = { ...base, name: 'Profil JS', skills: ['JavaScript'], experiences: [], experienceSummary: '', desiredRoles: [] }
+    assert.deepEqual(filterCandidates([base, js], { ...EMPTY_FILTERS, skills: ['Java'] }, now).map(c => c.name), ['Camille Durand'])
+    assert.deepEqual(filterCandidates([base, js], { ...EMPTY_FILTERS, query: 'java' }, now).map(c => c.name), ['Camille Durand'])
+  })
+})
+
+describe('CV Thèque : filtres dans l\'adresse et recherches enregistrées', () => {
+  const full: CvthequeFilters = {
+    query: 'revit OR archicad', exclude: 'stage', availableOnly: true, addedWithinDays: 30, experience: [5, EXPERIENCE_MAX], radius: [0, 50],
+    location: 'Madagascar', skills: ['Revit', 'Architecture'], sectors: ['BTP'], languages: ['Anglais'], company: 'Exemple', school: 'Master',
+    titleQuery: 'modeleur BIM', experienceQuery: 'maquette',
+  }
+
+  it('relit dans l\'adresse exactement les filtres écrits', () => {
+    assert.deepEqual(filtersFromSearchParams(withFilters(new URLSearchParams(), full)), full)
+    assert.equal(withFilters(new URLSearchParams(), EMPTY_FILTERS).toString(), '')
+  })
+
+  it('garde les autres paramètres de l\'adresse', () => {
+    assert.equal(withFilters(new URLSearchParams('recherche=abc&q=old'), { ...EMPTY_FILTERS, query: 'java' }).toString(), 'recherche=abc&q=java')
+  })
+
+  it('borne une valeur non fiable et ignore ce qu\'il ne connaît pas', () => {
+    const f = sanitizeFilters({
+      query: 'x'.repeat(1000), skills: ['Java', 'java', 42, ...Array.from({ length: 40 }, (_, i) => `S${i}`)], experience: [12, 3],
+      radius: [-5, 999], addedWithinDays: 12, availableOnly: 'oui', hack: true,
+    })
+    assert.equal(f.query.length, 300)
+    assert.equal(f.skills.length, 20)
+    assert.deepEqual(f.skills.slice(0, 2), ['Java', 'S0'])
+    assert.deepEqual(f.experience, [3, 12])
+    assert.deepEqual(f.radius, [0, RADIUS_MAX])
+    assert.equal(f.addedWithinDays, 0)
+    assert.equal(f.availableOnly, false)
+    assert.deepEqual(sanitizeFilters(null), EMPTY_FILTERS)
+    assert.deepEqual(filtersFromSearchParams(new URLSearchParams('exp=abc&ajout=7')), { ...EMPTY_FILTERS, addedWithinDays: 7 })
+  })
+
+  it('refuse d\'enregistrer une recherche qui retiendrait tout le monde', () => {
+    assert.equal(hasSearchCriteria(EMPTY_FILTERS), false)
+    assert.equal(hasSearchCriteria({ ...EMPTY_FILTERS, availableOnly: true, addedWithinDays: 7, exclude: 'stage', query: ' ' }), false)
+    assert.equal(hasSearchCriteria({ ...EMPTY_FILTERS, skills: ['Revit'] }), true)
+    assert.equal(hasSearchCriteria({ ...EMPTY_FILTERS, experience: [5, EXPERIENCE_MAX] }), true)
+  })
+
+  it('résume les critères en lignes lisibles', () => {
+    assert.deepEqual(filtersSummary({ ...EMPTY_FILTERS, skills: ['Revit', 'Architecture'], experience: [5, EXPERIENCE_MAX], location: 'Madagascar', languages: ['Anglais'] }), [
+      'Compétences : Revit, Architecture', 'Expérience : 5 ans et plus', 'Lieu : Madagascar', 'Langues : Anglais',
+    ])
+    assert.deepEqual(filtersSummary({ ...EMPTY_FILTERS, radius: [0, 30] }), ['Mobilité : jusqu’à 30 km'])
   })
 })

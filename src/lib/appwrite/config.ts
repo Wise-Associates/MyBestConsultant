@@ -44,6 +44,9 @@ export const COLLECTIONS = {
   SCORE_CACHE: process.env.APPWRITE_COLLECTION_SCORE_CACHE ?? '',
   // Classifications des CV (ADR 0044) ; vide : pas de classification (rien d'autre ne change).
   CV_CLASSIFICATIONS: process.env.APPWRITE_COLLECTION_CV_CLASSIFICATIONS ?? '',
+  // Alertes « profil idéal » des recruteurs (ADR 0045) ; vide : aucune alerte ni e-mail, la page « Alertes » le dit.
+  RECRUITER_ALERTS: process.env.APPWRITE_COLLECTION_RECRUITER_ALERTS ?? '',
+  SAVED_SEARCHES: process.env.APPWRITE_COLLECTION_SAVED_SEARCHES ?? '',
   CV_EXPORTS: process.env.APPWRITE_COLLECTION_CV_EXPORTS!,
   CV_TEMPLATES: process.env.APPWRITE_COLLECTION_CV_TEMPLATES!,
   VEILLE_CONFIG: process.env.APPWRITE_COLLECTION_VEILLE_CONFIG!,

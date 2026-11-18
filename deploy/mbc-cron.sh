@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tâches planifiées de MyBestConsultant sur le VPS (ADR 0027) : appelle une route /api/cron/* du site avec
 # CRON_SECRET, comme le faisait Vercel Cron. Lancé par la crontab de l'utilisateur deploy (deploy/crontab).
-#   mbc-cron.sh ao-inbox | deactivate-expired-jobs | assistant-purge | search-sync
+#   mbc-cron.sh ao-inbox | deactivate-expired-jobs | assistant-purge | search-sync | recruiter-alerts
 # À la demande sur le serveur (même effet que la crontab) : sudo -u deploy /opt/mybestconsultant/repo/deploy/mbc-cron.sh search-sync
 # Résultats dans le journal du système : journalctl -t mbc-cron
 set -euo pipefail
@@ -13,9 +13,9 @@ job=${1:-}
 log() { logger --stderr --tag mbc-cron -- "$*"; }
 
 case $job in
-  ao-inbox | deactivate-expired-jobs | assistant-purge | search-sync) ;;
+  ao-inbox | deactivate-expired-jobs | assistant-purge | search-sync | recruiter-alerts) ;;
   *)
-    log "tâche inconnue « $job » (ao-inbox, deactivate-expired-jobs, assistant-purge ou search-sync)"
+    log "tâche inconnue « $job » (ao-inbox, deactivate-expired-jobs, assistant-purge, search-sync ou recruiter-alerts)"
     exit 2
     ;;
 esac

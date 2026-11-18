@@ -1,5 +1,7 @@
 'use server'
 
+import { after } from 'next/server'
+import { alertSavedSearches } from '@/lib/saved-searches-store'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
@@ -86,6 +88,8 @@ export async function scanCandidateCv(candidateId: string): Promise<{ ok?: boole
     await databases.updateDocument(DB_ID, COLLECTIONS.USERS, candidateId, {
       cvProfileJson: JSON.stringify({ ...existing, ...profile }),
     })
+    // Profil relu : peut maintenant répondre à une recherche enregistrée d'un recruteur (ADR 0045), après la réponse.
+    after(() => alertSavedSearches(candidateId, { newCv: false }))
 
     revalidatePath('/admin/cvtheque')
     return { ok: true }

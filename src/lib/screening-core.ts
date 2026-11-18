@@ -9,6 +9,7 @@ import { aiInterviewDenial } from '@/lib/interview-access'
 import { viewerCanSeeApplication, type OfferViewer } from '@/lib/job-ownership'
 import { recommendationFor, type Judgement } from '@/lib/match-scoring'
 import { withRecommendationBonus } from '@/lib/recommendation-boost'
+import { alertIdealCandidates } from '@/lib/recruiter-alerts-store'
 import { cvScorer, finalOfferDetails, readCvForScoring } from '@/lib/sourcing-core'
 
 // Notation des candidatures (screening manuel et automatique) et contrôle d'accès à une candidature. Hors des fichiers
@@ -246,6 +247,13 @@ export async function autoScreenApplication(applicationId: string, { notify = tr
     // E-mail à la première analyse seulement : une analyse relancée (« Relancer le matching ») ne le renvoie pas.
     if (notify && result.score >= 70 && appDoc.aiScore == null) {
       try { await sendAutoScreeningEmail(applicationId, result) } catch { /* non-blocking */ }
+    }
+    // Profil idéal : le recruteur de l'offre est prévenu (ADR 0044). Pas pour un candidat qu'il vient lui-même d'ajouter
+    // au funnel depuis le Matching IA (`notify: false`).
+    if (notify) {
+      await alertIdealCandidates([{
+        jobId: appDoc.jobId as string, source: 'candidature', subjectId: applicationId, candidateId: appDoc.candidateId as string, score: result.score,
+      }])
     }
 
     revalidatePath('/recruiter/screening')
