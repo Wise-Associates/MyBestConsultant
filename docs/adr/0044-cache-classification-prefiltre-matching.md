@@ -233,6 +233,15 @@ ouverte) ; le nombre d'une branche est un lien posé à côté de son `<summary>
 dans son bloc, le reste de la page s'affiche. Les adresses `champ=famille` / `champ=metier` de la veille sont remplacées
 par `champ=arbre&famille=…&metier=…&competence=…`.
 
+**Candidats en recherche** (2026-11-19, demande de l'utilisateur : candidats en recherche sur le total) : chiffre clé de
+la base candidats seulement (page des recruteurs et périmètre « Base candidats » de l'admin), « N sur M candidats avec
+CV (x %) ». Compté dans Appwrite et non dans l'index : la case « En recherche de mission » du profil (`openToWork`)
+change sans nouveau classement du CV, l'index ne la verrait qu'à la synchronisation de la nuit ; aucun réglage de l'index
+ni synchronisation à lancer. M = candidats avec un fichier de CV (ceux de la CV Thèque, classés ou non), N = M moins
+ceux qui ont décoché la case : une valeur absente compte « en recherche », comme le profil et la CV Thèque
+(`notSeekingOf`, `cv-stats-store.ts`). Pas de liste derrière ce nombre (la liste des profils lit l'index) ; vérifié sur
+DEV (comptes seulement).
+
 **Garde-fou** (revue de sécurité du même jour) : la liste donne nom, e-mail et téléphone de la base candidats, où la CV
 Thèque n'en montre que les 500 plus récents, et l'inscription d'un recruteur est libre ; elle exige donc l'adresse e-mail
 vérifiée et prend une place de quota par page affichée : 100 par organisation (5 000 profils) et 2 000 pour toute la
