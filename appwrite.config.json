@@ -2375,6 +2375,41 @@
                     "size": 1000,
                     "default": null,
                     "encrypt": false
+                },
+                {
+                    "key": "origin",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 10,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "reviewStatus",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 12,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "reviewedAt",
+                    "type": "datetime",
+                    "required": false,
+                    "array": false,
+                    "format": "",
+                    "default": null
+                },
+                {
+                    "key": "reviewedBy",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
                 }
             ],
             "indexes": [
@@ -2384,6 +2419,15 @@
                     "status": "available",
                     "attributes": [
                         "jobId"
+                    ],
+                    "orders": []
+                },
+                {
+                    "key": "candidateId_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "candidateId"
                     ],
                     "orders": []
                 }

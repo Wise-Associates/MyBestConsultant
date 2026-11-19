@@ -23,6 +23,7 @@ import { SCORING_AI } from '@/lib/ai/models'
 import { offerDetails } from '@/lib/match-scoring'
 import { personalScore, type RecruiterWeights } from '@/lib/scoring-weights'
 import { alertIdealCandidates } from '@/lib/recruiter-alerts-store'
+import { parseMatchOrigin, parseReviewStatus, type MatchOrigin, type ReviewStatus } from '@/lib/match-review'
 
 export interface JobMatchResult {
   source: 'pool' | 'vivier' | 'application'
@@ -49,6 +50,13 @@ export interface JobMatchResult {
   vivierOwner?: string
   /** Points ajoutés au score grâce aux recommandations reçues sur des expertises demandées par l'offre. */
   recommendation?: { points: number; matched: { expertise: string; count: number }[] }
+  /** Base candidats (ADR 0047) : trouvé au premier CV du candidat (« Proposé par l'IA ») ou par le Matching IA de l'offre. */
+  origin?: MatchOrigin
+  /** Base candidats : revue du recruteur (nouveau, retenu, contacté, écarté). */
+  review?: ReviewStatus
+  /** Base candidats : ville et compétences du profil, pour la recherche de la page. */
+  city?: string
+  skills?: string[]
 }
 
 /**
@@ -166,8 +174,7 @@ export async function matchVivierCvAgainstJob(jobId: string, vivierCvId: string,
       matchScore: scored.score,
       matchReason: scored.reason.slice(0, 500),
     })
-    // Profil idéal : prévenu, le recruteur qui a importé le CV (un vivier est personnel, ADR 0044).
-    await alertIdealCandidates([{ jobId, source: 'vivier', subjectId: vivierCvId, score: scored.score, recipientId: String(doc.recruiterId ?? '') }])
+    // Pas d'alerte : le recruteur a importé ce CV lui-même (ADR 0047, alertes du vivier retirées).
   } catch (e) {
     // best-effort — a vivier CV stays usable (unscored) even if matching fails
     console.error('[matching] CV du vivier de l\'offre non noté', jobId, vivierCvId, e instanceof Error ? e.message : e)
@@ -215,6 +222,17 @@ const VIVIER_FIELDS = ['$id', '$createdAt', '$updatedAt', 'tenantId', 'jobId', '
 // it (decision of 2026-11-03) — or null for all of the organisation's (platform admin, as on the vivier page).
 // `weights` : poids du recruteur qui regarde (scoring-weights.ts) ; scores recalculés à partir de leurs jugements, puis
 // classés. Absents : scores enregistrés (poids par défaut).
+/** Compétences d'un profil (cvProfileJson), 15 au plus ; profil illisible : aucune. */
+function profileSkills(json: unknown): string[] {
+  if (typeof json !== 'string' || !json) return []
+  try {
+    const skills = (JSON.parse(json) as { skills?: unknown }).skills
+    return Array.isArray(skills) ? skills.filter((x): x is string => typeof x === 'string').slice(0, 15) : []
+  } catch {
+    return [] // profil illisible : la recherche de la page porte alors sur le nom, l'e-mail et la ville
+  }
+}
+
 export async function getJobMatches(
   jobId: string, tenantId: string, vivierOwner: string | null, weights?: RecruiterWeights,
 ): Promise<{ matches: JobMatchResult[]; poolComputedAt: string | null }> {
@@ -241,13 +259,15 @@ export async function getJobMatches(
   ])).map(d => [d.$id, d]))
 
   const candidateIds = [...poolDocs, ...appDocs].map(d => d.candidateId as string)
-  const usersMap = new Map<string, { name: string; email: string; cvFileId?: string; hunterUserId?: string }>()
+  const usersMap = new Map<string, { name: string; email: string; cvFileId?: string; hunterUserId?: string; city: string; skills: string[] }>()
   for (const u of await listAllByValues(databases, DB_ID, COLLECTIONS.USERS, '$id', candidateIds, [])) {
     usersMap.set(u.$id, {
       name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim(),
       email: displayEmail(u),
       cvFileId: u.cvFileId as string | undefined,
       hunterUserId: u.role === 'hunter_profile' ? (u.hunterUserId as string) : undefined,
+      city: typeof u.city === 'string' ? u.city : '',
+      skills: profileSkills(u.cvProfileJson),
     })
   }
 
@@ -295,6 +315,11 @@ export async function getJobMatches(
       cvFileId: info?.cvFileId, cvBucket: 'cvs',
       alreadyInFunnel: applicantCandidateIds.has(d.candidateId as string),
       matchedAt: d.$createdAt,
+      origin: parseMatchOrigin(d.origin),
+      // Revue propre à l'organisation de l'offre : jamais lue sur une offre partagée de la plateforme (ADR 0047).
+      review: jobDoc?.tenantId === tenantId ? parseReviewStatus(d.reviewStatus) : undefined,
+      city: info?.city || undefined,
+      skills: info?.skills.length ? info.skills : undefined,
     }
   })
 

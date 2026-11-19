@@ -1,12 +1,18 @@
 import { createHash } from 'node:crypto'
 
-// Alertes « profil idéal » du recruteur (ADR 0045, demande du 2026-11-18) : un candidat noté IDEAL_SCORE ou plus pour une
-// offre déclenche un e-mail au recruteur concerné, une seule fois par candidat et par offre, et une ligne dans la page
-// « Alertes » (/recruiter/alertes). Règles et contenu de l'e-mail purs, testés dans recruiter-alerts.test.ts ; lecture,
-// écriture et envoi : recruiter-alerts-store.ts.
+// Alertes du recruteur sur ses offres (ADR 0045, seuil et sources revus par l'ADR 0047) : un candidat noté au moins au
+// seuil du recruteur pour une offre déclenche un e-mail au recruteur concerné, une seule fois par candidat et par offre,
+// et une ligne dans la page « Alertes » (/recruiter/alertes). Règles et contenu de l'e-mail purs, testés dans
+// recruiter-alerts.test.ts ; lecture, écriture et envoi : recruiter-alerts-store.ts.
 
-/** Seuil du « profil idéal » : le niveau « top » des recommandations (recommendationFor, match-scoring.ts). */
-export const IDEAL_SCORE = 85
+/** Seuil par défaut, et le plus bas réglable : celui des correspondances IA (AUTO_MATCH_MIN_SCORE, demande du PO). */
+export const ALERT_THRESHOLD_DEFAULT = 70
+/** Seuils proposés au recruteur dans la page « Alertes ». */
+export const ALERT_THRESHOLD_OPTIONS = [70, 75, 80, 85, 90, 95] as const
+
+/** Seuil enregistré dans les préférences du compte ; absent ou hors des choix proposés : le seuil par défaut. */
+export const alertThresholdOf = (pref: unknown): number =>
+  ALERT_THRESHOLD_OPTIONS.find(t => t === pref) ?? ALERT_THRESHOLD_DEFAULT
 
 /**
  * D'où vient le score : une candidature reçue (sujet = candidature), un candidat de la base (sujet = profil du candidat),
@@ -53,9 +59,23 @@ export interface IdealCandidate {
   score: number
   /** Profil (users.$id) du recruteur à prévenir ; absent : le recruteur affecté à l'offre, sinon son auteur. */
   recipientId?: string
+  /** Correspondance trouvée au premier CV du candidat (ADR 0047) : l'e-mail le dit et détaille le score. */
+  highlights?: MatchHighlights
 }
 
-export const isIdealScore = (score: unknown): score is number => typeof score === 'number' && Number.isFinite(score) && score >= IDEAL_SCORE
+/** Détail d'une correspondance IA pour l'e-mail (matchHighlights, ai-matches.ts). */
+export interface MatchHighlights {
+  /** Phrase de l'IA sur le candidat ; '' si la raison n'en a pas. */
+  why: string
+  /** Compétences demandées par l'offre que le candidat a. */
+  skills: string[]
+  /** Critères faibles ou non renseignés, à vérifier (« Langue : non précisé »). */
+  gaps: string[]
+}
+
+/** Score qui peut déclencher une alerte : au moins le plus bas des seuils réglables (le seuil du recruteur est vu ensuite). */
+export const isAlertScore = (score: unknown): score is number =>
+  typeof score === 'number' && Number.isFinite(score) && score >= ALERT_THRESHOLD_DEFAULT
 
 /** Personne visée : un candidat de la plateforme (candidature ou base) ou un CV du vivier. */
 export function alertSubjectKey(candidate: { source: AlertSource; subjectId: string; candidateId?: string }): string {
@@ -87,8 +107,13 @@ export interface IdealCandidateEmailInput {
   jobTitle: string
   score: number
   source: JobAlertSource
-  /** Adresses absolues du profil et de la page des alertes. */
+  /** Seuil du recruteur, rappelé en bas de l'e-mail. */
+  threshold: number
+  /** Correspondance trouvée au premier CV du candidat : détail du score. */
+  highlights?: MatchHighlights
+  /** Adresses absolues du profil, de l'offre (Matching IA) et de la page des alertes. */
   profileUrl: string
+  jobUrl: string
   alertsUrl: string
 }
 
@@ -102,27 +127,39 @@ const SOURCE_SENTENCE: Record<JobAlertSource, string> = {
   vivier: 'dont vous avez importé le CV dans votre vivier, correspond à l’offre',
 }
 
+const list = (items: string[]) =>
+  `<ul style="margin:0 0 14px; padding-left:20px; font-size:14px; line-height:1.7; color:#45454A;">${items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`
+
 /** Objet, titre et corps de l'e-mail (à envelopper par wrapEmailHtml) ; textes de l'offre et du CV échappés. */
 export function idealCandidateEmail(input: IdealCandidateEmailInput): { subject: string; heading: string; bodyHtml: string } {
   const title = input.jobTitle.trim() || 'Sans intitulé'
   const shortTitle = title.length > MAX_SUBJECT_TITLE ? `${title.slice(0, MAX_SUBJECT_TITLE - 1)}…` : title
   const candidate = input.candidateName.trim() || 'Un candidat'
+  const score = Math.round(input.score)
   const profileUrl = escapeHtml(input.profileUrl)
+  const jobUrl = escapeHtml(input.jobUrl)
   const alertsUrl = escapeHtml(input.alertsUrl)
   const greeting = input.recipientName.trim() ? `Bonjour ${escapeHtml(input.recipientName.trim())},` : 'Bonjour,'
+  const h = input.highlights
+  const intro = h
+    ? `<strong>${escapeHtml(candidate)}</strong> vient de s’inscrire sur MyBestConsultant et l’IA l’a identifié comme un candidat pour votre offre <strong>« ${escapeHtml(title)} »</strong>, avec un score de <strong>${score}/100</strong>. Il apparaît dans le Matching IA de l’offre, marqué « Proposé par l’IA » : ce n’est pas une candidature.`
+    : `<strong>${escapeHtml(candidate)}</strong>, ${SOURCE_SENTENCE[input.source]} <strong>« ${escapeHtml(title)} »</strong>, avec un score de <strong>${score}/100</strong>.`
+  const details = h ? [
+    h.skills.length > 0 ? `<p style="${paragraph} margin-bottom:6px;"><strong>Compétences demandées qu’il a :</strong></p>${list(h.skills)}` : '',
+    h.why ? `<p style="${paragraph}"><strong>Pourquoi ce candidat :</strong> ${escapeHtml(h.why)}</p>` : '',
+    h.gaps.length > 0 ? `<p style="${paragraph} margin-bottom:6px;"><strong>À vérifier :</strong></p>${list(h.gaps)}` : '',
+  ].join('') : ''
   const bodyHtml = `
       <p style="${paragraph}">${greeting}</p>
-      <p style="${paragraph}"><strong>${escapeHtml(candidate)}</strong>, ${SOURCE_SENTENCE[input.source]} <strong>« ${escapeHtml(title)} »</strong>, avec un score de <strong>${Math.round(input.score)}/100</strong>.</p>
+      <p style="${paragraph}">${intro}</p>${details}
       <table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px auto 8px;">
         <tr><td style="border-radius:10px; background-color:#E8A33D;">
           <a href="${profileUrl}" target="_blank" style="display:inline-block; padding:12px 28px; font-size:14px; font-weight:700; color:#FFFFFF; text-decoration:none; border-radius:10px;">Voir le profil</a>
         </td></tr>
       </table>
-      <p style="margin:0 0 8px; font-size:12px; color:#9B9B9E; text-align:center;">Ou copiez ce lien : <a href="${profileUrl}" style="color:#E8A33D;">${profileUrl}</a></p>
-      <p style="margin:0; font-size:12px; color:#9B9B9E; text-align:center;">Vous recevez cet e-mail pour chaque profil noté ${IDEAL_SCORE}/100 ou plus pour une de vos offres. <a href="${alertsUrl}" style="color:#E8A33D;">Gérer mes alertes</a></p>`
-  return {
-    subject: `Profil idéal (${Math.round(input.score)}/100) pour « ${shortTitle} »`,
-    heading: 'Un profil idéal pour votre offre',
-    bodyHtml,
-  }
+      <p style="margin:0 0 8px; font-size:12px; color:#9B9B9E; text-align:center;"><a href="${jobUrl}" style="color:#E8A33D;">Voir le Matching IA de l’offre</a> · Ou copiez ce lien : <a href="${profileUrl}" style="color:#E8A33D;">${profileUrl}</a></p>
+      <p style="margin:0; font-size:12px; color:#9B9B9E; text-align:center;">Vous recevez cet e-mail pour chaque candidat noté ${input.threshold}/100 ou plus pour une de vos offres. <a href="${alertsUrl}" style="color:#E8A33D;">Gérer mes alertes</a></p>`
+  return h
+    ? { subject: `Nouveau candidat proposé par l’IA — ${shortTitle} (${score}/100)`, heading: 'Un nouveau candidat pour votre offre', bodyHtml }
+    : { subject: `Candidat noté ${score}/100 pour « ${shortTitle} »`, heading: 'Un candidat pour votre offre', bodyHtml }
 }

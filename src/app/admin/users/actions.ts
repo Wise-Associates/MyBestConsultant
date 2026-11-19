@@ -1,6 +1,8 @@
 'use server'
 
 import { deleteSavedSearchesOf } from '@/lib/saved-searches-store'
+import { deleteJobMatchesOfCandidate } from '@/lib/ai-matches-store'
+import { deleteAlertsAboutCandidate } from '@/lib/recruiter-alerts-store'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
@@ -149,6 +151,15 @@ export async function deleteUserAccount(authId: string, listedProfileId: string 
         console.error('[recherches] suppression des recherches enregistrées en échec', e instanceof Error ? e.message : String(e))
         return { error: 'Compte non supprimé : la suppression de ses recherches enregistrées a échoué. Réessayez.' }
       }
+      // Correspondances d'un candidat avec les offres (job_matches : citent son CV ; ADR 0047) et alertes des recruteurs
+      // qui le concernent (recruiter_alerts : son identifiant et son score), même règle.
+      try {
+        await deleteJobMatchesOfCandidate(profileId)
+        await deleteAlertsAboutCandidate(profileId)
+      } catch (e) {
+        console.error('[correspondances IA] suppression des correspondances en échec', e instanceof Error ? e.message : String(e))
+        return { error: 'Compte non supprimé : la suppression de ses correspondances avec les offres ou des alertes qui le concernent a échoué. Réessayez.' }
+      }
     }
     // CV au format ESN enregistrés pour ce candidat (RGPD), même règle : avant le compte.
     const hasCvExports = isCvExportStorageConfigured()
@@ -183,6 +194,10 @@ export async function deleteUserAccount(authId: string, listedProfileId: string 
         await databases.deleteDocument(DB_ID, COLLECTIONS.USERS, profileId)
       } catch { /* profile doc may already be gone */ }
       await deleteClassification('candidate', profileId) // classification du CV (ADR 0044) ; ne lève jamais
+      // Second passage après la fiche : une analyse du candidat en cours (correspondances IA, ADR 0047) relit la fiche
+      // après ses écritures et retire ses associations si elle a disparu ; ce passage couvre ce qu'elle a pu écrire avant.
+      await deleteJobMatchesOfCandidate(profileId).catch(e => console.error('[correspondances IA] second passage de suppression en échec, lignes job_matches de ce candidat à supprimer à la main', e instanceof Error ? e.message : String(e)))
+      await deleteAlertsAboutCandidate(profileId).catch(e => console.error('[alertes] second passage de suppression en échec, alertes de ce candidat à supprimer à la main', e instanceof Error ? e.message : String(e)))
       // Second passage : un export terminé pendant la suppression a pu être enregistré entre-temps (saveCvExports
       // revérifie l'existence du candidat après avoir écrit). Un échec ici est journalisé : fichiers
       // « <profileId>_*.docx » du bucket et documents de ce candidat dans cv_exports, à supprimer à la main.
