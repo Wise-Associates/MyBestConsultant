@@ -51,6 +51,8 @@ export const COLLECTIONS = {
   CV_TEMPLATES: process.env.APPWRITE_COLLECTION_CV_TEMPLATES!,
   VEILLE_CONFIG: process.env.APPWRITE_COLLECTION_VEILLE_CONFIG!,
   VEILLE_RUNS: process.env.APPWRITE_COLLECTION_VEILLE_RUNS!,
+  // État de session des sites du scraper d'appels d'offres (ADR 0048) ; vide : pas de bandeau, la route répond 503.
+  SCRAPER_STATUS: process.env.APPWRITE_COLLECTION_SCRAPER_STATUS ?? '',
 } as const
 
 export const BUCKETS = {
