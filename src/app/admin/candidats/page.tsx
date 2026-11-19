@@ -4,6 +4,8 @@ import { filtersFromSearchParams, listSizeFromSearchParams } from '@/lib/ao/filt
 import { emptyAoView, loadPlatformAoView, searchParamsOf } from '@/lib/ao/platform-view'
 import type { TrackingStep } from '@/lib/ao/tracking'
 import { loadAoTracking } from '@/lib/ao/tracking-store'
+import { scraperSessionAlerts } from '@/lib/veille/scraper-status'
+import { isScraperStatusStorageConfigured, listScraperStatuses } from '@/lib/veille/scraper-status-store'
 import { AoOffersDashboard, type MailboxIssue } from '@/components/ao/ao-offers-dashboard'
 import { addAoOfferComment, deleteAoOffer, deleteAoOfferComment, deleteAoOffers, listAoOfferComments, retryAoEmail } from './actions'
 
@@ -12,12 +14,28 @@ import { addAoOfferComment, deleteAoOffer, deleteAoOfferComment, deleteAoOffers,
 // « Synchroniser maintenant » passe par /api/admin/candidats/sync, enchaîné par AoSyncProvider (layout admin).
 export const maxDuration = 300
 
+/**
+ * Bandeaux « session expirée » des sites du scraper d'appels d'offres (Partenaire GC, ADR 0048). Ne rejette jamais :
+ * une lecture impossible devient un bandeau, et les offres restent affichées.
+ */
+async function loadSessionAlerts(): Promise<string[]> {
+  if (!isScraperStatusStorageConfigured()) return []
+  try {
+    return scraperSessionAlerts(await listScraperStatuses())
+  } catch (err) {
+    console.error('AO Offers: état des sessions du scraper illisible', err instanceof Error ? err.message : err)
+    return ['État de la session Partenaire GC du scraper indisponible pour le moment : la lecture en cause est dans les journaux du serveur (« état des sessions du scraper illisible »).']
+  }
+}
+
 // Filtres dans l'adresse : la liste est filtrée par le serveur. Chaque offre a sa page (./[offerId]).
 export default async function AdminAoOffersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireAdmin()
   const sp = searchParamsOf(await searchParams)
   const filters = filtersFromSearchParams(sp)
   const size = listSizeFromSearchParams(sp)
+  // Lu en même temps que les offres.
+  const sessionAlertsLoad = loadSessionAlerts()
   let view: AoPageView = emptyAoView()
   let inboxConfigured = false
   let mailboxIssues: MailboxIssue[] = []
@@ -41,6 +59,7 @@ export default async function AdminAoOffersPage({ searchParams }: { searchParams
     console.error('AO Offers: suivi des publications illisible', err instanceof Error ? err.message : err)
     trackingError = 'Suivi des publications indisponible (offre en ligne, LinkedIn, sourcing) : la lecture en cause est dans les journaux du serveur (« suivi des publications illisible »). Si l’erreur persiste, vérifiez APPWRITE_COLLECTION_SOCIAL_POSTS et APPWRITE_COLLECTION_JOB_MATCHES.'
   }
+  const sessionAlerts = await sessionAlertsLoad
   return (
     <AoOffersDashboard
       titleInAdminBar
@@ -48,6 +67,7 @@ export default async function AdminAoOffersPage({ searchParams }: { searchParams
       filters={filters}
       inboxConfigured={inboxConfigured}
       mailboxIssues={mailboxIssues}
+      sessionAlerts={sessionAlerts}
       loadError={loadError}
       tracking={tracking}
       trackingError={trackingError}

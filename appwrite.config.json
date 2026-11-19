@@ -5260,6 +5260,42 @@
                     "orders": []
                 }
             ]
+        },
+        {
+            "$id": "scraper_status",
+            "$permissions": [],
+            "databaseId": "bestconsultant-dev",
+            "name": "Scraper status",
+            "enabled": true,
+            "documentSecurity": false,
+            "attributes": [
+                {
+                    "key": "state",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 30,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "since",
+                    "type": "datetime",
+                    "required": true,
+                    "array": false,
+                    "format": "",
+                    "default": null
+                },
+                {
+                    "key": "checkedAt",
+                    "type": "datetime",
+                    "required": true,
+                    "array": false,
+                    "format": "",
+                    "default": null
+                }
+            ],
+            "indexes": []
         }
     ],
     "buckets": [

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { hasBearerSecret } from '@/lib/cron-auth'
+import { readBoundedBody } from '@/lib/http/read-bounded-body'
 import { MAX_RUN_REPORT_BYTES, parseRunReport } from '@/lib/veille/run-report'
 import { isVeilleRunsStorageConfigured, saveVeilleRun } from '@/lib/veille/runs-store'
 
@@ -9,25 +10,6 @@ import { isVeilleRunsStorageConfigured, saveVeilleRun } from '@/lib/veille/runs-
 // déjà reçu répond { ok: true } sans rien réécrire.
 export const dynamic = 'force-dynamic'
 
-/** Corps lu morceau par morceau et abandonné au-delà de `max` octets (la taille annoncée n'est pas crue). */
-async function readBounded(req: NextRequest, max: number): Promise<string | null> {
-  if (!req.body) return ''
-  const reader = req.body.getReader()
-  const chunks: Uint8Array[] = []
-  let size = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    size += value.byteLength
-    if (size > max) {
-      await reader.cancel()
-      return null
-    }
-    chunks.push(value)
-  }
-  return Buffer.concat(chunks).toString('utf8')
-}
-
 export async function POST(req: NextRequest) {
   if (!hasBearerSecret(req, process.env.VEILLE_CONFIG_TOKEN, 32)) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
@@ -36,7 +18,7 @@ export async function POST(req: NextRequest) {
     console.error('[veille] rapport de passage refusé : APPWRITE_COLLECTION_VEILLE_RUNS non définie')
     return NextResponse.json({ error: 'Suivi des sources non configuré.' }, { status: 503 })
   }
-  const body = await readBounded(req, MAX_RUN_REPORT_BYTES)
+  const body = await readBoundedBody(req, MAX_RUN_REPORT_BYTES)
   if (body === null) return NextResponse.json({ error: 'Rapport trop volumineux.' }, { status: 413 })
   let input: unknown
   try {

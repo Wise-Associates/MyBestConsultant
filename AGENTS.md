@@ -254,7 +254,18 @@ Core principles for production-quality frontend decisions on this project.
   dernier**, le scanner. Ce code sur un projet sans l'attribut, avec le scanner qui envoie déjà l'en-tête : chaque
   e-mail de la veille passe en erreur (Appwrite refuse l'attribut inconnu ; offre créée sans ses détails) — pousser la
   structure puis « Réessayer ».
-- Tests : `src/lib/veille/config.test.ts`, `src/lib/veille/monitoring.test.ts`.
+- **Session du scraper Partenaire GC** (ADR 0048, demande du 2026-11-19) : le scraper d'appels d'offres
+  (`french-tender-scraper`) envoie après chaque passage l'état de sa session Partenaire GC (ouverte à la main, expire)
+  par `POST /api/scraper/status`, jeton propre `SCRAPER_STATUS_TOKEN` (32 caractères, distinct de
+  `VEILLE_CONFIG_TOKEN`, refusé s'ils sont égaux) ; sites acceptés et noms affichés : liste fermée `SCRAPER_SITES`
+  (le jeton ne choisit aucun texte) ; format `src/lib/veille/scraper-status.ts` (pur, testé ; **même format** que
+  `src/alerts/mbc-status.ts` du scraper, `schemaVersion`), un document par site dans `scraper_status` (aucune
+  permission client, `scraper-status-store.ts`, `server-only` ; un état plus ancien que celui gardé est ignoré).
+  Bandeau rouge en tête de `/admin/candidats` par session expirée (`sessionAlerts` d'`AoOffersDashboard`, admin
+  seulement). Mise en place : `schema:push` (puis `schema:check`), **ensuite seulement**
+  `APPWRITE_COLLECTION_SCRAPER_STATUS` et `SCRAPER_STATUS_TOKEN` (sinon chaque envoi répond 500 et la page affiche
+  « État … indisponible »), ce code, puis en dernier `MBC_STATUS_URL` / `MBC_STATUS_TOKEN` du scraper.
+- Tests : `src/lib/veille/config.test.ts`, `src/lib/veille/monitoring.test.ts`, `src/lib/veille/scraper-status.test.ts`.
 
 ---
 

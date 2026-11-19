@@ -47,6 +47,8 @@ interface Props {
   inboxConfigured: boolean
   /** Boîtes de l'espace dont la dernière lecture a échoué (ou qui ne sont pas lues). */
   mailboxIssues: MailboxIssue[]
+  /** Sessions expirées des sites du scraper d'appels d'offres (admin seulement, ADR 0048) : un bandeau rouge chacune. */
+  sessionAlerts?: string[]
   loadError: string
   /** Lecture des boîtes suspendue pour tout l'espace (abonnement inactif) : bandeau en tête. */
   accessAlert?: string
@@ -129,7 +131,7 @@ export interface MailboxIssue {
   at: string | null
 }
 
-export function AoOffersDashboard({ view, filters, inboxConfigured, mailboxIssues, loadError, accessAlert, tracking: serverTracking, trackingError, actions, paths, copy, titleInAdminBar }: Props) {
+export function AoOffersDashboard({ view, filters, inboxConfigured, mailboxIssues, sessionAlerts = [], loadError, accessAlert, tracking: serverTracking, trackingError, actions, paths, copy, titleInAdminBar }: Props) {
   // Synchronisation en arrière-plan (AoSyncProvider, layout de l'espace) : elle continue quand on quitte la page et se
   // retrouve en revenant. Le tableau renvoyé par ses passages ne remplace celui du serveur que s'il est arrivé après
   // lui et porte sur les mêmes filtres : la page rechargée (retour sur la page, fin de synchronisation,
@@ -441,6 +443,7 @@ export function AoOffersDashboard({ view, filters, inboxConfigured, mailboxIssue
       </div>
 
       {accessAlert && <Banner tone="error" text={accessAlert} />}
+      {sessionAlerts.map(text => <Banner key={text} tone="error" text={text} />)}
       {/* Chargement impossible : seule l'erreur s'affiche (ni « aucune boîte », ni compteurs à zéro, qui seraient faux). */}
       {!inboxConfigured && !loadError && (
         <Banner tone="error" text={`Aucune boîte ${copy.scope} n'est active : la lecture automatique est arrêtée. Ajoutez-en une dans « Boîtes de réception ».`} />
