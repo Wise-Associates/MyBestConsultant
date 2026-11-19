@@ -75,6 +75,8 @@ export function CvStatsBody({ result, scopeName, emptyHint, offMessage = 'Elles 
       {result.state === 'ok' && result.view.total > 0 && (() => {
         const v = result.view
         const seasoned = v.seniority.filter(r => r.key === 'senior' || r.key === 'expert').reduce((sum, r) => sum + r.count, 0)
+        // Candidats en recherche (base candidats) : comptés dans Appwrite sur tous les candidats avec CV, classés ou non.
+        const seekers = result.jobSeekers !== null && result.cvCount ? { count: result.jobSeekers, total: result.cvCount } : null
         return (
           <>
             <p className="text-[13px]" style={muted}>
@@ -83,8 +85,12 @@ export function CvStatsBody({ result, scopeName, emptyHint, offMessage = 'Elles 
               {listHref ? ' Chaque nombre ouvre la liste des profils qu’il compte.' : ' Chiffres tirés des CV, sans nom ni coordonnées.'}
             </p>
 
-            <section aria-label="Chiffres clés" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <section aria-label="Chiffres clés" className={`grid grid-cols-2 gap-3 ${seekers ? 'sm:grid-cols-3 xl:grid-cols-5' : 'lg:grid-cols-4'}`}>
               <Tile label="CV classés" value={number.format(v.total)} href={hrefOf(listHref, { champ: 'tous' })} />
+              {seekers && (
+                <Tile label="Candidats en recherche" value={number.format(seekers.count)}
+                  hint={`sur ${number.format(seekers.total)} candidat${seekers.total > 1 ? 's' : ''} avec CV (${percent(seekers.count / seekers.total)})`} />
+              )}
               <Tile label="Seniors et experts" value={percent(seasoned / v.total)} hint="8 ans d’expérience ou plus" href={seasoned > 0 ? hrefOf(listHref, { champ: 'seniors' }) : undefined} />
               <Tile label="Déposés depuis un an" value={v.lastYearShare === null ? '—' : percent(v.lastYearShare)} hint="CV de moins de 12 mois" href={v.lastYearShare ? hrefOf(listHref, { champ: 'annee' }) : undefined} />
               <Tile label="TJM indiqués" value={v.dailyRate ? `${number.format(v.dailyRate.min)} à ${number.format(v.dailyRate.max)} €` : '—'} hint="quand le CV l’indique" />
