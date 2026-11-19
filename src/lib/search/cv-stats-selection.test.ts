@@ -11,13 +11,19 @@ const now = new Date('2026-11-19T10:00:00.000Z')
 describe('sélection des profils d’un nombre des statistiques', () => {
   it('relit chaque sélection de la page depuis son adresse', () => {
     const selections: StatSelection[] = [
-      { field: 'competence', value: 'Python' }, { field: 'metier', value: 'Chef de projet' }, { field: 'famille', value: 'data_ia' },
+      { field: 'competence', value: 'Python' }, { field: 'arbre', famille: 'pilotage_projet' },
+      { field: 'arbre', famille: 'pilotage_projet', metier: 'Chef de projet' },
+      { field: 'arbre', famille: 'pilotage_projet', metier: 'Chef de projet', competence: 'Java' },
       { field: 'seniorite', value: 'senior' }, { field: 'secteur', value: 'banque' }, { field: 'langue', value: 'Anglais' },
       { field: 'ville', value: 'Lyon' }, { field: 'etudes', value: 'bac+5' }, { field: 'mois', value: '2026-03' },
       { field: 'fraicheur', value: '3_12_mois' }, { field: 'fraicheur', value: 'inconnue' }, { field: 'recente', value: 'dbt' },
       { field: 'tous' }, { field: 'seniors' }, { field: 'annee' },
     ]
-    for (const s of selections) assert.deepEqual(parseSelection(selectionParams(s)), s)
+    for (const s of selections) {
+      // Comme la page : chaque paramètre lu dans l'adresse (absent : null).
+      const params = new URLSearchParams(selectionParams(s))
+      assert.deepEqual(parseSelection(Object.fromEntries(['champ', 'valeur', 'famille', 'metier', 'competence'].map(k => [k, params.get(k)]))), s)
+    }
   })
 
   it('écrit l’adresse de la liste et la relit à l’identique', () => {
@@ -37,6 +43,10 @@ describe('sélection des profils d’un nombre des statistiques', () => {
       { champ: 'competence', valeur: 'Py\nthon' }, { champ: 'competence', valeur: ['Python'] }, { champ: 'tenantId', valeur: 'org1' },
       { champ: 'kind', valeur: 'vivier' }, { champ: 'toString', valeur: 'x' }, { champ: '__proto__', valeur: 'x' },
       { champ: 'mois', valeur: '2026-13' }, { champ: 'mois', valeur: '2026-1' }, { champ: 'fraicheur', valeur: 'demain' },
+      { champ: 'famille', valeur: 'data_ia' }, { champ: 'metier', valeur: 'Chef de projet' },
+      { champ: 'arbre' }, { champ: 'arbre', famille: '' }, { champ: 'arbre', famille: 'data_ia', metier: '  ' },
+      { champ: 'arbre', famille: 'data_ia', competence: 'Python' }, { champ: 'arbre', famille: 'data_ia', metier: 'x'.repeat(121) },
+      { champ: 'arbre', famille: 'data_ia', metier: ['Chef de projet', 'PMO'] }, { champ: ['tous'] },
     ]) assert.equal(parseSelection(params), null, JSON.stringify(params))
   })
 
@@ -48,7 +58,9 @@ describe('sélection des profils d’un nombre des statistiques', () => {
   })
 
   it('filtre chaque champ sur l’attribut que la page compte', () => {
-    assert.equal(selectionFilter({ field: 'famille', value: 'data_ia' }, now), 'jobFamily = "data_ia"')
+    assert.equal(selectionFilter({ field: 'arbre', famille: 'data_ia' }, now), 'jobFamily = "data_ia"')
+    assert.equal(selectionFilter({ field: 'arbre', famille: 'pilotage_projet', metier: 'Chef de projet', competence: 'C# "Core"' }, now),
+      'jobFamily = "pilotage_projet" AND roles = "Chef de projet" AND skills = "C# \\"Core\\""')
     assert.equal(selectionFilter({ field: 'etudes', value: 'bac+5' }, now), 'educationLevel = "bac+5"')
     assert.equal(selectionFilter({ field: 'mois', value: '2026-03' }, now), 'cvMonth = "2026-03"')
     assert.equal(selectionFilter({ field: 'tous' }, now), '')
@@ -93,7 +105,8 @@ describe('sélection des profils d’un nombre des statistiques', () => {
 
   it('titre la liste avec les libellés de la page', () => {
     assert.equal(selectionTitle({ field: 'competence', value: 'Python' }), 'Compétence : Python')
-    assert.equal(selectionTitle({ field: 'famille', value: 'data_ia' }), 'Famille de métiers : Data et IA')
+    assert.equal(selectionTitle({ field: 'arbre', famille: 'data_ia' }), 'Data et IA')
+    assert.equal(selectionTitle({ field: 'arbre', famille: 'pilotage_projet', metier: 'Chef de projet', competence: 'Java' }), 'Pilotage de projet, PMO › Chef de projet › Java')
     assert.equal(selectionTitle({ field: 'seniorite', value: 'senior' }), 'Séniorité : Senior (8 à 14 ans)')
     assert.equal(selectionTitle({ field: 'fraicheur', value: 'inconnue' }), 'Fraîcheur : Date inconnue')
     assert.match(selectionTitle({ field: 'mois', value: '2026-03' }), /^CV déposés en mars 2026$/)

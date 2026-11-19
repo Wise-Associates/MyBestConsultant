@@ -5,12 +5,11 @@ import { EDUCATION_LABELS, FRESHNESS, RISING_RECENT_MONTHS, SENIORITY_LABELS, mo
 // clé de la page ouvre la liste des CV qu'il compte. La sélection voyage dans l'adresse de la liste (?champ=&valeur=),
 // elle est donc relue ici comme une saisie : champ connu, valeur bornée, et toujours écrite entre guillemets échappés
 // dans le filtre Meilisearch (une valeur ne peut pas élargir le filtre du périmètre ; vérifié sur Meilisearch 1.56).
-// Les filtres reprennent exactement les comptes de cv-stats.ts (mêmes champs, mêmes tranches de fraîcheur).
+// Les filtres reprennent exactement les comptes de cv-stats.ts (mêmes champs, mêmes tranches de fraîcheur) ; l'arbre
+// « Métiers en détail » compte ses nœuds avec selectionFilter lui-même (cv-stats-store.ts).
 
 /** Champs comptés par la page, nom de l'adresse → attribut de l'index et nom affiché. */
 export const VALUE_FIELDS = {
-  famille: { attr: 'jobFamily', name: 'Famille de métiers' },
-  metier: { attr: 'roles', name: 'Métier' },
   competence: { attr: 'skills', name: 'Compétence' },
   seniorite: { attr: 'seniority', name: 'Séniorité' },
   secteur: { attr: 'sectors', name: 'Secteur' },
@@ -29,6 +28,8 @@ export type StatSelection =
   | { field: 'fraicheur'; value: FreshnessKey }
   /** Compétence en hausse : les CV récents qui la citent, ceux que sa part « des CV récents » compte. */
   | { field: 'recente'; value: string }
+  /** Nœud de l'arbre des métiers : une famille, un métier de cette famille, une compétence de ce métier. */
+  | { field: 'arbre'; famille: string; metier?: string; competence?: string }
   /** Chiffres clés : tous les CV classés, seniors et experts, déposés depuis un an. */
   | { field: 'tous' } | { field: 'seniors' } | { field: 'annee' }
 
@@ -37,22 +38,42 @@ const MAX_VALUE = 120
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/
 const FRESHNESS_KEYS: readonly string[] = [...FRESHNESS.map(b => b.key), 'inconnue']
 
+/** Valeur d'une ligne lue dans l'adresse : texte non vide, borné, sans caractère de contrôle (aucune valeur de l'index n'en a). */
+function cleanValue(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const value = v.trim()
+  if (!value || value.length > MAX_VALUE || [...value].some(c => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)) return null
+  return value
+}
+
 /** Sélection lue dans l'adresse ; null si elle n'est pas une ligne possible de la page. */
-export function parseSelection(params: { champ?: unknown; valeur?: unknown }): StatSelection | null {
+export function parseSelection(params: { champ?: unknown; valeur?: unknown; famille?: unknown; metier?: unknown; competence?: unknown }): StatSelection | null {
   const { champ, valeur } = params
   if (champ === 'tous' || champ === 'seniors' || champ === 'annee') return { field: champ }
+  if (champ === 'arbre') {
+    const famille = cleanValue(params.famille)
+    // Paramètre absent : null (URLSearchParams.get) ou undefined ; présent, il doit être une valeur valide.
+    const metier = params.metier == null ? undefined : cleanValue(params.metier)
+    const competence = params.competence == null ? undefined : cleanValue(params.competence)
+    // Une compétence n'existe dans l'arbre que sous un métier.
+    if (!famille || metier === null || competence === null || (competence && !metier)) return null
+    return { field: 'arbre', famille, ...(metier ? { metier } : {}), ...(competence ? { competence } : {}) }
+  }
   if (typeof champ !== 'string' || typeof valeur !== 'string') return null
   if (champ === 'mois') return MONTH.test(valeur) ? { field: 'mois', value: valeur } : null
   if (champ === 'fraicheur') return FRESHNESS_KEYS.includes(valeur) ? { field: 'fraicheur', value: valeur as FreshnessKey } : null
   if (champ !== 'recente' && !Object.hasOwn(VALUE_FIELDS, champ)) return null
-  const value = valeur.trim()
-  // Caractères de contrôle refusés : aucune valeur de l'index n'en contient.
-  if (!value || value.length > MAX_VALUE || [...value].some(c => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)) return null
+  const value = cleanValue(valeur)
+  if (!value) return null
   return champ === 'recente' ? { field: 'recente', value } : { field: champ as ValueField, value }
 }
 
 /** Paramètres d'adresse de la sélection (inverse de parseSelection). */
 export function selectionParams(selection: StatSelection): Record<string, string> {
+  if (selection.field === 'arbre') {
+    const { famille, metier, competence } = selection
+    return { champ: 'arbre', famille, ...(metier ? { metier } : {}), ...(competence ? { competence } : {}) }
+  }
   return 'value' in selection ? { champ: selection.field, valeur: selection.value } : { champ: selection.field }
 }
 
@@ -100,6 +121,11 @@ export function selectionFilter(selection: StatSelection, now: Date): string {
     case 'mois': return `cvMonth = ${meiliString(selection.value)}`
     // Même coupure, au jour près, que le compte des CV récents de « Compétences en hausse » (sinceFilter, cv-stats.ts).
     case 'recente': return `skills = ${meiliString(selection.value)} AND cvDate >= ${recentCut(RISING_RECENT_MONTHS, now)}`
+    case 'arbre': return [
+      `jobFamily = ${meiliString(selection.famille)}`,
+      selection.metier && `roles = ${meiliString(selection.metier)}`,
+      selection.competence && `skills = ${meiliString(selection.competence)}`,
+    ].filter(Boolean).join(' AND ')
     case 'fraicheur': {
       const range = freshnessRange(selection.value, now)
       if (!range) return 'cvDate IS NULL OR cvDate NOT EXISTS'
@@ -121,7 +147,8 @@ export function selectionTitle(selection: StatSelection): string {
     }
     case 'fraicheur': return `Fraîcheur : ${FRESHNESS.find(b => b.key === selection.value)?.label ?? 'Date inconnue'}`
     case 'recente': return `Compétence en hausse : ${selection.value}, CV de moins de ${RISING_RECENT_MONTHS} mois`
-    case 'famille': return `${VALUE_FIELDS.famille.name} : ${JOB_FAMILIES[selection.value as keyof typeof JOB_FAMILIES] ?? selection.value}`
+    // « Pilotage de projet, PMO › Chef de projet › Java ».
+    case 'arbre': return [JOB_FAMILIES[selection.famille as keyof typeof JOB_FAMILIES] ?? selection.famille, selection.metier, selection.competence].filter(Boolean).join(' › ')
     case 'secteur': return `${VALUE_FIELDS.secteur.name} : ${SECTORS[selection.value as keyof typeof SECTORS] ?? selection.value}`
     case 'seniorite': return `${VALUE_FIELDS.seniorite.name} : ${SENIORITY_LABELS[selection.value] ?? selection.value}`
     case 'etudes': return `${VALUE_FIELDS.etudes.name} : ${EDUCATION_LABELS[selection.value] ?? selection.value}`

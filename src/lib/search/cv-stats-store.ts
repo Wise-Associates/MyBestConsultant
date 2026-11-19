@@ -2,16 +2,22 @@ import { Query } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import {
-  RISING_RECENT_MONTHS, STAT_FACETS, cvStatsView, risingSkills, sinceFilter, statsFilter, type CvStatsView, type RisingSkill, type StatsScope,
+  RISING_RECENT_MONTHS, STAT_FACETS, cvStatsView, risingSkills, sinceFilter, statsFilter, treeWithRoles, treeWithSkills,
+  type CvStatsView, type JobTreeNode, type RisingSkill, type StatRow, type StatsScope,
 } from './cv-stats'
-import { MeiliError, facetCounts, isSearchConfigured } from './meili'
+import { selectionFilter, type StatSelection } from './cv-stats-selection'
+import { MeiliError, facetCounts, facetCountsMany, isSearchConfigured } from './meili'
 
 // Lecture des statistiques d'un périmètre (ADR 0044 phase 3) : comptes de l'index, et nombre de CV du périmètre dans
 // Appwrite pour dire quelle part est déjà classée (pendant le rattrapage). Serveur seulement ; le périmètre est construit
 // par la page à partir de la session, jamais reçu du navigateur.
 
 export type CvStatsResult =
-  | { state: 'ok'; view: CvStatsView; cvCount: number | null; /** null : pas assez de CV datés pour comparer. */ rising: RisingSkill[] | null }
+  | {
+    state: 'ok'; view: CvStatsView; cvCount: number | null; /** null : pas assez de CV datés pour comparer. */ rising: RisingSkill[] | null
+    /** Arbre familles → métiers → compétences ; null s'il n'a pas pu être lu (le reste de la page s'affiche). */
+    tree: JobTreeNode[] | null
+  }
   | { state: 'off' }
   | { state: 'error' }
 
@@ -39,6 +45,25 @@ async function cvCountOf(scope: StatsScope): Promise<number | null> {
   }
 }
 
+/**
+ * Arbre « Métiers en détail » : métiers des CV de chaque famille, puis compétences des CV de chaque métier, deux appels
+ * groupés. Chaque nœud est compté avec le filtre de la liste de ses profils (selectionFilter, champ « arbre ») : le
+ * nombre affiché et la liste ouverte portent sur les mêmes CV.
+ */
+async function loadJobTree(filter: string, families: StatRow[], now: Date): Promise<JobTreeNode[] | null> {
+  const nodeFilter = (selection: StatSelection) => `(${filter}) AND (${selectionFilter(selection, now)})`
+  try {
+    const byFamily = await facetCountsMany(families.map(f => ({ filter: nodeFilter({ field: 'arbre', famille: f.key }), facets: ['roles'] })))
+    const withRoles = treeWithRoles(families, byFamily)
+    const roles = withRoles.flatMap(f => f.children.map((r): StatSelection => ({ field: 'arbre', famille: f.key, metier: r.key })))
+    const byRole = await facetCountsMany(roles.map(s => ({ filter: nodeFilter(s), facets: ['skills'] })))
+    return treeWithSkills(withRoles, byRole)
+  } catch (err) {
+    console.error('[statistiques] arbre des métiers illisible', err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
 export async function loadCvStats(scope: StatsScope, now = new Date()): Promise<CvStatsResult> {
   if (!isSearchConfigured()) return { state: 'off' }
   const filter = statsFilter(scope)
@@ -52,10 +77,11 @@ export async function loadCvStats(scope: StatsScope, now = new Date()): Promise<
       facetCounts(sinceFilter(filter, RISING_RECENT_MONTHS, now, 'older'), split),
       cvCountOf(scope),
     ])
-    return { state: 'ok', view: cvStatsView(raw, now), cvCount, rising: risingSkills(recent, older) }
+    const view = cvStatsView(raw, now)
+    return { state: 'ok', view, cvCount, rising: risingSkills(recent, older), tree: await loadJobTree(filter, view.families, now) }
   } catch (err) {
     // Index pas encore créé (aucune synchronisation) : aucun CV classé, ce n'est pas une panne.
-    if (err instanceof MeiliError && err.status === 404) return { state: 'ok', view: cvStatsView({}, now), cvCount: await cvCountOf(scope), rising: null }
+    if (err instanceof MeiliError && err.status === 404) return { state: 'ok', view: cvStatsView({}, now), cvCount: await cvCountOf(scope), rising: null, tree: [] }
     console.error('[statistiques] index de recherche illisible', scope.kind, err instanceof Error ? err.message : err)
     return { state: 'error' }
   }
