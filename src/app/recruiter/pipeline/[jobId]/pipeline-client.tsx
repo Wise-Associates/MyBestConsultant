@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useId, useMemo, useRef, useState, useTransition, useEffect } from 'react'
+import { Fragment, useId, useMemo, useRef, useState, useTransition, useEffect, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { BackLink } from '@/components/recruiter/back-link'
@@ -11,6 +11,7 @@ import {
   Brain, Video, Pencil, Trash2, History, Loader2, GripVertical, Tag as TagIcon,
   StickyNote, CheckCircle2, ChevronDown, ChevronUp, Sparkles, AlertCircle,
   Archive, ThumbsUp, ThumbsDown, Mail, Copy, ExternalLink, Edit3, Send, ChevronRight, GitBranch, Search, ChartColumn, Lock, ArrowRight,
+  SlidersHorizontal,
 } from 'lucide-react'
 import {
   moveApplicationStage, saveFunnelStagesAction, updateApplicationCardAction,
@@ -30,8 +31,10 @@ import { EsnExportDialog } from '@/components/cv-export/esn-export-dialog'
 import { getRecruiterCvExportVersions } from '@/app/recruiter/cvtheque/actions'
 import type { CvExportAccess } from '@/lib/cv-export/recruiter'
 import { ScoringWeightsButton } from './scoring-weights-dialog'
-import { personalScore, type RecruiterWeights } from '@/lib/scoring-weights'
-import { recommendationFor } from '@/lib/match-scoring'
+import { candidateWeightsKey, displayedScreening, mergeOverride, withOverride, type RecruiterWeights, type ScaleWeights, type WeightsOverride } from '@/lib/scoring-weights'
+import type { ActiveScale } from '@/lib/match-scoring'
+import { scoreBreakdown } from '@/lib/score-breakdown'
+import { CandidateWeightsPanel } from './weights-override-panel'
 import {
   progress as funnelProgress, STEP_TYPES, currentIndex as funnelCurrent, hasReport, reportRequiredMessage, stepBlockingMove, type FunnelStep,
 } from '@/lib/candidate-funnel'
@@ -71,9 +74,13 @@ export interface PipelineCandidate {
   stageStatus?: string
   /** Funnel du candidat : ses étapes et leur avancement. */
   funnel?: FunnelStep[]
+  /** Score et avis affichés : aux poids du recruteur pour ce candidat (displayedScreening). */
   aiScore?: number
   aiSummary?: string
   aiRecommendation?: string
+  /** Score et avis enregistrés (poids par défaut) : de quoi recalculer l'affichage quand les poids du candidat changent. */
+  storedScore?: number
+  storedRecommendation?: string
   interviews: PipelineInterview[]
   tags: string[]
   note: string
@@ -226,9 +233,12 @@ function CardLoader({ label, color }: { label: string; color: string }) {
 function CandidateCard({
   candidate, jobId, jobTitle, stages, stageColor, suggestedAction, autoOpenInterview, onAutoOpened, interviewTargetStage,
   busyLabel, onRunScreening, onInterviewSent, onRenameInterview, onEmailSent, onQuickMove,
-  onDragStart, onOpenEdit, onOpenHistory, onDelete, onOpenProcess, onNextStep, cabinetCv,
+  onDragStart, onOpenEdit, onOpenHistory, onDelete, onOpenProcess, onNextStep, cabinetCv, ownWeights = false, weightsEnabled = false,
 }: {
   candidate: PipelineCandidate
+  /** Score calculé avec les poids propres au candidat (ADR 0049) ; `weightsEnabled` : la fenêtre « Modifier » les règle. */
+  ownWeights?: boolean
+  weightsEnabled?: boolean
   jobId: string
   jobTitle: string
   stages: FunnelStage[]
@@ -351,6 +361,11 @@ function CandidateCard({
           <span className="shrink-0 flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full"
             style={{ background: `${scoreColor(candidate.aiScore)}16`, color: scoreColor(candidate.aiScore) }}>
             <Brain className="h-2.5 w-2.5" /> {candidate.aiScore}/100
+            {ownWeights && (
+              <span title="Score calculé avec les poids propres à ce candidat" className="inline-flex">
+                <SlidersHorizontal className="h-2.5 w-2.5" aria-hidden /><span className="sr-only">, pondération propre</span>
+              </span>
+            )}
           </span>
         ) : (
           <span className="shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'rgba(0,0,0,0.04)', color: 'var(--color-text-muted)' }}>
@@ -633,7 +648,7 @@ function CandidateCard({
           style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6' }}>
           <Mail className="h-3.5 w-3.5" />
         </button>
-        <button onClick={onOpenEdit} title="Modifier (étiquettes, note)"
+        <button onClick={onOpenEdit} title={weightsEnabled ? 'Modifier (étiquettes, note, pondération)' : 'Modifier (étiquettes, note)'}
           className="p-1.5 rounded-lg transition-opacity hover:opacity-70 min-[112.5rem]:hidden"
           style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6' }}>
           <Pencil className="h-3.5 w-3.5" />
@@ -1054,7 +1069,7 @@ function EmailCard({ candidate, emails, onReplied }: {
 }
 
 export function PipelineClient({
-  jobId, jobTitle, jobMeta, initialCandidates, initialStages, initialEmails, clientCount, pipeline = null, weights, weightsUnreadable, cvExport,
+  jobId, jobTitle, jobMeta, initialCandidates, initialStages, initialEmails, clientCount, pipeline = null, weights, weightsUnreadable, candidateWeights, savedWeightsUnreadable = false, cvExport,
 }: {
   jobId: string; tenantId: string; jobTitle: string
   /** « Paris · CDI · Publiée le 3 nov. 2026 » : rappel de l'offre dans le bandeau, sur grand écran. */
@@ -1064,10 +1079,36 @@ export function PipelineClient({
   clientCount: number
   /** Poids personnels du recruteur (scoring-weights.ts) : scores reçus déjà recalculés, nouveaux scores recalculés ici. */
   weights: RecruiterWeights; weightsUnreadable: boolean
+  /** Poids propres aux candidats de l'offre, par clé candidateWeightsKey (ADR 0049) ; absent : réglage non activé. */
+  candidateWeights?: Record<string, WeightsOverride>
+  /** Poids de l'offre ou d'un candidat enregistrés mais illisibles : ceux du niveau au-dessus s'appliquent, la page le dit. */
+  savedWeightsUnreadable?: boolean
   /** Export « CV format cabinet » de l'organisation ; null : indisponible (stockage non configuré ou état illisible). */
   cvExport: CvExportAccess | null
 }) {
   const [candidates, setCandidates] = useState(initialCandidates)
+  const [candWeights, setCandWeights] = useState(() => candidateWeights ?? {})
+  const appKey = (appId: string) => candidateWeightsKey({ source: 'application', id: appId })
+  const appWeights = (appId: string) => withOverride(weights, candWeights[appKey(appId)])
+  /** Barème du score d'une candidature (résumé de ses jugements) ; null : pas de détail, pas de pondération possible. */
+  const scaleOf = (c: PipelineCandidate): ActiveScale | null => {
+    const scale = c.aiSummary ? scoreBreakdown(c.aiSummary)?.scale : undefined
+    return scale && scale !== 'legacy' ? scale : null
+  }
+  const hasOwnWeights = (c: PipelineCandidate) => { const scale = scaleOf(c); return !!scale && !!candWeights[appKey(c.appId)]?.[scale] }
+  /** Poids d'un candidat enregistrés : son score et son avis affichés sont recalculés sur place. */
+  function handleCandidateWeightsSaved(appId: string, scale: ActiveScale, saved: ScaleWeights | null) {
+    const key = appKey(appId)
+    const { [key]: previous, ...others } = candWeights
+    const own = mergeOverride(previous, scale, saved)
+    const next = own ? { ...others, [key]: own } : others
+    setCandWeights(next)
+    setCandidates(cs => cs.map(c => {
+      if (c.appId !== appId || c.storedScore === undefined || !c.aiSummary) return c
+      const shown = displayedScreening(c.storedScore, c.aiSummary, c.storedRecommendation, withOverride(weights, next[key]))
+      return { ...c, aiScore: shown.score, aiRecommendation: shown.recommendation }
+    }))
+  }
   const [exportFor, setExportFor] = useState<PipelineCandidate | null>(null)
   const [emails, setEmails] = useState(initialEmails)
   const [stages, setStages] = useState(initialStages)
@@ -1221,12 +1262,13 @@ export function PipelineClient({
   }
 
   function handleScreeningDone(appId: string, stored: number, recommendation?: string, summary?: string, stageSlug?: string) {
-    // Score enregistré aux poids par défaut : affiché aux poids du recruteur, comme au chargement de la page.
-    const score = summary ? personalScore(stored, summary, weights) : stored
+    // Score enregistré aux poids par défaut : affiché aux poids du recruteur pour ce candidat, comme au chargement de la page.
+    const shown = summary ? displayedScreening(stored, summary, recommendation, appWeights(appId)) : { score: stored, recommendation }
     setCandidates(cs => cs.map(c => c.appId === appId
       ? {
-          ...c, status: stageSlug && stages.some(s => s.slug === stageSlug) ? stageSlug : c.status, aiScore: score,
-          aiRecommendation: score !== stored ? recommendationFor(score) : recommendation ?? c.aiRecommendation, aiSummary: summary ?? c.aiSummary,
+          ...c, status: stageSlug && stages.some(s => s.slug === stageSlug) ? stageSlug : c.status, aiScore: shown.score,
+          aiRecommendation: shown.recommendation ?? c.aiRecommendation, aiSummary: summary ?? c.aiSummary,
+          storedScore: stored, storedRecommendation: recommendation ?? c.storedRecommendation,
         }
       : c))
   }
@@ -1411,6 +1453,11 @@ export function PipelineClient({
           <Lock className="h-3.5 w-3.5 mt-0.5 shrink-0" aria-hidden />
           <span>À chaque étape, un compte rendu explique pourquoi le candidat avance : sans lui, « Étape suivante » et les déplacements de sa carte restent bloqués. Les comptes rendus sont repris dans la réponse au client.</span>
         </p>
+        {savedWeightsUnreadable && (
+          <p role="status" className="mb-4 px-4 py-2.5 rounded-lg text-[13px]" style={{ background: 'rgba(245,158,11,0.12)', color: '#b45309' }}>
+            {'Certains poids enregistrés pour cette offre n’ont pas pu être lus\u00a0: pour ces candidats, les poids du niveau au-dessus s’appliquent. Rechargez la page dans un instant.'}
+          </p>
+        )}
         {globalError && (
           <div className="flex items-center gap-2 mb-4 px-4 py-2.5 rounded-lg text-sm font-semibold" style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
             <AlertCircle className="h-4 w-4 shrink-0" /> {globalError}
@@ -1493,6 +1540,7 @@ export function PipelineClient({
                       onOpenProcess={() => setProcessFor(c.appId)} onNextStep={() => nextStep(c.appId)}
                       // Profil d'un chasseur : pas de compte candidat, l'export ne le connaît pas (loadCandidate).
                       cabinetCv={c.status === 'accepted' && !c.hunterName && cvExport ? (cvExport.template ? () => setExportFor(c) : 'setup') : undefined}
+                      ownWeights={hasOwnWeights(c)} weightsEnabled={!!candidateWeights}
                       onDelete={() => handleDelete(c.appId)} />
                     </div>
                   ))}
@@ -1506,6 +1554,7 @@ export function PipelineClient({
         </div>
         {selected ? (
           <CandidatePanel key={selected.appId} candidate={selected} stages={stages} busyLabel={busy[selected.appId]}
+            ownWeights={hasOwnWeights(selected)} weightsEnabled={!!candidateWeights}
             onMove={slug => moveFromPanel(selected.appId, slug)}
             onOpenProcess={() => setProcessFor(selected.appId)} onOpenEdit={() => setEditingId(selected.appId)} onClose={() => setSelectedId(null)} />
         ) : !hintClosed && (
@@ -1537,7 +1586,15 @@ export function PipelineClient({
       )}
       {editingCandidate && (
         <EditCardModal jobId={jobId} candidate={editingCandidate} onClose={() => setEditingId(null)}
-          onSaved={(tags, note) => setCandidates(cs => cs.map(c => c.appId === editingCandidate.appId ? { ...c, tags, note } : c))} />
+          onSaved={(tags, note) => setCandidates(cs => cs.map(c => c.appId === editingCandidate.appId ? { ...c, tags, note } : c))}
+          weightsPanel={(() => {
+            const scale = candidateWeights ? scaleOf(editingCandidate) : null
+            return scale && (
+              <CandidateWeightsPanel jobId={jobId} candidateKey={appKey(editingCandidate.appId)} scale={scale} reference={weights[scale]}
+                own={candWeights[appKey(editingCandidate.appId)]?.[scale] ?? null}
+                onSaved={saved => handleCandidateWeightsSaved(editingCandidate.appId, scale, saved)} />
+            )
+          })()} />
       )}
       {historyId && (
         <HistoryModal applicationId={historyId} stages={stages} onClose={() => setHistoryId(null)} />
@@ -1650,8 +1707,10 @@ function StagesConfigModal({ jobId, stages, onClose, onSaved }: {
   )
 }
 
-function EditCardModal({ jobId, candidate, onClose, onSaved }: {
+function EditCardModal({ jobId, candidate, onClose, onSaved, weightsPanel }: {
   jobId: string; candidate: PipelineCandidate; onClose: () => void; onSaved: (tags: string[], note: string) => void
+  /** Pondération de ce candidat (ADR 0049), enregistrée à part ; absente : réglage non activé ou score sans détail. */
+  weightsPanel?: ReactNode
 }) {
   const [tagsInput, setTagsInput] = useState(candidate.tags.join(', '))
   const [note, setNote] = useState(candidate.note)
@@ -1671,7 +1730,7 @@ function EditCardModal({ jobId, candidate, onClose, onSaved }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: 'var(--color-background)', border: '1px solid var(--color-border)' }}>
+      <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl" style={{ background: 'var(--color-background)', border: '1px solid var(--color-border)' }}>
         <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--hero-bg)' }}>
           <h2 className="font-semibold text-[var(--hero-fg)] text-sm">{candidate.candidateName || candidate.candidateEmail}</h2>
           <button onClick={onClose} className="text-[var(--hero-fg-muted)] hover:text-[var(--hero-fg)] transition-colors"><X className="h-5 w-5" /></button>
@@ -1703,6 +1762,7 @@ function EditCardModal({ jobId, candidate, onClose, onSaved }: {
               {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Enregistrer
             </button>
           </div>
+          {weightsPanel}
         </div>
       </div>
     </div>
@@ -1712,7 +1772,8 @@ function EditCardModal({ jobId, candidate, onClose, onSaved }: {
 // Panneau du candidat choisi, à droite du tableau dès 1800 px (demande du 2026-11-06) : phase, score, résumé de l'IA,
 // déplacements possibles, historique, CV et fiche. Les actions de la carte (screening, entretien, e-mail…) restent sur
 // la carte ; « Processus » et « Modifier » ouvrent les mêmes fenêtres qu'elle.
-function CandidatePanel({ candidate, stages, busyLabel, onMove, onOpenProcess, onOpenEdit, onClose }: {
+function CandidatePanel({ candidate, stages, busyLabel, onMove, onOpenProcess, onOpenEdit, onClose, ownWeights = false, weightsEnabled = false }: {
+  ownWeights?: boolean; weightsEnabled?: boolean
   candidate: PipelineCandidate; stages: FunnelStage[]; busyLabel?: string
   onMove: (stageSlug: string) => void; onOpenProcess: () => void; onOpenEdit: () => void; onClose: () => void
 }) {
@@ -1756,6 +1817,7 @@ function CandidatePanel({ candidate, stages, busyLabel, onMove, onOpenProcess, o
         </dd>
         {candidate.stageStatus && <><dt style={muted}>Statut</dt><dd className="font-medium" style={{ color: 'var(--color-text)' }}>{candidate.stageStatus}</dd></>}
         {reco && <><dt style={muted}>Avis IA</dt><dd className="font-semibold" style={{ color: reco.color }}>{reco.label}</dd></>}
+        {ownWeights && <><dt style={muted}>Score</dt><dd className="inline-flex items-center gap-1 font-medium" style={{ color: 'var(--color-text)' }}><SlidersHorizontal className="h-3 w-3" aria-hidden />Pondération propre</dd></>}
         {candidate.hunterName && <><dt style={muted}>Proposé par</dt><dd style={{ color: 'var(--color-text)' }}>{candidate.hunterName}</dd></>}
         <dt style={muted}>Candidature</dt><dd style={{ color: 'var(--color-text)' }}>{new Date(candidate.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}</dd>
       </dl>
@@ -1832,7 +1894,7 @@ function CandidatePanel({ candidate, stages, busyLabel, onMove, onOpenProcess, o
 
       <div className="grid grid-cols-2 gap-2 mt-4">
         <button type="button" onClick={onOpenProcess} className={`${button} bg-transparent`} style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}><GitBranch className="h-3.5 w-3.5" aria-hidden />Funnel</button>
-        <button type="button" onClick={onOpenEdit} className={`${button} bg-transparent`} style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}><Pencil className="h-3.5 w-3.5" aria-hidden />Tags et note</button>
+        <button type="button" onClick={onOpenEdit} className={`${button} bg-transparent`} style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}><Pencil className="h-3.5 w-3.5" aria-hidden />{weightsEnabled ? 'Tags, note, pondération' : 'Tags et note'}</button>
         {candidate.cvFileId && <a href={`/api/cv/${candidate.cvFileId}`} target="_blank" rel="noopener noreferrer" className={button} style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}><FileText className="h-3.5 w-3.5" aria-hidden />Voir le CV</a>}
         <Link href={`/recruiter/candidates/${candidate.appId}`} className={button} style={{ background: 'var(--color-primary)', color: 'var(--color-primary-fg)' }}>Fiche candidat</Link>
       </div>

@@ -21,7 +21,7 @@ import { withCheckedTitles } from '@/lib/title-check'
 import { cvScorer, readCvForScoring, type MatchResult } from '@/lib/sourcing-core'
 import { SCORING_AI } from '@/lib/ai/models'
 import { offerDetails } from '@/lib/match-scoring'
-import { personalScore, type RecruiterWeights } from '@/lib/scoring-weights'
+import { rescoreForRecruiter, type RecruiterWeights, type WeightsOverride } from '@/lib/scoring-weights'
 import { alertIdealCandidates } from '@/lib/recruiter-alerts-store'
 import { parseMatchOrigin, parseReviewStatus, type MatchOrigin, type ReviewStatus } from '@/lib/match-review'
 
@@ -235,6 +235,8 @@ function profileSkills(json: unknown): string[] {
 
 export async function getJobMatches(
   jobId: string, tenantId: string, vivierOwner: string | null, weights?: RecruiterWeights,
+  /** Poids propres à certains candidats, par clé candidateWeightsKey (ADR 0049), par-dessus `weights`. */
+  candidateWeights: Record<string, WeightsOverride> = {},
 ): Promise<{ matches: JobMatchResult[]; poolComputedAt: string | null }> {
   const { databases } = createAdminClient()
   const jobDoc = await databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId).catch(err => {
@@ -363,7 +365,7 @@ export async function getJobMatches(
   })
 
   const all = [...poolMatches, ...vivierMatches, ...applicationMatches]
-  const matches = (weights ? all.map(m => (m.score === null ? m : { ...m, score: personalScore(m.score, m.reason, weights) })) : all)
+  const matches = (weights ? rescoreForRecruiter(all, weights, candidateWeights) : all)
     .sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
   const poolComputedAt = poolDocs[0]?.$createdAt as string | undefined ?? null
 

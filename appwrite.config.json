@@ -5296,6 +5296,73 @@
                 }
             ],
             "indexes": []
+        },
+        {
+            "$id": "job_scoring_weights",
+            "$permissions": [],
+            "databaseId": "bestconsultant-dev",
+            "name": "job scoring weights",
+            "enabled": true,
+            "documentSecurity": false,
+            "attributes": [
+                {
+                    "key": "userId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "jobId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "candidate",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 40,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "weights",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 2000,
+                    "default": null,
+                    "encrypt": false
+                }
+            ],
+            "indexes": [
+                {
+                    "key": "jobId_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "jobId"
+                    ],
+                    "orders": []
+                },
+                {
+                    "key": "userId_jobId_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "userId",
+                        "jobId"
+                    ],
+                    "orders": []
+                }
+            ]
         }
     ],
     "buckets": [

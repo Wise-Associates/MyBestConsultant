@@ -74,20 +74,43 @@ describe('détail d’un score du Matching IA', () => {
   it('donne la part de chaque critère en pourcentage et en points', () => {
     const b = scoreBreakdown(judgementSummary(judged({ requirements: ['oui', 'partiel', 'non', 'oui'], skills: ['oui', 'non'] }, { domaine: 'non requis', niveau: 'partiel' })))
     assert.deepEqual(b?.parts.map(p => [p.key, p.label, p.percent, p.points, p.max]), [
-      ['poste', 'Poste', 100, 20, 20], ['exigences', 'Contexte', 63, 6.25, 10], ['projet', 'Projet', 100, 5, 5],
-      ['competences', 'Techno', 50, 10, 20], ['localisation', 'Localisation', 100, 8, 8], ['niveau', 'Séniorité', 50, 5, 10],
-      ['formation', 'Formation', 100, 6, 6], ['domaine', 'Secteur', 100, 10, 10], ['langue', 'Langue', 100, 6, 6], ['tjm', 'TJM', 100, 5, 5],
+      ['poste', 'Poste', 100, 35, 35], ['exigences', 'Contexte', 63, 1.875, 3], ['projet', 'Projet', 100, 3, 3],
+      ['competences', 'Techno', 50, 10, 20], ['localisation', 'Localisation', 100, 12, 12], ['niveau', 'Séniorité', 50, 5, 10],
+      ['formation', 'Formation', 100, 2, 2], ['domaine', 'Secteur', 100, 11, 11], ['langue', 'Langue', 100, 2, 2], ['tjm', 'TJM', 100, 2, 2],
     ])
-    assert.equal(b?.total, 81)
+    assert.equal(b?.total, 84)
     assert.equal(b?.cap, null)
+    assert.equal(b?.score, 84)
+  })
+
+  it('relit un score enregistré avec les poids qui l’ont donné : résumé sans version (avant le 2026-11-19) aux poids v1', () => {
+    const summary = judgementSummary(judged({ requirements: ['oui', 'partiel', 'non', 'oui'], skills: ['oui', 'non'] }, { domaine: 'non requis', niveau: 'partiel' }))
+    const unversioned = summary.replace('Poids v2 · ', '')
+    assert.notEqual(unversioned, summary)
+    const b = scoreBreakdown(`${unversioned} — Raison fictive.`)
+    // Poste 20 + contexte 6,25 + projet 5 + techno 10 + localisation 8 + séniorité 5 + formation 6 + secteur 10 + langue 6 + TJM 5.
+    assert.deepEqual(b?.parts.map(p => p.max), [20, 10, 5, 20, 8, 10, 6, 10, 6, 5])
     assert.equal(b?.score, 81)
+    assert.equal(b?.rest, 'Raison fictive.')
+    assert.equal(scoreBreakdown(summary.replace('Poids v2', 'Poids v1'))?.score, 81, 'version 1 notée')
+    assert.equal(scoreBreakdown(summary.replace('Poids v2', 'Poids v9')), null, 'version inconnue : pas de détail')
+  })
+
+  it('raison coupée (300 caractères du vivier général) : jamais relue aux poids v1', () => {
+    const summary = judgementSummary(judged({ roles: [{ title: 'Développeur Java Spring Boot confirmé', fit: 'oui' }] }))
+    const reason = `${summary} — ${'Phrase de l’IA. '.repeat(30)}`
+    // Coupée juste après le dernier critère : la version, en tête, est gardée.
+    assert.deepEqual(scoreBreakdown(reason.slice(0, summary.length))?.parts.map(p => p.max), [35, 3, 3, 20, 12, 10, 2, 11, 2, 2])
+    // Coupée dans le résumé : pas de détail (le score enregistré est affiché).
+    for (const cut of [summary.length - 3, 40, 12]) assert.equal(scoreBreakdown(reason.slice(0, cut)), null, `coupée à ${cut}`)
   })
 
   it('dit quel plafond abaisse le score : poste non exercé avant secteur absent', () => {
     const b = scoreBreakdown(judgementSummary(judged({
       roles: [{ title: 'Scrum Master', fit: 'oui' }, { title: 'Développeur Full Stack', fit: 'non' }],
     }, { domaine: 'non' })))
-    assert.equal(b?.total, 80)
+    // Poste 35 × 0,5 et secteur 11 perdus : 71,5 arrondi.
+    assert.equal(b?.total, 72)
     assert.deepEqual(b?.cap, { value: 50, reason: 'un métier du titre de l’offre n’a pas été exercé' })
     assert.equal(b?.score, 50)
     assert.equal(b?.parts[0].detail, 'Scrum Master oui, Développeur Full Stack non')
@@ -102,8 +125,8 @@ describe('détail d’un score du Matching IA', () => {
 
   it('ne signale pas un plafond qui n’abaisse rien', () => {
     const b = scoreBreakdown(judgementSummary(judged({ roles: [{ title: '', fit: 'non' }], requirements: ['non'], skills: ['non'] }, { domaine: 'non' })))
-    // Projet 5 + localisation 8 + séniorité 10 + formation 6 + langue 6 + TJM 5 = 40 : sous tous les plafonds.
-    assert.equal(b?.total, 40)
+    // Projet 3 + localisation 12 + séniorité 10 + formation 2 + langue 2 + TJM 2 = 31 : sous tous les plafonds.
+    assert.equal(b?.total, 31)
     assert.equal(b?.cap, null)
   })
 

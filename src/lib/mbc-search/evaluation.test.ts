@@ -33,7 +33,8 @@ describe('MBC Search : évaluation d\'un profil révélé sur le barème du matc
     for (const k of APOLLO_UNAVAILABLE) assert.equal(w[k], 0)
     const sum = Object.values(w).reduce((s, v) => s + (v ?? 0), 0)
     assert.ok(Math.abs(sum - 100) < 1e-9)
-    assert.ok(Math.abs((w.poste ?? 0) - (20 * 100) / 83) < 1e-9)
+    // Poids v2 gardés : 94 points sur 100 (formation 2, langue 2, TJM 2 retirés).
+    assert.ok(Math.abs((w.poste ?? 0) - (35 * 100) / 94) < 1e-9)
     // Réglage extrême : tous les poids gardés à zéro → ceux du barème.
     const allOnUnavailable = { poste: 0, exigences: 0, projet: 0, competences: 0, localisation: 0, niveau: 0, domaine: 0, formation: 40, langue: 30, tjm: 30 }
     assert.ok(Math.abs(Object.values(apolloWeights(allOnUnavailable)).reduce((s, v) => s + (v ?? 0), 0) - 100) < 1e-9)
@@ -47,8 +48,8 @@ describe('MBC Search : évaluation d\'un profil révélé sur le barème du matc
     const j = judgements()
     assert.equal(judgedScore(j), 60, 'pour un CV, des compétences absentes plafonnent à 60')
     const e = evaluationOf(j, { skills: ['Kafka', 'Spark'], requirements: [] }, SCALES.matching.weights, notes, { questions: ['Q1'], nextSteps: [] })
-    // 63 points gardés sur 83 (poste 20, contexte 10, projet 5, localisation 8, séniorité 10, secteur 10) → 76 sur 100.
-    assert.equal(e.score, 76)
+    // 74 points gardés sur 94 (poste 35, contexte 3, projet 3, localisation 12, séniorité 10, secteur 11) → 79 sur 100.
+    assert.equal(e.score, 79)
     assert.equal(e.cap, null)
     const formation = e.parts.find(p => p.key === 'formation')
     assert.deepEqual([formation?.unavailable, formation?.detail, formation?.max], [true, 'Non disponible', 0])
@@ -57,7 +58,8 @@ describe('MBC Search : évaluation d\'un profil révélé sur le barème du matc
   })
 
   it('un poste non exercé plafonne toujours le score', () => {
-    const e = evaluationOf(judgements({ roles: [{ title: 'Data Engineer', fit: 'non' }] }), { skills: [], requirements: [] }, SCALES.matching.weights, notes, { questions: [], nextSteps: [] })
+    // Compétences vues : 59 points sur 94 sans le poste (63 sur 100), ramenés au plafond du poste.
+    const e = evaluationOf(judgements({ roles: [{ title: 'Data Engineer', fit: 'non' }], skills: ['oui', 'oui'] }), { skills: [], requirements: [] }, SCALES.matching.weights, notes, { questions: [], nextSteps: [] })
     assert.deepEqual(e.cap, { label: 'Poste', value: 50 })
     assert.equal(e.score, 50)
   })

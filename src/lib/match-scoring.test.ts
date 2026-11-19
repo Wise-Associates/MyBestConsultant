@@ -5,10 +5,11 @@ import {
   offerDetails, parseFit, parseScoringNotes, scoringSystemPrompt, scoringUserMessage, type OfferCriteria, criteriaBlock, judgedScore,
   judgementFields, judgementSummary, offerCriteria, offerRequirements, offerTextForAi, parseJudgements, parseTitleRelations, recommendationFor,
   requiredSkills, rolePairs, titleCheckPrompt, withBonus, withTitleRelations, type ActiveScale, type MatchJudgements,
+  CURRENT_WEIGHTS_VERSION, WEIGHT_VERSIONS, scaleKeys,
 } from './match-scoring'
 
 describe('deux barèmes : matching des CV disponibles, score final de l\'AO (ADR 0036)', () => {
-  it('les poids de chaque barème font 100, critères rouges plus lourds', () => {
+  it('les poids de chaque barème font 100, dans l\'ordre du tableau des recruteurs', () => {
     for (const scale of ['matching', 'final', 'legacy'] as const) {
       assert.equal(Object.values(SCALES[scale].weights).reduce((sum, w) => sum + (w ?? 0), 0), 100, scale)
     }
@@ -248,18 +249,31 @@ describe('score calculé à partir des jugements de l\'IA (stable d\'un calcul �
     skills: ['oui', 'oui'], skillsListed: true, fits: { ...ALL_YES, ...fits }, ...over,
   })
 
-  it('matching : poste 20, techno 20, contexte 10, séniorité 10, secteur 10, localisation 8, formation 6, langue 6, projet 5, TJM 5', () => {
+  it('matching (poids v2 du 2026-11-19) : poste 35, techno 20, localisation 12, secteur 11, séniorité 10, contexte 3, projet 3, formation 2, langue 2, TJM 2', () => {
     assert.equal(judgedScore(judged()), 100)
-    assert.equal(judgedScore(judged({}, { tjm: 'non' })), 95, 'critère blanc : sans plafond')
-    assert.equal(judgedScore(judged({}, { projet: 'non', tjm: 'partiel' })), 93)
-    assert.equal(judgedScore(judged({ requirements: ['oui', 'partiel'], skills: ['oui', 'non'] }, { domaine: 'non requis', niveau: 'non précisé' })), 88)
+    assert.equal(judgedScore(judged({}, { tjm: 'non' })), 98, 'critère blanc : sans plafond')
+    assert.equal(judgedScore(judged({}, { projet: 'non', tjm: 'partiel' })), 96)
+    // Contexte 3 × 0,75 et techno 20 × 0,5 : 100 − 0,75 − 10 = 89,25.
+    assert.equal(judgedScore(judged({ requirements: ['oui', 'partiel'], skills: ['oui', 'non'] }, { domaine: 'non requis', niveau: 'non précisé' })), 89)
   })
 
-  it('score final : poste 25, techno 25, contexte 15, client 15, projet 10, localisation 5, séniorité 5 ; diplômes absents', () => {
+  it('score final (poids v2) : poste 35, techno 20, localisation 12, client 11, séniorité 10, contexte 6, projet 6 ; diplômes absents', () => {
     assert.equal(judgedScore(judged({}, {}, 'final')), 100)
     assert.equal(judgedScore(judged({}, { formation: 'non', langue: 'non', domaine: 'non', tjm: 'non' }, 'final')), 100, 'hors du barème final')
-    assert.equal(judgedScore(judged({}, { localisation: 'non' }, 'final')), 95, 'localisation : blanche au score final')
-    assert.equal(judgedScore(judged({}, { client: 'partiel' }, 'final')), 93)
+    assert.equal(judgedScore(judged({}, { localisation: 'non' }, 'final')), 88, 'localisation : blanche au score final')
+    // Client partiel : 11 × 0,5 perdus, 94,5 arrondi.
+    assert.equal(judgedScore(judged({}, { client: 'partiel' }, 'final')), 95)
+  })
+
+  it('poids par défaut : chaque version fait 100 par barème, dans l\'ordre des critères du barème ; la version actuelle est celle des barèmes', () => {
+    for (const [version, scales] of Object.entries(WEIGHT_VERSIONS)) {
+      for (const scale of ['matching', 'final'] as const) {
+        assert.equal(Object.values(scales[scale]).reduce((sum, w) => sum + (w ?? 0), 0), 100, `v${version} ${scale}`)
+        assert.deepEqual(Object.keys(scales[scale]), scaleKeys(scale), `v${version} ${scale} : ordre du résumé`)
+      }
+    }
+    assert.equal(SCALES.matching.weights, WEIGHT_VERSIONS[CURRENT_WEIGHTS_VERSION].matching)
+    assert.equal(SCALES.final.weights, WEIGHT_VERSIONS[CURRENT_WEIGHTS_VERSION].final)
   })
 
   it('critère rouge qui manque : plafonné sous 65, quel que soit le reste', () => {
@@ -300,10 +314,11 @@ describe('score calculé à partir des jugements de l\'IA (stable d\'un calcul �
     assert.equal(judgementSummary(judged({
       roles: [{ title: 'Scrum Master', fit: 'oui' }, { title: 'Développeur Full Stack', fit: 'non' }],
       requirements: ['oui', 'partiel', 'non'], skills: ['oui', 'non'],
-    }, { domaine: 'non requis', tjm: 'non précisé' })), 'Poste : Scrum Master oui, Développeur Full Stack non · Contexte : 1 sur 3, 1 partielle · Projet : oui'
-      + ' · Techno : 1 sur 2 · Localisation : oui · Séniorité : oui · Formation : oui · Secteur : non requis · Langue : oui · TJM : non précisé')
+    }, { domaine: 'non requis', tjm: 'non précisé' })), 'Poids v2 · Poste : Scrum Master oui, Développeur Full Stack non · Contexte : 1 sur 3, 1 partielle'
+      + ' · Projet : oui · Techno : 1 sur 2 · Localisation : oui · Séniorité : oui · Formation : oui · Secteur : non requis · Langue : oui'
+      + ' · TJM : non précisé', 'version des poids notée en tête')
     assert.equal(judgementSummary(judged({ requirements: ['partiel'], requirementsListed: false, skills: ['oui'], skillsListed: false }, {}, 'final')),
-      'Poste : oui · Contexte : partiel · Projet : oui · Techno : oui · Client : oui · Localisation : oui · Séniorité : oui')
+      'Poids v2 · Poste : oui · Contexte : partiel · Projet : oui · Techno : oui · Client : oui · Localisation : oui · Séniorité : oui')
   })
 })
 

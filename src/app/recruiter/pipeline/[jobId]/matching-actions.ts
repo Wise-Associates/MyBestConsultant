@@ -15,7 +15,9 @@ import { revalidatePath } from 'next/cache'
 import { requireRecruiter } from './actions'
 import { aiInterviewRecruiter, takeInterviewAiSlot } from '@/lib/interview-access'
 import { autoScreenApplication } from '@/lib/screening-core'
-import { loadRecruiterWeights } from '@/lib/scoring-weights-store'
+import { MAX_WEIGHTED_CANDIDATES, isJobWeightsConfigured, loadWeightsForJob, saveCandidateWeights, saveJobWeights } from '@/lib/scoring-weights-store'
+import { ScaleWeightsSchemas, isCandidateWeightsKey } from '@/lib/scoring-weights'
+import { isDocumentId } from '@/lib/ao/access'
 import { isAutoMatchingEnabled, setMatchReview } from '@/lib/ai-matches-store'
 import { REVIEW_STATUSES, type ReviewStatus } from '@/lib/match-review'
 
@@ -33,10 +35,10 @@ async function requireJobAccess(jobId: string): Promise<{ tenantId: string; prof
   return { tenantId, profileId: $id, userId, ownOffer: job.tenantId === tenantId }
 }
 
-/** Liste de la page, scores aux poids du recruteur. */
+/** Liste de la page, scores aux poids du recruteur : ceux du candidat, sinon de l'offre, sinon ses poids globaux. */
 async function matchesFor(jobId: string, access: { tenantId: string; profileId: string; userId: string }): Promise<JobMatchResult[]> {
-  const { weights } = await loadRecruiterWeights(access.userId)
-  return (await getJobMatches(jobId, access.tenantId, access.profileId, weights)).matches
+  const { weights, candidates } = await loadWeightsForJob(access.userId, jobId)
+  return (await getJobMatches(jobId, access.tenantId, access.profileId, weights, candidates)).matches
 }
 
 export async function getMatchesAction(jobId: string): Promise<JobMatchResult[]> {
@@ -273,4 +275,74 @@ async function scoreAddedCandidates(added: AddedCandidate[], stage: string | und
     await logFunnelEvent(applicationId, stage ?? 'screening', 'screening', `Score final : ${score}/100${matching}`)
   })
   return [...errors]
+}
+
+/**
+ * Poids du matching de cette offre pour le recruteur connecté (ADR 0049, colonne de droite du Matching IA) : offre qu'il
+ * ouvre (requireJobAccess), enregistrés sur son compte seulement, refusés s'ils ne sont pas valides (un entier par
+ * critère du barème, total 100). `weights` null : retire ceux de l'offre, ses poids globaux s'appliquent de nouveau.
+ */
+export async function saveJobScoringWeightsAction(jobId: unknown, weights: unknown): Promise<{ error?: string }> {
+  if (!isDocumentId(jobId)) return { error: 'Demande invalide.' }
+  const { userId } = await requireJobAccess(jobId)
+  if (!isJobWeightsConfigured()) return { error: 'La pondération par offre n’est pas encore activée sur la plateforme.' }
+  const parsed = weights === null ? null : ScaleWeightsSchemas.matching.safeParse(weights)
+  if (parsed && !parsed.success) return { error: 'Poids invalides : le total doit faire 100 points, en nombres entiers.' }
+  try {
+    await saveJobWeights(userId, jobId, parsed ? parsed.data : null)
+    return {}
+  } catch (e) {
+    console.error('[poids] poids de l\'offre non enregistrés', jobId, e instanceof Error ? e.message : e)
+    return { error: 'Enregistrement impossible pour le moment : réessayez dans quelques instants.' }
+  }
+}
+
+/**
+ * Le candidat de la clé (candidateWeightsKey) est l'un de ceux que le Matching IA ou le pipeline de l'offre montrent au
+ * recruteur : sa candidature à l'offre, sa ligne de la base candidats pour l'offre, ou un CV de son vivier (de l'offre ou
+ * général), mêmes règles que la page.
+ */
+async function candidateOfJob(jobId: string, key: string, access: { tenantId: string; profileId: string }): Promise<boolean> {
+  const { databases } = createAdminClient()
+  const id = key.slice(2)
+  const getOrNull = (collection: string) => databases.getDocument(DB_ID, collection, id).catch(err => {
+    if ((err as { code?: unknown }).code === 404) return null
+    throw err
+  })
+  if (key.startsWith('a:')) {
+    const app = await getOrNull(COLLECTIONS.APPLICATIONS)
+    return !!app && app.jobId === jobId && (app.tenantId === access.tenantId || app.tenantId === '')
+  }
+  if (key.startsWith('v:')) {
+    const cv = await getOrNull(COLLECTIONS.VIVIER_CVS)
+    return !!cv && cv.tenantId === access.tenantId && cv.recruiterId === access.profileId && (!cv.jobId || cv.jobId === jobId)
+  }
+  const rows = await databases.listDocuments(DB_ID, COLLECTIONS.JOB_MATCHES, [
+    Query.equal('jobId', jobId), Query.equal('candidateId', id), Query.select(['$id']), Query.limit(1),
+  ])
+  return rows.total > 0
+}
+
+/**
+ * Poids d'un candidat pour cette offre (ADR 0049, Matching IA et pipeline), pour le barème de son score, au recruteur
+ * connecté : offre qu'il ouvre (requireJobAccess), clé d'un candidat que la page lui montre (candidateOfJob : chaque clé
+ * crée un document), poids validés, MAX_WEIGHTED_CANDIDATES candidats au plus par offre. `weights` null : retire
+ * ceux du candidat pour ce barème, les poids de l'offre s'appliquent de nouveau.
+ */
+export async function saveCandidateScoringWeightsAction(jobId: unknown, candidate: unknown, scale: unknown, weights: unknown): Promise<{ error?: string }> {
+  if (!isDocumentId(jobId) || !isCandidateWeightsKey(candidate) || (scale !== 'matching' && scale !== 'final')) return { error: 'Demande invalide.' }
+  const access = await requireJobAccess(jobId)
+  if (!isJobWeightsConfigured()) return { error: 'La pondération par candidat n’est pas encore activée sur la plateforme.' }
+  const parsed = weights === null ? null : ScaleWeightsSchemas[scale].safeParse(weights)
+  if (parsed && !parsed.success) return { error: 'Poids invalides : le total doit faire 100 points, en nombres entiers.' }
+  try {
+    // Un candidat que la page montre pour cette offre : chaque clé crée un document (revue de sécurité du 2026-11-19).
+    if (weights !== null && !await candidateOfJob(jobId, candidate, access)) return { error: 'Candidat introuvable pour cette offre : rechargez la page.' }
+    const result = await saveCandidateWeights(access.userId, jobId, candidate, scale, parsed ? parsed.data : null)
+    if (result === 'limit') return { error: `Limite de ${MAX_WEIGHTED_CANDIDATES} candidats pondérés pour cette offre : revenez aux poids de l’offre pour un autre candidat.` }
+    return {}
+  } catch (e) {
+    console.error('[poids] poids du candidat non enregistrés', jobId, e instanceof Error ? e.message : e)
+    return { error: 'Enregistrement impossible pour le moment : réessayez dans quelques instants.' }
+  }
 }

@@ -41,6 +41,18 @@ describe('lecture de tous les documents (listAllDocuments)', () => {
     assert.deepEqual(await listAllDocuments(databases, 'db', 'jobs', []), [])
     assert.equal(calls.length, 1)
   })
+
+  it('Query.select sans $id : échoue au lieu de relire la première page sans fin', async () => {
+    let calls = 0
+    const databases = {
+      async listDocuments() {
+        calls++
+        return { total: 1000, documents: Array.from({ length: 500 }, () => ({ weights: '{}' })) }
+      },
+    } as unknown as Pick<Databases, 'listDocuments'>
+    await assert.rejects(listAllDocuments(databases, 'db', 'weights', [Query.select(['weights'])]), /\$id absent/)
+    assert.equal(calls, 1)
+  })
 })
 
 describe('lecture par une liste de valeurs (listAllByValues)', () => {

@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { BackLink } from '@/components/recruiter/back-link'
 import {
   RefreshCw, Loader2, Brain, Users, FolderOpen, Send, Check, FileText,
-  ExternalLink, UserPlus, CheckCircle2, Kanban, Clock, Target, Search, Sparkles,
+  ExternalLink, UserPlus, CheckCircle2, Kanban, Clock, Target, Search, Sparkles, SlidersHorizontal,
 } from 'lucide-react'
 import { LocalTime } from '@/components/shared/local-time'
 import { getMatchesAction, refreshPoolMatchingAction, addToFunnelAction, runApplicationMatchingAction, setMatchReviewAction } from '../matching-actions'
@@ -17,12 +17,14 @@ import {
 } from '@/lib/matching-filters'
 import { REVIEW_STATUSES, REVIEW_STATUS_LABEL, type ReviewStatus } from '@/lib/match-review'
 import { initialUrlListSync, noteListWrite, syncFromUrl } from '@/lib/url-list-state'
-import { scoreBreakdown } from '@/lib/score-breakdown'
-import type { RecruiterWeights } from '@/lib/scoring-weights'
+import { scoreBreakdown, type ScoreBreakdown } from '@/lib/score-breakdown'
+import { candidateWeightsKey, mergeOverride, withOverride, type RecruiterWeights, type ScaleWeights, type WeightsOverride } from '@/lib/scoring-weights'
+import type { ActiveScale } from '@/lib/match-scoring'
 import { ScoreDetail, ScoringGuide, ScoreCriteriaList, criterionTone } from './score-detail'
 import { JobHeaderGrid, JobTabs } from '@/components/recruiter/job-tabs'
 import { JobInfoButton } from '@/components/recruiter/job-info-button'
 import { ScoringWeightsButton } from '../scoring-weights-dialog'
+import { CandidateWeightsPanel, JobWeightsPanel } from '../weights-override-panel'
 import { SOURCING_MIN_SCORE } from '@/lib/sourcing-rules'
 
 const PAGE_SIZE = 25
@@ -84,6 +86,16 @@ function ReviewButtons({ m, busy, onReview, className = '' }: { m: JobMatchResul
 }
 
 /** Pastilles d'une correspondance de la base : « Proposé par l'IA » (trouvé au premier CV) et statut de revue. */
+/** Score calculé avec les poids propres au candidat (ADR 0049) : il ne se compare plus tout à fait aux autres. */
+function OwnWeightsBadge() {
+  return (
+    <span title="Score calculé avec les poids propres à ce candidat" className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap"
+      style={{ background: 'color-mix(in srgb, var(--color-brand-orange) 14%, transparent)', color: 'var(--color-text)' }}>
+      <SlidersHorizontal className="h-2.5 w-2.5" aria-hidden />Pondération propre
+    </span>
+  )
+}
+
 function ReviewChips({ m, reviewEnabled }: { m: JobMatchResult; reviewEnabled: boolean }) {
   if (m.source !== 'pool') return null
   const review = m.review ?? 'nouveau'
@@ -116,12 +128,19 @@ function profileHref(m: JobMatchResult): string | null {
 }
 
 /** `now` : heure du rendu par le serveur (ISO), avancée à chaque actualisation de la liste. */
-export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMatches, tabCounts, weights, weightsUnreadable, now, reviewEnabled }: {
+export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMatches, tabCounts, weights, weightsUnreadable, globalWeights, jobWeights, now, reviewEnabled }: {
   jobId: string; jobTitle: string
   /** Revue des correspondances de la base activée (ADR 0047, AI_AUTO_MATCHING_ENABLED). */
   reviewEnabled: boolean
-  /** Poids personnels du recruteur : les scores reçus en tiennent déjà compte, le détail de chaque score aussi. */
+  /** Poids du recruteur pour cette offre : les scores reçus en tiennent déjà compte, le détail de chaque score aussi. */
   weights: RecruiterWeights; weightsUnreadable: boolean
+  /** Poids globaux du recruteur (bouton du bandeau). */
+  globalWeights: RecruiterWeights
+  /**
+   * Poids propres à l'offre (matching) et à ses candidats (par clé candidateWeightsKey), ADR 0049 ; absent : réglages par
+   * offre et par candidat non activés (collection non configurée).
+   */
+  jobWeights?: { weights: ScaleWeights | null; unreadable: boolean; candidates: Record<string, WeightsOverride>; candidatesUnreadable: boolean }
   /** « Paris · CDI · Publiée le 3 nov. 2026 », et compétences de l'offre : rappel de l'offre sur grand écran. */
   jobMeta: string; jobSkills: string[]
   initialMatches: JobMatchResult[]; now: string
@@ -129,6 +148,25 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
   tabCounts?: { funnel: number; client: number }
 }) {
   const [matches, setMatches] = useState(initialMatches)
+  // Poids propres aux candidats : mis à jour sur place à l'enregistrement, puis la liste est relue (scores recalculés par le serveur).
+  const [candWeights, setCandWeights] = useState(() => jobWeights?.candidates ?? {})
+  const rowWeights = (m: JobMatchResult) => withOverride(weights, candWeights[candidateWeightsKey(m)])
+  /** Le candidat a ses propres poids pour le barème de son score. */
+  const ownWeights = (m: JobMatchResult, b: ScoreBreakdown | null) => !!b && b.scale !== 'legacy' && !!candWeights[candidateWeightsKey(m)]?.[b.scale]
+  const saveCandidateWeights = (m: JobMatchResult, scale: ActiveScale) => async (saved: ScaleWeights | null) => {
+    const key = candidateWeightsKey(m)
+    setCandWeights(all => {
+      const { [key]: previous, ...others } = all
+      const own = mergeOverride(previous, scale, saved)
+      return own ? { ...others, [key]: own } : others
+    })
+    try {
+      setMatches(await getMatchesAction(jobId))
+    } catch (err) {
+      console.error('[poids] liste non relue après l’enregistrement', err)
+      setFlash('Poids enregistrés ; rechargez la page pour voir les scores recalculés.')
+    }
+  }
   const [nowMs, setNowMs] = useState(() => new Date(now).getTime())
   const [page, setPage] = useState(1)
   // Filtres repris de l'adresse (« Retour » depuis un profil les retrouve) ; adresse changée sans la liste : reprise.
@@ -395,7 +433,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
             const isSelected = selected.has(m.id)
             const isFocused = focused !== null && keyOf(focused) === keyOf(m)
             const cv = cvHref(m)
-            const breakdown = m.score != null ? scoreBreakdown(m.reason, weights) : null
+            const breakdown = m.score != null ? scoreBreakdown(m.reason, rowWeights(m)) : null
             const reasonText = breakdown ? breakdown.rest : m.reason
             return (
               <tr key={keyOf(m)} onClick={() => setFocusKey(keyOf(m))} aria-selected={isFocused}
@@ -433,11 +471,12 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                 </td>
                 <td className="py-2.5 px-3">
                   {m.score != null ? (
-                    <span className="inline-flex items-center gap-2">
+                    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
                       <b className="w-6 text-[15px] tabular-nums" style={{ color: 'var(--color-text)' }}>{m.score}</b>
                       <span aria-hidden className="w-14 h-1.5 rounded-full overflow-hidden" style={{ background: 'color-mix(in srgb, var(--color-text) 8%, transparent)' }}>
                         <span className="block h-full rounded-full" style={{ width: `${m.score}%`, background: scoreColor(m.score) }} />
                       </span>
+                      {ownWeights(m, breakdown) && <OwnWeightsBadge />}
                     </span>
                   ) : analysing(m) || (m.applicationId && running.has(m.applicationId)) ? (
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: '#3b82f6' }}><Loader2 className="h-3 w-3 animate-spin" aria-hidden />En cours…</span>
@@ -472,12 +511,13 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
     </div>
   )
 
-  const focusedBreakdown = focused && focused.score != null ? scoreBreakdown(focused.reason, weights) : null
+  const focusedBreakdown = focused && focused.score != null ? scoreBreakdown(focused.reason, rowWeights(focused)) : null
   const focusedProfile = focused ? profileHref(focused) : null
   const focusedCv = focused ? cvHref(focused) : null
   const panelButton = 'h-10 px-3 rounded-[10px] inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold no-underline transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)'
   const panel = (
     <aside aria-label="Candidat et sélection" className="hidden min-[90rem]:flex flex-col gap-3 sticky top-[84px]">
+      {jobWeights && <JobWeightsPanel jobId={jobId} global={globalWeights.matching} job={jobWeights.weights} unreadable={jobWeights.unreadable} />}
       {focused && (
         <section aria-label={`Détail de ${focused.name}`} className="rounded-[20px] p-4" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
           <div className="flex items-start justify-between gap-3">
@@ -496,11 +536,17 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
               <span className="text-xs font-semibold" style={{ color: focused.score >= SOURCING_MIN_SCORE ? '#047857' : '#b45309' }}>
                 {focused.score >= SOURCING_MIN_SCORE ? 'Correspond' : `Sous le seuil de ${SOURCING_MIN_SCORE}`}
               </span>
+              {ownWeights(focused, focusedBreakdown) && <OwnWeightsBadge />}
             </p>
           ) : (
             <p className="text-[13px] mt-3 mb-3" style={muted}>{analysing(focused) ? 'Matching en cours…' : 'Pas encore analysé.'}</p>
           )}
           {focused.score != null && focusedBreakdown && <ScoreCriteriaList breakdown={focusedBreakdown} match={{ ...focused, score: focused.score }} />}
+          {jobWeights && focused.score != null && focusedBreakdown && focusedBreakdown.scale !== 'legacy' && (
+            <CandidateWeightsPanel key={keyOf(focused)} className="mt-3" jobId={jobId} candidateKey={candidateWeightsKey(focused)} scale={focusedBreakdown.scale}
+              reference={weights[focusedBreakdown.scale]} own={candWeights[candidateWeightsKey(focused)]?.[focusedBreakdown.scale] ?? null}
+              onSaved={saveCandidateWeights(focused, focusedBreakdown.scale)} />
+          )}
           {focused.score != null && !focusedBreakdown && (
             <p className="text-[11.5px]" style={muted}>Détail du score indisponible : score calculé avant la notation par critères.</p>
           )}
@@ -584,7 +630,8 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                   {isRefreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
                   Rafraîchir
                 </button>
-                <ScoringWeightsButton scale="matching" weights={weights.matching} unreadable={weightsUnreadable} />
+                <ScoringWeightsButton scale="matching" weights={globalWeights.matching} unreadable={weightsUnreadable}
+                  label={jobWeights ? 'Pondération globale' : 'Pondération'} />
                 <Link href={`/recruiter/pipeline/${jobId}`}
                   className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold no-underline transition-opacity hover:opacity-85"
                   style={{ background: '#10b981', color: 'white', boxShadow: '0 6px 16px -6px rgba(16,185,129,0.6)' }}>
@@ -603,6 +650,9 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
           <p className="text-sm mb-3" style={{ color: 'var(--color-text-muted)' }}>
             L&apos;IA a comparé cette offre aux candidatures reçues, à la base de candidats et à votre vivier (celui de l&apos;offre et votre vivier général). Sélectionnez qui vous intéresse puis lancez (ou relancez) le screening.
           </p>
+          {jobWeights && (
+            <JobWeightsPanel className="mb-4" jobId={jobId} global={globalWeights.matching} job={jobWeights.weights} unreadable={jobWeights.unreadable} />
+          )}
           <ScoringGuide weights={weights} />
         </div>
 
@@ -610,6 +660,11 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
           <div role="status" className="mb-4 px-4 py-2.5 rounded-lg text-sm font-semibold" style={{ background: 'rgba(232,163,61,0.1)', color: '#b8862f' }}>
             {flash}
           </div>
+        )}
+        {jobWeights?.candidatesUnreadable && (
+          <p role="status" className="mb-4 px-4 py-2.5 rounded-lg text-[13px]" style={{ background: 'rgba(245,158,11,0.12)', color: '#b45309' }}>
+            {'Les poids enregistrés pour certains candidats n’ont pas pu être lus\u00a0: les poids de l’offre leur sont appliqués. Rechargez la page dans un instant.'}
+          </p>
         )}
 
         {matches.length === 0 ? (
@@ -674,7 +729,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                 const isSelected = selected.has(m.id)
                 const cv = cvHref(m)
                 const profile = profileHref(m)
-                const breakdown = m.score != null ? scoreBreakdown(m.reason, weights) : null
+                const breakdown = m.score != null ? scoreBreakdown(m.reason, rowWeights(m)) : null
                 const reasonText = breakdown ? breakdown.rest : m.reason
                 const disabled = m.alreadyInFunnel
                 return (
@@ -714,8 +769,11 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                         </span>
                         <ReviewChips m={m} reviewEnabled={reviewEnabled} />
                         {m.score != null ? (
-                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${scoreColor(m.score)}18`, color: scoreColor(m.score) }}>
-                            {m.score}/100
+                          <span className="inline-flex items-center gap-1">
+                            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${scoreColor(m.score)}18`, color: scoreColor(m.score) }}>
+                              {m.score}/100
+                            </span>
+                            {ownWeights(m, breakdown) && <OwnWeightsBadge />}
                           </span>
                         ) : analysing(m) || (m.applicationId && running.has(m.applicationId)) ? (
                           <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(59,130,246,0.12)', color: '#3b82f6' }}>
@@ -770,6 +828,14 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                         </p>
                       )}
                       {m.score != null && breakdown && <ScoreDetail breakdown={breakdown} match={{ ...m, score: m.score }} />}
+                      {jobWeights && m.score != null && breakdown && breakdown.scale !== 'legacy' && (
+                        // Formulaire dans la carte, qui coche le candidat au clic : le clic reste dans le formulaire.
+                        <div onClick={e => e.stopPropagation()} className="mt-2.5">
+                          <CandidateWeightsPanel jobId={jobId} candidateKey={candidateWeightsKey(m)} scale={breakdown.scale}
+                            reference={weights[breakdown.scale]} own={candWeights[candidateWeightsKey(m)]?.[breakdown.scale] ?? null}
+                            onSaved={saveCandidateWeights(m, breakdown.scale)} />
+                        </div>
+                      )}
                       {m.score != null && !breakdown && (
                         <p className="text-[11px] mt-1.5" style={{ color: 'var(--color-text-muted)' }}>
                           Détail du score indisponible : score calculé avant la notation par critères{m.source === 'pool' ? ' ; « Rafraîchir » le recalcule' : m.source === 'application' ? ' ; « Relancer » le recalcule' : ''}.

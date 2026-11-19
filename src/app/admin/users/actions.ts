@@ -10,6 +10,7 @@ import { getCurrentUser, createUserAccountAndProfile } from '@/lib/appwrite/auth
 import { deleteAssistantTurnsForUser, isAssistantStorageConfigured } from '@/lib/assistant/host'
 import { deleteMbcSearchesForUser } from '@/lib/mbc-search/history-store'
 import { deleteSavedPeopleForUser } from '@/lib/mbc-search/saved-store'
+import { deleteWeightsOfUser } from '@/lib/scoring-weights-store'
 import { cvExportErrorName, deleteCvExportsForCandidate, isCvExportStorageConfigured, isCvExportStorageMissing } from '@/lib/cv-export/store'
 import { revalidatePath } from 'next/cache'
 import { deleteClassification } from '@/lib/appwrite/cv-classifications'
@@ -143,6 +144,7 @@ export async function deleteUserAccount(authId: string, listedProfileId: string 
       console.error('[mbc-search] suppression des personnes enregistrées en échec', e instanceof Error ? e.message : String(e))
       return { error: 'Compte non supprimé : la suppression de ses personnes enregistrées dans MBC Search a échoué. Réessayez.' }
     }
+    await deleteWeightsOfUser(authId) // poids du matching par offre (ne lève jamais)
     // Recherches enregistrées de la CV Thèque (ADR 0045), même règle : avant le compte.
     if (profileId) {
       try {

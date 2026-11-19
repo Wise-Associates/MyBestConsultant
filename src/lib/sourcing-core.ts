@@ -238,6 +238,12 @@ export interface CvScore {
   answer: unknown
 }
 
+/** Score (poids par défaut actuels) et raison d'une notation : résumé des jugements, puis la phrase de l'IA. */
+const scoredFrom = (judgements: MatchJudgements, notes: ScoringNotes) => ({
+  score: judgedScore(judgements),
+  reason: `${judgementSummary(judgements)}${notes.reason ? ` — ${notes.reason}` : ''}`,
+})
+
 /**
  * La notation d'un CV pour une offre (ADR 0029), la même pour une candidature (screening), la base candidats, le vivier
  * de l'offre et `npm run matching:explain` ; seul le barème change (ADR 0036) : `matching` pour les CV disponibles,
@@ -258,7 +264,8 @@ export function cvScorer(offer: OfferForMatching, scale: ActiveScale, { useCache
     const model = useCache ? await primaryModel(SCORING_AI) : null
     const cacheId = model && scoreCacheId({ model: model.signature, scale, system, user })
     const cached = cacheId ? await readCachedScore(cacheId, scale) : null
-    if (cached) return { ...cached, criteria }
+    // Score et résumé refaits d'après les jugements gardés : les poids par défaut ont pu changer depuis (ADR 0049).
+    if (cached) return { ...cached, ...scoredFrom(cached.judgements, cached.notes), criteria }
 
     // Une preuve par élément jugé : réponse plus longue qu'une note (et la réflexion du modèle compte dans la limite).
     const { content, provider } = await callLLM([{ role: 'user', content: user }], system, { ...SCORING_AI, maxTokens: 8000, timeoutMs: 120_000, cachePrefix: offerPrefix })
@@ -271,11 +278,7 @@ export function cvScorer(offer: OfferForMatching, scale: ActiveScale, { useCache
     if (!parsed) return null
     const [judgements] = await withCheckedTitles([parsed])
     const notes = parseScoringNotes(answer)
-    const scored: CvScore = {
-      score: judgedScore(judgements),
-      reason: `${judgementSummary(judgements)}${notes.reason ? ` — ${notes.reason}` : ''}`,
-      judgements, criteria, notes, provider, answer,
-    }
+    const scored: CvScore = { ...scoredFrom(judgements, notes), judgements, criteria, notes, provider, answer }
     // Gardée seulement si elle vient du modèle choisi : la réponse d'un modèle de repli n'est pas reprise ensuite.
     if (cacheId && model && provider === model.provider) {
       await writeCachedScore(cacheId, { score: scored.score, reason: scored.reason, judgements, notes, provider, answer })

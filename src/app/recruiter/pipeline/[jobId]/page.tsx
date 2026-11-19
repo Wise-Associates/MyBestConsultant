@@ -16,9 +16,8 @@ import { jobMetaLine } from '@/components/recruiter/job-tabs'
 import type { InterviewAnalysis } from '@/app/recruiter/interviews/actions'
 import { getEmailsForApplications } from '@/lib/appwrite/application-emails'
 import type { FunnelStage } from '@/types'
-import { loadRecruiterWeights } from '@/lib/scoring-weights-store'
-import { personalScore } from '@/lib/scoring-weights'
-import { recommendationFor } from '@/lib/match-scoring'
+import { isJobWeightsConfigured, loadWeightsForJob } from '@/lib/scoring-weights-store'
+import { candidateWeightsKey, displayedScreening, withOverride } from '@/lib/scoring-weights'
 import { parseClientSubmission } from '@/lib/client-response'
 import { recruiterCvExportAccess } from '@/lib/cv-export/recruiter'
 
@@ -74,8 +73,8 @@ export default async function PipelinePage({ params }: { params: Promise<{ jobId
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) redirect('/login')
 
-  const [job, allApps, { stages, pipeline }, { weights, unreadable }] = await Promise.all([
-    getJobById(jobId), getApplicationsByJob(jobId), getStagesForJob(user.tenantId, jobId), loadRecruiterWeights(user.userId),
+  const [job, allApps, { stages, pipeline }, { weights, candidates: candidateWeights, unreadable, jobUnreadable, candidatesUnreadable }] = await Promise.all([
+    getJobById(jobId), getApplicationsByJob(jobId), getStagesForJob(user.tenantId, jobId), loadWeightsForJob(user.userId, jobId),
   ])
   if (!job) notFound()
   // Offre que le recruteur ouvre (viewerCanOpenJob) : de son organisation — un membre, les siennes seulement (ADR 0043) —
@@ -95,8 +94,10 @@ export default async function PipelinePage({ params }: { params: Promise<{ jobId
 
   const candidates: PipelineCandidate[] = apps.map(a => {
     const info = userMap.get(a.candidateId)
-    // Score aux poids personnels du recruteur, recalculé d'après les jugements enregistrés (scoring-weights.ts).
-    const aiScore = a.aiScore == null ? undefined : personalScore(a.aiScore, a.aiSummary ?? '', weights)
+    // Score aux poids du recruteur pour ce candidat (les siens, sinon ceux de l'offre, sinon globaux), recalculé d'après
+    // les jugements enregistrés (scoring-weights.ts).
+    const shown = a.aiScore == null ? undefined
+      : displayedScreening(a.aiScore, a.aiSummary ?? '', a.aiRecommendation ?? undefined, withOverride(weights, candidateWeights[candidateWeightsKey({ source: 'application', id: a.$id })]))
     return {
       appId: a.$id,
       candidateId: a.candidateId,
@@ -116,9 +117,11 @@ export default async function PipelinePage({ params }: { params: Promise<{ jobId
       funnel: funnelForCandidate(a.funnelJson, resolveStatus(stages, a.status)).steps,
       // Appwrite returns null (not undefined) for a numeric attribute that was never
       // set — normalize here so downstream `!== undefined` checks work correctly.
-      aiScore,
+      aiScore: shown?.score,
       aiSummary: a.aiSummary ?? undefined,
-      aiRecommendation: aiScore !== undefined && aiScore !== a.aiScore ? recommendationFor(aiScore) : a.aiRecommendation ?? undefined,
+      aiRecommendation: shown ? shown.recommendation : a.aiRecommendation ?? undefined,
+      storedScore: a.aiScore ?? undefined,
+      storedRecommendation: a.aiRecommendation ?? undefined,
       interviews: interviewResults.get(a.$id) ?? [],
       tags: a.tags ?? [],
       note: a.note ?? '',
@@ -132,5 +135,6 @@ export default async function PipelinePage({ params }: { params: Promise<{ jobId
     stages.find(x => x.slug === s.slug) ?? { $id: `orphan-${s.slug}`, tenantId: user.tenantId!, slug: s.slug, label: s.label, color: s.color, order: s.order })
 
   // Remonté quand le recruteur change ses poids (router.refresh) : les cartes, gardées dans l'état du client, reprennent leurs scores.
-  return <PipelineClient key={JSON.stringify(weights)} jobId={jobId} tenantId={user.tenantId} jobTitle={job.title} jobMeta={jobMetaLine(job)} initialCandidates={candidates} initialStages={boardStages} initialEmails={emails} clientCount={apps.filter(a => parseClientSubmission(a.clientJson)).length} pipeline={pipeline} weights={weights} weightsUnreadable={unreadable} cvExport={cvExport.access} />
+  return <PipelineClient key={JSON.stringify(weights)} jobId={jobId} tenantId={user.tenantId} jobTitle={job.title} jobMeta={jobMetaLine(job)} initialCandidates={candidates} initialStages={boardStages} initialEmails={emails} clientCount={apps.filter(a => parseClientSubmission(a.clientJson)).length} pipeline={pipeline} weights={weights} weightsUnreadable={unreadable}
+    candidateWeights={isJobWeightsConfigured() ? candidateWeights : undefined} savedWeightsUnreadable={jobUnreadable || candidatesUnreadable} cvExport={cvExport.access} />
 }

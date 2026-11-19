@@ -1,7 +1,7 @@
 import type { RecruiterWeights } from './scoring-weights'
 import {
-  DOMAIN_CAP, LIST_MISSING_BELOW, MAX_REQUIRED_SKILLS, MAX_REQUIREMENTS, MISSING_CAP, NEUTRAL, POINTS, ROLE_CAP, SCALES, fitLevel,
-  labelOf, listLevel, meanPoints, scaleKeys, scoreOf, worstJudgement,
+  DOMAIN_CAP, LIST_MISSING_BELOW, MAX_REQUIRED_SKILLS, MAX_REQUIREMENTS, MISSING_CAP, NEUTRAL, POINTS, ROLE_CAP, SCALES,
+  UNVERSIONED_WEIGHTS, WEIGHTS_MARK_PREFIX, WEIGHT_VERSIONS, fitLevel, labelOf, listLevel, meanPoints, scaleKeys, scoreOf, worstJudgement,
   type ActiveScale, type CriterionKey, type CriterionResult, type Fit, type Judgement, type ScaleName,
 } from './match-scoring'
 
@@ -101,11 +101,20 @@ export const CAP_RULES = {
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-/** Résumé de chaque barème : « Poste : (…) · Contexte : (…) · … », suivi de la raison (« — … ») ou de rien. */
+/**
+ * Résumé de chaque barème : la version de ses poids (« Poids v2 · », absente avant le 2026-11-19 et pour le barème
+ * d'avant), puis « Poste : (…) · Contexte : (…) · … », suivi de la raison (« — … ») ou de rien.
+ */
 const SUMMARIES = (Object.keys(SCALES) as ScaleName[]).map(scale => ({
   scale,
-  pattern: new RegExp(`^${scaleKeys(scale).map(key => `${escapeRegExp(labelOf(scale, key))} : (.+?)`).join(' · ')}(?= — |$)`),
+  pattern: new RegExp(`^(?:${escapeRegExp(WEIGHTS_MARK_PREFIX)}(\\d{1,3}) · )?${scaleKeys(scale).map(key => `${escapeRegExp(labelOf(scale, key))} : (.+?)`).join(' · ')}(?= — |$)`),
 }))
+
+/** Poids qui ont donné un score enregistré : ceux de la version notée dans son résumé ; null pour une version inconnue. */
+function recordedWeights(scale: ScaleName, version: string | undefined): Partial<Record<CriterionKey, number>> | null {
+  if (scale === 'legacy') return SCALES.legacy.weights
+  return WEIGHT_VERSIONS[version ? Number(version) : UNVERSIONED_WEIGHTS]?.[scale] ?? null
+}
 
 const JUDGEMENTS: Judgement[] = ['oui', 'partiel', 'non']
 const isJudgement = (v: string): v is Judgement => (JUDGEMENTS as string[]).includes(v)
@@ -149,18 +158,22 @@ function resultOf(key: CriterionKey, detail: string): CriterionResult | null {
 }
 
 /**
- * Détail du score résumé au début de `reason` ; null si la raison n'a pas de résumé lisible (score d'avant, texte coupé).
- * `custom` : poids d'un recruteur (scoring-weights.ts), pour les barèmes actuels ; le barème d'avant garde les siens.
+ * Détail du score résumé au début de `reason` ; null si la raison n'a pas de résumé lisible (score d'avant, texte coupé,
+ * version de poids inconnue). Poids : `custom`, ceux d'un recruteur (scoring-weights.ts) pour les barèmes actuels ; sans
+ * eux, ceux qui ont donné le score enregistré (version notée dans le résumé). Le barème d'avant garde toujours les siens.
  */
 export function scoreBreakdown(reason: string, custom?: RecruiterWeights): ScoreBreakdown | null {
   for (const { scale, pattern } of SUMMARIES) {
     const m = reason.match(pattern)
     if (!m) continue
     const keys = scaleKeys(scale)
-    const results = keys.map((key, i) => resultOf(key, m[i + 1]))
+    // Groupe 1 : version des poids ; puis un groupe par critère.
+    const results = keys.map((key, i) => resultOf(key, m[i + 2]))
     if (results.some(r => r === null)) return null
     const read = results as CriterionResult[]
-    const weights = (scale !== 'legacy' && custom?.[scale]) || SCALES[scale].weights
+    const recorded = recordedWeights(scale, m[1])
+    if (!recorded) return null
+    const weights = (scale !== 'legacy' && custom?.[scale]) || recorded
     const { total, cap, score } = scoreOf(scale, read, weights)
     const parts = read.map(r => {
       const max = weights[r.key] ?? 0
