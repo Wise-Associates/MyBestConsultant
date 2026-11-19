@@ -789,6 +789,27 @@ export function CvStatsSkeleton() {
   )
 }
 
+/** Profils d'un nombre des statistiques des CV (2026-11-19) : bandeau, ligne de contexte, cartes de profils. */
+export function CvStatProfilesSkeleton() {
+  return (
+    <SkeletonRegion label="Chargement des profils…" className="min-h-[calc(100vh-68px)]" style={{ background: 'var(--color-background)' }}>
+      <div className="flex items-center gap-3 min-h-16 px-4 sm:px-6 py-3" style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)' }}>
+        <Skeleton className="h-5 w-5 rounded-md" />
+        <div className="space-y-1.5"><Skeleton className="h-5 w-56" /><Skeleton className="h-3 w-40" /></div>
+      </div>
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 flex flex-col gap-3">
+        <Skeleton className="h-3.5 w-1/2 mb-1" />
+        {Array.from({ length: 6 }, (_, i) => (
+          <div key={i} className="rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row gap-3 sm:gap-6" style={card}>
+            <div className="flex-1 space-y-2"><Skeleton className="h-4 w-48" /><Skeleton className="h-3.5 w-64" /><Skeleton className="h-3 w-full" /></div>
+            <div className="sm:w-64 space-y-2"><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-32" /><Skeleton className="h-9 w-full rounded-lg" /></div>
+          </div>
+        ))}
+      </div>
+    </SkeletonRegion>
+  )
+}
+
 /**
  * CV Thèque (refonte du 2026-11-13) : ligne de titre, barre de recherche, filtres à gauche dès 1024 px, profils à droite.
  */

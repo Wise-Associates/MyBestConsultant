@@ -4,12 +4,14 @@ import { ArrowLeft, FolderSearch } from 'lucide-react'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { loadCvStats } from '@/lib/search/cv-stats-store'
 import type { StatsScope } from '@/lib/search/cv-stats'
+import { statProfilesHref } from '@/lib/search/cv-stats-selection'
 import { CvStatsBody, ScopeTabs } from '@/components/stats/cv-stats-sections'
 
 // « CV Thèque · Statistiques » (ADR 0044, phase 3) : ce que contiennent les CV classés — familles de métiers, métiers,
 // compétences, séniorité, secteurs, langues, villes, niveau d'études, fraîcheur et tendances (dates de dépôt des CV) —
 // pour la base candidats (la même pour tous) ou le vivier personnel du recruteur (?perimetre=vivier). Comptes de l'index
 // de recherche, sans appel d'IA ; aucun nom. Affichage partagé avec l'admin : src/components/stats/cv-stats-sections.tsx.
+// Chaque nombre ouvre la liste des profils qu'il compte, dans le même périmètre (./profils, demande du 2026-11-19).
 
 export default async function CvStatisticsPage({ searchParams }: { searchParams: Promise<{ perimetre?: string | string[] }> }) {
   const user = await getCurrentUser()
@@ -40,7 +42,8 @@ export default async function CvStatisticsPage({ searchParams }: { searchParams:
       </header>
 
       <main className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 flex flex-col gap-5">
-        <CvStatsBody result={result} scopeName={scopeName} emptyHint={vivier ? 'Importez des CV dans votre vivier pour les voir ici.' : undefined} />
+        <CvStatsBody result={result} scopeName={scopeName} emptyHint={vivier ? 'Importez des CV dans votre vivier pour les voir ici.' : undefined}
+          listHref={selection => statProfilesHref(vivier ? 'vivier' : 'pool', selection)} />
       </main>
     </div>
   )

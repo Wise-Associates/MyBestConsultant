@@ -63,11 +63,11 @@ export interface RawStats {
   facetStats?: Record<string, { min: number; max: number }>
 }
 
-const SENIORITY_LABELS: Record<string, string> = {
+export const SENIORITY_LABELS: Record<string, string> = {
   junior: 'Junior (moins de 3 ans)', confirme: 'Confirmé (3 à 7 ans)', senior: 'Senior (8 à 14 ans)',
   expert: 'Expert (15 ans et plus)', non_precise: 'Non précisée',
 }
-const EDUCATION_LABELS: Record<string, string> = {
+export const EDUCATION_LABELS: Record<string, string> = {
   bac: 'Bac', 'bac+2': 'Bac +2', 'bac+3': 'Bac +3', 'bac+5': 'Bac +5', doctorat: 'Doctorat', non_precise: 'Non précisé',
 }
 
@@ -88,14 +88,14 @@ function monthsAgo(month: string, now: Date): number | null {
   return (now.getUTCFullYear() * 12 + now.getUTCMonth()) - (Number(m[1]) * 12 + Number(m[2]) - 1)
 }
 
-const FRESHNESS = [
+export const FRESHNESS = [
   { key: 'moins_3_mois', label: 'Moins de 3 mois', below: 3 },
   { key: '3_12_mois', label: '3 à 12 mois', below: 12 },
   { key: '1_2_ans', label: '1 à 2 ans', below: 24 },
   { key: 'plus_2_ans', label: 'Plus de 2 ans', below: Infinity },
 ] as const
 
-const monthLabel = new Intl.DateTimeFormat('fr-FR', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+export const monthLabel = new Intl.DateTimeFormat('fr-FR', { month: 'short', year: 'numeric', timeZone: 'UTC' })
 
 /** Fraîcheur, dépôts des 12 derniers mois et part de moins d'un an, d'après les comptes par mois de dépôt. */
 function datesView(months: Record<string, number> | undefined, total: number, now: Date) {
@@ -182,8 +182,12 @@ export function risingSkills(recent: RawStats, older: RawStats, limit = 8): Risi
     .slice(0, limit)
 }
 
+/** Date (secondes) qui sépare les CV déposés depuis `months` mois des plus anciens, au jour près ; `now` injecté. */
+export function recentCut(months: number, now: Date): number {
+  return Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months, now.getUTCDate()) / 1000)
+}
+
 /** Filtre des CV déposés depuis (ou avant) `months` mois ; `now` injecté. */
 export function sinceFilter(base: string, months: number, now: Date, side: 'recent' | 'older'): string {
-  const cut = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months, now.getUTCDate()) / 1000)
-  return `${base} AND cvDate ${side === 'recent' ? '>=' : '<'} ${cut}`
+  return `${base} AND cvDate ${side === 'recent' ? '>=' : '<'} ${recentCut(months, now)}`
 }
