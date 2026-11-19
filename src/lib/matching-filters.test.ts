@@ -8,7 +8,7 @@ import {
 // Candidats fictifs.
 const rows: (MatchRow & { id: string })[] = [
   { id: 'a', source: 'application', name: 'Élodie Martin', email: 'elodie.martin@exemple.fr', score: 82 },
-  { id: 'b', source: 'pool', name: 'Jean Dupont', email: 'jean.dupont@exemple.fr', score: 65 },
+  { id: 'b', source: 'pool', name: 'Jean Dupont', email: 'jean.dupont@exemple.fr', score: 65, review: 'retenu', city: 'Lyon', skills: ['NestJS', 'PostgreSQL'] },
   { id: 'c', source: 'pool', name: 'Karim Benali', email: 'k.benali@exemple.fr', score: 64 },
   { id: 'd', source: 'vivier', name: 'Sophie Leroy', email: '', score: 40 },
   { id: 'e', source: 'application', name: 'Paul Morel', email: 'paul.morel@exemple.fr', score: null },
@@ -40,6 +40,18 @@ describe('filtres du Matching IA', () => {
     assert.deepEqual(ids({ q: 'inconnu' }), [])
   })
 
+  it('cherche aussi dans la ville et les compétences des candidats de la base', () => {
+    assert.deepEqual(ids({ q: 'lyon' }), ['b'])
+    assert.deepEqual(ids({ q: 'nestjs' }), ['b'])
+  })
+
+  it('filtre par revue, la base candidats seulement ; sans statut enregistré, « nouveau »', () => {
+    assert.deepEqual(ids({ review: 'retenu' }), ['b'])
+    assert.deepEqual(ids({ review: 'nouveau' }), ['c'])
+    assert.deepEqual(ids({ review: 'ecarte' }), [])
+    assert.equal(isFilteringMatches({ ...EMPTY_MATCHING_FILTERS, review: 'nouveau' }), true)
+  })
+
   it('combine les filtres', () => {
     assert.deepEqual(ids({ source: 'application', score: 'match' }), ['a'])
     assert.deepEqual(ids({ source: 'pool', score: 'match', q: 'karim' }), [])
@@ -48,9 +60,9 @@ describe('filtres du Matching IA', () => {
 
 describe('filtres du Matching IA dans l’adresse', () => {
   it('relit à l’identique les filtres écrits', () => {
-    const f: MatchingFilters = { q: 'dupont', source: 'pool', score: 'match' }
+    const f: MatchingFilters = { q: 'dupont', source: 'pool', score: 'match', review: 'retenu' }
     const params = withMatchingFilters(new URLSearchParams(), f)
-    assert.equal(params.toString(), 'q=dupont&type=pool&score=match')
+    assert.equal(params.toString(), 'q=dupont&type=pool&score=match&revue=retenu')
     assert.deepEqual(matchingFiltersFromSearchParams(params), f)
   })
 
@@ -59,7 +71,7 @@ describe('filtres du Matching IA dans l’adresse', () => {
   })
 
   it('ignore une valeur inconnue et borne la recherche', () => {
-    assert.deepEqual(matchingFiltersFromSearchParams(new URLSearchParams('type=chasseur&score=90')), EMPTY_MATCHING_FILTERS)
+    assert.deepEqual(matchingFiltersFromSearchParams(new URLSearchParams('type=chasseur&score=90&revue=supprime')), EMPTY_MATCHING_FILTERS)
     assert.equal(matchingFiltersFromSearchParams(new URLSearchParams({ q: 'x'.repeat(500) })).q.length, 200)
   })
 })

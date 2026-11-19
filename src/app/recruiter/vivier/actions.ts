@@ -23,7 +23,6 @@ import { vivierExportKey } from '@/lib/cv-export/stored'
 import { getEsnTemplateInfo } from '@/lib/cv-export/templates'
 import { APOLLO_PERSON_ID as MBC_APOLLO_PERSON_ID, PLAIN_EMAIL as MBC_PLAIN_EMAIL } from '@/lib/mbc-search/rules'
 import { loadTenantAccess } from '@/lib/tenant-access'
-import { alertIdealCandidates } from '@/lib/recruiter-alerts-store'
 import type { UserProfile } from '@/types'
 import {
   VIVIER_MATCHING_DAILY_LIMITS, VIVIER_MATCHING_REFUSAL, matchingOffers, mergeOfferScores, offersToCompare, parseOfferScores,
@@ -360,8 +359,6 @@ async function compareWithNewOffers(user: UserProfile, tenantId: string, docId: 
   // si elles échouent, les scores ne le sont pas non plus et la prochaine synchronisation refait la comparaison.
   await syncVivierOfferMatches(tenantId, docId, parseOfferScores(stored))
   await databases.updateDocument(DB_ID, COLLECTIONS.VIVIER_CVS, docId, { offerMatchesJson: stored })
-  // Offres pour lesquelles ce CV est un profil idéal : son recruteur est prévenu une fois par offre (ADR 0044).
-  await alertIdealCandidates(scores.map(s => ({ jobId: s.jobId, source: 'vivier' as const, subjectId: docId, score: s.score, recipientId: user.$id })))
   if (!failed) return null
   return matchingOffers(merged, openIds).length > 0 ? VIVIER_MATCHING_REFUSAL.partial : VIVIER_MATCHING_REFUSAL.failed
 }

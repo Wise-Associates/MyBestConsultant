@@ -111,7 +111,7 @@ export const cleanTitle = (title: string) => title.replace(/\(([hf]\s*\/\s*[hf])
 export interface SearchHit { id: string; sourceId: string; roles?: string[]; skills?: string[]; city?: string }
 
 /** Une compétence de l'offre est couverte : même nom, ou l'un contient l'autre en mots entiers (« SAP » / « SAP FI »). */
-function covers(candidate: string[], wanted: string): boolean {
+export function covers(candidate: string[], wanted: string): boolean {
   const w = words(wanted).join(' ')
   if (!w) return false
   return candidate.some(c => {

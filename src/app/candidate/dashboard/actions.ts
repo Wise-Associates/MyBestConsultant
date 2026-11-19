@@ -41,6 +41,13 @@ export async function saveCvFileId(fileId: string): Promise<void> {
     const { alertSavedSearches } = await import('@/lib/saved-searches-store')
     await alertSavedSearches(user.$id, { newCv: firstCv })
   })
+
+  // Correspondances IA (ADR 0047) : un nouveau candidat est comparé aux offres actives. Mis en file maintenant (la tâche
+  // survit à une interruption, reprise par le cron recruiter-alerts), analysé après la réponse.
+  if (firstCv) {
+    const { queueAutoMatching, runAutoMatching } = await import('@/lib/ai-matches-store')
+    if (await queueAutoMatching(user.$id)) after(() => runAutoMatching(user.$id).then(() => undefined))
+  }
   revalidatePath('/candidate/dashboard')
 }
 

@@ -3,17 +3,17 @@ import { redirect } from 'next/navigation'
 import { Bell, Plus } from 'lucide-react'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { formatDateFr } from '@/lib/format-date'
-import { ALERT_EMAIL_STATUS_LABEL, ALERT_SOURCE_LABEL, IDEAL_SCORE } from '@/lib/recruiter-alerts'
+import { ALERT_EMAIL_STATUS_LABEL, ALERT_SOURCE_LABEL } from '@/lib/recruiter-alerts'
 import { ALERTS_SHOWN, isRecruiterAlertsConfigured, listRecruiterAlerts, loadAlertEmails, type AlertRow } from '@/lib/recruiter-alerts-store'
 import { isSavedSearchesConfigured, listOwnSavedSearches, savedSearchStats } from '@/lib/saved-searches-store'
-import { AlertEmailsToggle } from './alert-emails-toggle'
+import { AlertEmailsToggle, AlertThresholdSelect } from './alert-emails-toggle'
 import { SavedSearchesList, type SavedSearchRow } from './saved-searches-list'
 
 export const metadata = { title: 'Alertes' }
 
 // Alertes du recruteur : ses recherches enregistrées de la CV Thèque (ADR 0046 : un nouveau candidat qui répond à leurs
-// filtres), le réglage des e-mails « profil idéal » (ADR 0045 : candidat noté IDEAL_SCORE ou plus pour une de ses
-// offres, ou pour une offre de l'organisation s'il a importé le CV dans son vivier), puis l'historique des deux.
+// filtres), le réglage des alertes sur ses offres (ADR 0045 et 0047 : candidature, candidat de la base ou nouveau candidat
+// proposé par l'IA, noté au moins à son seuil, 70 par défaut), puis l'historique des deux.
 
 /** Recherches du recruteur et leurs chiffres ; null : illisibles (journalisé). Chiffres seuls illisibles : « — ». */
 async function loadSavedSearchRows(ownerId: string): Promise<SavedSearchRow[] | null> {
@@ -83,15 +83,18 @@ export default async function AlertesPage() {
 
         <section className="rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-4" style={surface} aria-labelledby="alert-settings">
           <div className="flex-1 min-w-0">
-            <h2 id="alert-settings" style={{ color: 'var(--color-text)', fontSize: '1rem', fontWeight: 600, lineHeight: 1.4 }}>Profils idéaux par e-mail</h2>
+            <h2 id="alert-settings" style={{ color: 'var(--color-text)', fontSize: '1rem', fontWeight: 600, lineHeight: 1.4 }}>Candidats pour vos offres</h2>
             <p className="text-sm mt-1" style={muted}>
-              Un e-mail chaque fois qu’un candidat est noté {IDEAL_SCORE}/100 ou plus pour une offre qui vous est affectée (candidature reçue ou
-              candidat de la base), ou pour une offre de votre organisation quand vous avez importé son CV dans votre vivier. Une seule fois par
-              candidat et par offre.
+              Une alerte, et un e-mail si vous le souhaitez, chaque fois qu’un candidat est noté au moins à votre seuil pour une offre qui vous
+              est affectée : candidature reçue, candidat de la base, ou nouveau candidat que l’IA a proposé pour l’offre dès son inscription.
+              Une seule fois par candidat et par offre.
             </p>
-            {emails.unreadable && <p className="text-xs mt-2" style={{ color: '#b91c1c' }}>Votre réglage n’a pas pu être lu : il est affiché activé.</p>}
+            {emails.unreadable && <p className="text-xs mt-2" style={{ color: '#b91c1c' }}>Vos réglages n’ont pas pu être lus : ils sont affichés par défaut.</p>}
           </div>
-          <AlertEmailsToggle initialEnabled={emails.enabled} />
+          <div className="flex flex-col items-start sm:items-end gap-3">
+            <AlertThresholdSelect initialThreshold={emails.threshold} />
+            <AlertEmailsToggle initialEnabled={emails.enabled} />
+          </div>
         </section>
 
         <section aria-labelledby="alert-list">
@@ -103,7 +106,7 @@ export default async function AlertesPage() {
             : alerts === null
               ? <Notice text="Vos alertes n’ont pas pu être lues : rechargez la page dans quelques instants." />
               : alerts.length === 0
-                ? <Notice text={`Aucune alerte pour le moment. Elles apparaîtront ici dès qu’un nouveau candidat répondra à une de vos recherches, ou sera noté ${IDEAL_SCORE}/100 ou plus pour une de vos offres.`} />
+                ? <Notice text={`Aucune alerte pour le moment. Elles apparaîtront ici dès qu’un nouveau candidat répondra à une de vos recherches, ou sera noté ${emails.threshold}/100 ou plus pour une de vos offres.`} />
                 : <AlertList alerts={alerts} />}
         </section>
       </div>

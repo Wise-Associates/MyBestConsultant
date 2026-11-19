@@ -9,6 +9,7 @@ import { MatchingClient } from './matching-client'
 import { jobMetaLine } from '@/components/recruiter/job-tabs'
 import { viewerCanOpenJob } from '@/lib/job-ownership'
 import { loadOfferViewer } from '@/lib/offer-viewer'
+import { isAutoMatchingEnabled } from '@/lib/ai-matches-store'
 
 // « Rafraîchir » : un appel d'IA par candidat de la base, 5 à la fois (sourcing-core.ts), dans chacune de ses deux requêtes.
 export const maxDuration = 300
@@ -33,5 +34,6 @@ export default async function MatchingPage({ params }: { params: Promise<{ jobId
 
   // Remonté quand le recruteur change ses poids (router.refresh) : la liste, gardée dans l'état du client, reprend ses scores.
   return <MatchingClient key={JSON.stringify(weights)} jobId={jobId} jobTitle={job.title} jobMeta={jobMetaLine(job)} jobSkills={job.skills ?? []}
-    initialMatches={matches} tabCounts={tabCounts ?? undefined} weights={weights} weightsUnreadable={unreadable} now={new Date().toISOString()} />
+    initialMatches={matches} tabCounts={tabCounts ?? undefined} weights={weights} weightsUnreadable={unreadable} now={new Date().toISOString()}
+    reviewEnabled={isAutoMatchingEnabled() && job.tenantId === user.tenantId} />
 }

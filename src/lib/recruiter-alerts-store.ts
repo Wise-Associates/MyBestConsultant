@@ -8,19 +8,23 @@ import { viewerCanOpenJob } from '@/lib/job-ownership'
 import { loadOfferViewer } from '@/lib/offer-viewer'
 import { wrapEmailHtml } from '@/lib/email-template'
 import {
-  alertDocId, alertEmailsEnabled, alertProfilePath, alertSubjectKey, idealCandidateEmail, isIdealScore, parseAlertEmailStatus,
-  parseAlertSource, type AlertEmailStatus, type AlertSource, type IdealCandidate,
+  ALERT_THRESHOLD_DEFAULT, alertDocId, alertEmailsEnabled, alertProfilePath, alertSubjectKey, alertThresholdOf, idealCandidateEmail,
+  isAlertScore, parseAlertEmailStatus, parseAlertSource, type AlertEmailStatus, type AlertSource, type IdealCandidate,
 } from '@/lib/recruiter-alerts'
 import type { UserProfile } from '@/types'
 
-// Alertes « profil idéal » (ADR 0045) : enregistrement, e-mail au recruteur, lecture pour la page « Alertes » et
-// préférence d'envoi. Appelé par les notations (screening-core, matching-core, actions du vivier et du screening),
-// jamais depuis le navigateur : aucune vérification d'appelant ici. Une alerte ne fait jamais échouer une notation.
+// Alertes des recruteurs sur leurs offres (ADR 0045, seuil et sources revus par l'ADR 0047) : enregistrement, e-mail au
+// recruteur, lecture pour la page « Alertes » et préférences (e-mails, seuil). Appelé par les notations des
+// candidatures (screening-core, actions du screening), de la base candidats (matching-core) et des nouveaux candidats
+// (ai-matches-store) ; plus pour les viviers (le recruteur a importé le CV lui-même). Jamais depuis le navigateur :
+// aucune vérification d'appelant ici. Une alerte ne fait jamais échouer une notation.
 
 export const isRecruiterAlertsConfigured = () => !!COLLECTIONS.RECRUITER_ALERTS
 
-/** Préférence gardée dans le compte Appwrite du recruteur, comme ses poids (scoring-weights-store.ts). */
+/** Préférences gardées dans le compte Appwrite du recruteur, comme ses poids (scoring-weights-store.ts). */
 const PREF_KEY = 'alertEmails'
+/** Score à partir duquel le recruteur est prévenu (ADR 0047 ; absent : ALERT_THRESHOLD_DEFAULT). */
+const THRESHOLD_PREF_KEY = 'alertThreshold'
 
 const origin = () => process.env.NEXT_PUBLIC_APP_URL ?? 'https://mybestconsultant.fr'
 const isMissing = (err: unknown) => err instanceof AppwriteException && err.code === 404
@@ -47,14 +51,15 @@ function cached<T>(cache: Map<string, Promise<T>>, key: string, load: () => Prom
 }
 
 /**
- * Prévient le recruteur de chaque candidat noté IDEAL_SCORE ou plus : une alerte enregistrée, puis un e-mail s'il ne les
- * a pas coupés. Une seule fois par offre, recruteur et personne (identifiant fixe : une seconde notation n'envoie rien).
- * Recruteur : `recipientId` (vivier : celui qui a importé le CV), sinon le recruteur affecté à l'offre, sinon son
- * auteur ; seulement un recruteur de l'organisation de l'offre qui peut l'ouvrir (viewerCanOpenJob, ADR 0043 : un membre,
- * les offres qui lui sont affectées ; offre partagée de la plateforme : personne). Ne lève jamais : un échec est journalisé.
+ * Prévient le recruteur de chaque candidat noté au moins à son seuil (70 par défaut, réglable dans « Alertes ») : une
+ * alerte enregistrée, puis un e-mail s'il ne les a pas coupés. Une seule fois par offre, recruteur et personne
+ * (identifiant fixe : une seconde notation n'envoie rien). Recruteur : `recipientId`, sinon le recruteur affecté à
+ * l'offre, sinon son auteur ; seulement un recruteur de l'organisation de l'offre qui peut l'ouvrir (viewerCanOpenJob,
+ * ADR 0043 : un membre, les offres qui lui sont affectées ; offre partagée de la plateforme : personne). Ne lève
+ * jamais : un échec est journalisé.
  */
 export async function alertIdealCandidates(candidates: IdealCandidate[]): Promise<void> {
-  const ideal = candidates.filter(c => isIdealScore(c.score) && c.jobId && c.subjectId)
+  const ideal = candidates.filter(c => isAlertScore(c.score) && c.jobId && c.subjectId)
   if (ideal.length === 0) return
   if (!isRecruiterAlertsConfigured()) {
     console.warn('[alertes] collection non configurée : aucune alerte pour', ideal.length, 'profil(s) idéal(aux)')
@@ -91,6 +96,25 @@ async function alertOne(
   if (!viewerCanOpenJob({ tenantId, recruiterId: job.recruiterId }, viewer)) return
 
   const { databases, users, messaging } = createAdminClient()
+  const recipientUserId = str(recipient.userId)
+  // Préférences lues avant d'enregistrer l'alerte : un score sous le seuil du recruteur n'en crée pas. Illisibles : le
+  // seuil par défaut, et pas d'e-mail (le recruteur a peut-être coupé ses alertes) ; l'alerte reste dans la page.
+  let settings: { enabled: boolean; threshold: number } | null
+  try {
+    // Adresse non vérifiée : pas d'e-mail (inscription libre : un compte ouvert avec l'adresse d'un tiers lui ferait
+    // envoyer des données de candidats ; revue de sécurité du 2026-11-18). L'alerte reste dans la page.
+    const [auth, prefs] = await Promise.all([users.get(recipientUserId), users.getPrefs(recipientUserId) as Promise<Record<string, unknown>>])
+    settings = {
+      enabled: auth.emailVerification === true && alertEmailsEnabled(prefs[PREF_KEY]),
+      threshold: alertThresholdOf(prefs[THRESHOLD_PREF_KEY]),
+    }
+  } catch (err) {
+    console.error('[alertes] préférences du recruteur illisibles : e-mail non envoyé', recipientId, err instanceof Error ? err.message : err)
+    settings = null
+  }
+  const threshold = settings?.threshold ?? ALERT_THRESHOLD_DEFAULT
+  if (candidate.score < threshold) return
+
   const id = alertDocId(candidate.jobId, recipientId, alertSubjectKey(candidate))
   try {
     await databases.createDocument(DB_ID, COLLECTIONS.RECRUITER_ALERTS, id, {
@@ -105,20 +129,11 @@ async function alertOne(
   }
 
   const setStatus = (emailStatus: AlertEmailStatus) => databases.updateDocument(DB_ID, COLLECTIONS.RECRUITER_ALERTS, id, { emailStatus })
-  const recipientUserId = str(recipient.userId)
-  let enabled: boolean
-  try {
-    // Adresse non vérifiée : pas d'e-mail (inscription libre : un compte ouvert avec l'adresse d'un tiers lui ferait
-    // envoyer des données de candidats ; revue de sécurité du 2026-11-18). L'alerte reste dans la page.
-    const [auth, prefs] = await Promise.all([users.get(recipientUserId), users.getPrefs(recipientUserId)])
-    enabled = auth.emailVerification === true && alertEmailsEnabled((prefs as Record<string, unknown>)[PREF_KEY])
-  } catch (err) {
-    // Sans la préférence, on n'écrit pas : le recruteur a peut-être coupé ses alertes. L'alerte reste dans la page.
-    console.error('[alertes] préférences du recruteur illisibles : e-mail non envoyé', recipientId, err instanceof Error ? err.message : err)
+  if (!settings) {
     await setStatus('failed')
     return
   }
-  if (!enabled) {
+  if (!settings.enabled) {
     await setStatus('off')
     return
   }
@@ -129,7 +144,10 @@ async function alertOne(
       jobTitle: str(job.title),
       score: candidate.score,
       source: candidate.source,
+      threshold,
+      highlights: candidate.highlights,
       profileUrl: `${origin()}${alertProfilePath(candidate.source, candidate.subjectId)}`,
+      jobUrl: `${origin()}/recruiter/pipeline/${candidate.jobId}/matching`,
       alertsUrl: `${origin()}/recruiter/alertes`,
     })
     await messaging.createEmail(ID.unique(), mail.subject, wrapEmailHtml(mail.heading, mail.bodyHtml), [], [recipientUserId], [], [], [], [], false, true)
@@ -224,14 +242,14 @@ export async function listRecruiterAlerts(user: Pick<UserProfile, '$id' | 'userI
   })
 }
 
-/** E-mails d'alerte activés pour ce compte Auth ; préférences illisibles : `unreadable` (journalisé). */
-export async function loadAlertEmails(authUserId: string): Promise<{ enabled: boolean; unreadable: boolean }> {
+/** Réglages d'alerte de ce compte Auth (e-mails, seuil) ; préférences illisibles : `unreadable` (journalisé). */
+export async function loadAlertEmails(authUserId: string): Promise<{ enabled: boolean; threshold: number; unreadable: boolean }> {
   try {
     const prefs = await createAdminClient().users.getPrefs(authUserId) as Record<string, unknown>
-    return { enabled: alertEmailsEnabled(prefs[PREF_KEY]), unreadable: false }
+    return { enabled: alertEmailsEnabled(prefs[PREF_KEY]), threshold: alertThresholdOf(prefs[THRESHOLD_PREF_KEY]), unreadable: false }
   } catch (err) {
     console.error('[alertes] préférences du recruteur non lues', err instanceof Error ? err.message : err)
-    return { enabled: true, unreadable: true }
+    return { enabled: true, threshold: ALERT_THRESHOLD_DEFAULT, unreadable: true }
   }
 }
 
@@ -240,4 +258,24 @@ export async function saveAlertEmails(authUserId: string, enabled: boolean): Pro
   const { users } = createAdminClient()
   const prefs = await users.getPrefs(authUserId) as Record<string, unknown>
   await users.updatePrefs(authUserId, { ...prefs, [PREF_KEY]: enabled })
+}
+
+/** Seuil des alertes (une valeur de ALERT_THRESHOLD_OPTIONS, vérifiée par l'action) ; les autres préférences sont gardées. */
+export async function saveAlertThreshold(authUserId: string, threshold: number): Promise<void> {
+  const { users } = createAdminClient()
+  const prefs = await users.getPrefs(authUserId) as Record<string, unknown>
+  await users.updatePrefs(authUserId, { ...prefs, [THRESHOLD_PREF_KEY]: threshold })
+}
+
+/**
+ * Alertes qui concernent un candidat (son profil : candidature, base candidats, recherche enregistrée), supprimées avec
+ * son compte (RGPD, ADR 0047). Lève en cas d'échec : la suppression du compte s'arrête. Collection non configurée : rien.
+ */
+export async function deleteAlertsAboutCandidate(candidateId: string): Promise<void> {
+  if (!isRecruiterAlertsConfigured()) return
+  const { databases } = createAdminClient()
+  const rows = await listAllByValues(databases, DB_ID, COLLECTIONS.RECRUITER_ALERTS, 'candidateId', [candidateId], [Query.select(['$id'])])
+  for (const row of rows) {
+    await databases.deleteDocument(DB_ID, COLLECTIONS.RECRUITER_ALERTS, row.$id).catch(err => { if (!isMissing(err)) throw err })
+  }
 }

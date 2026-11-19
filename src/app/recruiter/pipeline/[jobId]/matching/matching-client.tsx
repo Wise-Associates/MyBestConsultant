@@ -6,15 +6,16 @@ import { useSearchParams } from 'next/navigation'
 import { BackLink } from '@/components/recruiter/back-link'
 import {
   RefreshCw, Loader2, Brain, Users, FolderOpen, Send, Check, FileText,
-  ExternalLink, UserPlus, CheckCircle2, Kanban, Clock, Target, Search,
+  ExternalLink, UserPlus, CheckCircle2, Kanban, Clock, Target, Search, Sparkles,
 } from 'lucide-react'
 import { LocalTime } from '@/components/shared/local-time'
-import { getMatchesAction, refreshPoolMatchingAction, addToFunnelAction, runApplicationMatchingAction } from '../matching-actions'
+import { getMatchesAction, refreshPoolMatchingAction, addToFunnelAction, runApplicationMatchingAction, setMatchReviewAction } from '../matching-actions'
 import type { JobMatchResult } from '@/lib/matching-core'
 import {
   EMPTY_MATCHING_FILTERS, filterMatches, isFilteringMatches, matchingFiltersFromSearchParams, withMatchingFilters,
-  type MatchingFilters, type MatchScoreFilter, type MatchSourceFilter,
+  type MatchingFilters, type MatchReviewFilter, type MatchScoreFilter, type MatchSourceFilter,
 } from '@/lib/matching-filters'
+import { REVIEW_STATUSES, REVIEW_STATUS_LABEL, type ReviewStatus } from '@/lib/match-review'
 import { initialUrlListSync, noteListWrite, syncFromUrl } from '@/lib/url-list-state'
 import { scoreBreakdown } from '@/lib/score-breakdown'
 import type { RecruiterWeights } from '@/lib/scoring-weights'
@@ -47,6 +48,62 @@ const SOURCE_LABEL: Record<JobMatchResult['source'], { label: string; icon: type
 
 const sourceLabel = (m: JobMatchResult) => m.source === 'vivier' && m.vivierOwner ? `Vivier de ${m.vivierOwner}` : SOURCE_LABEL[m.source].label
 
+// Revue d'une correspondance de la base candidats (ADR 0047) : couleurs des statuts, actions proposées (un statut
+// actif recliqué revient à « Nouveau »).
+const REVIEW_TONE: Record<ReviewStatus, { bg: string; fg: string }> = {
+  nouveau: { bg: 'color-mix(in srgb, var(--color-primary) 14%, transparent)', fg: 'var(--color-text)' },
+  retenu: { bg: 'rgba(16,185,129,0.14)', fg: '#047857' },
+  contacte: { bg: 'rgba(59,130,246,0.14)', fg: '#1d4ed8' },
+  ecarte: { bg: 'rgba(107,114,128,0.14)', fg: '#4b5563' },
+}
+const REVIEW_ACTIONS: { status: Exclude<ReviewStatus, 'nouveau'>; label: string }[] = [
+  { status: 'retenu', label: 'Retenir' }, { status: 'contacte', label: 'Contacté' }, { status: 'ecarte', label: 'Écarter' },
+]
+const REVIEW_OPTIONS: Record<MatchReviewFilter, string> = { all: 'Toutes les revues', ...REVIEW_STATUS_LABEL }
+
+/** Boutons de revue d'une correspondance de la base ; le statut actif est enfoncé, le recliquer revient à « Nouveau ». */
+function ReviewButtons({ m, busy, onReview, className = '' }: { m: JobMatchResult; busy: boolean; onReview: (status: ReviewStatus) => void; className?: string }) {
+  const review = m.review ?? 'nouveau'
+  return (
+    <div role="group" aria-label={`Revue de ${m.name}`} className={`flex flex-wrap items-center gap-1.5 ${className}`}>
+      {REVIEW_ACTIONS.map(a => {
+        const on = review === a.status
+        return (
+          <button key={a.status} type="button" aria-pressed={on} disabled={busy} onClick={e => { e.stopPropagation(); onReview(a.status) }}
+            className="h-8 px-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)"
+            style={on
+              ? { background: REVIEW_TONE[a.status].bg, color: REVIEW_TONE[a.status].fg, border: `1px solid ${REVIEW_TONE[a.status].fg}` }
+              : { background: 'transparent', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}>
+            {on && <Check className="inline h-3 w-3 mr-1 -mt-0.5" aria-hidden />}{a.label}
+          </button>
+        )
+      })}
+      {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" style={muted} aria-label="Enregistrement…" />}
+    </div>
+  )
+}
+
+/** Pastilles d'une correspondance de la base : « Proposé par l'IA » (trouvé au premier CV) et statut de revue. */
+function ReviewChips({ m, reviewEnabled }: { m: JobMatchResult; reviewEnabled: boolean }) {
+  if (m.source !== 'pool') return null
+  const review = m.review ?? 'nouveau'
+  return (
+    <>
+      {m.origin === 'auto' && (
+        <span className="inline-flex items-center gap-1 text-[10.5px] font-bold px-2 py-0.5 rounded-full" title="Trouvé automatiquement à l’inscription du candidat : ce n’est pas une candidature"
+          style={{ background: 'color-mix(in srgb, var(--color-brand-orange) 14%, transparent)', color: '#c2410c' }}>
+          <Sparkles className="h-2.5 w-2.5" aria-hidden />Proposé par l’IA
+        </span>
+      )}
+      {reviewEnabled && (
+        <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full" style={{ background: REVIEW_TONE[review].bg, color: REVIEW_TONE[review].fg }}>
+          {REVIEW_STATUS_LABEL[review]}
+        </span>
+      )}
+    </>
+  )
+}
+
 function cvHref(m: JobMatchResult): string | null {
   if (!m.cvFileId) return null
   return m.cvBucket === 'vivier' ? `/api/vivier-cv/${m.cvFileId}` : `/api/cv/${m.cvFileId}`
@@ -59,8 +116,10 @@ function profileHref(m: JobMatchResult): string | null {
 }
 
 /** `now` : heure du rendu par le serveur (ISO), avancée à chaque actualisation de la liste. */
-export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMatches, tabCounts, weights, weightsUnreadable, now }: {
+export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMatches, tabCounts, weights, weightsUnreadable, now, reviewEnabled }: {
   jobId: string; jobTitle: string
+  /** Revue des correspondances de la base activée (ADR 0047, AI_AUTO_MATCHING_ENABLED). */
+  reviewEnabled: boolean
   /** Poids personnels du recruteur : les scores reçus en tiennent déjà compte, le détail de chaque score aussi. */
   weights: RecruiterWeights; weightsUnreadable: boolean
   /** « Paris · CDI · Publiée le 3 nov. 2026 », et compétences de l'offre : rappel de l'offre sur grand écran. */
@@ -128,6 +187,26 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
     if (res.error) setFlash(res.error)
     setRunning(prev => { const n = new Set(prev); n.delete(m.applicationId!); return n })
   }
+
+  // Revue d'une correspondance de la base : affichée tout de suite, rétablie si l'enregistrement échoue.
+  const [reviewing, setReviewing] = useState<string | null>(null)
+  async function setReview(m: JobMatchResult, status: ReviewStatus) {
+    const previous = m.review ?? 'nouveau'
+    const next = previous === status ? 'nouveau' : status
+    const apply = (review: ReviewStatus) => setMatches(list => list.map(x => (x.source === 'pool' && x.id === m.id ? { ...x, review } : x)))
+    setFlash(null)
+    setReviewing(m.id)
+    apply(next)
+    const res = await setMatchReviewAction(jobId, m.id, next).catch(() => ({ error: 'Statut non enregistré : réessayez dans quelques instants.' }))
+    if (res.error) {
+      apply(previous)
+      setFlash(res.error)
+    }
+    setReviewing(null)
+  }
+  const reviewCounts = REVIEW_STATUSES.map(status => ({ status, n: matches.filter(m => m.source === 'pool' && (m.review ?? 'nouveau') === status).length }))
+  const hasPool = matches.some(m => m.source === 'pool')
+  const newFromAi = matches.filter(m => m.source === 'pool' && m.origin === 'auto' && (m.review ?? 'nouveau') === 'nouveau').length
 
   const shown = filterMatches(matches, filters)
   const filtering = isFilteringMatches(filters)
@@ -219,7 +298,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
         <span className="sr-only">Rechercher un candidat</span>
         <Search aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={muted} />
         <input type="search" value={filters.q} onChange={e => update({ q: e.target.value })}
-          placeholder="Rechercher un nom, un e-mail…" className={`${field} w-full pl-9 font-normal text-sm`} style={fieldStyle} />
+          placeholder="Nom, e-mail, ville, compétence…" className={`${field} w-full pl-9 font-normal text-sm`} style={fieldStyle} />
       </label>
       <div className={railCard} style={railCardStyle}>
         <h2 className={railHeading} style={railHeadingStyle}>Type</h2>
@@ -256,6 +335,27 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
           })}
         </div>
       </div>
+      {reviewEnabled && hasPool && (
+        <div className={railCard} style={railCardStyle}>
+          <h2 className={railHeading} style={railHeadingStyle}>Revue · base candidats</h2>
+          {newFromAi > 0 && (
+            <p className="flex items-center gap-1.5 text-xs mb-2" style={{ color: 'var(--color-text)' }}>
+              <Sparkles className="h-3.5 w-3.5 shrink-0" style={{ color: '#c2410c' }} aria-hidden />
+              {newFromAi} nouveau{newFromAi > 1 ? 'x' : ''} candidat{newFromAi > 1 ? 's' : ''} proposé{newFromAi > 1 ? 's' : ''} par l’IA
+            </p>
+          )}
+          <div role="group" aria-label="Revue" className="flex flex-col gap-0.5">
+            {reviewCounts.map(({ status, n }) => {
+              const on = filters.review === status
+              return (
+                <button key={status} type="button" aria-pressed={on} onClick={() => update({ review: on ? 'all' : status })} className={railItem(on)} style={railItemStyle(on)}>
+                  <span>{REVIEW_STATUS_LABEL[status]}</span><span className="text-xs tabular-nums" style={muted}>{n}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
       {jobSkills.length > 0 && (
         <div className={railCard} style={railCardStyle}>
           <h2 className={railHeading} style={railHeadingStyle}>L’offre en bref</h2>
@@ -304,6 +404,8 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                   borderTop: '1px solid var(--color-border)',
                   background: isFocused ? 'color-mix(in srgb, var(--color-primary) 7%, transparent)' : undefined,
                   boxShadow: isFocused ? 'inset 3px 0 0 var(--color-primary)' : undefined,
+                  // Écartée par le recruteur : gardée dans la liste (le statut se change ici), en retrait.
+                  opacity: m.source === 'pool' && m.review === 'ecarte' ? 0.6 : undefined,
                 }}>
                 <td className="py-2.5 pl-4">
                   {m.alreadyInFunnel ? (
@@ -327,6 +429,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                   <span className="inline-flex items-center gap-1 max-w-full text-[10.5px] font-bold px-2 py-0.5 rounded-full truncate" style={{ background: `${src.color}18`, color: src.color }} title={sourceLabel(m)}>
                     <src.icon className="h-2.5 w-2.5 shrink-0" aria-hidden /><span className="truncate">{sourceLabel(m)}</span>
                   </span>
+                  {m.source === 'pool' && <span className="flex flex-wrap gap-1 mt-1"><ReviewChips m={m} reviewEnabled={reviewEnabled} /></span>}
                 </td>
                 <td className="py-2.5 px-3">
                   {m.score != null ? (
@@ -416,6 +519,12 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
             {focused.receivedAt && <span>{focused.source === 'application' ? 'Reçue le' : 'Importé le'} <LocalTime iso={focused.receivedAt} /></span>}
             {focused.matchedAt && <span>Matching le <LocalTime iso={focused.matchedAt} /></span>}
           </p>
+          {focused.source === 'pool' && (
+            <div className="flex flex-wrap gap-1.5 mt-3"><ReviewChips m={focused} reviewEnabled={reviewEnabled} /></div>
+          )}
+          {focused.source === 'pool' && reviewEnabled && (
+            <ReviewButtons m={focused} busy={reviewing === focused.id} onReview={status => void setReview(focused, status)} className="mt-3" />
+          )}
           {focused.source === 'application' && focused.applicationId && !analysing(focused) && (
             <button type="button" disabled={running.has(focused.applicationId)} onClick={() => void runMatching(focused)}
               className="mt-2 inline-flex items-center gap-1 text-xs font-bold underline bg-transparent border-0 p-0 cursor-pointer disabled:opacity-50" style={{ color: 'var(--color-primary)' }}>
@@ -516,7 +625,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                 <span className="sr-only">Rechercher un candidat</span>
                 <Search aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={muted} />
                 <input type="search" value={filters.q} onChange={e => update({ q: e.target.value })}
-                  placeholder="Rechercher un nom, un e-mail…" className={`${field} w-full pl-9 font-normal text-sm`} style={fieldStyle} />
+                  placeholder="Nom, e-mail, ville, compétence…" className={`${field} w-full pl-9 font-normal text-sm`} style={fieldStyle} />
               </label>
               <div role="group" aria-label="Type de candidat" className="grid grid-cols-2 sm:flex gap-0.5 p-0.75 rounded-xl"
                 style={{ background: 'color-mix(in srgb, var(--color-text) 6%, transparent)' }}>
@@ -537,6 +646,11 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
               <select aria-label="Score" value={filters.score} onChange={e => update({ score: e.target.value as MatchScoreFilter })} className={field} style={fieldStyle}>
                 {Object.entries(SCORE_OPTIONS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
+              {reviewEnabled && hasPool && (
+                <select aria-label="Revue des candidats de la base" value={filters.review} onChange={e => update({ review: e.target.value as MatchReviewFilter })} className={field} style={fieldStyle}>
+                  {Object.entries(REVIEW_OPTIONS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              )}
             </div>
             {filtering && (
               <p className="mb-3 text-[13px] flex items-center gap-2 flex-wrap" style={muted}>
@@ -570,7 +684,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                       background: disabled ? 'rgba(0,0,0,0.02)' : 'var(--color-surface)',
                       border: isSelected ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
                       boxShadow: disabled ? 'none' : '0 4px 14px rgba(11,29,81,0.06)',
-                      opacity: disabled ? 0.55 : 1,
+                      opacity: disabled ? 0.55 : m.source === 'pool' && m.review === 'ecarte' ? 0.7 : 1,
                       cursor: disabled ? 'default' : 'pointer',
                     }}>
                     {disabled ? (
@@ -598,6 +712,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                         <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${src.color}18`, color: src.color }}>
                           <src.icon className="h-2.5 w-2.5" /> {sourceLabel(m)}
                         </span>
+                        <ReviewChips m={m} reviewEnabled={reviewEnabled} />
                         {m.score != null ? (
                           <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${scoreColor(m.score)}18`, color: scoreColor(m.score) }}>
                             {m.score}/100
@@ -661,6 +776,9 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                         </p>
                       )}
                       {reasonText && <p className="text-xs mt-1.5 leading-snug" style={{ color: 'var(--color-text-muted)' }}>{reasonText}</p>}
+                      {m.source === 'pool' && reviewEnabled && (
+                        <ReviewButtons m={m} busy={reviewing === m.id} onReview={status => void setReview(m, status)} className="mt-2.5" />
+                      )}
                     </div>
                   </div>
                 )

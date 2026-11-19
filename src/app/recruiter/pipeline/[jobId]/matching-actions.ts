@@ -7,6 +7,7 @@ import { getJobMatches, runPoolMatching, type JobMatchResult } from '@/lib/match
 import { createApplication, getJobById, hasApplied } from '@/lib/appwrite/jobs'
 import { getStagesForJob, logFunnelEvent } from '@/lib/appwrite/funnel'
 import { matchToCarry } from '@/lib/match-scoring'
+import { poolRowId } from '@/lib/pool-matching'
 import { mapLimit } from '@/lib/concurrency'
 import { viewerCanOpenJob } from '@/lib/job-ownership'
 import { loadOfferViewer } from '@/lib/offer-viewer'
@@ -15,18 +16,21 @@ import { requireRecruiter } from './actions'
 import { aiInterviewRecruiter, takeInterviewAiSlot } from '@/lib/interview-access'
 import { autoScreenApplication } from '@/lib/screening-core'
 import { loadRecruiterWeights } from '@/lib/scoring-weights-store'
+import { isAutoMatchingEnabled, setMatchReview } from '@/lib/ai-matches-store'
+import { REVIEW_STATUSES, type ReviewStatus } from '@/lib/match-review'
 
 // Server Actions appelables avec n'importe quel identifiant d'offre (publics : liens /jobs/<id>) : l'offre doit être de
 // l'organisation du recruteur ou partagée par la plateforme (tenantId ''), comme pour la page. `profileId` : le
 // recruteur (users.$id), dont seuls les viviers sont montrés et ajoutés au funnel (un vivier est personnel) ; `userId` :
 // son compte, qui porte ses poids personnels (scoring-weights-store.ts).
-async function requireJobAccess(jobId: string): Promise<{ tenantId: string; profileId: string; userId: string }> {
+async function requireJobAccess(jobId: string): Promise<{ tenantId: string; profileId: string; userId: string; ownOffer: boolean }> {
   const user = await requireRecruiter()
   const { tenantId, $id, userId } = user
   const job = await getJobById(jobId)
   // Un membre : ses offres seulement (ADR 0043).
   if (!job || !tenantId || !viewerCanOpenJob(job, await loadOfferViewer(user))) throw new Error('Non autorisé')
-  return { tenantId, profileId: $id, userId }
+  // Offre de l'organisation (et non partagée par la plateforme) : seule à avoir une revue des correspondances (ADR 0047).
+  return { tenantId, profileId: $id, userId, ownOffer: job.tenantId === tenantId }
 }
 
 /** Liste de la page, scores aux poids du recruteur. */
@@ -69,6 +73,27 @@ export async function refreshPoolMatchingAction(jobId: string, mode: unknown = '
   const result = await runPoolMatching(jobId, undefined, mode)
   revalidatePath(`/recruiter/pipeline/${jobId}/matching`)
   return result
+}
+
+/**
+ * Revue d'une correspondance de la base candidats (ADR 0047) : retenu, contacté, écarté, ou de nouveau « nouveau ».
+ * Offre ouverte par le recruteur (requireJobAccess), correspondance de cette offre (setMatchReview).
+ */
+export async function setMatchReviewAction(jobId: string, matchId: unknown, status: unknown): Promise<{ review?: ReviewStatus; error?: string }> {
+  const access = await requireJobAccess(jobId)
+  const review = REVIEW_STATUSES.find(s => s === status)
+  if (!review || typeof matchId !== 'string' || !/^[a-zA-Z0-9]{1,36}$/.test(matchId)) return { error: 'Demande invalide.' }
+  if (!isAutoMatchingEnabled()) return { error: 'La revue des correspondances n’est pas encore activée sur la plateforme.' }
+  // Offre partagée de la plateforme : ses correspondances sont vues par toutes les organisations ; une revue de l'une
+  // s'imposerait aux autres et dirait qui elle retient (revue de sécurité du 2026-11-18).
+  if (!access.ownOffer) return { error: 'La revue n’est pas disponible sur une offre partagée de la plateforme.' }
+  try {
+    if (!await setMatchReview(jobId, matchId, review, access.profileId)) return { error: 'Correspondance introuvable : rechargez la page.' }
+    return { review }
+  } catch (e) {
+    console.error('[matching] revue non enregistrée', jobId, e instanceof Error ? e.message : e)
+    return { error: 'Statut non enregistré : réessayez dans quelques instants.' }
+  }
 }
 
 // A vivier CV has no platform account — find-or-create one from the info the AI already
@@ -192,6 +217,12 @@ export async function addToFunnelAction(
       const application = await createApplication({ jobId, tenantId, candidateId, cvFileId })
       await logFunnelEvent(application.$id, application.status, 'stage_change')
       added++
+      // Correspondance de la base mise dans le funnel : retenue (ADR 0047). Sans revue activée, ou en échec : journalisé,
+      // la candidature est créée.
+      if (sel.source === 'pool' && isAutoMatchingEnabled() && access.ownOffer) {
+        await setMatchReview(jobId, poolRowId(jobId, candidateId), 'retenu', access.profileId)
+          .catch(e => console.error('[matching] correspondance non marquée retenue', jobId, e instanceof Error ? e.message : e))
+      }
       created.push({ applicationId: application.$id, matchingScore: matchToCarry(shown, sel, candidateId)?.score ?? null })
     } catch (e) {
       errors.push(e instanceof Error ? e.message : 'Erreur inconnue')
