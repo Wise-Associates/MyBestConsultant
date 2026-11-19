@@ -19,6 +19,8 @@ export async function listAllDocuments(
     all.push(...documents)
     if (documents.length < PAGE) return all
     cursor = documents[documents.length - 1].$id
+    // Query.select sans $id : pas de curseur, la même page serait relue sans fin (revue de sécurité du 2026-11-19).
+    if (!cursor) throw new Error('listAllDocuments : $id absent des documents (Query.select sans $id), pagination impossible')
   }
 }
 

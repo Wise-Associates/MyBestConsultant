@@ -32,7 +32,7 @@ Matching IA et au screening, et « Ajouter dans le funnel » reprenait le score 
 Choix de l'utilisateur du 2026-11-15, sur proposition :
 
 1. **Deux barèmes, poids fixés dans le code** (`SCALES`, `src/lib/match-scoring.ts`), en gras ci-dessus = rouge = poids
-   fort :
+   fort (poids d'origine, « v1 » ; remplacés le 2026-11-19 par les poids v2 de l'ADR 0049) :
    - **matching** (base candidats, vivier de l'offre, vivier général, sourcing des AO) : poste 20, techno 20, contexte 10,
      séniorité 10, secteur 10, localisation 8, formation 6, langue 6, projet 5, TJM 5 ;
    - **score final** (candidature : candidat qui postule, candidat ajouté au funnel, screening, « Relancer ») : poste 25,
@@ -74,6 +74,9 @@ Choix de l'utilisateur du 2026-11-15, sur proposition :
   qu'il n'a pas postulé.
 
 ## Poids personnels (2026-11-16)
+
+Depuis le 2026-11-19 (ADR 0049) : ce sont les poids **globaux** du recruteur (bouton « Pondération globale » du Matching
+IA) ; il peut aussi régler le matching d'une offre précise, qui l'emporte pour elle.
 
 Demande du 2026-11-16 : des poids **propres à chaque recruteur**, pas à l'organisation, les poids par défaut gardés, et
 réglables depuis le pipeline d'une offre.

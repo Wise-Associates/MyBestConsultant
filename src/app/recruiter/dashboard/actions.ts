@@ -13,6 +13,7 @@ import { PAY_NEEDS_CONTRACT } from '@/lib/job-pay'
 import { aoAccessFor } from '@/lib/ao/platform-view'
 import { activeJobsLimitDenial } from '@/lib/tenant-access'
 import { deleteJobClients } from '@/lib/appwrite/job-clients'
+import { deleteWeightsOfJob } from '@/lib/scoring-weights-store'
 import type { Job } from '@/types'
 
 export async function createJobAction(formData: FormData): Promise<{ error?: string; jobId?: string }> {
@@ -162,6 +163,7 @@ export async function deleteJobAction(jobId: string): Promise<{ error?: string }
   try {
     await deleteJob(own.jobId)
     await deleteJobClients(own.jobId) // contact du client effacé avec l'offre (ne lève jamais)
+    await deleteWeightsOfJob(own.jobId) // poids du matching réglés pour l'offre (ne lève jamais)
   } catch (e) {
     console.error('[dashboard] offre non supprimée', own.jobId, e instanceof Error ? e.message : e)
     return { error: 'L’offre n’a pas pu être supprimée. Réessayez.' }

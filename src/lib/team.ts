@@ -6,6 +6,7 @@ import { wrapEmailHtml } from '@/lib/email-template'
 import { deleteAssistantTurnsForUser, isAssistantStorageConfigured } from '@/lib/assistant/host'
 import { deleteMbcSearchesForUser } from '@/lib/mbc-search/history-store'
 import { deleteSavedPeopleForUser } from '@/lib/mbc-search/saved-store'
+import { deleteWeightsOfUser } from '@/lib/scoring-weights-store'
 import { usersDenial } from '@/lib/plans'
 import { adminUserIdsOf, roleOf, withRole, type TeamRole, type TeamStatus } from '@/lib/team-roles'
 import { loadTenantAccess } from '@/lib/tenant-access'
@@ -231,6 +232,7 @@ export async function removeMember(params: { tenantId: string; userId: string })
     await deleteMbcSearchesForUser(params.userId)
     await deleteSavedPeopleForUser(params.userId)
     await deleteSavedSearchesOf(profile.$id)
+    await deleteWeightsOfUser(params.userId) // poids du matching par offre (ne lève jamais)
     await databases.deleteDocument(DB_ID, COLLECTIONS.USERS, profile.$id)
     try { await users.delete(params.userId) } catch { /* déjà supprimé */ }
     // Plus administrateur d'une organisation qu'il a quittée. Organisation relue ici, après les suppressions (lentes) :

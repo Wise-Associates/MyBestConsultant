@@ -74,15 +74,40 @@ export interface Scale {
 
 const MISSING = { non: MISSING_CAP }
 
+type Weights = Partial<Record<CriterionKey, number>>
+
+/**
+ * Poids par défaut des barèmes actuels, par version (total 100 ; critères dans l'ordre du résumé, le même pour toutes les
+ * versions). Le résumé d'un score note la version de ses poids (« Poids v2 · », judgementSummary) : un score enregistré
+ * est relu avec les poids qui l'ont donné, même après un changement des poids par défaut, et l'écart des recommandations
+ * reste juste (personalScore, scoring-weights.ts). **Pour changer un poids par défaut : ajouter une version et passer
+ * CURRENT_WEIGHTS_VERSION à elle ; ne jamais modifier une version existante.**
+ * v1 : 2026-11-15 (ADR 0036), résumés sans version. v2 : 2026-11-19 (ADR 0049, demande de l'utilisateur : poste 35,
+ * techno 20, localisation 12, secteur 11 — client pour le score final —, séniorité 10, le reste réparti).
+ */
+export const WEIGHT_VERSIONS: Record<number, Record<ActiveScale, Weights>> = {
+  1: {
+    matching: { poste: 20, exigences: 10, projet: 5, competences: 20, localisation: 8, niveau: 10, formation: 6, domaine: 10, langue: 6, tjm: 5 },
+    final: { poste: 25, exigences: 15, projet: 10, competences: 25, client: 15, localisation: 5, niveau: 5 },
+  },
+  2: {
+    matching: { poste: 35, exigences: 3, projet: 3, competences: 20, localisation: 12, niveau: 10, formation: 2, domaine: 11, langue: 2, tjm: 2 },
+    final: { poste: 35, exigences: 6, projet: 6, competences: 20, client: 11, localisation: 12, niveau: 10 },
+  },
+}
+export const CURRENT_WEIGHTS_VERSION = 2
+/** Version des poids d'un résumé qui n'en note pas (écrit avant le 2026-11-19). */
+export const UNVERSIONED_WEIGHTS = 1
+
 export const SCALES: Record<ScaleName, Scale> = {
   // Matching avec les CV disponibles. Rouge : poste, techno + outils, localisation, séniorité, formation, secteur, langue.
   matching: {
-    weights: { poste: 20, exigences: 10, projet: 5, competences: 20, localisation: 8, niveau: 10, formation: 6, domaine: 10, langue: 6, tjm: 5 },
+    weights: WEIGHT_VERSIONS[CURRENT_WEIGHTS_VERSION].matching,
     caps: { poste: ROLE_CAP, competences: MISSING, localisation: MISSING, niveau: MISSING, formation: MISSING, domaine: DOMAIN_CAP, langue: MISSING },
   },
   // Score final de l'AO, sur l'expérience. Rouge : poste, techno + outils, environnement du client.
   final: {
-    weights: { poste: 25, exigences: 15, projet: 10, competences: 25, client: 15, localisation: 5, niveau: 5 },
+    weights: WEIGHT_VERSIONS[CURRENT_WEIGHTS_VERSION].final,
     caps: { poste: ROLE_CAP, competences: MISSING, client: MISSING },
   },
   legacy: {
@@ -513,9 +538,17 @@ export const judgedResult = (j: MatchJudgements): ScoreResult => scoreOf(j.scale
 /** Score de 0 à 100 calculé par le code (SCALES), plafonné quand un critère rouge manque ou n'est que voisin. */
 export const judgedScore = (j: MatchJudgements): number => judgedResult(j).score
 
-/** Résumé affiché devant la raison, d'où vient le score : « Poste : oui · Contexte : 4 sur 6 · … » (relu par score-breakdown.ts). */
+/** Marque de la version des poids en tête du résumé (« Poids v2 · »), relue par score-breakdown.ts. */
+export const WEIGHTS_MARK_PREFIX = 'Poids v'
+
+/**
+ * Résumé affiché devant la raison, d'où vient le score : « Poids v2 · Poste : oui · Contexte : 4 sur 6 · … » (relu par
+ * score-breakdown.ts). La version des poids est notée, pas les poids : la raison d'un CV du vivier général tient en 300
+ * caractères (vivier-matching.ts). En tête et non à la fin : une raison coupée à 300 caractères garde sa version (à la
+ * fin, une coupe juste avant elle ferait relire un score v2 aux poids v1).
+ */
 export function judgementSummary(j: MatchJudgements): string {
-  return criterionResults(j).map(r => `${labelOf(j.scale, r.key)} : ${r.detail}`).join(' · ')
+  return [`${WEIGHTS_MARK_PREFIX}${CURRENT_WEIGHTS_VERSION}`, ...criterionResults(j).map(r => `${labelOf(j.scale, r.key)} : ${r.detail}`)].join(' · ')
 }
 
 /**

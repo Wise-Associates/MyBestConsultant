@@ -15,8 +15,8 @@ import type { JobClient } from '@/lib/client-response'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { Query } from 'node-appwrite'
-import { loadRecruiterWeights } from '@/lib/scoring-weights-store'
-import { personalScore } from '@/lib/scoring-weights'
+import { loadWeightsForJob } from '@/lib/scoring-weights-store'
+import { candidateWeightsKey, personalScore, withOverride } from '@/lib/scoring-weights'
 import { formatDateFr } from '@/lib/format-date'
 import type { Job, UserProfile } from '@/types'
 
@@ -61,13 +61,15 @@ async function loadClientData(jobId: string) {
   if (!JOB_ID.test(jobId)) notFound()
   const tenantId = user.tenantId
 
-  const [job, allApps, { stages }, { weights }] = await Promise.all([
-    getJobById(jobId), getApplicationsByJob(jobId), getStagesForJob(tenantId, jobId), loadRecruiterWeights(user.userId),
+  const [job, allApps, { stages }, { weights, candidates }] = await Promise.all([
+    getJobById(jobId), getApplicationsByJob(jobId), getStagesForJob(tenantId, jobId), loadWeightsForJob(user.userId, jobId),
   ])
   if (!job) notFound()
   const viewer = await loadOfferViewer(user)
   if (!viewerCanOpenJob(job, viewer)) redirect('/recruiter/dashboard')
   const apps = allApps.filter(a => viewerCanSeeApplication(job, a.tenantId ?? '', viewer))
+  // Poids du recruteur pour chaque candidature : les siens, sinon ceux de l'offre, sinon globaux (ADR 0049).
+  const weightsOf = (appId: string) => withOverride(weights, candidates[candidateWeightsKey({ source: 'application', id: appId })])
   const [identities, client] = await Promise.all([
     resolveCandidateIdentities(apps.map(a => a.candidateId)),
     // Client de l'offre : illisible, l'onglet s'affiche quand même et le signale (« unavailable »).
@@ -88,7 +90,7 @@ async function loadClientData(jobId: string) {
       hunterProfile: !!info?.hunter,
       name: info?.name || `Candidat #${a.candidateId.slice(-6)}`,
       email: info?.email ?? '',
-      score: a.aiScore == null ? undefined : personalScore(a.aiScore, a.aiSummary ?? '', weights),
+      score: a.aiScore == null ? undefined : personalScore(a.aiScore, a.aiSummary ?? '', weightsOf(a.$id)),
       stageLabel: stages.find(s => s.slug === status)?.label ?? status,
       rejected: status === REJECTED_COLUMN,
       shared: (a.tenantId ?? '') !== tenantId && job.tenantId !== tenantId,
@@ -98,7 +100,7 @@ async function loadClientData(jobId: string) {
         .map(s => ({ id: s.id, label: s.label, report: s.report ?? '', validatedBy: s.validatedBy, validatedAt: s.validatedAt })),
     }
   })
-  return { user, job, apps, rows, weights, client }
+  return { user, job, apps, rows, weightsOf, client }
 }
 
 /** Client de l'offre : null s'il n'est pas renseigné ; 'unavailable' : illisible ; 'off' : collection non configurée. */
@@ -114,7 +116,7 @@ export async function loadClientRows(jobId: string): Promise<{ user: UserProfile
  * l'envoi (date, recruteur). Le CV analysé et la ville sont lus sur le compte du candidat.
  */
 export async function loadClientSheets(jobId: string, ids: Set<string>): Promise<{ job: Job; client: JobClient | null; sheets: (ClientSheet & { sentBy: string; sentOn: string })[] }> {
-  const { job, apps, rows, weights, client } = await loadClientData(jobId)
+  const { job, apps, rows, weightsOf, client } = await loadClientData(jobId)
   const shown = rows.filter(r => r.submission && ids.has(r.appId))
   const appOf = new Map(apps.map(a => [a.$id, a]))
   const candidateIds = [...new Set(shown.map(r => appOf.get(r.appId)!.candidateId))]
@@ -131,7 +133,7 @@ export async function loadClientSheets(jobId: string, ids: Set<string>): Promise
     return {
       ...buildClientSheet({
         appId: r.appId, firstName: str(person?.firstName), lastName: str(person?.lastName), city: str(person?.city),
-        cvProfileJson: person?.cvProfileJson, score: r.score, aiSummary: app.aiSummary ?? undefined, weights,
+        cvProfileJson: person?.cvProfileJson, score: r.score, aiSummary: app.aiSummary ?? undefined, weights: weightsOf(r.appId),
         steps: r.steps.map(s => ({ id: s.id, label: s.label, report: s.report, validatedAt: s.validatedAt })),
       }),
       sentBy: r.submission!.sentBy,

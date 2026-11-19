@@ -75,9 +75,10 @@ describe('vivier général : réponse de l\'IA', () => {
       item(2, { raison: 'Java en banque' }),
       item('3', { competences: [ok, { jugement: 'partiel' }, { jugement: 'non' }], niveau: 'partiel', raison: 'SQL absent' }),
     ]), [
-      score('b', 100, 'Poste : Développeur Java oui · Contexte : oui · Projet : oui · Techno : 1 sur 1 · Localisation : oui · Séniorité : oui'
+      score('b', 100, 'Poids v2 · Poste : Développeur Java oui · Contexte : oui · Projet : oui · Techno : 1 sur 1 · Localisation : oui · Séniorité : oui'
         + ' · Formation : non requis · Secteur : oui · Langue : non requis · TJM : non précisé — Java en banque'),
-      score('c', 85, 'Poste : Développeur Java oui · Contexte : oui · Projet : oui · Techno : 1 sur 3, 1 partielle · Localisation : oui'
+      // Poids v2 : techno 20 × 0,5 et séniorité 10 × 0,5 perdus.
+      score('c', 85, 'Poids v2 · Poste : Développeur Java oui · Contexte : oui · Projet : oui · Techno : 1 sur 3, 1 partielle · Localisation : oui'
         + ' · Séniorité : partiel · Formation : non requis · Secteur : oui · Langue : non requis · TJM : non précisé — SQL absent'),
     ])
   })
@@ -97,7 +98,7 @@ describe('vivier général : réponse de l\'IA', () => {
       domaine: 'non requis', raison: 'aucun développement',
     })]) ?? []
     assert.equal(result.score, 50)
-    assert.match(result.reason, /^Poste : Scrum Master oui, Développeur Full Stack non · /)
+    assert.match(result.reason, /^Poids v2 · Poste : Scrum Master oui, Développeur Full Stack non · /)
   })
 
   it('plafonne le score quand le poste du titre n\'a pas été exercé, quelles que soient les compétences', () => {
@@ -110,7 +111,7 @@ describe('vivier général : réponse de l\'IA', () => {
 
   it('barème du matching : une langue exigée absente plafonne, un TJM au-dessus non (critère blanc)', () => {
     assert.equal(parse([item(1, { langue: 'non' })])?.[0].score, 60)
-    assert.equal(parse([item(1, { tjm: 'non' })])?.[0].score, 95)
+    assert.equal(parse([item(1, { tjm: 'non' })])?.[0].score, 98, 'TJM : 2 points (poids v2)')
     assert.deepEqual(parse([item(1, { tjm: undefined })]), [], 'critère du barème manquant : offre à comparer de nouveau')
   })
 

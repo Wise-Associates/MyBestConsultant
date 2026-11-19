@@ -10,6 +10,7 @@ import type { RecruiterSelection } from '@/lib/recruiter-job-filters'
 import { valuesByFrequency } from '@/lib/cvtheque-search'
 import { recruiterCanSeeApplication } from '@/lib/job-ownership'
 import { parseClientSubmission } from '@/lib/client-response'
+import { isDocumentId } from '@/lib/ao/access'
 
 /**
  * Offres par requête quand on lit les candidatures d'une liste d'offres : Appwrite refuse plus de 100 valeurs dans un
@@ -144,6 +145,9 @@ export async function getOpenJobsOfTenant(tenantId: string): Promise<Job[]> {
 }
 
 export async function getJobById(id: string): Promise<Job | null> {
+  // Identifiant reçu du navigateur (adresse, Server Action) : le SDK le colle dans l'URL sans l'encoder, et « # », « ? »
+  // ou « ../ » feraient lire, avec la clé d'administration, un autre document que celui demandé (revue du 2026-11-19).
+  if (!isDocumentId(id)) return null
   try {
     const { databases } = createAdminClient()
     const doc = await databases.getDocument(DB_ID, COLLECTIONS.JOBS, id)

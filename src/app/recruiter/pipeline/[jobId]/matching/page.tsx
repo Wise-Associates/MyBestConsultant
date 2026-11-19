@@ -4,7 +4,7 @@ import { getCurrentUser } from '@/lib/appwrite/auth'
 import { getJobById, jobTabCounts } from '@/lib/appwrite/jobs'
 import { getJobMatches, unmatchedApplicationIds } from '@/lib/matching-core'
 import { autoScreenApplication } from '@/lib/screening-core'
-import { loadRecruiterWeights } from '@/lib/scoring-weights-store'
+import { isJobWeightsConfigured, loadWeightsForJob } from '@/lib/scoring-weights-store'
 import { MatchingClient } from './matching-client'
 import { jobMetaLine } from '@/components/recruiter/job-tabs'
 import { viewerCanOpenJob } from '@/lib/job-ownership'
@@ -24,9 +24,11 @@ export default async function MatchingPage({ params }: { params: Promise<{ jobId
   // Offre que le recruteur ouvre (ADR 0043 : un membre, les siennes seulement).
   if (!viewerCanOpenJob(job, await loadOfferViewer(user))) redirect('/recruiter/dashboard')
 
-  // Scores aux poids personnels du recruteur (réglés depuis le pipeline de l'offre).
-  const [{ weights, unreadable }, tabCounts] = await Promise.all([loadRecruiterWeights(user.userId), jobTabCounts(job, user.tenantId)])
-  const { matches } = await getJobMatches(jobId, user.tenantId, user.$id, weights)
+  // Scores aux poids du recruteur : ceux du candidat, sinon de l'offre (colonne de droite), sinon globaux (bouton du bandeau).
+  const [{ weights, global, job: jobWeights, candidates, unreadable, jobUnreadable, candidatesUnreadable }, tabCounts] = await Promise.all([
+    loadWeightsForJob(user.userId, jobId), jobTabCounts(job, user.tenantId),
+  ])
+  const { matches } = await getJobMatches(jobId, user.tenantId, user.$id, weights, candidates)
 
   // Toute candidature doit avoir son matching : celles que l'analyse automatique a manquées sont relancées en tâche de fond.
   const retry = unmatchedApplicationIds(matches)
@@ -34,6 +36,7 @@ export default async function MatchingPage({ params }: { params: Promise<{ jobId
 
   // Remonté quand le recruteur change ses poids (router.refresh) : la liste, gardée dans l'état du client, reprend ses scores.
   return <MatchingClient key={JSON.stringify(weights)} jobId={jobId} jobTitle={job.title} jobMeta={jobMetaLine(job)} jobSkills={job.skills ?? []}
-    initialMatches={matches} tabCounts={tabCounts ?? undefined} weights={weights} weightsUnreadable={unreadable} now={new Date().toISOString()}
+    initialMatches={matches} tabCounts={tabCounts ?? undefined} weights={weights} weightsUnreadable={unreadable} globalWeights={global}
+    jobWeights={isJobWeightsConfigured() ? { weights: jobWeights, unreadable: jobUnreadable, candidates, candidatesUnreadable } : undefined} now={new Date().toISOString()}
     reviewEnabled={isAutoMatchingEnabled() && job.tenantId === user.tenantId} />
 }
