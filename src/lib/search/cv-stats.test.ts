@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { RISING_MIN_CVS, cvStatsView, risingSkills, sinceFilter, statsFilter } from './cv-stats'
+import { RISING_MIN_CVS, TREE_ROLES, TREE_SKILLS, cvStatsView, risingSkills, sinceFilter, statsFilter, treeWithRoles, treeWithSkills } from './cv-stats'
 
 const now = new Date('2026-11-18T10:00:00.000Z')
 
@@ -97,5 +97,41 @@ describe('fraîcheur et tendances des CV (dates de dépôt)', () => {
     const cut = Math.floor(Date.UTC(2026, 4, 18) / 1000)
     assert.equal(sinceFilter('kind = "candidate"', 6, now, 'recent'), `kind = "candidate" AND cvDate >= ${cut}`)
     assert.equal(sinceFilter('kind = "candidate"', 6, now, 'older'), `kind = "candidate" AND cvDate < ${cut}`)
+  })
+})
+
+describe('arbre des métiers (familles → métiers → compétences)', () => {
+  const families = [
+    { key: 'pilotage_projet', label: 'Pilotage de projet, PMO', count: 20, share: 0.5 },
+    { key: 'data_ia', label: 'Data et IA', count: 10, share: 0.25 },
+  ]
+  const many = (prefix: string, n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`${prefix} ${i}`, 1]))
+
+  it('range sous chaque famille ses métiers les plus fréquents, en part de la famille', () => {
+    const tree = treeWithRoles(families, [
+      { facetDistribution: { roles: { 'Chef de projet': 12, PMO: 6, '': 3, ...many('Rôle', 20) } } },
+      {},
+    ])
+    assert.deepEqual(tree[0].children.slice(0, 2).map(r => [r.label, r.count, r.share]), [['Chef de projet', 12, 0.6], ['PMO', 6, 0.3]])
+    assert.equal(tree[0].children.length, TREE_ROLES)
+    assert.deepEqual(tree[1].children, [])
+    assert.deepEqual([tree[0].count, tree[0].share], [20, 0.5])
+  })
+
+  it('range sous chaque métier ses compétences, dans l’ordre des métiers de l’arbre', () => {
+    const withRoles = treeWithRoles(families, [
+      { facetDistribution: { roles: { 'Chef de projet': 12, PMO: 6 } } },
+      { facetDistribution: { roles: { 'Data Engineer': 8 } } },
+    ])
+    const tree = treeWithSkills(withRoles, [
+      { facetDistribution: { skills: { Java: 6, Angular: 3, ...many('Outil', 20) } } },
+      { facetDistribution: { skills: { Jira: 4 } } },
+      { facetDistribution: { skills: { Spark: 8 } } },
+    ])
+    assert.deepEqual(tree[0].children[0].children.slice(0, 2).map(s => [s.label, s.count, s.share]), [['Java', 6, 0.5], ['Angular', 3, 0.25]])
+    assert.equal(tree[0].children[0].children.length, TREE_SKILLS)
+    assert.deepEqual(tree[0].children[1].children.map(s => s.label), ['Jira'])
+    assert.deepEqual(tree[1].children[0].children.map(s => [s.label, s.share]), [['Spark', 1]])
+    assert.ok(tree.flatMap(f => f.children.flatMap(r => r.children)).every(s => s.children.length === 0))
   })
 })

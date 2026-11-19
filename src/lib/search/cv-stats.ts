@@ -4,7 +4,7 @@ import { EDUCATION_LEVELS, JOB_FAMILIES, SECTORS } from '@/lib/cv-classification
 // recherche (facettes Meilisearch), mis en forme pour l'écran. Règles pures, testées dans cv-stats.test.ts.
 
 /** Champs comptés ; `kind` donne le total, années et TJM leurs bornes. */
-export const STAT_FACETS = ['kind', 'jobFamily', 'roles', 'skills', 'seniority', 'sectors', 'languages', 'city', 'educationLevel', 'yearsOfExperience', 'dailyRate', 'cvMonth'] as const
+export const STAT_FACETS = ['kind', 'jobFamily', 'skills', 'seniority', 'sectors', 'languages', 'city', 'educationLevel', 'yearsOfExperience', 'dailyRate', 'cvMonth'] as const
 
 /**
  * Périmètre : la base candidats (la même pour tous les recruteurs), ou le vivier personnel du recruteur ; pour l'admin
@@ -41,7 +41,6 @@ export interface StatRow { key: string; label: string; count: number; /** Part d
 export interface CvStatsView {
   total: number
   families: StatRow[]
-  roles: StatRow[]
   skills: StatRow[]
   seniority: StatRow[]
   sectors: StatRow[]
@@ -70,6 +69,8 @@ export const SENIORITY_LABELS: Record<string, string> = {
 export const EDUCATION_LABELS: Record<string, string> = {
   bac: 'Bac', 'bac+2': 'Bac +2', 'bac+3': 'Bac +3', 'bac+5': 'Bac +5', doctorat: 'Doctorat', non_precise: 'Non précisé',
 }
+
+const asIs = (key: string) => key
 
 /** Lignes d'un champ : les plus nombreuses d'abord (`limit` au plus), ou dans l'ordre fixe `order` (échelles). */
 function rows(counts: Record<string, number> | undefined, total: number, label: (key: string) => string, opts: { limit?: number; order?: readonly string[] } = {}): StatRow[] {
@@ -128,7 +129,6 @@ export function cvStatsView(raw: RawStats, now: Date): CvStatsView {
   const facets = raw.facetDistribution ?? {}
   // Chaque CV a un seul `kind` : la somme est le nombre de CV du périmètre (facettes exhaustives, sans plafond).
   const total = Object.values(facets.kind ?? {}).reduce((sum, n) => sum + n, 0)
-  const asIs = (key: string) => key
   const bounds = (field: string) => {
     const s = raw.facetStats?.[field]
     return s && Number.isFinite(s.min) && Number.isFinite(s.max) ? { min: Math.round(s.min), max: Math.round(s.max) } : null
@@ -136,7 +136,6 @@ export function cvStatsView(raw: RawStats, now: Date): CvStatsView {
   return {
     total,
     families: rows(facets.jobFamily, total, key => JOB_FAMILIES[key as keyof typeof JOB_FAMILIES] ?? key),
-    roles: rows(facets.roles, total, asIs, { limit: 12 }),
     skills: rows(facets.skills, total, asIs, { limit: 20 }),
     seniority: rows(facets.seniority, total, key => SENIORITY_LABELS[key] ?? key, { order: Object.keys(SENIORITY_LABELS) }),
     sectors: rows(facets.sectors, total, key => SECTORS[key as keyof typeof SECTORS] ?? key),
@@ -147,6 +146,36 @@ export function cvStatsView(raw: RawStats, now: Date): CvStatsView {
     dailyRate: bounds('dailyRate'),
     ...datesView(facets.cvMonth, total, now),
   }
+}
+
+/** Métiers les plus fréquents sous chaque famille, et compétences les plus fréquentes sous chaque métier, dans l'arbre. */
+export const TREE_ROLES = 10
+export const TREE_SKILLS = 8
+
+/**
+ * Nœud de l'arbre « Métiers en détail » (demande du 2026-11-19) : famille, métier des CV de cette famille, compétence des
+ * CV de ce métier. `share` : part du nœud parent (de tous les CV pour une famille).
+ */
+export interface JobTreeNode extends StatRow { children: JobTreeNode[] }
+
+/** Familles et leurs métiers ; `byFamily[i]` : comptes des CV de la famille `families[i]` (facette `roles`). */
+export function treeWithRoles(families: StatRow[], byFamily: RawStats[]): JobTreeNode[] {
+  return families.map((family, i) => ({
+    ...family,
+    children: rows(byFamily[i]?.facetDistribution?.roles, family.count, asIs, { limit: TREE_ROLES }).map(role => ({ ...role, children: [] })),
+  }))
+}
+
+/** Ajoute les compétences de chaque métier ; `byRole` : un compte (facette `skills`) par métier, dans l'ordre de l'arbre. */
+export function treeWithSkills(tree: JobTreeNode[], byRole: RawStats[]): JobTreeNode[] {
+  let i = 0
+  return tree.map(family => ({
+    ...family,
+    children: family.children.map(role => ({
+      ...role,
+      children: rows(byRole[i++]?.facetDistribution?.skills, role.count, asIs, { limit: TREE_SKILLS }).map(skill => ({ ...skill, children: [] })),
+    })),
+  }))
 }
 
 /** Compétence plus présente dans les CV récents que dans les plus anciens. */

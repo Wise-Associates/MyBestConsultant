@@ -42,7 +42,8 @@ export default async function StatProfilesPage({ searchParams }: { searchParams:
   if (!user) redirect('/login')
   if (user.role !== 'recruiter' && user.role !== 'admin') redirect('/login')
   const sp = await searchParams
-  const selection = parseSelection({ champ: one(sp.champ), valeur: one(sp.valeur) })
+  // Valeurs telles que reçues : un paramètre répété (tableau) rend la sélection invalide au lieu d'être ignoré.
+  const selection = parseSelection({ champ: sp.champ, valeur: sp.valeur, famille: sp.famille, metier: sp.metier, competence: sp.competence })
   if (!selection) notFound()
   // Vivier : celui du recruteur connecté (organisation et profil de la session), comme la page des statistiques.
   const vivier = one(sp.perimetre) === 'vivier' && !!user.tenantId

@@ -775,6 +775,13 @@ export function CvStatsSkeleton() {
           ))}
         </div>
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3 items-start">
+          {/* « Métiers en détail » (2026-11-19) : arbre sur deux colonnes, une famille ouverte sur ses métiers. */}
+          <div className="rounded-2xl p-4 sm:p-5 space-y-3 lg:col-span-2" style={card}>
+            <Skeleton className="h-4 w-40" />
+            {[0, 1, 1, 1, 0, 0].map((level, j) => (
+              <div key={j} className="space-y-1.5" style={{ paddingLeft: level ? 20 : 0 }}><Skeleton className="h-3 w-full" /><Skeleton className="h-1.5 rounded-sm" style={{ width: `${90 - j * 12}%` }} /></div>
+            ))}
+          </div>
           {Array.from({ length: 6 }, (_, i) => (
             <div key={i} className="rounded-2xl p-4 sm:p-5 space-y-3" style={card}>
               <Skeleton className="h-4 w-40" />

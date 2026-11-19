@@ -220,6 +220,19 @@ guillemets échappés (`meiliString`, vérifié sur Meilisearch 1.56 : une valeu
 CV est **revérifié dans Appwrite** avant d'être affiché (`cv-stats-profiles.ts` : candidat de rôle `candidate` avec un
 fichier de CV, comme la CV Thèque — un profil saisi sans fichier est classé et compté, pas listé —, ou CV du vivier de
 cette organisation importé par ce recruteur) ; un CV que l'index garde à tort est signalé comme non affiché.
+**Métiers en détail** (2026-11-19, demande de l'utilisateur : « chef de projet » Java, Angular…) : un arbre remplace
+les listes « Familles de métiers » et « Métiers les plus présents » — famille de métiers, puis ses 10 métiers les plus
+fréquents, puis les 8 compétences les plus fréquentes des CV de chaque métier (choix de l'utilisateur : trois niveaux,
+à la place des deux listes). Chaque nœud est compté par Meilisearch avec exactement le filtre de la liste qu'il ouvre
+(`selectionFilter`, champ `arbre` : `jobFamily`, puis `roles`, puis `skills`) : vérifié sur des CV fictifs, 66 nœuds
+égaux au total de leur liste (base candidats et vivier, valeurs avec guillemets comprises). Deux appels groupés
+(`/multi-search`, `facetCountsMany`) : métiers par famille, puis compétences par métier (15 familles × 10 métiers au
+plus). Pourcentages : part du niveau au-dessus ; un CV peut compter dans plusieurs métiers et compétences (les nœuds
+d'un niveau ne s'additionnent pas). Ouverture par `<details>` (aucun code dans le navigateur, la première famille
+ouverte) ; le nombre d'une branche est un lien posé à côté de son `<summary>`, pas dedans. Arbre illisible : message
+dans son bloc, le reste de la page s'affiche. Les adresses `champ=famille` / `champ=metier` de la veille sont remplacées
+par `champ=arbre&famille=…&metier=…&competence=…`.
+
 **Garde-fou** (revue de sécurité du même jour) : la liste donne nom, e-mail et téléphone de la base candidats, où la CV
 Thèque n'en montre que les 500 plus récents, et l'inscription d'un recruteur est libre ; elle exige donc l'adresse e-mail
 vérifiée et prend une place de quota par page affichée : 100 par organisation (5 000 profils) et 2 000 pour toute la

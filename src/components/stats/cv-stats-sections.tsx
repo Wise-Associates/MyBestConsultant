@@ -1,8 +1,8 @@
 import type { CSSProperties, ReactNode } from 'react'
 import Link from 'next/link'
-import { ChartColumn, TrendingUp } from 'lucide-react'
+import { ChartColumn, ChevronRight, TrendingUp } from 'lucide-react'
 import type { CvStatsResult } from '@/lib/search/cv-stats-store'
-import { RISING_MIN_CVS, RISING_RECENT_MONTHS, type CvStatsView, type RisingSkill, type StatRow } from '@/lib/search/cv-stats'
+import { RISING_MIN_CVS, RISING_RECENT_MONTHS, TREE_ROLES, TREE_SKILLS, type CvStatsView, type JobTreeNode, type RisingSkill, type StatRow } from '@/lib/search/cv-stats'
 import { parseSelection, type StatSelection } from '@/lib/search/cv-stats-selection'
 
 // Affichage des statistiques des CV classés (ADR 0044, phase 3), partagé par la page des recruteurs
@@ -13,9 +13,9 @@ import { parseSelection, type StatSelection } from '@/lib/search/cv-stats-select
 /** Adresse de la liste des profils d'une sélection ; absente : les nombres ne sont pas des liens. */
 type ListHref = (selection: StatSelection) => string
 
-/** Lien vers les profils de la ligne `champ` = `valeur`, si la page en donne et si la ligne est une sélection valide. */
-function hrefOf(listHref: ListHref | undefined, champ: string, valeur?: string): string | undefined {
-  const selection = listHref ? parseSelection({ champ, valeur }) : null
+/** Lien vers les profils d'une ligne (`champ`, `valeur`… de l'adresse), si la page en donne et si la ligne est une sélection valide. */
+function hrefOf(listHref: ListHref | undefined, params: Parameters<typeof parseSelection>[0]): string | undefined {
+  const selection = listHref ? parseSelection(params) : null
   return selection ? listHref!(selection) : undefined
 }
 
@@ -84,9 +84,9 @@ export function CvStatsBody({ result, scopeName, emptyHint, offMessage = 'Elles 
             </p>
 
             <section aria-label="Chiffres clés" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <Tile label="CV classés" value={number.format(v.total)} href={hrefOf(listHref, 'tous')} />
-              <Tile label="Seniors et experts" value={percent(seasoned / v.total)} hint="8 ans d’expérience ou plus" href={seasoned > 0 ? hrefOf(listHref, 'seniors') : undefined} />
-              <Tile label="Déposés depuis un an" value={v.lastYearShare === null ? '—' : percent(v.lastYearShare)} hint="CV de moins de 12 mois" href={v.lastYearShare ? hrefOf(listHref, 'annee') : undefined} />
+              <Tile label="CV classés" value={number.format(v.total)} href={hrefOf(listHref, { champ: 'tous' })} />
+              <Tile label="Seniors et experts" value={percent(seasoned / v.total)} hint="8 ans d’expérience ou plus" href={seasoned > 0 ? hrefOf(listHref, { champ: 'seniors' }) : undefined} />
+              <Tile label="Déposés depuis un an" value={v.lastYearShare === null ? '—' : percent(v.lastYearShare)} hint="CV de moins de 12 mois" href={v.lastYearShare ? hrefOf(listHref, { champ: 'annee' }) : undefined} />
               <Tile label="TJM indiqués" value={v.dailyRate ? `${number.format(v.dailyRate.min)} à ${number.format(v.dailyRate.max)} €` : '—'} hint="quand le CV l’indique" />
             </section>
 
@@ -99,8 +99,7 @@ export function CvStatsBody({ result, scopeName, emptyHint, offMessage = 'Elles 
 
             <h2 className="sr-only">Profils</h2>
             <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3 items-start">
-              <Bars title="Familles de métiers" rows={v.families} field="famille" listHref={listHref} />
-              <Bars title="Métiers les plus présents" rows={v.roles} field="metier" listHref={listHref} />
+              <JobTree tree={result.tree} listHref={listHref} />
               <Bars title="Compétences les plus présentes" rows={v.skills} field="competence" listHref={listHref} />
               <Bars title="Séniorité" rows={v.seniority} scale field="seniorite" listHref={listHref} />
               <Bars title="Secteurs" rows={v.sectors} note="Un CV peut compter dans plusieurs secteurs." field="secteur" listHref={listHref} />
@@ -164,7 +163,7 @@ function Bars({ title, rows, scale, note, field, listHref }: {
       ) : (
         <List className="flex flex-col gap-1">
           {rows.map(r => {
-            const href = field ? hrefOf(listHref, field, r.key) : undefined
+            const href = field ? hrefOf(listHref, { champ: field, valeur: r.key }) : undefined
             const row = (
               <>
                 <div className="flex items-baseline justify-between gap-3 text-[13px]">
@@ -206,7 +205,7 @@ function Monthly({ months, listHref }: { months: CvStatsView['monthly']; listHre
           les valeurs de tous les mois aux lecteurs d'écran, y compris les mois sans CV (sans lien). */}
       <div className="flex items-end gap-0.5 h-32" aria-hidden={listHref ? undefined : true}>
         {months.map(m => {
-          const href = m.count > 0 ? hrefOf(listHref, 'mois', m.month) : undefined
+          const href = m.count > 0 ? hrefOf(listHref, { champ: 'mois', valeur: m.month }) : undefined
           const bar = <div className="rounded-t-sm" style={{ height: `${(m.count / max) * 100}%`, minHeight: m.count > 0 ? 2 : 0, background: 'var(--color-primary)' }} />
           // Toute la hauteur de la colonne réagit au survol, pas seulement la barre (cible plus grande que la marque).
           const column = 'flex-1 h-full flex flex-col justify-end'
@@ -249,7 +248,7 @@ function Rising({ skills, listHref }: { skills: RisingSkill[] | null; listHref?:
       ) : (
         <ol className="flex flex-col gap-1">
           {skills.map(s => {
-            const href = hrefOf(listHref, 'recente', s.label)
+            const href = hrefOf(listHref, { champ: 'recente', valeur: s.label })
             const row = (
               <span className="flex items-baseline justify-between gap-3 text-[13px]">
                 <span className="min-w-0">
@@ -267,5 +266,100 @@ function Rising({ skills, listHref }: { skills: RisingSkill[] | null; listHref?:
       )}
       <p className="text-[11px] mt-3" style={muted}>CV de moins de {RISING_RECENT_MONTHS} mois comparés aux plus anciens.</p>
     </section>
+  )
+}
+
+/** Barre d'un nombre, la plus longue pour le plus grand de ses voisins. */
+function Bar({ count, max }: { count: number; max: number }) {
+  return (
+    <span className="block mt-1 h-1.5 rounded-sm overflow-hidden" style={{ background: 'color-mix(in srgb, var(--color-text) 6%, transparent)' }} aria-hidden>
+      <span className="block h-full rounded-r-sm" style={{ width: `${(count / max) * 100}%`, background: 'var(--color-primary)' }} />
+    </span>
+  )
+}
+
+/** Chemin d'un nœud de l'arbre dans l'adresse de sa liste (famille, puis métier, puis compétence). */
+type TreePath = { famille: string; metier?: string; competence?: string }
+
+/**
+ * « Métiers en détail » (demande du 2026-11-19, à la place des listes des familles et des métiers) : chaque famille
+ * s'ouvre sur ses métiers, chaque métier sur ses compétences ; chaque nombre ouvre la liste des CV qu'il compte (avec
+ * `listHref`). Ouverture et fermeture par <details> : rien à exécuter dans le navigateur. Le nombre d'une branche est un
+ * lien posé à côté du <summary>, pas dedans : un lien dans le bouton d'ouverture serait un contrôle dans un contrôle.
+ */
+function JobTree({ tree, listHref }: { tree: JobTreeNode[] | null; listHref?: ListHref }) {
+  return (
+    <section aria-labelledby="stat-metiers" className="rounded-2xl p-4 sm:p-5 lg:col-span-2" style={card}>
+      <h3 id="stat-metiers" className="text-sm font-semibold mb-3" style={text}>Métiers en détail</h3>
+      {tree === null ? (
+        <p role="alert" className="text-[13px]" style={muted}>Détail des métiers momentanément indisponible : rechargez la page.</p>
+      ) : tree.length === 0 ? (
+        <p className="text-[13px]" style={muted}>Non indiqué dans les CV classés.</p>
+      ) : (
+        <TreeLevel nodes={tree} path={[]} listHref={listHref} />
+      )}
+      <p className="text-[11px] mt-3" style={muted}>
+        Familles de métiers, puis leurs {TREE_ROLES} métiers et les {TREE_SKILLS} compétences de chaque métier les plus fréquents.
+        Pourcentages : part du niveau au-dessus. Un CV peut compter dans plusieurs métiers et compétences.
+      </p>
+    </section>
+  )
+}
+
+function TreeLevel({ nodes, path, listHref }: { nodes: JobTreeNode[]; path: string[]; listHref?: ListHref }) {
+  const max = Math.max(1, ...nodes.map(n => n.count))
+  const nested = path.length > 0
+  return (
+    <ul className={nested ? 'ml-2 pl-3 mt-1 mb-1.5 flex flex-col gap-0.5' : 'flex flex-col gap-1'}
+      style={nested ? { borderLeft: '1px solid var(--color-border)' } : undefined}>
+      {nodes.map((node, i) => {
+        const keys = [...path, node.key]
+        const [famille, metier, competence] = keys
+        const nodePath: TreePath = { famille, ...(metier ? { metier } : {}), ...(competence ? { competence } : {}) }
+        const href = hrefOf(listHref, { champ: 'arbre', ...nodePath })
+        // Un seul élément : dans le lien en flex, une espace entre deux enfants serait supprimée.
+        const count = (
+          <span><span className="font-semibold" style={text}>{number.format(node.count)}</span> · {percent(node.share)}</span>
+        )
+        const label = `${node.label} : ${number.format(node.count)} CV, ${percent(node.share)}`
+        if (node.children.length === 0) {
+          const row = (
+            <>
+              <span className="flex items-baseline justify-between gap-3 text-[13px]">
+                <span className="min-w-0 truncate" style={text}>{node.label}</span>
+                <span className="shrink-0 tabular-nums" style={muted}>{count}</span>
+              </span>
+              <Bar count={node.count} max={max} />
+            </>
+          )
+          return <li key={node.key} title={label}>{href ? <Link href={href} className={rowLink}>{row}</Link> : <div className="py-1">{row}</div>}</li>
+        }
+        return (
+          <li key={node.key} className="relative" title={label}>
+            {/* Avant le <details> : au clavier, le nombre d'une branche vient avant ses enfants (affichage inchangé). */}
+            {href ? (
+              <Link href={href} aria-label={`${label}, voir les profils`}
+                className="absolute right-0 top-0 z-10 h-7 inline-flex items-center px-1.5 rounded-md text-[13px] tabular-nums no-underline hover:underline focus-visible:outline-2 focus-visible:outline-(--color-text)"
+                style={muted}>{count}</Link>
+            ) : (
+              <span className="absolute right-0 top-0 h-7 inline-flex items-center px-1.5 text-[13px] tabular-nums" style={muted}>{count}</span>
+            )}
+            {/* Première famille ouverte : l'arbre se voit sans chercher où cliquer. */}
+            <details open={!nested && i === 0}>
+              <summary className="list-none [&::-webkit-details-marker]:hidden cursor-pointer rounded-lg -mx-2 px-2 py-1 hover:bg-[color-mix(in_srgb,var(--color-text)_6%,transparent)] focus-visible:outline-2 focus-visible:outline-(--color-text)">
+                {/* Place laissée à droite de la première ligne pour le nombre, posé par-dessus. */}
+                <span className="flex items-center gap-1.5 text-[13px] pr-28">
+                  {/* Tournée selon son propre <details> : `group-open` suivrait aussi la famille ouverte au-dessus. */}
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform [details[open]>summary_&]:rotate-90 motion-reduce:transition-none" style={muted} aria-hidden />
+                  <span className={`min-w-0 truncate ${nested ? '' : 'font-medium'}`} style={text}>{node.label}</span>
+                </span>
+                <span className="block pl-5"><Bar count={node.count} max={max} /></span>
+              </summary>
+              <TreeLevel nodes={node.children} path={keys} listHref={listHref} />
+            </details>
+          </li>
+        )
+      })}
+    </ul>
   )
 }

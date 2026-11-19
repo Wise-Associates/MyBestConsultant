@@ -110,6 +110,15 @@ export async function searchCvPage<T>(filter: string, page: number, hitsPerPage:
     { q: '', filter, sort: ['cvDate:desc'], page, hitsPerPage, attributesToRetrieve: attributes }, 8_000)
 }
 
+/** Comptes de plusieurs filtres en un seul appel (multi-search), dans l'ordre des requêtes ; aucun CV renvoyé. */
+export async function facetCountsMany(queries: { filter: string; facets: readonly string[] }[]): Promise<RawStats[]> {
+  if (!queries.length) return []
+  const indexUid = cvIndexUid()
+  const res = await meili<{ results: RawStats[] }>('POST', '/multi-search',
+    { queries: queries.map(q => ({ indexUid, q: '', filter: q.filter, facets: q.facets, limit: 0 })) }, 8_000)
+  return res.results
+}
+
 /** Comptes par champ (facettes) et bornes des champs numériques des CV qui répondent au filtre ; aucun CV renvoyé. */
 export async function facetCounts(filter: string, facets: readonly string[]): Promise<RawStats> {
   return meili<RawStats>('POST', `/indexes/${encodeURIComponent(cvIndexUid())}/search`, { q: '', filter, facets, limit: 0 }, 8_000)
