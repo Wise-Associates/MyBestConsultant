@@ -193,10 +193,21 @@ export async function cvDateOf(kind: ClassifiedKind, doc: Record<string, unknown
 export const classifyFailureText = (err: unknown): string =>
   err instanceof LLMChainError ? llmFailureDetail(err) : err instanceof Error ? err.message : String(err)
 
+/** Raison journalisée quand un CV déposé n'est pas classé sans erreur. */
+const NOT_CLASSIFIED: Partial<Record<ClassifyOutcome, string>> = {
+  off: 'classification désactivée : APPWRITE_COLLECTION_CV_CLASSIFICATIONS absente de l\'environnement de l\'application',
+  missing: 'source introuvable, ou compte qui n\'est ni candidat ni profil de chasseur',
+  no_text: 'aucun texte lisible dans le CV (PDF scanné, fichier vide ou illisible)',
+}
+
 /** Classement en arrière-plan après un dépôt (`after`) : jamais bloquant, un échec est journalisé (le script le rattrape). */
 export async function classifySourceInBackground(kind: ClassifiedKind, sourceId: string): Promise<void> {
   try {
-    await classifySource(kind, sourceId)
+    const outcome = await classifySource(kind, sourceId)
+    // Un CV déposé qui n'est pas classé dit pourquoi (sinon rien dans les journaux : « je ne vois pas le CV dans
+    // cv_classifications », 2026-11-18). « invalid_answer » est déjà journalisé par classifyWithFallback.
+    const reason = NOT_CLASSIFIED[outcome]
+    if (reason) console.warn('[classification] CV non classé', kind, sourceId, reason)
   } catch (err) {
     console.error('[classification] classement impossible', kind, sourceId, classifyFailureText(err))
   }

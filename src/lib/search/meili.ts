@@ -101,6 +101,15 @@ export async function multiSearch(queries: object[]): Promise<SearchHit[][]> {
   return res.results.map(r => r.hits)
 }
 
+/**
+ * Une page des CV qui répondent au filtre, du dépôt le plus récent au plus ancien (sans date : à la fin) ; `totalHits`
+ * exact jusqu'à 1 000 (réglage par défaut de l'index, au-delà Meilisearch ne compte ni ne décale).
+ */
+export async function searchCvPage<T>(filter: string, page: number, hitsPerPage: number, attributes: readonly string[]): Promise<{ hits: T[]; totalHits: number; totalPages: number }> {
+  return meili('POST', `/indexes/${encodeURIComponent(cvIndexUid())}/search`,
+    { q: '', filter, sort: ['cvDate:desc'], page, hitsPerPage, attributesToRetrieve: attributes }, 8_000)
+}
+
 /** Comptes par champ (facettes) et bornes des champs numériques des CV qui répondent au filtre ; aucun CV renvoyé. */
 export async function facetCounts(filter: string, facets: readonly string[]): Promise<RawStats> {
   return meili<RawStats>('POST', `/indexes/${encodeURIComponent(cvIndexUid())}/search`, { q: '', filter, facets, limit: 0 }, 8_000)

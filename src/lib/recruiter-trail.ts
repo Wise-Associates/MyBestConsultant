@@ -67,6 +67,8 @@ const PAGE_LABELS: [RegExp, string][] = [
   [/^\/recruiter\/pipeline\/[^/]+\/client\/synthese$/, 'Synthèse pour le client'],
   [/^\/recruiter\/candidates\/[^/]+$/, 'Fiche candidat'],
   [/^\/recruiter\/candidate-preview\/[^/]+\/[^/]+$/, 'Profil du candidat'],
+  [/^\/recruiter\/cvtheque\/statistiques$/, 'Statistiques des CV'],
+  [/^\/recruiter\/cvtheque\/statistiques\/profils$/, 'Profils des statistiques'],
   [/^\/recruiter\/annonces$/, 'Suivi des annonces'],
   [/^\/recruiter\/annonces\/[^/]+$/, 'Rapport de l’annonce'],
   [/^\/recruiter\/vivier\/[^/]+$/, 'Vivier de l’offre'],

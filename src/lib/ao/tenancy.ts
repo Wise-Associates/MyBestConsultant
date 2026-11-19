@@ -69,6 +69,8 @@ const COUNTER_PREFIX = {
   mbcPhoneOrg: 'pk', mbcPhoneAll: 'pl',
   // Nouveaux candidats comparés aux offres actives, pour toute la plateforme (correspondances IA, ADR 0047).
   autoMatchAll: 'am',
+  // Pages de profils ouvertes depuis les statistiques des CV (ADR 0044) : par organisation, pour toutes.
+  statsProfilesOrg: 'sp', statsProfilesAll: 'sq',
 } as const
 export type DailyCounter = keyof typeof COUNTER_PREFIX
 

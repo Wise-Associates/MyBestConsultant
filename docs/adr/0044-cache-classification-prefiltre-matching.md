@@ -207,6 +207,30 @@ l'index n'est pas configuré. Comptes agrégés, aucun nom. Essayé en local ave
   organisation de la session, **propriétaire et administrateurs seulement** (un vivier est personnel ; les comptes
   réunis restent sans nom) ; un membre y trouve le lien vers « Mon vivier ».
 
+**Profils derrière chaque nombre** (2026-11-19, demande de l'utilisateur ; page des recruteurs seulement) : chaque ligne
+des listes, chaque colonne des dépôts par mois, chaque compétence en hausse et les chiffres clés « CV classés »,
+« Seniors et experts » et « Déposés depuis un an » ouvrent `/recruiter/cvtheque/statistiques/profils?champ=…&valeur=…`
+(`&perimetre=vivier` pour « Mon vivier ») : les CV que le nombre compte, du dépôt le plus récent au plus ancien, 50 par
+page (Meilisearch ne liste pas au-delà des 1 000 premiers), avec nom, e-mail, téléphone (choix de l'utilisateur),
+métiers, séniorité, ville, TJM, date de dépôt, compétences et la fiche du profil. Une page plutôt qu'un panneau (lien
+partageable, « Retour », rendu serveur). Le filtre est celui du périmètre **et** de la ligne, mêmes champs et mêmes
+tranches de dates que les comptes (`selectionFilter`, `freshnessRange`, `src/lib/search/cv-stats-selection.ts`, testés
+contre `cvStatsView`) ; la sélection, lue dans l'adresse, est bornée (`parseSelection`) et toujours écrite entre
+guillemets échappés (`meiliString`, vérifié sur Meilisearch 1.56 : une valeur hostile ne sort pas de sa chaîne). Chaque
+CV est **revérifié dans Appwrite** avant d'être affiché (`cv-stats-profiles.ts` : candidat de rôle `candidate` avec un
+fichier de CV, comme la CV Thèque — un profil saisi sans fichier est classé et compté, pas listé —, ou CV du vivier de
+cette organisation importé par ce recruteur) ; un CV que l'index garde à tort est signalé comme non affiché.
+**Garde-fou** (revue de sécurité du même jour) : la liste donne nom, e-mail et téléphone de la base candidats, où la CV
+Thèque n'en montre que les 500 plus récents, et l'inscription d'un recruteur est libre ; elle exige donc l'adresse e-mail
+vérifiée et prend une place de quota par page affichée : 100 par organisation (5 000 profils) et 2 000 pour toute la
+plateforme par jour (`STATS_PROFILES_DAILY_LIMITS`, compteurs `statsProfilesOrg` / `statsProfilesAll` d'AO_STATE,
+purgés avec les autres) ; quota illisible = refus. Garde-fou contre l'export, pas une fonction vendue : hors `plans.ts`. Une compétence en hausse ouvre les CV de moins de 6 mois qui la citent (ceux que sa part « des CV
+récents » compte, même coupure au jour près : `recentCut`, `cv-stats.ts`). La page liste aussi les candidats désinscrits
+des propositions (`optedOutOfOutreach`), comme la CV Thèque et comme les comptes : la désinscription arrête les e-mails
+automatiques, elle ne retire pas le candidat de la base. Ni l'admin ni la
+page Organisation n'ont ces liens (`listHref` absent) : la page Organisation réunit les viviers de plusieurs recruteurs,
+qui sont personnels.
+
 ## Conséquences
 
 - Phase 1 : `npm run schema:push -- dev` puis prod (avec sauvegarde) pour `score_cache` et `cv_classifications`,

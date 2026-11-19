@@ -99,6 +99,8 @@ describe('nom de la page d\'origine', () => {
     assert.equal(recruiterPageLabel('/recruiter/pipeline/job42/matching'), 'Matching IA')
     assert.equal(recruiterPageLabel('/recruiter/candidates/app7'), 'Fiche candidat')
     assert.equal(recruiterPageLabel('/recruiter/candidate-preview/vivier/cv9'), 'Profil du candidat')
+    assert.equal(recruiterPageLabel('/recruiter/cvtheque/statistiques?perimetre=vivier'), 'Statistiques des CV')
+    assert.equal(recruiterPageLabel('/recruiter/cvtheque/statistiques/profils?champ=competence&valeur=Python'), 'Profils des statistiques')
     assert.equal(recruiterPageLabel('/recruiter/annonces'), 'Suivi des annonces')
     assert.equal(recruiterPageLabel('/recruiter/annonces/job42'), 'Rapport de l’annonce')
     assert.equal(recruiterPageLabel('/recruiter/vivier/job42'), 'Vivier de l’offre')
