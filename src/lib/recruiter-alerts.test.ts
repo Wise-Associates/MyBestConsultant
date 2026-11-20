@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  ALERT_THRESHOLD_DEFAULT, alertDocId, alertEmailsEnabled, alertProfilePath, alertSubjectKey, alertThresholdOf, idealCandidateEmail, isAlertScore,
+  ALERT_THRESHOLD_DEFAULT, alertDocId, alertEmailsEnabled, alertEmailWanted, alertProfilePath, alertSubjectKey, alertThresholdOf, idealCandidateEmail,
+  isAlertScore, meetsAlertRule,
 } from './recruiter-alerts'
 
 describe('alertes des recruteurs sur leurs offres', () => {
@@ -23,13 +24,27 @@ describe('alertes des recruteurs sur leurs offres', () => {
     assert.equal(alertThresholdOf('85'), 70)
   })
 
-  it('reconnaît la même personne, qu\'elle postule ou soit trouvée dans la base', () => {
-    const viaApplication = alertSubjectKey({ source: 'candidature', subjectId: 'app1', candidateId: 'cand1' })
-    const viaBase = alertSubjectKey({ source: 'base', subjectId: 'cand1' })
-    assert.equal(viaApplication, viaBase)
-    assert.notEqual(alertSubjectKey({ source: 'vivier', subjectId: 'cand1' }), viaBase)
-    // Candidature sans profil connu : la candidature tient lieu de personne.
-    assert.equal(alertSubjectKey({ source: 'candidature', subjectId: 'app1' }), 'candidat:candidature:app1')
+  it('prévient de toute candidature, quel que soit son score ou sans score (ADR 0051)', () => {
+    assert.equal(meetsAlertRule({ source: 'candidature', score: 12 }, 95), true)
+    assert.equal(meetsAlertRule({ source: 'candidature', score: null }, 70), true)
+    assert.equal(meetsAlertRule({ source: 'candidature', score: 99 }, 70), true)
+  })
+
+  it('ne prévient d\'un candidat de la base ou d\'un CV du vivier qu\'au seuil du recruteur', () => {
+    assert.equal(meetsAlertRule({ source: 'base', score: 70 }, 70), true)
+    assert.equal(meetsAlertRule({ source: 'base', score: 69 }, 70), false)
+    assert.equal(meetsAlertRule({ source: 'base', score: 79 }, 80), false)
+    assert.equal(meetsAlertRule({ source: 'vivier', score: 85 }, 80), true)
+    assert.equal(meetsAlertRule({ source: 'base', score: null }, 70), false)
+  })
+
+  it('suit chaque candidature à part, même pour une personne déjà signalée depuis la base', () => {
+    const viaApplication = alertSubjectKey({ source: 'candidature', subjectId: 'app1' })
+    assert.equal(viaApplication, 'candidature:app1')
+    assert.notEqual(viaApplication, alertSubjectKey({ source: 'base', subjectId: 'cand1' }))
+    assert.notEqual(alertSubjectKey({ source: 'candidature', subjectId: 'app2' }), viaApplication)
+    assert.equal(alertSubjectKey({ source: 'base', subjectId: 'cand1' }), 'candidat:cand1')
+    assert.notEqual(alertSubjectKey({ source: 'vivier', subjectId: 'cand1' }), 'candidat:cand1')
   })
 
   it('donne un identifiant Appwrite fixe par offre, recruteur et personne', () => {
@@ -52,20 +67,58 @@ describe('alertes des recruteurs sur leurs offres', () => {
     assert.equal(alertEmailsEnabled(false), false)
   })
 
-  it('écrit un e-mail sans balise venue de l\'offre ou du CV', () => {
+  it('envoie toujours l\'e-mail d\'une candidature, même e-mails coupés (ADR 0051)', () => {
+    assert.equal(alertEmailWanted('candidature', false), true)
+    assert.equal(alertEmailWanted('candidature', undefined), true)
+    assert.equal(alertEmailWanted('base', false), false)
+    assert.equal(alertEmailWanted('base', undefined), true)
+    assert.equal(alertEmailWanted('vivier', false), false)
+  })
+
+  it('annonce une candidature avec son score, textes de l\'offre et du CV échappés', () => {
     const mail = idealCandidateEmail({
       recipientName: 'Camille', candidateName: 'Alex <b>Test</b>', jobTitle: 'Data <script>alert(1)</script> Engineer',
-      score: 88.4, source: 'candidature', threshold: 80, profileUrl: 'https://exemple.fr/recruiter/candidates/app1',
+      score: 41.6, source: 'candidature', threshold: 80, profileUrl: 'https://exemple.fr/recruiter/candidates/app1',
       jobUrl: 'https://exemple.fr/recruiter/pipeline/job1/matching', alertsUrl: 'https://exemple.fr/recruiter/alertes',
     })
-    assert.equal(mail.subject, 'Candidat noté 88/100 pour « Data <script>alert(1)</script> Engineer »')
-    assert.ok(mail.bodyHtml.includes('noté 80/100 ou plus'))
+    assert.equal(mail.subject, 'Nouvelle candidature — Data <script>alert(1)</script> Engineer (42/100)')
+    assert.equal(mail.heading, 'Nouvelle candidature')
     assert.ok(!mail.bodyHtml.includes('<script>'))
     assert.ok(!mail.bodyHtml.includes('<b>Test</b>'))
     assert.ok(mail.bodyHtml.includes('Bonjour Camille,'))
-    assert.ok(mail.bodyHtml.includes('88/100'))
-    assert.ok(mail.bodyHtml.includes('a postulé à votre offre'))
+    assert.ok(mail.bodyHtml.includes(
+      'Nouvelle candidature pour votre offre <strong>« Data &lt;script&gt;alert(1)&lt;/script&gt; Engineer »</strong> : <strong>Alex &lt;b&gt;Test&lt;/b&gt;</strong>.',
+    ))
+    assert.ok(mail.bodyHtml.includes('<strong>42/100</strong>'))
+    assert.ok(mail.bodyHtml.includes('>Voir la candidature</a>'))
+    assert.ok(mail.bodyHtml.includes('https://exemple.fr/recruiter/candidates/app1'))
+    // Le seuil du recruteur ne s'applique pas aux candidatures : l'e-mail ne le cite pas.
+    assert.ok(mail.bodyHtml.includes('chaque candidature reçue sur une de vos offres, quel que soit son score'))
+    assert.ok(!mail.bodyHtml.includes('80/100'))
     assert.ok(mail.bodyHtml.includes('https://exemple.fr/recruiter/alertes'))
+  })
+
+  it('annonce une candidature sans score ni nom lisible', () => {
+    const mail = idealCandidateEmail({
+      recipientName: '', candidateName: ' ', jobTitle: 'Chef de projet', score: null, source: 'candidature', threshold: 70,
+      profileUrl: 'u', jobUrl: 'j', alertsUrl: 'a',
+    })
+    assert.equal(mail.subject, 'Nouvelle candidature — Chef de projet')
+    assert.ok(mail.bodyHtml.includes('Nouvelle candidature pour votre offre <strong>« Chef de projet »</strong>. Elle n’a pas'))
+    assert.ok(mail.bodyHtml.includes('pas encore de score'))
+    assert.ok(!mail.bodyHtml.includes('null'))
+    assert.ok(!mail.bodyHtml.includes('/100'))
+  })
+
+  it('annonce un candidat de la base noté au seuil du recruteur', () => {
+    const mail = idealCandidateEmail({
+      recipientName: 'Camille', candidateName: 'Alex Exemple', jobTitle: 'Data Engineer', score: 88.4, source: 'base', threshold: 80,
+      profileUrl: 'https://exemple.fr/p', jobUrl: 'https://exemple.fr/j', alertsUrl: 'https://exemple.fr/a',
+    })
+    assert.equal(mail.subject, 'Candidat noté 88/100 pour « Data Engineer »')
+    assert.ok(mail.bodyHtml.includes('inscrit sur la plateforme, correspond à votre offre'))
+    assert.ok(mail.bodyHtml.includes('noté 80/100 ou plus'))
+    assert.ok(mail.bodyHtml.includes('>Voir le profil</a>'))
   })
 
   it('coupe un intitulé très long dans l\'objet', () => {

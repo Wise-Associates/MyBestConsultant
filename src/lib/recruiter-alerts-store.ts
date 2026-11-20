@@ -8,16 +8,17 @@ import { viewerCanOpenJob } from '@/lib/job-ownership'
 import { loadOfferViewer } from '@/lib/offer-viewer'
 import { wrapEmailHtml } from '@/lib/email-template'
 import {
-  ALERT_THRESHOLD_DEFAULT, alertDocId, alertEmailsEnabled, alertProfilePath, alertSubjectKey, alertThresholdOf, idealCandidateEmail,
-  isAlertScore, parseAlertEmailStatus, parseAlertSource, type AlertEmailStatus, type AlertSource, type IdealCandidate,
+  ALERT_THRESHOLD_DEFAULT, alertDocId, alertEmailsEnabled, alertEmailWanted, alertProfilePath, alertSubjectKey, alertThresholdOf, idealCandidateEmail,
+  meetsAlertRule, parseAlertEmailStatus, parseAlertSource, type AlertEmailStatus, type AlertSource, type IdealCandidate,
 } from '@/lib/recruiter-alerts'
 import type { UserProfile } from '@/types'
 
 // Alertes des recruteurs sur leurs offres (ADR 0045, seuil et sources revus par l'ADR 0047) : enregistrement, e-mail au
-// recruteur, lecture pour la page « Alertes » et préférences (e-mails, seuil). Appelé par les notations des
-// candidatures (screening-core, actions du screening), de la base candidats (matching-core) et des nouveaux candidats
-// (ai-matches-store) ; plus pour les viviers (le recruteur a importé le CV lui-même). Jamais depuis le navigateur :
-// aucune vérification d'appelant ici. Une alerte ne fait jamais échouer une notation.
+// recruteur, lecture pour la page « Alertes » et préférences (e-mails, seuil). Appelé à la réception d'une candidature
+// (screenReceivedApplication, screening-core : toujours, ADR 0051) et par les notations de la base candidats
+// (matching-core) et des nouveaux candidats (ai-matches-store) ; plus pour les viviers (le recruteur a importé le CV
+// lui-même). Jamais depuis le navigateur : aucune vérification d'appelant ici. Une alerte ne fait jamais échouer une
+// notation.
 
 export const isRecruiterAlertsConfigured = () => !!COLLECTIONS.RECRUITER_ALERTS
 
@@ -51,15 +52,16 @@ function cached<T>(cache: Map<string, Promise<T>>, key: string, load: () => Prom
 }
 
 /**
- * Prévient le recruteur de chaque candidat noté au moins à son seuil (70 par défaut, réglable dans « Alertes ») : une
- * alerte enregistrée, puis un e-mail s'il ne les a pas coupés. Une seule fois par offre, recruteur et personne
- * (identifiant fixe : une seconde notation n'envoie rien). Recruteur : `recipientId`, sinon le recruteur affecté à
- * l'offre, sinon son auteur ; seulement un recruteur de l'organisation de l'offre qui peut l'ouvrir (viewerCanOpenJob,
- * ADR 0043 : un membre, les offres qui lui sont affectées ; offre partagée de la plateforme : personne). Ne lève
- * jamais : un échec est journalisé.
+ * Prévient le recruteur de chaque candidature reçue, quel que soit son score (ADR 0051), et de chaque candidat noté au
+ * moins à son seuil (70 par défaut, réglable dans « Alertes ») : une alerte enregistrée, puis un e-mail — toujours pour
+ * une candidature, sinon s'il ne les a pas coupés (`alertEmailWanted`). Une seule fois par offre, recruteur et sujet — la candidature, ou la personne (identifiant fixe : une
+ * seconde notation n'envoie rien). Recruteur : `recipientId`, sinon le recruteur affecté à l'offre, sinon son auteur ;
+ * seulement un recruteur de l'organisation de l'offre qui peut l'ouvrir (viewerCanOpenJob, ADR 0043 : un membre, les
+ * offres qui lui sont affectées ; offre partagée de la plateforme : personne). Ne lève jamais : un échec est journalisé.
  */
 export async function alertIdealCandidates(candidates: IdealCandidate[]): Promise<void> {
-  const ideal = candidates.filter(c => isAlertScore(c.score) && c.jobId && c.subjectId)
+  // Plus bas des seuils réglables : celui du recruteur est vu une fois ses préférences lues.
+  const ideal = candidates.filter(c => meetsAlertRule(c, ALERT_THRESHOLD_DEFAULT) && c.jobId && c.subjectId)
   if (ideal.length === 0) return
   if (!isRecruiterAlertsConfigured()) {
     console.warn('[alertes] collection non configurée : aucune alerte pour', ideal.length, 'profil(s) idéal(aux)')
@@ -98,14 +100,14 @@ async function alertOne(
   const { databases, users, messaging } = createAdminClient()
   const recipientUserId = str(recipient.userId)
   // Préférences lues avant d'enregistrer l'alerte : un score sous le seuil du recruteur n'en crée pas. Illisibles : le
-  // seuil par défaut, et pas d'e-mail (le recruteur a peut-être coupé ses alertes) ; l'alerte reste dans la page.
+  // seuil par défaut, et pas d'e-mail (adresse vérifiée inconnue, ou e-mails coupés) ; l'alerte reste dans la page.
   let settings: { enabled: boolean; threshold: number } | null
   try {
     // Adresse non vérifiée : pas d'e-mail (inscription libre : un compte ouvert avec l'adresse d'un tiers lui ferait
     // envoyer des données de candidats ; revue de sécurité du 2026-11-18). L'alerte reste dans la page.
     const [auth, prefs] = await Promise.all([users.get(recipientUserId), users.getPrefs(recipientUserId) as Promise<Record<string, unknown>>])
     settings = {
-      enabled: auth.emailVerification === true && alertEmailsEnabled(prefs[PREF_KEY]),
+      enabled: auth.emailVerification === true && alertEmailWanted(candidate.source, prefs[PREF_KEY]),
       threshold: alertThresholdOf(prefs[THRESHOLD_PREF_KEY]),
     }
   } catch (err) {
@@ -113,17 +115,17 @@ async function alertOne(
     settings = null
   }
   const threshold = settings?.threshold ?? ALERT_THRESHOLD_DEFAULT
-  if (candidate.score < threshold) return
+  if (!meetsAlertRule(candidate, threshold)) return
 
   const id = alertDocId(candidate.jobId, recipientId, alertSubjectKey(candidate))
   try {
     await databases.createDocument(DB_ID, COLLECTIONS.RECRUITER_ALERTS, id, {
       tenantId, recipientId, jobId: candidate.jobId, source: candidate.source, subjectId: candidate.subjectId,
       candidateId: candidate.candidateId ?? (candidate.source === 'base' ? candidate.subjectId : null),
-      score: Math.round(candidate.score), emailStatus: 'pending' satisfies AlertEmailStatus,
+      score: candidate.score === null ? null : Math.round(candidate.score), emailStatus: 'pending' satisfies AlertEmailStatus,
     })
   } catch (err) {
-    // Déjà prévenu pour cette personne et cette offre.
+    // Déjà prévenu pour cette candidature, ou cette personne, et cette offre.
     if (isConflict(err)) return
     throw err
   }
