@@ -1,18 +1,18 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { getOAuthUrl } from '@/lib/appwrite/oauth'
-import { DASHBOARD_BY_ROLE } from '@/lib/dashboard-routes'
+import { afterAuthPath, offerReturnPath } from '@/lib/dashboard-routes'
 import { LoginForm } from './login-form'
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; reason?: string }>
+  searchParams: Promise<{ error?: string; reason?: string; redirect?: string }>
 }) {
+  const { error, reason, redirect: returnTo } = await searchParams
   const user = await getCurrentUser()
-  if (user) redirect(DASHBOARD_BY_ROLE[user.role] ?? '/')
+  if (user) redirect(afterAuthPath(user.role, returnTo))
 
-  const { error, reason } = await searchParams
   const origin = process.env.NEXT_PUBLIC_APP_URL ?? 'https://mybestconsultant.fr'
   return (
     <LoginForm
@@ -20,6 +20,7 @@ export default async function LoginPage({
       linkedinUrl={getOAuthUrl('linkedin', origin)}
       oauthError={error === 'oauth'}
       oauthReason={reason}
+      returnTo={offerReturnPath(returnTo)}
     />
   )
 }

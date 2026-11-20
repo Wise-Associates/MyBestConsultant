@@ -1,18 +1,21 @@
 'use client'
 
 import { useState, useRef, useCallback } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Send, Upload, X, FileText, CheckCircle2, Loader2, Plus, Paperclip } from 'lucide-react'
 import { MobileApplyBar } from './mobile-apply-bar'
+import {
+  APPLY_ACCEPT, APPLY_GENERIC_ERROR, APPLY_MAX_DOCS, APPLY_MAX_LETTER, applyErrorMessage, fileProblem, filesProblem,
+} from '@/lib/application-submit'
 
 interface Props {
   jobId: string
-  tenantId: string
   jobTitle: string
   hasCV: boolean
 }
 
-export function ApplyModal({ jobId, tenantId, jobTitle, hasCV }: Props) {
+export function ApplyModal({ jobId, jobTitle, hasCV }: Props) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [coverLetter, setCoverLetter] = useState('')
@@ -22,46 +25,63 @@ export function ApplyModal({ jobId, tenantId, jobTitle, hasCV }: Props) {
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
+  // Session expirée pendant que la fenêtre était ouverte : le message propose de se reconnecter et de revenir à l'offre.
+  const [sessionExpired, setSessionExpired] = useState(false)
   const cvRef = useRef<HTMLInputElement>(null)
   const docsRef = useRef<HTMLInputElement>(null)
 
-  const MAX_LETTER = 2500
-  const remaining = MAX_LETTER - coverLetter.length
+  const remaining = APPLY_MAX_LETTER - coverLetter.length
+
+  // Fichier vérifié dès qu'il est choisi (format, taille) : le glisser-déposer et les sélecteurs des téléphones ne
+  // filtrent pas l'extension.
+  const pickCv = useCallback((f: File | null) => {
+    setCvFile(f)
+    setError(f ? fileProblem(f, 'Le CV') ?? '' : '')
+  }, [])
 
   const onCvDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setDragOver(false)
     const f = e.dataTransfer.files[0]
-    if (f) setCvFile(f)
-  }, [])
+    if (f) pickCv(f)
+  }, [pickCv])
 
   const addDocs = (files: FileList | null) => {
     if (!files) return
-    setDocFiles(prev => [...prev, ...Array.from(files)].slice(0, 5))
+    const added = Array.from(files)
+    setError(added.map(f => fileProblem(f, 'Le document')).find(Boolean) ?? '')
+    setDocFiles(prev => [...prev, ...added.filter(f => !fileProblem(f, 'Le document'))].slice(0, APPLY_MAX_DOCS))
   }
 
   const removeDoc = (i: number) => setDocFiles(prev => prev.filter((_, idx) => idx !== i))
 
   const submit = async () => {
-    if (!hasCV && !cvFile) { setError('Veuillez uploader votre CV.'); return }
-    if (!coverLetter.trim()) { setError('Veuillez écrire un message de motivation.'); return }
+    if (!hasCV && !cvFile) { setError('Ajoutez votre CV.'); return }
+    if (!coverLetter.trim()) { setError('Écrivez un message de motivation.'); return }
+    const problem = filesProblem(cvFile, docFiles)
+    if (problem) { setError(problem); return }
     setError('')
+    setSessionExpired(false)
     setLoading(true)
     try {
       const fd = new FormData()
       fd.append('jobId', jobId)
-      fd.append('tenantId', tenantId)
       fd.append('coverLetter', coverLetter)
       if (cvFile) fd.append('cv', cvFile)
       docFiles.forEach(f => fd.append('docs', f))
 
       const res = await fetch('/api/apply', { method: 'POST', body: fd })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Erreur')
+      if (!res.ok) {
+        // Corps lu en texte : une réponse coupée par le proxy (envoi trop lourd) n'est pas du JSON.
+        setSessionExpired(res.status === 401)
+        setError(applyErrorMessage(res.status, await res.text()))
+        return
+      }
       setDone(true)
       router.refresh()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Erreur inattendue')
+    } catch {
+      // Réseau coupé ou serveur injoignable.
+      setError(APPLY_GENERIC_ERROR)
     } finally {
       setLoading(false)
     }
@@ -97,13 +117,16 @@ export function ApplyModal({ jobId, tenantId, jobTitle, hasCV }: Props) {
       {/* Backdrop */}
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}
+          className="fixed inset-0 flex items-end sm:items-center justify-center p-4"
+          style={{ zIndex: 9100, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}
           onClick={e => { if (e.target === e.currentTarget && !loading) setOpen(false) }}
         >
           {/* Modal */}
           <div
-            className="relative w-full max-w-xl rounded-2xl overflow-hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Candidature : ${jobTitle}`}
+            className="relative w-full max-w-xl rounded-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-2rem)]"
             style={{
               background: 'var(--color-background, #fff)',
               border: '1px solid var(--color-border, rgba(0,0,0,0.1))',
@@ -137,7 +160,7 @@ export function ApplyModal({ jobId, tenantId, jobTitle, hasCV }: Props) {
               /* ── Form ── */
               <>
                 {/* Header */}
-                <div className="px-7 pt-7 pb-5 flex items-start justify-between"
+                <div className="px-7 pt-7 pb-5 flex items-start justify-between shrink-0"
                   style={{ borderBottom: '1px solid var(--color-border, rgba(0,0,0,0.08))' }}>
                   <div>
                     <p className="text-xs font-semibold tracking-widest uppercase mb-1"
@@ -148,7 +171,7 @@ export function ApplyModal({ jobId, tenantId, jobTitle, hasCV }: Props) {
                       {jobTitle}
                     </h2>
                   </div>
-                  <button onClick={() => !loading && setOpen(false)}
+                  <button onClick={() => !loading && setOpen(false)} aria-label="Fermer"
                     className="p-2 rounded-lg transition-opacity hover:opacity-60 ml-4 shrink-0"
                     style={{ color: 'var(--color-text-muted)' }}>
                     <X className="h-5 w-5" />
@@ -156,7 +179,7 @@ export function ApplyModal({ jobId, tenantId, jobTitle, hasCV }: Props) {
                 </div>
 
                 {/* Body */}
-                <div className="px-7 py-6 space-y-6 max-h-[70vh] overflow-y-auto">
+                <div className="px-7 py-6 space-y-6 flex-1 min-h-0 overflow-y-auto">
 
                   {/* CV upload zone */}
                   {!hasCV ? (
@@ -177,8 +200,8 @@ export function ApplyModal({ jobId, tenantId, jobTitle, hasCV }: Props) {
                         onDrop={onCvDrop}
                         onClick={() => cvRef.current?.click()}
                       >
-                        <input ref={cvRef} type="file" accept=".pdf,.doc,.docx" className="hidden"
-                          onChange={e => setCvFile(e.target.files?.[0] ?? null)} />
+                        <input ref={cvRef} type="file" accept={APPLY_ACCEPT} className="hidden"
+                          onChange={e => pickCv(e.target.files?.[0] ?? null)} />
                         <div className="flex flex-col items-center gap-2 py-7 px-4 text-center">
                           {cvFile ? (
                             <>
@@ -214,8 +237,8 @@ export function ApplyModal({ jobId, tenantId, jobTitle, hasCV }: Props) {
                         onClick={e => { e.stopPropagation(); cvRef.current?.click() }}>
                         Remplacer
                       </button>
-                      <input ref={cvRef} type="file" accept=".pdf,.doc,.docx" className="hidden"
-                        onChange={e => setCvFile(e.target.files?.[0] ?? null)} />
+                      <input ref={cvRef} type="file" accept={APPLY_ACCEPT} className="hidden"
+                        onChange={e => pickCv(e.target.files?.[0] ?? null)} />
                     </div>
                   )}
 
@@ -231,7 +254,7 @@ export function ApplyModal({ jobId, tenantId, jobTitle, hasCV }: Props) {
                     </div>
                     <textarea
                       value={coverLetter}
-                      onChange={e => setCoverLetter(e.target.value.slice(0, MAX_LETTER))}
+                      onChange={e => setCoverLetter(e.target.value.slice(0, APPLY_MAX_LETTER))}
                       rows={6}
                       placeholder="Présentez-vous, expliquez votre intérêt pour ce poste et ce que vous apportez à l'équipe…"
                       className="w-full rounded-xl px-4 py-3 text-sm resize-none outline-none transition-all"
@@ -252,7 +275,7 @@ export function ApplyModal({ jobId, tenantId, jobTitle, hasCV }: Props) {
                       <label className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
                         Documents complémentaires
                         <span className="text-xs font-normal ml-2" style={{ color: 'var(--color-text-muted)' }}>
-                          (facultatif — portfolio, lettre, etc.)
+                          (facultatif — PDF, DOC ou DOCX, 10 Mo max.)
                         </span>
                       </label>
                     </div>
@@ -271,7 +294,7 @@ export function ApplyModal({ jobId, tenantId, jobTitle, hasCV }: Props) {
                           </button>
                         </div>
                       ))}
-                      {docFiles.length < 5 && (
+                      {docFiles.length < APPLY_MAX_DOCS && (
                         <button
                           onClick={() => docsRef.current?.click()}
                           className="flex items-center gap-2 px-3 py-2.5 rounded-lg w-full text-sm transition-opacity hover:opacity-70"
@@ -284,23 +307,25 @@ export function ApplyModal({ jobId, tenantId, jobTitle, hasCV }: Props) {
                           Ajouter un document
                         </button>
                       )}
-                      <input ref={docsRef} type="file" multiple accept=".pdf,.doc,.docx,.png,.jpg" className="hidden"
-                        onChange={e => addDocs(e.target.files)} />
+                      <input ref={docsRef} type="file" multiple accept={APPLY_ACCEPT} className="hidden"
+                        onChange={e => { addDocs(e.target.files); e.target.value = '' }} />
                     </div>
                   </div>
-
-                  {/* Error */}
-                  {error && (
-                    <div className="px-4 py-3 rounded-xl text-sm"
-                      style={{ background: 'rgba(239,68,68,0.07)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.15)' }}>
-                      {error}
-                    </div>
-                  )}
                 </div>
 
                 {/* Footer */}
-                <div className="px-7 pb-7 pt-4 flex gap-3"
+                <div className="px-7 pb-7 pt-4 shrink-0 space-y-3"
                   style={{ borderTop: '1px solid var(--color-border, rgba(0,0,0,0.08))' }}>
+                  {error && (
+                    <div role="alert" className="px-4 py-3 rounded-xl text-sm"
+                      style={{ background: 'rgba(239,68,68,0.07)', color: '#b91c1c', border: '1px solid rgba(239,68,68,0.15)' }}>
+                      {error}
+                      {sessionExpired && (
+                        <> <Link href={`/login?redirect=/jobs/${jobId}`} className="font-semibold underline" style={{ color: 'inherit' }}>Se reconnecter</Link></>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex gap-3">
                   <button
                     onClick={() => !loading && setOpen(false)}
                     className="flex-1 py-3 rounded-xl text-sm font-medium transition-opacity hover:opacity-70"
@@ -317,6 +342,7 @@ export function ApplyModal({ jobId, tenantId, jobTitle, hasCV }: Props) {
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     {loading ? 'Envoi…' : 'Envoyer ma candidature'}
                   </button>
+                  </div>
                 </div>
               </>
             )}

@@ -249,7 +249,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                     </Link>
                   </div>
                 ) : user?.role === 'candidate' ? (
-                  <ApplyModal jobId={job.$id} tenantId={job.tenantId} jobTitle={job.title} hasCV={!!user.cvFileId} />
+                  <ApplyModal jobId={job.$id} jobTitle={job.title} hasCV={!!user.cvFileId} />
                 ) : user?.role === 'hunter' ? (
                   <div className="space-y-2.5">
                     <p className="text-sm text-center font-medium" style={{ color: 'var(--color-text-muted)' }}>Vous avez le bon profil dans votre vivier ?</p>

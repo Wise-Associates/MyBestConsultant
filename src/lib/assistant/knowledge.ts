@@ -34,7 +34,7 @@ PROFIL
 
 TROUVER UNE OFFRE ET POSTULER
 - Page « Offres » (/jobs) : postes, compétences ou mots-clés (combinables en ET / OU), mots à exclure, localisation, séniorité, type de contrat (Mission, Freelance, CDI, CDD), télétravail (Full remote, Hybride, Présentiel). « Rechercher les offres », « Effacer tous les filtres ».
-- Sur une offre, « Postuler » : un CV est obligatoire (celui du profil, ou un fichier PDF/DOC/DOCX de 10 Mo au plus), ainsi qu'un message de motivation ; documents complémentaires possibles (PDF, DOC, DOCX, PNG, JPG). « Envoyer ma candidature ».
+- Sur une offre, « Postuler » : un CV est obligatoire (celui du profil, ou un fichier PDF/DOC/DOCX de 10 Mo au plus), ainsi qu'un message de motivation ; jusqu’à 5 documents complémentaires (PDF, DOC ou DOCX, 10 Mo au plus chacun, 11 Mo en tout avec le CV). « Envoyer ma candidature ». Un candidat qui n’est pas connecté clique « Postuler maintenant », crée son compte (ou « J’ai déjà un compte »), puis revient directement sur l’offre.
 - Une seule candidature par offre. Chaque candidature est analysée automatiquement par l'IA de la plateforme (screening) pour le recruteur.
 
 RECOMMANDATIONS
