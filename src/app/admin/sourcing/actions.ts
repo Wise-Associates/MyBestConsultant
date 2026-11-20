@@ -51,7 +51,7 @@ export async function generateOutreachMessage(candidateId: string, jobId: string
   return generateOutreachMessageCore(candidateId, jobId)
 }
 
-export async function sendOutreachMessage(candidateId: string, subject: string, message: string): Promise<{ ok?: boolean; error?: string }> {
+export async function sendOutreachMessage(candidateId: string, jobId: string, subject: string, message: string): Promise<{ ok?: boolean; error?: string }> {
   await requireAdmin()
-  return sendOutreachEmailCore(candidateId, subject, message)
+  return sendOutreachEmailCore(candidateId, jobId, subject, message)
 }

@@ -44,7 +44,7 @@ function OutreachModal({ candidate, jobId, onClose, onSent }: {
   function send() {
     setError('')
     startTransition(async () => {
-      const res = await sendOutreachMessage(candidate.candidateId, subject, message)
+      const res = await sendOutreachMessage(candidate.candidateId, jobId, subject, message)
       if (res.error) { setError(res.error); return }
       setSent(true)
       onSent()
