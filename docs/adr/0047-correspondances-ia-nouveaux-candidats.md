@@ -1,6 +1,7 @@
 # 0047. Correspondances IA des nouveaux candidats
 
 Date : 2026-11-18. Statut : accepté. Modifie l'[ADR 0045](0045-alertes-profil-ideal.md) (seuil, alertes du vivier).
+Modifié par l'[ADR 0051](0051-toute-candidature-previent-le-recruteur.md) : le seuil ne s'applique plus aux candidatures.
 
 ## Contexte
 

@@ -182,7 +182,8 @@ async function recommendationsOf(candidateId: string | undefined): Promise<{ end
 // just submitted to, saves the result, and emails the candidate if they
 // score 70+. Never throws — screening failure must never surface to the
 // candidate's apply flow. `error` : pourquoi la candidature reste sans score (« Relancer » du Matching IA l'affiche).
-// `notify: false` : candidat ajouté au funnel depuis le Matching IA, qui n'a pas postulé : aucun e-mail.
+// `notify: false` : candidat ajouté au funnel depuis le Matching IA, qui n'a pas postulé : aucun e-mail au candidat.
+// Ne prévient pas le recruteur : une candidature reçue passe par screenReceivedApplication.
 export async function autoScreenApplication(applicationId: string, { notify = true }: { notify?: boolean } = {}): Promise<{ error?: string; score?: number }> {
   try {
     const { databases } = createAdminClient()
@@ -248,13 +249,8 @@ export async function autoScreenApplication(applicationId: string, { notify = tr
     if (notify && result.score >= 70 && appDoc.aiScore == null) {
       try { await sendAutoScreeningEmail(applicationId, result) } catch { /* non-blocking */ }
     }
-    // Profil idéal : le recruteur de l'offre est prévenu (ADR 0044). Pas pour un candidat qu'il vient lui-même d'ajouter
-    // au funnel depuis le Matching IA (`notify: false`).
-    if (notify) {
-      await alertIdealCandidates([{
-        jobId: appDoc.jobId as string, source: 'candidature', subjectId: applicationId, candidateId: appDoc.candidateId as string, score: result.score,
-      }])
-    }
+    // Le recruteur n'est pas prévenu ici mais à la réception de la candidature (screenReceivedApplication, ADR 0051) :
+    // une analyse relancée ne renvoie pas d'alerte.
 
     revalidatePath('/recruiter/screening')
     revalidatePath('/recruiter/dashboard')
@@ -264,4 +260,18 @@ export async function autoScreenApplication(applicationId: string, { notify = tr
     console.error('[screening] analyse automatique en échec', applicationId, e instanceof Error ? e.message : e)
     return { error: 'Analyse impossible pour le moment : réessayez dans quelques minutes' }
   }
+}
+
+/**
+ * Candidature reçue (candidat qui postule, chasseur qui propose un profil) : analysée par l'IA, puis le recruteur de
+ * l'offre est prévenu **quel que soit le score**, ou sans score si l'analyse n'a pas abouti ou n'est pas comprise dans
+ * la formule (ADR 0051 : il doit toujours savoir qu'on a postulé). Analyse d'abord, pour que l'e-mail donne le score.
+ * Appelée en tâche de fond (`after()`), une fois par candidature créée ; ne lève jamais.
+ */
+export async function screenReceivedApplication(application: { applicationId: string; jobId: string; candidateId: string }): Promise<void> {
+  const { score } = await autoScreenApplication(application.applicationId)
+  await alertIdealCandidates([{
+    jobId: application.jobId, source: 'candidature', subjectId: application.applicationId, candidateId: application.candidateId,
+    score: score ?? null,
+  }])
 }

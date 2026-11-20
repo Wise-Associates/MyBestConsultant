@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { after } from 'next/server'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { createApplication, hasApplied } from '@/lib/appwrite/jobs'
-import { autoScreenApplication } from '@/lib/screening-core'
+import { screenReceivedApplication } from '@/lib/screening-core'
 
 export async function applyToJob(jobId: string, tenantId: string): Promise<void> {
   const user = await getCurrentUser()
@@ -21,8 +21,9 @@ export async function applyToJob(jobId: string, tenantId: string): Promise<void>
       cvFileId: user.cvFileId,
     })
     // This route bypasses /api/apply entirely, so it was the one path where a
-    // candidature never got auto-scored — fire-and-forget, same as /api/apply.
-    after(() => autoScreenApplication(application.$id))
+    // candidature never got auto-scored — fire-and-forget, same as /api/apply
+    // (analysis, then e-mail to the offer's recruiter whatever the score, ADR 0051).
+    after(() => screenReceivedApplication({ applicationId: application.$id, jobId, candidateId: user.$id }))
   }
 
   redirect(`/candidate/dashboard?applied=${jobId}`)
