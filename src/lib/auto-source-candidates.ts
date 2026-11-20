@@ -1,6 +1,7 @@
 import type { Job } from '@/types'
 import type { MatchResult } from '@/lib/sourcing-core'
 import { bestMatches } from '@/lib/sourcing-rules'
+import { smtpConfigured } from '@/lib/smtp'
 
 // Only contact candidates the AI is genuinely confident about, and cap the volume per
 // job so a single job posting can't blast the entire candidate base at once.
@@ -14,7 +15,10 @@ export async function tryAutoSourceCandidates(job: Job & { $id: string }): Promi
     const { matchCandidatesForJob, generateOutreachMessageCore, sendOutreachEmailCore } = await import('@/lib/sourcing-core')
 
     ranking = await matchCandidatesForJob(job.$id)
-    const top = bestMatches(ranking.matches)
+    // Sans SMTP (ADR 0050), aucun e-mail ne partirait : on ne fait pas écrire les messages par l'IA pour rien.
+    const canEmail = smtpConfigured()
+    if (!canEmail) console.error('[sourcing] SMTP non configuré (SMTP_*) : aucun e-mail aux candidats pour l\'offre', job.$id)
+    const top = canEmail ? bestMatches(ranking.matches) : []
 
     for (const match of top) {
       // « Tout arrêter » du panneau de l'offre AO (publication-stop.ts) : plus aucun e-mail, le classement reste enregistré.
@@ -29,7 +33,8 @@ export async function tryAutoSourceCandidates(job: Job & { $id: string }): Promi
         console.info('[sourcing] e-mails automatiques arrêtés depuis le panneau de l\'offre', job.$id)
         break
       }
-      await sendOutreachEmailCore(match.candidateId, subject, message)
+      const sent = await sendOutreachEmailCore(match.candidateId, job.$id, subject, message)
+      if (sent.error) console.error('[sourcing] e-mail au candidat non envoyé', job.$id, match.candidateId, sent.error)
     }
   } catch (e) {
     // best-effort — a sourcing failure must never break job creation

@@ -11,7 +11,10 @@ import { PREFILTER_KEEP, offerLocation, prefilterPool } from '@/lib/search/prefi
 import { SCORING_AI } from '@/lib/ai/models'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
-import { Query, ID, type Models } from 'node-appwrite'
+import { AppwriteException, Query, type Models } from 'node-appwrite'
+import { isDocumentId } from '@/lib/ao/access'
+import { creatorReplyTo, escapeHtml, outreachEmailBody } from '@/lib/outreach-email'
+import { sendSmtpEmail, type MailAddress } from '@/lib/smtp'
 import {
   CV_CHARS_FOR_SCORING, criteriaCounts, cvTextForScoring, judgedScore, judgementSummary, offerCriteria, offerDetails, parseJudgements,
   parseScoringNotes, scoringSystemPrompt, scoringUserMessage, type ActiveScale, type MatchJudgements, type OfferCriteria, type ScoringNotes,
@@ -398,30 +401,61 @@ Réponds UNIQUEMENT avec un JSON valide : {"subject":"...", "message":"..."}
   }
 }
 
-export async function sendOutreachEmailCore(candidateId: string, subject: string, message: string): Promise<{ ok?: boolean; error?: string }> {
+// Envoyé par SMTP direct et non par Appwrite Messaging (ADR 0050) : les réponses du candidat vont au recruteur qui a
+// créé l'offre (Reply-To), ce que Messaging ne permet pas message par message.
+export async function sendOutreachEmailCore(candidateId: string, jobId: string, subject: string, message: string): Promise<{ ok?: boolean; error?: string }> {
   try {
-    const { databases, messaging } = createAdminClient()
-    const candidate = await databases.getDocument(DB_ID, COLLECTIONS.USERS, candidateId)
+    if (!isDocumentId(candidateId) || !isDocumentId(jobId)) return { error: 'Candidat ou offre invalide' }
+    const title = subject.trim()
+    if (!title || !message.trim()) return { error: 'Objet et message requis' }
+    const { databases, users } = createAdminClient()
+    const [candidate, job] = await Promise.all([
+      databases.getDocument(DB_ID, COLLECTIONS.USERS, candidateId),
+      databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId),
+    ])
+    // Même règle que le classement (isScorable), relue à l'envoi : le candidat a pu se désabonner pendant la notation.
+    if (candidate.role !== 'candidate' || candidate.optedOutOfOutreach) return { error: 'Candidat désabonné ou introuvable' }
     const authId = candidate.userId as string
     if (!authId) return { error: 'Compte candidat introuvable' }
-
-    const bodyHtml = message
-      .split('\n')
-      .map(line => `<p style="margin:0 0 12px; font-size:14px; line-height:1.7; color:#3D4566;">${line || '&nbsp;'}</p>`)
-      .join('')
+    // Adresse du compte, celle à laquelle Appwrite Messaging envoyait. Compte désactivé : on ne le démarche pas.
+    const account = await users.get(authId)
+    if (!account.status) return { error: 'Compte candidat désactivé' }
+    const replyTo = await offerCreatorAddress(job.postedBy as string | undefined)
+    if (!replyTo) console.warn('[sourcing] auteur de l\'offre introuvable, désactivé ou adresse non vérifiée : réponses à l\'adresse d\'envoi', jobId)
 
     const origin = process.env.NEXT_PUBLIC_APP_URL ?? 'https://mybestconsultant.fr'
-    const unsubscribeUrl = `${origin}/desabonnement?u=${candidateId}`
-    const unsubscribeHtml = `<p style="margin:24px 0 0; font-size:12px; line-height:1.6; color:#ADB5CC;">Vous ne souhaitez plus recevoir ce type de proposition ? <a href="${unsubscribeUrl}" style="color:#ADB5CC;">Se désabonner</a>.</p>`
-
-    await messaging.createEmail(
-      ID.unique(),
-      subject,
-      wrapEmailHtml(subject, bodyHtml + unsubscribeHtml),
-      [], [authId], [], [], [], [], false, true,
-    )
+    const bodyHtml = outreachEmailBody({
+      message,
+      jobUrl: `${origin}/jobs/${jobId}`,
+      unsubscribeUrl: `${origin}/desabonnement?u=${candidateId}`,
+      repliesToRecruiter: !!replyTo,
+    })
+    await sendSmtpEmail({
+      to: { name: `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim(), address: account.email },
+      replyTo: replyTo ?? undefined,
+      subject: title,
+      html: wrapEmailHtml(escapeHtml(title), bodyHtml),
+    })
     return { ok: true }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur lors de l\'envoi' }
+  }
+}
+
+/**
+ * Compte du recruteur qui a créé l'offre (jobs.postedBy, profil : ADR 0023), règle dans creatorReplyTo. Profil ou compte
+ * supprimé (membre retiré de l'équipe) : null. Autre erreur d'Appwrite : levée, l'e-mail ne part pas plutôt que de
+ * partir sans Reply-To (la réponse du candidat serait perdue).
+ */
+async function offerCreatorAddress(postedBy: string | undefined): Promise<MailAddress | null> {
+  if (!postedBy) return null
+  const { databases, users } = createAdminClient()
+  try {
+    const profile = await databases.getDocument(DB_ID, COLLECTIONS.USERS, postedBy)
+    if (!profile.userId) return null
+    return creatorReplyTo(profile, await users.get(profile.userId as string))
+  } catch (e) {
+    if (e instanceof AppwriteException && e.code === 404) return null
+    throw e
   }
 }
