@@ -11,9 +11,12 @@ interface Props {
   linkedinUrl: string
   oauthError?: boolean
   oauthReason?: string
+  /** Page de l'offre d'où vient le candidat (« J'ai déjà un compte ») : il y revient une fois connecté. */
+  returnTo: string | null
 }
 
-export function LoginForm({ googleUrl, linkedinUrl, oauthError, oauthReason }: Props) {
+export function LoginForm({ googleUrl, linkedinUrl, oauthError, oauthReason, returnTo }: Props) {
+  const withReturn = (href: string) => returnTo ? `${href}${href.includes('?') ? '&' : '?'}redirect=${returnTo}` : href
   const [error, setError] = useState<string | null>(
     oauthError
       ? `La connexion via ce service a échoué. ${oauthReason ? `(${oauthReason})` : 'Réessayez ou utilisez votre email.'}`
@@ -109,6 +112,7 @@ export function LoginForm({ googleUrl, linkedinUrl, oauthError, oauthReason }: P
 
           {/* Form */}
           <form action={submit} className="px-8 py-6 space-y-4">
+            {returnTo && <input type="hidden" name="redirect" value={returnTo} />}
             {/* Email */}
             <div className="relative mbc-field">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 transition-colors" style={{ color: 'var(--color-text-muted)' }} />
@@ -165,7 +169,7 @@ export function LoginForm({ googleUrl, linkedinUrl, oauthError, oauthReason }: P
               </p>
               <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                 Pas encore de compte ?{' '}
-                <Link href="/register" className="font-semibold transition-opacity hover:opacity-70" style={{ color: '#E8A33D' }}>
+                <Link href={withReturn('/register')} className="font-semibold transition-opacity hover:opacity-70" style={{ color: '#E8A33D' }}>
                   S&apos;inscrire
                 </Link>
               </p>
@@ -175,7 +179,7 @@ export function LoginForm({ googleUrl, linkedinUrl, oauthError, oauthReason }: P
 
         {/* Role CTAs */}
         <div className="mt-6 grid grid-cols-2 gap-3 text-center">
-          <Link href="/register?role=candidate"
+          <Link href={withReturn('/register?role=candidate')}
             className="group p-4 rounded-2xl no-underline transition-all duration-200 hover:-translate-y-0.5"
             style={{ background: 'white', border: '1px solid rgba(11,29,81,0.1)', boxShadow: '0 8px 20px -8px rgba(0,0,0,0.3)' }}>
             <p className="text-xs font-semibold" style={{ color: '#0B1D51' }}>Vous cherchez une mission ?</p>

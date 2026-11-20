@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Loader2, Mail, Lock, User, Building2, Phone } from 'lucide-react'
 import { registerAction } from '../actions'
+import { offerReturnPath } from '@/lib/dashboard-routes'
 import { GoogleIcon, LinkedInIcon } from '@/components/shared/oauth-icons'
 
 interface Props {
@@ -16,6 +17,8 @@ export function RegisterForm({ googleUrl, linkedinUrl }: Props) {
   const searchParams = useSearchParams()
   const roleParam = searchParams.get('role')
   const defaultRole = (roleParam === 'recruiter' || roleParam === 'hunter' ? roleParam : 'candidate') as 'candidate' | 'recruiter' | 'hunter'
+  // Page de l'offre d'où vient le candidat (« Postuler maintenant ») : il y revient une fois inscrit.
+  const returnTo = offerReturnPath(searchParams.get('redirect'))
 
   const [role, setRole] = useState<'candidate' | 'recruiter' | 'hunter'>(defaultRole)
   const [error, setError] = useState<string | null>(null)
@@ -98,6 +101,7 @@ export function RegisterForm({ googleUrl, linkedinUrl }: Props) {
 
           {/* Form */}
           <form action={submit} className="px-8 py-6 space-y-3">
+            {returnTo && <input type="hidden" name="redirect" value={returnTo} />}
             {/* Name row */}
             <div className="grid grid-cols-2 gap-2">
               <div className="relative">
@@ -166,7 +170,7 @@ export function RegisterForm({ googleUrl, linkedinUrl }: Props) {
 
             <p className="text-center text-sm pt-1" style={{ color: 'var(--color-text-muted)' }}>
               Déjà un compte ?{' '}
-              <Link href="/login" className="font-semibold" style={{ color: 'var(--color-primary)' }}>
+              <Link href={returnTo ? `/login?redirect=${returnTo}` : '/login'} className="font-semibold" style={{ color: 'var(--color-primary)' }}>
                 Se connecter
               </Link>
             </p>

@@ -12,7 +12,7 @@ import {
   setSessionCookies,
   getOrCreateUserProfile,
 } from '@/lib/appwrite/auth'
-import { dashboardPathFor } from '@/lib/dashboard-routes'
+import { afterAuthPath } from '@/lib/dashboard-routes'
 import type { UserRole } from '@/types'
 
 // ── Schemas ──────────────────────────────────────────────────────
@@ -62,8 +62,9 @@ export async function loginAction(formData: FormData): Promise<ActionResult> {
     return { error: translateAuthError(err, 'login') }
   }
 
-  // Redirect outside try/catch (Next.js redirect throws internally)
-  redirect(dashboardPathFor(role))
+  // Redirect outside try/catch (Next.js redirect throws internally). Retour à l'offre d'où vient le candidat, sinon
+  // son tableau de bord (afterAuthPath n'accepte qu'une page d'offre).
+  redirect(afterAuthPath(role, formData.get('redirect')))
 }
 
 export async function registerAction(formData: FormData): Promise<ActionResult> {
@@ -108,7 +109,7 @@ export async function registerAction(formData: FormData): Promise<ActionResult> 
     return { error: translateAuthError(err, 'register') }
   }
 
-  redirect(dashboardPathFor(parsed.data.role))
+  redirect(afterAuthPath(parsed.data.role, formData.get('redirect')))
 }
 
 export async function logoutAction() {
