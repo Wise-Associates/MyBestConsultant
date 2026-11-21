@@ -2,7 +2,7 @@
 
 import type { InterviewQuestion } from '@/app/recruiter/interviews/actions'
 import { ROOM_LIMITS } from '@/lib/interview-room'
-import { roomSession, takeTranscriptionSlot } from '@/lib/interview-room-access'
+import { liveRoomSession, roomSession, takeTranscriptionSlot } from '@/lib/interview-room-access'
 import { transcribeSpeech } from '@/lib/speech-to-text'
 import { MAX_ANSWER_AUDIO_BYTES, audioContainer, transcriptionPrompt } from '@/lib/speech-to-text-rules'
 
@@ -30,7 +30,7 @@ export async function transcribeInterviewAnswer(
   form: FormData,
 ): Promise<{ text: string } | { error: string }> {
   try {
-    const session = await roomSession(sessionId, 'live')
+    const session = await liveRoomSession(sessionId, 'live')
     if (!session) return { error: 'Entretien introuvable ou terminé' }
 
     const audio = form.get('audio')

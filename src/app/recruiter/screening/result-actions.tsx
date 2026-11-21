@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { prepareInterviewFromScreening, sendInterviewInvitationEmail, sendCustomMessage } from './actions'
 import type { InterviewQuestion } from '@/app/recruiter/interviews/actions'
+import { interviewPath } from '@/lib/interview-room'
 
 const CAT_LABELS: Record<string, string> = {
   intro: 'Intro', technical: 'Technique', behavioral: 'Comportemental',
@@ -40,9 +41,8 @@ function InterviewModal({ props, onClose }: { props: Props; onClose: () => void 
   const [isPending, startTransition] = useTransition()
   const [isSending, startSendTransition] = useTransition()
 
-  const interviewLink = sessionId
-    ? `${window.location.origin}/interview/${sessionId}`
-    : ''
+  // Même lien que l'invitation envoyée (salle /v2, format par défaut : vidéo).
+  const interviewLink = sessionId ? `${window.location.origin}${interviewPath(sessionId)}` : ''
 
   function generate() {
     setError('')

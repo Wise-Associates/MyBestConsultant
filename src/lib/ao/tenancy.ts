@@ -53,7 +53,9 @@ export function lockIdFor(tenantId: string): string {
  * toutes (l). Appels à l'IA des entretiens et du screening manuel (src/lib/interview-rules.ts) : par organisation (ia), pour
  * toutes (ib) ; invitations à un entretien, par organisation (ic) ; appels de la salle d'entretien d'un candidat, par
  * session (id, src/lib/interview-room.ts) ; transcriptions des réponses orales de l'entretien vocal (ADR 0035), par
- * session (ie), par organisation (if), pour toutes (ig).
+ * session (ie), par organisation (if), pour toutes (ig) ; voix d'Alex dans l'entretien vocal (ADR 0052), par session (ih),
+ * par organisation (ii), pour toutes (ij) ; fichiers de questions d'entretien importés (ADR 0054), par organisation (il),
+ * pour toutes (im).
  */
 const COUNTER_PREFIX = {
   vision: 'v', tables: 't', mailboxTests: 'c', mailboxTarget: 'm', mailboxTestsAll: 'g', assistantUser: 'a', assistantAll: 'b',
@@ -64,7 +66,8 @@ const COUNTER_PREFIX = {
   // place tient encore dans les 36 caractères d'Appwrite (« pg_<16>_<jour>_<place> »).
   aoPageOrg: 'pg', aoPageAll: 'pa',
   interviewAiOrg: 'ia', interviewAiAll: 'ib', interviewInviteOrg: 'ic', interviewRoom: 'id', interviewRoomStt: 'ie',
-  interviewSttOrg: 'if', interviewSttAll: 'ig',
+  interviewSttOrg: 'if', interviewSttAll: 'ig', interviewRoomTts: 'ih', interviewTtsOrg: 'ii', interviewTtsAll: 'ij',
+  interviewImportOrg: 'il', interviewImportAll: 'im',
   // Téléphones demandés dans MBC Search (ADR 0042).
   mbcPhoneOrg: 'pk', mbcPhoneAll: 'pl',
   // Nouveaux candidats comparés aux offres actives, pour toute la plateforme (correspondances IA, ADR 0047).

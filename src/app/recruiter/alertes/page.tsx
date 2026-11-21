@@ -85,9 +85,10 @@ export default async function AlertesPage() {
           <div className="flex-1 min-w-0">
             <h2 id="alert-settings" style={{ color: 'var(--color-text)', fontSize: '1rem', fontWeight: 600, lineHeight: 1.4 }}>Candidats pour vos offres</h2>
             <p className="text-sm mt-1" style={muted}>
-              Une alerte, et un e-mail si vous le souhaitez, chaque fois qu’un candidat est noté au moins à votre seuil pour une offre qui vous
-              est affectée : candidature reçue, candidat de la base, ou nouveau candidat que l’IA a proposé pour l’offre dès son inscription.
-              Une seule fois par candidat et par offre.
+              Chaque candidature reçue sur une offre qui vous est affectée vous est signalée ici et par e-mail, quel que soit son score :
+              rien à régler. Le score minimal et l’interrupteur des e-mails ne concernent que les autres alertes : un candidat de la base,
+              ou un nouveau candidat que l’IA a proposé pour l’offre dès son inscription, noté au moins à votre score minimal (une seule
+              fois par candidat et par offre).
             </p>
             {emails.unreadable && <p className="text-xs mt-2" style={{ color: '#b91c1c' }}>Vos réglages n’ont pas pu être lus : ils sont affichés par défaut.</p>}
           </div>
@@ -106,7 +107,7 @@ export default async function AlertesPage() {
             : alerts === null
               ? <Notice text="Vos alertes n’ont pas pu être lues : rechargez la page dans quelques instants." />
               : alerts.length === 0
-                ? <Notice text={`Aucune alerte pour le moment. Elles apparaîtront ici dès qu’un nouveau candidat répondra à une de vos recherches, ou sera noté ${emails.threshold}/100 ou plus pour une de vos offres.`} />
+                ? <Notice text={`Aucune alerte pour le moment. Elles apparaîtront ici dès qu’un candidat postulera à une de vos offres, qu’un nouveau candidat répondra à une de vos recherches, ou sera noté ${emails.threshold}/100 ou plus pour une de vos offres.`} />
                 : <AlertList alerts={alerts} />}
         </section>
       </div>

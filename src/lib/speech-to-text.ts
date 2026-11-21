@@ -14,8 +14,8 @@ const TRANSCRIBE_TIMEOUT_MS = 30_000
 export type TranscriptionResult = { ok: true; text: string } | { ok: false; reason: string }
 
 export async function transcribeSpeech(audio: Uint8Array, container: AudioContainer, prompt: string): Promise<TranscriptionResult> {
-  const { getLLMConfig } = await import('@/lib/ai/llm-config-store')
-  const apiKey = (await getLLMConfig()).openaiApiKey || process.env.OPENAI_API_KEY || ''
+  const { getRecentLLMConfig } = await import('@/lib/ai/llm-config-store')
+  const apiKey = (await getRecentLLMConfig()).openaiApiKey || process.env.OPENAI_API_KEY || ''
   if (!apiKey) return { ok: false, reason: 'aucune clé OpenAI (Config IA ou OPENAI_API_KEY)' }
 
   const form = new FormData()

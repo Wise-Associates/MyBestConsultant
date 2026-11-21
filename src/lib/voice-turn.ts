@@ -123,3 +123,57 @@ const TRANSITIONS = ['Merci.', 'Très bien, merci.', "D'accord, merci pour cette
 export function transitionPhrase(index: number): string {
   return TRANSITIONS[Math.abs(index) % TRANSITIONS.length]
 }
+
+/**
+ * Phrase dite par Alex pour la question `index` (sur `total`) : présentation de l'entretien avant la première, phrase de
+ * transition avant les suivantes. Toujours la même pour une question : sa voix est préparée pendant la question
+ * précédente (ADR 0052), et le texte préparé doit être exactement celui qui sera dit.
+ */
+export function spokenQuestion(index: number, total: number, candidateName: string, questionText: string): string {
+  if (index === 0) {
+    return `Bonjour ${candidateName}. Je suis Alex, votre recruteur pour ce poste. Je vais vous poser ${total} questions. Répondez simplement à voix haute : je passerai à la suite dès que vous aurez terminé. ${questionText}`
+  }
+  return `${transitionPhrase(index)} ${questionText}`
+}
+
+/**
+ * Phrase de fin de l'entretien, préparée pendant la dernière question. L'IA ne répond plus aux questions du candidat
+ * pendant l'entretien (ADR 0053) : le recruteur, qui les lit dans la retranscription, y répondra.
+ */
+export function closingLine(candidateName: string): string {
+  return `Merci ${candidateName}, l'entretien est terminé. Vos réponses ont été enregistrées : le recruteur vous recontactera prochainement et répondra à vos questions. Bonne chance !`
+}
+
+/** Relance orale quand le candidat n'a rien dit. */
+export const REPROMPT_LINE = 'Je ne vous ai pas entendu. Prenez votre temps, et répondez à voix haute quand vous êtes prêt.'
+
+/**
+ * Phrase demandée à la voix (ADR 0052, 0053) : le serveur construit lui-même les questions, le mot de la fin et la
+ * relance à partir de l'entretien ; aucun texte n'est envoyé. La route de la voix ne lit donc pas n'importe quel texte.
+ */
+export type SpeechLine = { kind: 'question'; index: number } | { kind: 'closing' } | { kind: 'reprompt' }
+
+/** Texte dit pour `line` ; null pour une question qui n'existe pas ou sans texte. Même calcul dans la page et la route. */
+export function lineText(line: SpeechLine, interview: { questions: readonly string[]; candidateName: string }): string | null {
+  switch (line.kind) {
+    case 'question': {
+      const question = interview.questions[line.index]
+      if (typeof question !== 'string' || !question.trim()) return null
+      return spokenQuestion(line.index, interview.questions.length, interview.candidateName, question)
+    }
+    case 'closing':
+      return closingLine(interview.candidateName)
+    case 'reprompt':
+      return REPROMPT_LINE
+  }
+}
+
+// Prénoms des voix françaises masculines courantes des navigateurs (macOS / iOS : Thomas, Jacques, Nicolas ; Windows :
+// Paul, Henri, Rémy, Gérard…). La voix d'Alex est masculine : en secours, le navigateur ne doit pas passer à une voix
+// féminine (« Google français » de Chrome) entre deux questions.
+const MALE_VOICE = /\b(thomas|jacques|nicolas|paul|henri|r[ée]my|g[ée]rard|claude|antoine|daniel|mathieu|olivier|guillaume|alain|fabrice|jean)\b/i
+
+/** Voix française masculine à prendre en secours parmi celles du navigateur, ou -1 (voix française par défaut). */
+export function fallbackVoiceIndex(voices: readonly { name: string; lang: string }[]): number {
+  return voices.findIndex(v => /^fr([-_]|$)/i.test(v.lang) && MALE_VOICE.test(v.name))
+}

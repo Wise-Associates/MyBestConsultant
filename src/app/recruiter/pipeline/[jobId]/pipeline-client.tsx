@@ -10,18 +10,22 @@ import {
   FileText, ArrowDownWideNarrow, ArrowUpWideNarrow, Settings2, Plus, X,
   Brain, Video, Pencil, Trash2, History, Loader2, GripVertical, Tag as TagIcon,
   StickyNote, CheckCircle2, ChevronDown, ChevronUp, Sparkles, AlertCircle,
-  Archive, ThumbsUp, ThumbsDown, Mail, Copy, ExternalLink, Edit3, Send, ChevronRight, GitBranch, Search, ChartColumn, Lock, ArrowRight,
-  SlidersHorizontal,
+  Archive, ThumbsUp, ThumbsDown, Mail, Copy, ExternalLink, Send, ChevronRight, GitBranch, Search, ChartColumn, Lock, ArrowRight,
+  SlidersHorizontal, PenLine,
 } from 'lucide-react'
 import {
   moveApplicationStage, saveFunnelStagesAction, updateApplicationCardAction,
-  deleteApplicationAction, launchScreeningAction, prepareInterviewAction, sendInterviewInviteAction,
-  cancelInterviewAction, renameInterviewAction, getEventsAction, setApplicationStageStatusAction, validateStepAction,
+  deleteApplicationAction, launchScreeningAction, sendPipelineInterviewAction,
+  renameInterviewAction, getEventsAction, setApplicationStageStatusAction, validateStepAction,
 } from './actions'
 import { sendCandidateEmailAction, setEmailRepliedAction } from './email-actions'
 import { WhatsAppContact, WhatsAppIcon } from '@/components/recruiter/whatsapp-contact'
 import type { PipelineEmail } from '@/lib/appwrite/application-emails'
-import type { InterviewQuestion } from '@/app/recruiter/interviews/actions'
+import { generateInterviewQuestions, getInterviewPrefillData, type InterviewQuestion } from '@/app/recruiter/interviews/actions'
+import { getEnabledGenericQuestions } from '@/app/recruiter/interviews/generic-questions-actions'
+import { InterviewConfigForm, skillsOf, type InterviewConfig } from '@/components/interviews/interview-config-form'
+import { interviewPath } from '@/lib/interview-room'
+import { InterviewQuestionsEditor } from '@/components/interviews/interview-questions-editor'
 import { InterviewDetailModal } from '@/app/admin/interviews/interview-detail-modal'
 import { getInterviewDetailForRecruiter, analyzeInterviewForRecruiter } from './interview-detail-actions'
 import type { FunnelStage, FunnelEvent } from '@/types'
@@ -698,168 +702,236 @@ function CandidateCard({
   )
 }
 
-// Same 3-step flow as the screening results page's interview module (generate → review &
-// edit → explicit send): nothing is emailed to the candidate until the recruiter reviews
-// the questions and clicks "Envoyer". Uses useEffect (not a side effect during render) so
-// it fires exactly once per real open — a render-body side effect here previously caused
-// screen flicker and duplicate interview sessions being created per click.
+// Même écran que /recruiter/interviews/new (ADR 0054) : configuration pré-remplie depuis la candidature, questions
+// générées par l'IA ou écrites / importées par le recruteur (puis ajustées par l'IA s'il le veut), relues, et envoi
+// explicite. Rien n'est créé ni envoyé avant « Envoyer l'invitation » (sendPipelineInterviewAction) : fermer la fenêtre
+// avant ne laisse rien. useEffect (pas un effet pendant le rendu) : une seule lecture de la candidature par ouverture.
 interface SentInterviewInfo {
   id: string; createdAt: string; candidateName: string; candidateEmail: string; jobTitle: string; questionCount: number; title?: string
+}
+
+const EMPTY_INTERVIEW_CONFIG: InterviewConfig = {
+  candidateName: '', candidateEmail: '', jobTitle: '', jobDescription: '', jobSkills: '', cvSummary: '', questionCount: 8,
 }
 
 function InterviewModal({ jobId, candidate, targetStage, onClose, onSent }: {
   jobId: string; candidate: PipelineCandidate; targetStage: string; onClose: () => void; onSent: (info: SentInterviewInfo) => void
 }) {
-  const [step, setStep] = useState<'generating' | 'review' | 'sent' | 'error'>('generating')
+  const [step, setStep] = useState<'loading' | 'config' | 'questions' | 'sent' | 'error'>('loading')
   const [error, setError] = useState('')
+  const [form, setForm] = useState<InterviewConfig>(EMPTY_INTERVIEW_CONFIG)
   const [questions, setQuestions] = useState<InterviewQuestion[]>([])
-  const [sessionId, setSessionId] = useState('')
-  const [candidateInfo, setCandidateInfo] = useState<{ name: string; email: string; jobTitle: string } | null>(null)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
-  const [isSending, startSending] = useTransition()
-  const [sendError, setSendError] = useState('')
   const [title, setTitle] = useState('')
-
-  const link = sessionId ? `${window.location.origin}/interview/${sessionId}?mode=video` : ''
-  const validQuestions = questions.filter(q => q.text.trim().length > 0)
+  const [sent, setSent] = useState<{ sessionId: string; emailError?: string } | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [isPending, startTransition] = useTransition()
 
   useEffect(() => {
-    // Fenêtre montée pour une candidature (elle part avec la carte) : l'étape commence déjà à « generating ».
     let ignore = false
-    prepareInterviewAction(candidate.appId, jobId).then(res => {
-      if (ignore) return
-      if ('error' in res) { setError(res.error); setStep('error'); return }
-      setQuestions(res.questions)
-      setSessionId(res.sessionId)
-      setCandidateInfo({ name: res.candidateName, email: res.candidateEmail, jobTitle: res.jobTitle })
-      setStep('review')
-    })
+    getInterviewPrefillData(candidate.appId).then(
+      res => {
+        if (ignore) return
+        if ('error' in res) { setError(res.error); setStep('error'); return }
+        setForm(f => ({ ...f, ...res }))
+        setStep('config')
+      },
+      err => {
+        if (ignore) return
+        console.error('Candidature illisible pour l’entretien IA :', err)
+        setError('La candidature n’a pas pu être lue : fermez la fenêtre et réessayez.')
+        setStep('error')
+      },
+    )
     return () => { ignore = true }
-  }, [candidate.appId, jobId])
+  }, [candidate.appId])
 
-  // Closing before sending discards the prepared session — nothing should linger as a
-  // phantom "entretien en cours" on the card if the recruiter changes their mind.
-  function handleClose() {
-    if (step === 'review' && sessionId) cancelInterviewAction(sessionId)
-    onClose()
+  const kept = questions.filter(q => q.text.trim())
+  // Entretien du pipeline : toujours en vidéo (demande du 2026-11-21), dans la salle /v2.
+  const link = sent ? `${window.location.origin}${interviewPath(sent.sessionId, 'video')}` : ''
+  // Des questions en cours de rédaction ne se perdent pas d'un clic à côté de la fenêtre : il faut « Annuler » ou ✕.
+  const closableByBackdrop = !isPending && step !== 'questions'
+
+  function set(key: keyof InterviewConfig, value: string | number) {
+    setForm(f => ({ ...f, [key]: value }))
+  }
+
+  function generate() {
+    setError('')
+    startTransition(async () => {
+      const res = await generateInterviewQuestions(form.jobTitle, form.jobDescription, skillsOf(form), form.cvSummary, form.questionCount)
+      if ('error' in res) { setError(res.error); return }
+      setQuestions(res)
+      setStep('questions')
+    })
+  }
+
+  function writeOwn() {
+    setError('')
+    startTransition(async () => {
+      const defaults = await getEnabledGenericQuestions()
+      setQuestions(defaults.map(q => ({ id: q.id, text: q.text, category: q.category, aiGenerated: false })))
+      setStep('questions')
+    })
+  }
+
+  function send() {
+    setError('')
+    startTransition(async () => {
+      // Candidat et poste relus par le serveur sur la candidature (champs en lecture seule dans la fenêtre).
+      const res = await sendPipelineInterviewAction({
+        applicationId: candidate.appId, jobId, targetStage, questions: kept, title: title.trim() || undefined,
+      })
+      if ('error' in res) { setError(res.error); return }
+      setSent(res)
+      setStep('sent')
+      // Invitation non partie : la carte ne change pas de colonne (le lien est à copier).
+      if (!res.emailError) {
+        onSent({
+          id: res.sessionId, createdAt: new Date().toISOString(),
+          candidateName: form.candidateName, candidateEmail: form.candidateEmail, jobTitle: form.jobTitle,
+          questionCount: kept.length, title: title.trim() || undefined,
+        })
+      }
+    })
   }
 
   function copyLink() {
-    navigator.clipboard.writeText(link).catch(() => {})
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  function sendInvite() {
-    if (!candidateInfo) return
-    setSendError('')
-    startSending(async () => {
-      const res = await sendInterviewInviteAction({
-        applicationId: candidate.appId, jobId, sessionId, targetStage,
-        candidateEmail: candidateInfo.email, candidateName: candidateInfo.name, jobTitle: candidateInfo.jobTitle,
-        questions: validQuestions, title: title.trim() || undefined,
-      })
-      if (res.error) { setSendError(res.error); return }
-      setStep('sent')
-      onSent({
-        id: sessionId, createdAt: new Date().toISOString(),
-        candidateName: candidateInfo.name, candidateEmail: candidateInfo.email, jobTitle: candidateInfo.jobTitle,
-        questionCount: validQuestions.length, title: title.trim() || undefined,
-      })
-    })
+    navigator.clipboard.writeText(link).then(
+      () => { setCopied(true); setTimeout(() => setCopied(false), 2000) },
+      err => console.error('Copie du lien impossible :', err),
+    )
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}
-      onClick={e => { if (e.target === e.currentTarget && step !== 'generating') handleClose() }}>
-      <div className="w-full max-w-lg rounded-2xl overflow-hidden max-h-[85vh] flex flex-col" style={{ background: 'var(--color-background)', border: '1px solid var(--color-border)' }}>
-        <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
-          <h2 className="font-semibold text-[var(--color-text)] text-sm flex items-center gap-2">
-            <Video className="h-4 w-4" /> Entretien IA — {candidate.candidateName || candidate.candidateEmail}
-          </h2>
-          {step !== 'generating' && (
-            <button onClick={handleClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"><X className="h-5 w-5" /></button>
+    // Au-dessus de la barre du site (z-index 9000, site-navbar-client.tsx), comme la fenêtre du funnel : sinon le haut de
+    // la fenêtre passait sous la barre.
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}
+      onClick={e => { if (e.target === e.currentTarget && closableByBackdrop) onClose() }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="interview-modal-title"
+        className="w-full max-w-2xl rounded-3xl overflow-hidden max-h-[90vh] flex flex-col" style={{ background: 'var(--page-bg, var(--color-background))', border: '1px solid var(--color-border)' }}>
+        <div className="flex items-center gap-3 px-6 py-4 shrink-0" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
+          <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(124,58,237,0.14)' }}>
+            <Brain className="h-5 w-5" style={{ color: '#7c3aed' }} aria-hidden />
+          </div>
+          <div className="flex-1 min-w-0">
+            {/* Tailles écrites ici : la règle globale des titres (globals.css) l'emporte sur les classes. */}
+            <h2 id="interview-modal-title" className="truncate" style={{ color: 'var(--color-text)', fontSize: '0.95rem', fontWeight: 600, lineHeight: 1.4, letterSpacing: 0 }}>
+              Entretien IA — {candidate.candidateName || candidate.candidateEmail}
+            </h2>
+            <p className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>L&apos;IA génère ou ajuste les questions et analyse les réponses</p>
+          </div>
+          {!isPending && (
+            <button onClick={onClose} aria-label="Fermer" className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"><X className="h-5 w-5" /></button>
           )}
         </div>
-        <div className="p-6 overflow-y-auto space-y-4">
-          {step === 'generating' && (
+
+        <div className="p-6 overflow-y-auto space-y-5">
+          {step === 'loading' && (
             <div className="flex flex-col items-center gap-3 py-8">
-              <Loader2 className="h-6 w-6 animate-spin" style={{ color: 'var(--color-primary)' }} />
-              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Génération des questions…</p>
+              <Loader2 className="h-6 w-6 animate-spin" style={{ color: '#7c3aed' }} aria-hidden />
+              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Chargement de la candidature…</p>
             </div>
           )}
+
           {step === 'error' && (
-            <p className="text-sm px-3 py-2 rounded-lg" style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}>{error}</p>
+            <p role="alert" className="text-sm px-3 py-2 rounded-lg" style={{ background: 'rgba(239,68,68,0.08)', color: '#b91c1c' }}>{error}</p>
           )}
-          {step === 'review' && (
+
+          {step === 'config' && (
             <>
-              <div>
-                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>Titre de l&apos;entretien (facultatif)</label>
-                <input value={title} onChange={e => setTitle(e.target.value)} maxLength={120}
-                  placeholder="Ex. Entretien test technique"
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{ background: 'rgba(0,0,0,0.03)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
+              <div className="flex items-center gap-2 px-4 py-3 rounded-xl" style={{ background: 'var(--color-surface)', border: '1px solid rgba(16,185,129,0.35)' }}>
+                <Sparkles className="h-4 w-4 shrink-0" style={{ color: '#10b981' }} aria-hidden />
+                <p className="text-sm" style={{ color: '#047857' }}>Pré-rempli depuis la candidature : le candidat et le poste sont ceux de la candidature ; ajustez le reste si besoin.</p>
               </div>
-              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                {validQuestions.length} question{validQuestions.length > 1 ? 's' : ''} — le candidat recevra exactement cette liste. Modifiez ou supprimez avant d&apos;envoyer.
-              </p>
-              <div className="space-y-1.5">
-                {questions.map(q => (
-                  <div key={q.id} className="rounded-xl p-2.5" style={{ background: 'rgba(0,0,0,0.02)', border: '1px solid var(--color-border)' }}>
-                    <div className="flex items-start gap-2">
-                      {editingId === q.id ? (
-                        <textarea autoFocus defaultValue={q.text} rows={2}
-                          className="flex-1 px-2 py-1.5 rounded-lg text-sm outline-none resize-none"
-                          style={{ background: 'var(--color-background)', border: '1px solid var(--color-primary)', color: 'var(--color-text)' }}
-                          onChange={e => setQuestions(prev => prev.map(x => x.id === q.id ? { ...x, text: e.target.value } : x))}
-                          onBlur={() => setEditingId(null)} />
-                      ) : (
-                        <p className="flex-1 text-sm leading-snug" style={{ color: 'var(--color-text)' }}>{q.text}</p>
-                      )}
-                      <div className="flex gap-1 shrink-0">
-                        <button onClick={() => setEditingId(q.id)} style={{ color: 'var(--color-text-muted)' }}><Edit3 className="h-3.5 w-3.5" /></button>
-                        <button onClick={() => setQuestions(prev => prev.filter(x => x.id !== q.id))} style={{ color: 'var(--color-text-muted)' }}><Trash2 className="h-3.5 w-3.5" /></button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              <InterviewConfigForm value={form} onChange={set} readOnly={['candidateName', 'candidateEmail', 'jobTitle']} />
+              {error && <p role="alert" className="text-sm" style={{ color: '#b91c1c' }}>{error}</p>}
+              <div className="space-y-3">
+                <button onClick={generate} disabled={!form.candidateName || !form.jobTitle || isPending}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-sm disabled:opacity-40 transition-all"
+                  style={{ background: '#7c3aed', color: 'white', boxShadow: '0 8px 20px rgba(124,58,237,0.3)' }}>
+                  {isPending ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden />Préparation des questions…</>
+                    : <><Brain className="h-4 w-4" aria-hidden />Générer les questions <ChevronRight className="h-4 w-4" aria-hidden /></>}
+                </button>
+                <button onClick={writeOwn} disabled={!form.candidateName || !form.jobTitle || isPending}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-sm disabled:opacity-40 transition-all"
+                  style={{ background: 'var(--color-surface)', color: '#7c3aed', border: '1.5px solid rgba(124,58,237,0.35)' }}>
+                  <PenLine className="h-4 w-4" aria-hidden />Écrire ou importer mes questions
+                </button>
               </div>
-              <div className="rounded-xl p-3" style={{ background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.2)' }}>
-                <p className="text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: 'var(--color-text-muted)' }}>Lien de l&apos;entretien</p>
-                <div className="flex items-center gap-2">
-                  <p className="flex-1 text-xs font-mono truncate" style={{ color: '#8b5cf6' }}>{link}</p>
-                  <button onClick={copyLink} className="p-1.5 rounded-lg" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
-                    {copied ? <CheckCircle2 className="h-3.5 w-3.5" style={{ color: '#10b981' }} /> : <Copy className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-              </div>
-              {sendError && <p className="text-sm px-3 py-2 rounded-lg" style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}>{sendError}</p>}
             </>
           )}
-          {step === 'sent' && (
-            <div className="flex flex-col items-center gap-2 py-6 text-center">
-              <CheckCircle2 className="h-8 w-8" style={{ color: '#10b981' }} />
-              <p className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>Invitation envoyée !</p>
-              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>L&apos;email a été envoyé à {candidateInfo?.email}.</p>
+
+          {step === 'questions' && (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 style={{ color: 'var(--color-text)', fontSize: '1rem', fontWeight: 700, lineHeight: 1.4, letterSpacing: 0 }}>Questions de l&apos;entretien</h3>
+                  <p className="text-sm mt-0.5 truncate" style={{ color: 'var(--color-text-muted)' }}>{form.candidateName} · {form.jobTitle}</p>
+                </div>
+                <button onClick={() => { setError(''); setStep('config') }} disabled={isPending}
+                  className="text-sm px-3 py-1.5 rounded-lg transition-all shrink-0"
+                  style={{ color: 'var(--color-text-muted)', border: '1px solid var(--color-border)', background: 'none', cursor: 'pointer' }}>
+                  ← Modifier
+                </button>
+              </div>
+              <div>
+                <label htmlFor="interview-title" className="block text-xs font-semibold mb-1.5 uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>Titre de l&apos;entretien (facultatif)</label>
+                <input id="interview-title" value={title} onChange={e => setTitle(e.target.value)} maxLength={120}
+                  placeholder="Ex. Entretien test technique"
+                  className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+                  style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
+              </div>
+              <InterviewQuestionsEditor questions={questions} onChange={setQuestions} disabled={isPending}
+                tuning={{ jobTitle: form.jobTitle, jobDescription: form.jobDescription, jobSkills: skillsOf(form), cvSummary: form.cvSummary, questionCount: form.questionCount }} />
+              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                {kept.length} question{kept.length > 1 ? 's' : ''} — le candidat recevra exactement cette liste.
+              </p>
+              {error && <p role="alert" className="text-sm px-3 py-2 rounded-lg" style={{ background: 'rgba(239,68,68,0.08)', color: '#b91c1c' }}>{error}</p>}
+            </>
+          )}
+
+          {step === 'sent' && sent && (
+            <div className="text-center py-2">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: 'rgba(16,185,129,0.12)' }}>
+                {sent.emailError ? <Brain className="h-6 w-6" style={{ color: '#10b981' }} aria-hidden /> : <Mail className="h-6 w-6" style={{ color: '#10b981' }} aria-hidden />}
+              </div>
+              <p className="text-base font-bold mb-1" style={{ color: 'var(--color-text)' }}>Entretien créé pour {form.candidateName}</p>
+              {sent.emailError ? (
+                <p role="alert" className="text-sm mb-5" style={{ color: '#b45309' }}>
+                  L&apos;email n&apos;a pas pu être envoyé ({sent.emailError}). Copiez le lien ci-dessous et envoyez-le vous-même au candidat ; la carte reste dans sa colonne.
+                </p>
+              ) : (
+                <p className="text-sm mb-5" style={{ color: 'var(--color-text-muted)' }}>
+                  L&apos;invitation a été envoyée à <span style={{ color: 'var(--color-text)' }}>{form.candidateEmail}</span>.
+                </p>
+              )}
+              <div className="flex items-center gap-2 p-3 rounded-xl text-left" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+                <span className="flex-1 text-xs font-mono truncate" style={{ color: 'var(--color-text-muted)' }}>{link}</span>
+                <button onClick={copyLink}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all"
+                  style={{ background: copied ? 'rgba(16,185,129,0.14)' : 'rgba(124,58,237,0.12)', color: copied ? '#047857' : '#7c3aed' }}>
+                  {copied ? <><CheckCircle2 className="h-3.5 w-3.5" aria-hidden />Copié</> : <><Copy className="h-3.5 w-3.5" aria-hidden />Copier le lien</>}
+                </button>
+              </div>
             </div>
           )}
         </div>
+
         <div className="p-6 pt-0 shrink-0 flex gap-3">
-          {step === 'review' ? (
+          {step === 'questions' ? (
             <>
-              <button onClick={handleClose} className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-opacity hover:opacity-70"
+              <button onClick={onClose} disabled={isPending} className="flex-1 py-3 rounded-2xl text-sm font-semibold transition-opacity hover:opacity-70 disabled:opacity-40"
                 style={{ background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}>Annuler</button>
-              <button onClick={sendInvite} disabled={isSending || validQuestions.length === 0}
-                className="flex-[2] flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-opacity hover:opacity-80 disabled:opacity-50"
-                style={{ background: 'var(--color-primary)', color: 'white' }}>
-                {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Envoyer l&apos;invitation
+              <button onClick={send} disabled={isPending || kept.length === 0}
+                className="flex-[2] flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+                style={{ background: '#7c3aed', color: 'white', boxShadow: '0 8px 20px rgba(124,58,237,0.3)' }}>
+                {isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />} Envoyer l&apos;invitation
               </button>
             </>
-          ) : (
-            <button onClick={onClose} className="w-full py-2.5 rounded-xl text-sm font-semibold transition-opacity hover:opacity-80"
-              style={{ background: 'var(--color-primary)', color: 'white' }}>Fermer</button>
-          )}
+          ) : step === 'sent' || step === 'error' ? (
+            <button onClick={onClose} className="w-full py-3 rounded-2xl text-sm font-semibold transition-opacity hover:opacity-90"
+              style={{ background: '#7c3aed', color: 'white' }}>Fermer</button>
+          ) : null}
         </div>
       </div>
     </div>

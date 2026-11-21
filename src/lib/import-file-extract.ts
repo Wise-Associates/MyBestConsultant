@@ -2,6 +2,7 @@
 // so a fix or a new format only needs to be added once, and both stay in sync).
 import * as XLSX from 'xlsx'
 import { pageTextWithoutCopies, type PdfTextItem } from './pdf-text'
+import { assertPdfInflateBounded } from './pdf-inflate-guard'
 
 // pdf-parse uses pdfjs-dist which needs browser APIs — polyfill for Node.js
 if (typeof globalThis.DOMMatrix === 'undefined') {
@@ -43,6 +44,9 @@ export async function extractTextFromFile(buffer: Buffer, filename: string, { ma
   // PDF — real parser
   if (ext === 'pdf') {
     try {
+      // Avant pdf.js, qui garde chaque flux décodé en mémoire sans limite : un PDF qui se décompresse trop est refusé
+      // (revue de sécurité du 2026-11-21, pdf-inflate-guard.ts). Hors mode strict, le repli ci-dessous ne lit que les octets bruts.
+      await assertPdfInflateBounded(buffer)
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const pdfParse = require('pdf-parse/lib/pdf-parse.js') as (buf: Buffer, options?: { max?: number; pagerender?: (page: PdfPage) => Promise<string> }) => Promise<{ text: string }>
       // 50 premières pages : le texte est de toute façon tronqué à maxChars, inutile de lire un document entier.

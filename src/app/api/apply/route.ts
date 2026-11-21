@@ -5,7 +5,7 @@ import { ID, Query } from 'node-appwrite'
 import { InputFile } from 'node-appwrite/file'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { getJobById } from '@/lib/appwrite/jobs'
-import { autoScreenApplication } from '@/lib/screening-core'
+import { screenReceivedApplication } from '@/lib/screening-core'
 import {
   APPLY_GENERIC_ERROR, APPLY_REFUSAL_MESSAGE, APPLY_SESSION_EXPIRED, applyRefusal, filesProblem, storageErrorMessage,
 } from '@/lib/application-submit'
@@ -103,7 +103,8 @@ export async function POST(req: NextRequest) {
         console.error('[candidature] CV du profil non remplacé', { applicationId: created.$id, ...errorInfo(e) }))
     }
 
-    after(() => autoScreenApplication(created.$id))
+    // Analyse, puis e-mail au recruteur de l'offre quel que soit le score (ADR 0051) ; offre vérifiée ci-dessus (job).
+    after(() => screenReceivedApplication({ applicationId: created.$id, jobId: job.$id, candidateId: user.$id }))
     return NextResponse.json({ ok: true, id: created.$id })
   } catch (e) {
     await removeUploaded()

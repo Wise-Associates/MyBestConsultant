@@ -7,7 +7,7 @@ import { wrapEmailHtml } from '@/lib/email-template'
 import { extractCvProfile, type CvProfile } from '@/lib/cv-profile-extract'
 import { HUNTER_PROFILE_ROLE } from '@/lib/candidate-identity'
 import { getJobById, hasApplied } from '@/lib/appwrite/jobs'
-import { autoScreenApplication } from '@/lib/screening-core'
+import { screenReceivedApplication } from '@/lib/screening-core'
 import { after } from 'next/server'
 import { classifySourceInBackground } from '@/lib/cv-classify'
 import { deleteClassification } from '@/lib/appwrite/cv-classifications'
@@ -219,8 +219,10 @@ export async function proposeProfiles(hunter: Hunter, jobId: string, profileIds:
       const created = await databases.createDocument(DB_ID, COLLECTIONS.APPLICATIONS, ID.unique(), {
         jobId, tenantId: job.tenantId, candidateId: id, cvFileId: doc.cvFileId as string, status: 'pending', coverLetter: pitch || null,
       })
-      // Comme pour toute candidature : le matching (score IA + résumé) se lance dès la réception.
-      try { after(() => autoScreenApplication(created.$id)) } catch { void autoScreenApplication(created.$id) }
+      // Comme pour toute candidature : le matching (score IA + résumé) se lance dès la réception, puis le recruteur de
+      // l'offre est prévenu quel que soit le score (ADR 0051).
+      const received = { applicationId: created.$id, jobId, candidateId: id }
+      try { after(() => screenReceivedApplication(received)) } catch { void screenReceivedApplication(received) }
       done.push(profile)
     } catch { skipped.push('Un profil n’a pas pu être proposé') }
   }

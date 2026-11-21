@@ -12,7 +12,7 @@ import {
 import { callLLM } from '@/lib/ai/llm-router'
 import { sanitizeStageInputs } from '@/lib/funnel-config'
 import { screenAllApplications, sendInterviewInvitationEmail } from '@/app/recruiter/screening/actions'
-import { getInterviewPrefillData, generateInterviewQuestions, createInterviewSession, type InterviewQuestion } from '@/app/recruiter/interviews/actions'
+import { createInterviewSession, type InterviewQuestion } from '@/app/recruiter/interviews/actions'
 import { applicationOfOrganisation } from '@/lib/screening-core'
 import { loadOfferViewer } from '@/lib/offer-viewer'
 import { viewerCanOpenJob } from '@/lib/job-ownership'
@@ -204,102 +204,73 @@ export async function launchScreeningAction(applicationId: string, jobId: string
   }
 }
 
-// Generates interview questions and creates the session — same "prepare" step as the
-// screening results page's interview module, so the recruiter reviews/edits the questions
-// before anything is sent. createInterviewSession moves the application to "interview"
-// internally; that's undone immediately below — the card must only actually move once the
-// invite is really sent (see sendInterviewInviteAction), not just because a session was
-// generated and possibly cancelled. Can be run again for the same candidate (illimited
-// interviews) — each run creates its own session.
-export async function prepareInterviewAction(applicationId: string, jobId: string): Promise<
-  { sessionId: string; questions: InterviewQuestion[]; candidateName: string; candidateEmail: string; jobTitle: string } | { error: string }
-> {
-  try {
-    await requireRecruiter()
-    const { databases } = createAdminClient()
-    const appDoc = await databases.getDocument(DB_ID, COLLECTIONS.APPLICATIONS, applicationId)
-    const previousStatus = appDoc.status as string
-
-    const prefill = await getInterviewPrefillData(applicationId)
-    if ('error' in prefill) return { error: prefill.error }
-
-    const questions = await generateInterviewQuestions(prefill.jobTitle, prefill.jobDescription, prefill.jobSkills.split(', '), prefill.cvSummary)
-    if ('error' in questions) return { error: questions.error }
-
-    const session = await createInterviewSession(applicationId, jobId, prefill.candidateName, prefill.candidateEmail, prefill.jobTitle, questions)
-    if ('error' in session) return { error: session.error }
-    await updateApplicationStatus(applicationId, previousStatus)
-
-    revalidatePath(`/recruiter/pipeline/${jobId}`)
-    return { sessionId: session.sessionId, questions, candidateName: prefill.candidateName, candidateEmail: prefill.candidateEmail, jobTitle: prefill.jobTitle }
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : 'Erreur lors de la préparation de l\'entretien' }
-  }
-}
-
-// Recruiter closed the review modal without sending — the prepared session is discarded
-// so it never shows up as a phantom "entretien en cours" on the card.
-export async function cancelInterviewAction(sessionId: string): Promise<void> {
-  try {
-    const user = await requireRecruiter()
-    const { databases } = createAdminClient()
-    // Entretien de l'organisation du recruteur seulement (avant : n'importe quel entretien pouvait être supprimé).
-    const session = await databases.getDocument(DB_ID, COLLECTIONS.INTERVIEWS, sessionId)
-    if (!(await sessionVisible(session, user))) return
-    await databases.deleteDocument(DB_ID, COLLECTIONS.INTERVIEWS, sessionId)
-  } catch (err) {
-    // Nettoyage : une session préparée qui reste s'affiche comme un entretien en attente, sans autre effet.
-    console.error('[pipeline] entretien préparé non supprimé', sessionId, err instanceof Error ? err.message : String(err))
-  }
-}
-
-// Explicit, separate "send" step — only fires once the recruiter has reviewed the
-// questions and confirmed, never automatically from prepareInterviewAction. Only now does
-// the card actually move into the target stage (e.g. "Entretien").
-export async function sendInterviewInviteAction(params: {
+/**
+ * Entretien IA préparé dans la fenêtre du pipeline (ADR 0054) : questions générées par l'IA, écrites ou importées par le
+ * recruteur puis éventuellement ajustées par l'IA, relues, puis envoyées. L'entretien n'est créé qu'ici, à l'envoi :
+ * fermer la fenêtre avant ne laisse rien (avant, il était créé à l'ouverture et supprimé à la fermeture). La carte passe
+ * dans la colonne de l'entretien seulement si l'invitation est partie ; sinon l'entretien reste, avec son lien à copier.
+ * Peut être relancé pour un même candidat : chaque envoi crée son entretien.
+ */
+export async function sendPipelineInterviewAction(params: {
   applicationId: string
   jobId: string
-  sessionId: string
-  candidateEmail: string
-  candidateName: string
-  jobTitle: string
   targetStage: string
-  // The exact questions the recruiter validated in the review step (after edits/deletions)
-  // and the optional custom title — persisted on the session before the invite goes out, so
-  // the candidate gets precisely what was reviewed, not the originally generated set.
   questions: InterviewQuestion[]
   title?: string
-}): Promise<{ error?: string }> {
+}): Promise<{ sessionId: string; emailError?: string } | { error: string }> {
   try {
     const user = await requireRecruiter()
-    const questions = params.questions
-      .map(q => ({ ...q, text: q.text.trim() }))
+    const questions = (Array.isArray(params.questions) ? params.questions : [])
+      .map(q => ({ ...q, text: typeof q?.text === 'string' ? q.text.trim() : '' }))
       .filter(q => q.text.length > 0)
     if (questions.length === 0) return { error: 'Gardez au moins une question avant d\'envoyer' }
+    // Entretien du pipeline : toujours en vidéo (demande du 2026-11-21) ; le format se choisit sur /recruiter/interviews/new.
+    const mediaMode = 'video'
+    if (params.title !== undefined && typeof params.title !== 'string') return { error: 'Titre invalide' }
+    const title = params.title?.trim().slice(0, 120) || null
 
-    const { databases } = createAdminClient()
-    const session = await databases.getDocument(DB_ID, COLLECTIONS.INTERVIEWS, params.sessionId)
-    if (session.tenantId !== user.tenantId || session.applicationId !== params.applicationId) return { error: 'Non autorisé' }
-    // L'envoi fait passer la carte dans la colonne de l'entretien : même règle du compte rendu qu'un déplacement.
-    const { application } = await visibleApplication(params.applicationId, params.jobId, user)
+    // L'envoi fait passer la carte dans la colonne de l'entretien : même règle du compte rendu qu'un déplacement,
+    // vérifiée avant de créer l'entretien.
+    const { application, job } = await visibleApplication(params.applicationId, params.jobId, user)
     const refusal = await funnelMoveRefusal(application, user.tenantId!, params.jobId, params.targetStage)
     if (refusal) return { error: refusal }
-    await databases.updateDocument(DB_ID, COLLECTIONS.INTERVIEWS, params.sessionId, {
-      questions: JSON.stringify(questions),
-      title: params.title?.trim().slice(0, 120) || null,
-    })
+    const previousStatus = application.status as string
 
-    const res = await sendInterviewInvitationEmail({
-      applicationId: params.applicationId, candidateEmail: params.candidateEmail, sessionId: params.sessionId,
-      jobTitle: params.jobTitle, candidateName: params.candidateName, mediaMode: 'video',
-    })
-    if (res.error) return { error: res.error }
-    await updateApplicationStatus(params.applicationId, params.targetStage)
-    await syncFunnelToColumn(params.applicationId, params.targetStage)
-    await logFunnelEvent(params.applicationId, params.targetStage, 'interview')
+    // Candidat et poste lus en base, pas dans la demande (revue de sécurité du 2026-11-21) : l'invitation part de toute
+    // façon au candidat de la candidature, l'entretien doit porter son nom et son adresse.
+    const { databases } = createAdminClient()
+    const candidate = await databases.getDocument(DB_ID, COLLECTIONS.USERS, application.candidateId as string)
+    const candidateName = `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim()
+    const candidateEmail = typeof candidate.email === 'string' ? candidate.email : ''
+    const jobTitle = typeof job.title === 'string' ? job.title : ''
+
+    // Contrôles de la création : formule avec entretiens IA, candidature de l'organisation, textes bornés (30 questions).
+    const created = await createInterviewSession(params.applicationId, params.jobId, candidateName, candidateEmail, jobTitle, questions)
+    if ('error' in created) return { error: created.error }
+
+    // L'entretien existe : une erreur après ce point rend le lien (à copier) et remet la candidature dans son statut ;
+    // sinon la carte resterait en « interview » sans invitation, et un nouvel essai créerait un second entretien.
+    try {
+      if (title) await databases.updateDocument(DB_ID, COLLECTIONS.INTERVIEWS, created.sessionId, { title })
+      const res = await sendInterviewInvitationEmail({
+        applicationId: params.applicationId, candidateEmail, sessionId: created.sessionId, jobTitle, candidateName, mediaMode,
+      })
+      if (res.error) throw new Error(res.error)
+      await updateApplicationStatus(params.applicationId, params.targetStage)
+      await syncFunnelToColumn(params.applicationId, params.targetStage)
+      await logFunnelEvent(params.applicationId, params.targetStage, 'interview')
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'Erreur lors de l\'envoi'
+      // createInterviewSession a passé la candidature en « interview » : elle reprend son statut, la carte ne bouge pas.
+      await updateApplicationStatus(params.applicationId, previousStatus).catch(statusErr => {
+        console.error('[pipeline] statut de la candidature non rétabli', params.applicationId, statusErr instanceof Error ? statusErr.message : statusErr)
+      })
+      revalidatePath(`/recruiter/pipeline/${params.jobId}`)
+      return { sessionId: created.sessionId, emailError: reason }
+    }
     revalidatePath(`/recruiter/pipeline/${params.jobId}`)
     revalidatePath('/recruiter/dashboard')
-    return {}
+    return { sessionId: created.sessionId }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur lors de l\'envoi' }
   }

@@ -70,8 +70,39 @@ export const sessionInputSchema = z.object({
   questions: z.array(questionSchema).min(1).max(30),
 })
 
+type QuestionCategory = 'intro' | 'technical' | 'behavioral' | 'motivation' | 'closing'
+
+/**
+ * Questions à faire écrire par l'IA pour un entretien de `total` questions, dont `defaults` sont les questions par défaut
+ * de l'organisation (leurs catégories). Le nombre choisi est celui de tout l'entretien : avant le 2026-11-21, les questions
+ * par défaut s'ajoutaient au nombre choisi (8 demandées, 13 obtenues). Répartition par catégorie, sans refaire une
+ * introduction ou une clôture déjà posées ; 0 : l'IA n'est pas appelée.
+ */
+export function aiQuestionPlan(total: number, defaults: readonly QuestionCategory[]): { count: number; mix: Partial<Record<QuestionCategory, number>> } {
+  const count = Math.max(0, total - defaults.length)
+  if (count === 0) return { count, mix: {} }
+  const has = (category: QuestionCategory) => defaults.includes(category)
+  const intro = !has('intro') && count >= 3 ? 1 : 0
+  const closing = !has('closing') && count >= 3 ? 1 : 0
+  const rest = count - intro - closing
+  const motivation = has('motivation') ? 0 : Math.round(rest * 0.2)
+  const behavioral = Math.round((rest - motivation) * (has('behavioral') ? 0.25 : 0.4))
+  const technical = rest - motivation - behavioral
+  const mix: Partial<Record<QuestionCategory, number>> = {}
+  for (const [category, n] of Object.entries({ intro, technical, behavioral, motivation, closing }) as [QuestionCategory, number][]) {
+    if (n > 0) mix[category] = n
+  }
+  return { count, mix }
+}
+
 /** Invitations à un entretien envoyées par jour (UTC) et par organisation : chacune part du domaine de la plateforme. */
 export const INTERVIEW_INVITE_DAILY_LIMIT = 100
+
+/**
+ * Fichiers de questions d'entretien importés par jour (ADR 0054), par organisation et pour toutes : chaque lecture d'un PDF
+ * coûte au serveur (revue de sécurité du 2026-11-21 ; l'inscription est libre).
+ */
+export const INTERVIEW_IMPORT_DAILY_LIMITS = { organisation: 50, allOrganisations: 1000 } as const
 
 /** Candidatures analysées en une demande de screening (écran du screening, pipeline). */
 export const SCREENING_BATCH_MAX = 100

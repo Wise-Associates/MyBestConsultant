@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { TURN_RULES, feedLevel, startTurn, transitionPhrase, type TurnEvent, type TurnState } from './voice-turn'
+import { REPROMPT_LINE, TURN_RULES, closingLine, fallbackVoiceIndex, feedLevel, lineText, spokenQuestion, startTurn, transitionPhrase, type TurnEvent, type TurnState } from './voice-turn'
 
 const QUIET = 0.002
 const VOICE = 0.08
@@ -137,5 +137,58 @@ describe('transitions entre les questions', () => {
     const phrases = new Set([1, 2, 3, 4].map(transitionPhrase))
     assert.ok(phrases.size > 1)
     for (const p of phrases) assert.ok(p.length > 0 && p.length < 60)
+  })
+})
+
+describe('phrases dites par Alex', () => {
+  it('présente l\'entretien avant la première question', () => {
+    const line = spokenQuestion(0, 6, 'Camille', 'Présentez votre parcours.')
+    assert.ok(line.startsWith('Bonjour Camille. Je suis Alex'))
+    assert.ok(line.includes('Je vais vous poser 6 questions.'))
+    assert.ok(line.endsWith('Présentez votre parcours.'))
+  })
+
+  it('enchaîne les questions suivantes par une phrase de transition', () => {
+    assert.equal(spokenQuestion(2, 6, 'Camille', 'Un projet difficile ?'), `${transitionPhrase(2)} Un projet difficile ?`)
+  })
+
+  it('dit toujours la même phrase pour une question : la voix préparée à l\'avance est celle qui sera jouée', () => {
+    for (const i of [0, 1, 2, 3, 4]) assert.equal(spokenQuestion(i, 5, 'Camille', 'Q'), spokenQuestion(i, 5, 'Camille', 'Q'))
+    assert.equal(closingLine('Camille'), closingLine('Camille'))
+    assert.ok(closingLine('Camille').startsWith('Merci Camille, l\'entretien est terminé.'))
+    // Plus de réponse de l'IA aux questions du candidat pendant l'entretien (ADR 0053) : le recruteur y répondra.
+    assert.match(closingLine('Camille'), /répondra à vos questions/)
+  })
+})
+
+describe('phrase demandée à la voix (ADR 0052)', () => {
+  const interview = { questions: ['Présentez-vous.', 'Un projet ?'], candidateName: 'Camille' }
+
+  it('construit les questions, la fin et la relance à partir de l\'entretien', () => {
+    assert.equal(lineText({ kind: 'question', index: 1 }, interview), spokenQuestion(1, 2, 'Camille', 'Un projet ?'))
+    assert.equal(lineText({ kind: 'closing' }, interview), closingLine('Camille'))
+    assert.equal(lineText({ kind: 'reprompt' }, interview), REPROMPT_LINE)
+  })
+
+  it('refuse une question qui n\'existe pas ou sans texte', () => {
+    assert.equal(lineText({ kind: 'question', index: 2 }, interview), null)
+    assert.equal(lineText({ kind: 'question', index: 0 }, { questions: ['  '], candidateName: 'Camille' }), null)
+  })
+})
+
+describe('voix du navigateur en secours', () => {
+  it('choisit une voix française masculine, comme celle d\'Alex', () => {
+    const voices = [
+      { name: 'Google français', lang: 'fr-FR' }, { name: 'Amélie', lang: 'fr-CA' }, { name: 'Thomas', lang: 'fr-FR' }, { name: 'Daniel', lang: 'en-GB' },
+    ]
+    assert.equal(fallbackVoiceIndex(voices), 2)
+    assert.equal(fallbackVoiceIndex([{ name: 'Microsoft Hortense - French (France)', lang: 'fr-FR' }, { name: 'Microsoft Paul - French (France)', lang: 'fr-FR' }]), 1)
+    assert.equal(fallbackVoiceIndex([{ name: 'Microsoft Henri Online (Natural) - French (France)', lang: 'fr-FR' }]), 0)
+  })
+
+  it('sans voix masculine connue, garde la voix française par défaut du navigateur', () => {
+    assert.equal(fallbackVoiceIndex([{ name: 'Google français', lang: 'fr-FR' }]), -1)
+    assert.equal(fallbackVoiceIndex([{ name: 'Thomas', lang: 'en-US' }]), -1, 'une voix anglaise ne lit pas le français')
+    assert.equal(fallbackVoiceIndex([]), -1)
   })
 })

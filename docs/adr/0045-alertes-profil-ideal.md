@@ -1,7 +1,8 @@
 # 0045. Alertes « profil idéal » du recruteur
 
 Date : 2026-11-18. Statut : accepté, modifié par l'[ADR 0047](0047-correspondances-ia-nouveaux-candidats.md) : seuil
-réglable par recruteur (70 par défaut) à la place du 85 fixe, alertes du vivier retirées.
+réglable par recruteur (70 par défaut) à la place du 85 fixe, alertes du vivier retirées ; et par l'[ADR 0051](0051-toute-candidature-previent-le-recruteur.md) :
+toute candidature reçue prévient, quel que soit son score, une fois par candidature.
 
 ## Contexte
 
