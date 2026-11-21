@@ -22,3 +22,21 @@ export async function getLLMConfig(): Promise<ProviderConfig> {
     return DEFAULT_CONFIG
   }
 }
+
+// Config IA gardée 60 s pour les appels répétés de l'entretien vocal (transcription et voix de chaque réponse, ADR 0052),
+// qui relisaient la base à chaque fois. Une config par défaut (lecture en échec ou config absente) n'est pas gardée.
+// Effacée à l'enregistrement de Config IA (saveLLMConfig, src/app/admin/llm-config/actions.ts).
+const RECENT_CONFIG_MS = 60_000
+let recent: { at: number; config: ProviderConfig } | null = null
+
+export async function getRecentLLMConfig(): Promise<ProviderConfig> {
+  if (recent && Date.now() - recent.at < RECENT_CONFIG_MS) return recent.config
+  const config = await getLLMConfig()
+  recent = config === DEFAULT_CONFIG ? null : { at: Date.now(), config }
+  return config
+}
+
+export function forgetRecentLLMConfig(): void {
+  recent = null
+}
+

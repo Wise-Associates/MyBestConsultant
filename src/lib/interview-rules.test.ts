@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  INTERVIEW_AI_REFUSAL, INTERVIEW_INPUT_LIMITS, SCREENING_BATCH_MAX, analysisInputSchema, followUpInputSchema, questionsInputSchema, screeningBatch,
+  INTERVIEW_AI_REFUSAL, INTERVIEW_INPUT_LIMITS, SCREENING_BATCH_MAX, aiQuestionPlan, analysisInputSchema, followUpInputSchema, questionsInputSchema, screeningBatch,
 } from './interview-rules'
 
 const turn = (content: string) => ({ role: 'candidate' as const, content, timestamp: '2026-11-13T10:00:00.000Z' })
@@ -48,5 +48,33 @@ describe('demande de screening', () => {
 
   it('donne la limite de l\'organisation dans le refus', () => {
     assert.match(INTERVIEW_AI_REFUSAL.organisation(7), /Limite de 7 analyses/)
+  })
+})
+
+describe('nombre de questions d\'un entretien (demande du 2026-11-21)', () => {
+  const defaults = ['intro', 'motivation', 'behavioral', 'closing', 'closing'] as const
+
+  it('compte les questions par défaut dans le nombre choisi : l\'IA n\'écrit que les manquantes', () => {
+    const plan = aiQuestionPlan(8, defaults)
+    assert.equal(plan.count, 3)
+    assert.equal(Object.values(plan.mix).reduce((a, b) => a + b, 0), 3)
+    // Introduction et clôture déjà posées par les questions par défaut : l'IA n'en refait pas.
+    assert.equal(plan.mix.intro, undefined)
+    assert.equal(plan.mix.closing, undefined)
+    assert.ok((plan.mix.technical ?? 0) >= 2)
+  })
+
+  it('n\'appelle pas l\'IA quand les questions par défaut suffisent', () => {
+    assert.deepEqual(aiQuestionPlan(4, defaults), { count: 0, mix: {} })
+    assert.deepEqual(aiQuestionPlan(5, defaults), { count: 0, mix: {} })
+  })
+
+  it('répartit toutes les questions sans questions par défaut', () => {
+    const plan = aiQuestionPlan(10, [])
+    assert.equal(plan.count, 10)
+    assert.equal(Object.values(plan.mix).reduce((a, b) => a + b, 0), 10)
+    assert.equal(plan.mix.intro, 1)
+    assert.equal(plan.mix.closing, 1)
+    for (const n of [3, 4, 7, 15]) assert.equal(Object.values(aiQuestionPlan(n, []).mix).reduce((a, b) => a + b, 0), n, `${n} questions`)
   })
 })

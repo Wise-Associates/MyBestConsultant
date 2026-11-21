@@ -12,7 +12,7 @@ import { revalidatePath } from 'next/cache'
 import { getEnabledGenericQuestions } from './generic-questions-actions'
 import { updateApplicationStatus } from '@/lib/appwrite/jobs'
 import { aiInterviewRecruiter, takeInterviewAiSlot } from '@/lib/interview-access'
-import { analysisInputSchema, followUpInputSchema, questionsInputSchema, sessionInputSchema } from '@/lib/interview-rules'
+import { aiQuestionPlan, analysisInputSchema, followUpInputSchema, questionsInputSchema, sessionInputSchema } from '@/lib/interview-rules'
 import { applicationOfOrganisation } from '@/lib/screening-core'
 import { loadOfferViewer } from '@/lib/offer-viewer'
 import { funnelMoveRefusal } from '@/lib/appwrite/funnel'
@@ -123,10 +123,20 @@ export async function generateInterviewQuestions(
     // Textes bornés (une description importée peut faire 60 000 caractères), 3 à 15 questions, puis quota du jour.
     const input = questionsInputSchema.safeParse({ jobTitle, jobDescription, jobSkills, cvSummary, questionCount })
     if (!input.success) return { error: 'Demande invalide : vérifiez le poste et le nombre de questions (3 à 15).' }
-    const refused = await takeInterviewAiSlot(me)
-    if (refused) return { error: refused }
     const ask = input.data
 
+    // Le nombre choisi est celui de tout l'entretien, questions par défaut de l'organisation comprises (aiQuestionPlan) :
+    // l'IA n'écrit que les questions manquantes, et pas d'appel (ni de quota) quand les questions par défaut suffisent.
+    const genericQuestions: InterviewQuestion[] = (await getEnabledGenericQuestions()).map(q => ({
+      id: q.id, text: q.text, category: q.category, aiGenerated: false,
+    }))
+    const plan = aiQuestionPlan(ask.questionCount, genericQuestions.map(q => q.category))
+    if (plan.count === 0) return genericQuestions.slice(0, ask.questionCount)
+
+    const refused = await takeInterviewAiSlot(me)
+    if (refused) return { error: refused }
+
+    const mix = Object.entries(plan.mix).map(([category, n]) => `- ${n} ${category}`).join('\n')
     const SYSTEM = `Tu es un expert RH spécialisé dans les entretiens IT et conseil.
 Génère des questions d'entretien pertinentes et retourne un JSON valide.
 
@@ -139,32 +149,28 @@ Réponds UNIQUEMENT avec un tableau JSON :
   }
 ]
 
-Distribution recommandée pour ${ask.questionCount} questions :
-- 1 intro (présentation)
-- ${Math.round(ask.questionCount * 0.35)} technical (compétences techniques du poste)
-- ${Math.round(ask.questionCount * 0.30)} behavioral (situations passées, STAR method)
-- ${Math.round(ask.questionCount * 0.20)} motivation (pourquoi ce poste/entreprise)
-- 1 closing (questions du candidat, suite)
+Répartition des ${plan.count} questions :
+${mix}
 
 Adapte les questions techniques aux compétences requises.
 Utilise la méthode STAR pour les questions comportementales.`
 
+    const already = genericQuestions.length > 0
+      ? `\n\nQUESTIONS DÉJÀ POSÉES (ne les répète pas) :\n${genericQuestions.map(q => `- ${q.text}`).join('\n')}`
+      : ''
     const { content } = await callLLM([{
       role: 'user',
-      content: `POSTE : ${ask.jobTitle}\nCompétences : ${ask.jobSkills.join(', ')}\nDescription : ${ask.jobDescription}\n\nRÉSUMÉ CV : ${ask.cvSummary}\n\nGénère exactement ${ask.questionCount} questions.`,
+      content: `POSTE : ${ask.jobTitle}\nCompétences : ${ask.jobSkills.join(', ')}\nDescription : ${ask.jobDescription}\n\nRÉSUMÉ CV : ${ask.cvSummary}${already}\n\nGénère exactement ${plan.count} questions.`,
     }], SYSTEM)
 
     const jsonMatch = content.match(/\[[\s\S]*\]/)
     if (!jsonMatch) return { error: 'Génération échouée' }
 
-    const aiQuestions: InterviewQuestion[] = JSON.parse(jsonMatch[0]).map((q: InterviewQuestion, i: number) => ({
+    // L'IA peut en rendre plus que demandé : l'entretien garde exactement le nombre choisi.
+    const aiQuestions: InterviewQuestion[] = JSON.parse(jsonMatch[0]).slice(0, plan.count).map((q: InterviewQuestion, i: number) => ({
       ...q,
       id: q.id ?? `q${i + 1}`,
       aiGenerated: true,
-    }))
-
-    const genericQuestions: InterviewQuestion[] = (await getEnabledGenericQuestions()).map(q => ({
-      id: q.id, text: q.text, category: q.category, aiGenerated: false,
     }))
 
     return [...genericQuestions, ...aiQuestions]
