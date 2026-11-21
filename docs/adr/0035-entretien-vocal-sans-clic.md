@@ -1,6 +1,6 @@
 # 0035 — Entretien vocal sans clic (/interview/<session>/v2)
 
-- Statut : accepté (page livrée le 2026-11-14, non reliée aux invitations)
+- Statut : accepté (page livrée le 2026-11-14, non reliée aux invitations) ; voix d'Alex revue par l'[ADR 0052](0052-voix-de-l-entretien-vocal-google-et-preparee.md) ; relance et réponse de l'IA retirées, transcription en arrière-plan : [ADR 0053](0053-entretien-vocal-sans-attente.md) ; toutes les invitations y mènent : [ADR 0055](0055-invitations-vers-l-entretien-vocal-et-nombre-de-questions.md)
 - Date : 2026-11-14
 
 ## Contexte

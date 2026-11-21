@@ -8,7 +8,7 @@ import type { ProviderConfig } from './types'
 import { DEFAULT_CONFIG } from './types'
 import { BUILTIN_MODEL_IDS, sanitizeOpenSourceModels, sanitizeRouting } from '@/lib/ai/models'
 import { invalidateLLMConfigCache } from '@/lib/ai/llm-router'
-import { getLLMConfig as readLLMConfig } from '@/lib/ai/llm-config-store'
+import { forgetRecentLLMConfig, getLLMConfig as readLLMConfig } from '@/lib/ai/llm-config-store'
 import { requireAdmin } from '@/lib/appwrite/auth'
 
 // LLM config is stored inside TEMPLATES_CONFIG's customColors JSON under __llm key
@@ -72,8 +72,9 @@ export async function saveLLMConfig(input: ProviderConfig): Promise<{ error?: st
       })
     } catch { /* AI_CONFIG update is best-effort */ }
 
-    // Bascule immédiate : le routeur relit la config au prochain appel IA, sans redéploiement.
+    // Bascule immédiate : le routeur relit la config au prochain appel IA, sans redéploiement (entretien vocal compris).
     invalidateLLMConfigCache()
+    forgetRecentLLMConfig()
     revalidatePath('/admin/llm-config')
     return {}
   } catch (e) {

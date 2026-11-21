@@ -10,7 +10,7 @@ import { ID, Query } from 'node-appwrite'
 import { InputFile } from 'node-appwrite/file'
 import type { InterviewQuestion, TranscriptEntry } from '@/app/recruiter/interviews/actions'
 import { ROOM_LIMITS } from '@/lib/interview-room'
-import { roomSession, takeRoomSlot } from '@/lib/interview-room-access'
+import { forgetRoomSession, roomSession, takeRoomSlot } from '@/lib/interview-room-access'
 import { transcriptTurnsSchema } from '@/lib/interview-rules'
 import { EdgeTTS } from 'node-edge-tts'
 import { mkdtemp, readFile, rm } from 'fs/promises'
@@ -259,6 +259,9 @@ export async function saveInterviewProgress(
       return
     }
   }
+
+  // Fin enregistrée : la session gardée en mémoire pour les appels de l'entretien ne doit plus le dire en cours.
+  if (status === 'completed') forgetRoomSession(sessionId)
 
   // Analyse automatiquement dès la fin de l'entretien, plutôt que d'attendre qu'un admin
   // clique sur "Analyser" — le recruteur n'a de toute façon aucun moyen de le déclencher

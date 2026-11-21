@@ -5,39 +5,49 @@ import Image from 'next/image'
 import { ID } from 'appwrite'
 import { CheckCircle2, Loader2, Mic, Video, AlertTriangle } from 'lucide-react'
 import {
-  answerClosingQuestion, attachRecordingToInterview, generateInterviewSpeech, getCandidateAIFollowUp,
-  reportRecordingFailure, saveInterviewProgress,
+  attachRecordingToInterview, reportRecordingFailure, saveInterviewProgress,
 } from '../actions'
 import { interviewCompleted, transcribeInterviewAnswer } from './actions'
 import { getBrowserStorage } from '@/lib/appwrite/browser-client'
-import { TURN_RULES, feedLevel, startTurn, transitionPhrase } from '@/lib/voice-turn'
+import { TURN_RULES, fallbackVoiceIndex, feedLevel, lineText, startTurn, type SpeechLine } from '@/lib/voice-turn'
 import type { InterviewQuestion, TranscriptEntry } from '@/app/recruiter/interviews/actions'
 
 // Entretien vocal sans clic (ADR 0035). Le candidat autorise caméra et micro, clique sur « Commencer », puis n'a plus
-// rien à faire : Alex pose chaque question à voix haute (voix de generateInterviewSpeech), le navigateur écoute la
-// réponse et détecte sa fin par le silence (src/lib/voice-turn.ts), le serveur la transcrit (transcribeInterviewAnswer),
-// l'IA décide d'une relance au plus (getCandidateAIFollowUp) ou répond à la question de clôture, et l'entretien
-// enchaîne jusqu'au mot de la fin. Un enregistrement continu (micro + voix d'Alex + caméra) est envoyé à la fin, comme
-// dans la salle actuelle. Seule exception au « sans clic » : si la transcription échoue, la réponse s'écrit.
+// rien à faire : Alex pose chaque question à voix haute (route /api/interview/<id>/speech, ADR 0052 : la voix d'une
+// question est préparée pendant la précédente, et son texte s'affiche quand elle commence), le navigateur écoute la
+// réponse et détecte sa fin par le silence (src/lib/voice-turn.ts), puis passe aussitôt à la question suivante : la
+// réponse, gardée dans le navigateur, est transcrite en arrière-plan (transcribeInterviewAnswer) et la retranscription
+// n'est enregistrée qu'à la fin (ADR 0053 : sans relance ni réponse de l'IA pendant l'entretien, plus aucune attente
+// entre deux questions). Un enregistrement continu (micro + voix d'Alex + caméra) est envoyé à la fin, comme dans la
+// salle actuelle. Seule exception au « sans clic » : si le micro n'enregistre pas, la réponse s'écrit.
 
 const CAT_LABELS: Record<InterviewQuestion['category'], string> = {
   intro: 'Introduction', technical: 'Technique', behavioral: 'Comportemental', motivation: 'Motivation', closing: 'Clôture',
 }
 const NO_ANSWER = '(Pas de réponse)'
-const REPROMPT = 'Je ne vous ai pas entendu. Prenez votre temps, et répondez à voix haute quand vous êtes prêt.'
+// Réponse dont la transcription a échoué deux fois : le recruteur l'écoute dans l'enregistrement de l'entretien.
+const UNTRANSCRIBED = '(Réponse orale non transcrite : voir l’enregistrement de l’entretien)'
 // Débits de l'enregistrement continu : le bucket des enregistrements refuse les fichiers trop lourds (voir la salle actuelle).
 const RECORDING_AUDIO_BPS = 32_000
 const RECORDING_VIDEO_BPS = 80_000
 // Délais au-delà desquels l'entretien continue sans attendre (une action bloquée ne doit jamais le figer) : voix d'Alex
-// (sinon voix du navigateur), relance et réponse de clôture de l'IA (sinon question suivante), relance du contexte audio.
+// (sinon voix du navigateur), transcriptions encore en cours à la fin, relance du contexte audio.
 const SPEECH_TIMEOUT_MS = 20_000
-const AI_TIMEOUT_MS = 25_000
+// Nouvel essai d'une voix en échec ou trop lente, avant la voix du navigateur (dont le timbre diffère de celle d'Alex).
+const SPEECH_RETRY_TIMEOUT_MS = 12_000
+const TRANSCRIPTION_WAIT_MS = 90_000
 const RESUME_TIMEOUT_MS = 1_500
 
 /** `saving` : entretien fini, enregistrement en cours d'envoi puis écran de fin (selon `upload`). */
 type Stage = 'setup' | 'ready' | 'running' | 'saving'
-type Activity = 'speaking' | 'listening' | 'transcribing' | 'thinking' | 'typing'
+type Activity = 'speaking' | 'listening' | 'thinking' | 'typing'
+/** Réponse du candidat : texte (écrite, ou absence de réponse), ou transcription encore en cours en arrière-plan. */
+type Answer = { text: string } | { pending: Promise<string> }
+/** Tour de la retranscription, gardé dans le navigateur jusqu'à la fin de l'entretien. */
+type Turn = { role: TranscriptEntry['role']; timestamp: string; content: string | Promise<string> }
 type Captured = { kind: 'audio'; blob: Blob } | { kind: 'silence' } | { kind: 'unavailable'; reason: string }
+/** Voix d'une phrase : MP3 reçu, ou la cause de l'échec (le navigateur lit alors avec sa propre voix). */
+type PreparedSpeech = { bytes: ArrayBuffer } | { error: string }
 
 interface Props {
   sessionId: string
@@ -52,6 +62,38 @@ function rms(samples: Float32Array<ArrayBuffer>): number {
   let sum = 0
   for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i]
   return Math.sqrt(sum / samples.length)
+}
+
+/**
+ * Onde du micro (entretien audio, demande du 2026-11-21) : le signal tel qu'il arrive, en vert quand il y a de la voix.
+ * Dessinée dans un canvas à chaque image, par la même boucle que la jauge (pas de setState).
+ */
+function drawWave(canvas: HTMLCanvasElement, samples: Float32Array<ArrayBuffer>, level: number) {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  const ratio = window.devicePixelRatio || 1
+  const width = canvas.clientWidth
+  const height = canvas.clientHeight
+  if (!width || !height) return
+  if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) {
+    canvas.width = Math.round(width * ratio)
+    canvas.height = Math.round(height * ratio)
+  }
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+  ctx.clearRect(0, 0, width, height)
+  ctx.lineWidth = 2
+  ctx.lineJoin = 'round'
+  ctx.strokeStyle = level > 0.02 ? '#10b981' : 'rgba(255,255,255,0.35)'
+  ctx.beginPath()
+  const step = samples.length / width
+  for (let x = 0; x < width; x++) {
+    // Voix courante entre 0,05 et 0,3 : amplifiée pour être visible, bornée au cadre.
+    const v = Math.max(-1, Math.min(1, samples[Math.floor(x * step)] * 3))
+    const y = height / 2 + v * height * 0.45
+    if (x === 0) ctx.moveTo(x, y)
+    else ctx.lineTo(x, y)
+  }
+  ctx.stroke()
 }
 
 function isRunning(ctx: AudioContext): boolean {
@@ -87,10 +129,8 @@ export function VoiceInterviewRoom({ sessionId, candidateName, jobTitle, questio
   const [hasVideo, setHasVideo] = useState(false)
   const [qIndex, setQIndex] = useState(0)
   const [prompt, setPrompt] = useState('')
-  const [isFollowUp, setIsFollowUp] = useState(false)
   const [spokenLine, setSpokenLine] = useState('')
   const [candidateSpeaking, setCandidateSpeaking] = useState(false)
-  const [lastAnswer, setLastAnswer] = useState('')
   const [typedReason, setTypedReason] = useState<string | null>(null)
   const [typedText, setTypedText] = useState('')
   const [upload, setUpload] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle')
@@ -103,12 +143,15 @@ export function VoiceInterviewRoom({ sessionId, candidateName, jobTitle, questio
   const destRef = useRef<MediaStreamAudioDestinationNode | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const recorderChunksRef = useRef<Blob[]>([])
-  const transcriptRef = useRef<TranscriptEntry[]>([])
+  const turnsRef = useRef<Turn[]>([])
   const stoppedRef = useRef(false)
   const finishAnswerRef = useRef<(() => void) | null>(null)
   const typedResolveRef = useRef<((text: string) => void) | null>(null)
   const meterRef = useRef<HTMLDivElement | null>(null)
+  const waveRef = useRef<HTMLCanvasElement | null>(null)
   const speakingRef = useRef(false)
+  // Voix préparées à l'avance (ADR 0052), par phrase : MP3 reçu, ou la cause de l'échec.
+  const speechRef = useRef(new Map<string, Promise<PreparedSpeech>>())
   const reportedRef = useRef(new Set<string>())
   // Bruit de fond le plus bas mesuré depuis l'écran de test du micro : donné à chaque écoute, pour qu'un candidat qui
   // répond dès la fin de la question ne fasse pas prendre sa voix pour du bruit de fond (voice-turn.ts).
@@ -137,7 +180,7 @@ export function VoiceInterviewRoom({ sessionId, candidateName, jobTitle, questio
     return () => window.removeEventListener('beforeunload', warn)
   }, [busy])
 
-  // Jauge du micro : mise à jour directe du DOM (60 fois par seconde, un setState serait trop coûteux).
+  // Jauge du micro (vidéo) ou onde (audio) : mise à jour directe du DOM (60 fois par seconde, un setState serait trop coûteux).
   useEffect(() => {
     if (stage !== 'ready' && stage !== 'running') return
     const analyser = levelAnalyserRef.current
@@ -150,6 +193,7 @@ export function VoiceInterviewRoom({ sessionId, candidateName, jobTitle, questio
       // Un zéro exact est un micro pas encore prêt (premières images), pas un bruit de fond.
       if (level > 0) noiseFloorRef.current = noiseFloorRef.current === null ? level : Math.min(noiseFloorRef.current, level)
       if (meterRef.current) meterRef.current.style.width = `${Math.min(100, Math.round(level * 900))}%`
+      if (waveRef.current) drawWave(waveRef.current, buf, level)
       raf = requestAnimationFrame(tick)
     }
     tick()
@@ -208,6 +252,10 @@ export function VoiceInterviewRoom({ sessionId, candidateName, jobTitle, questio
     setHasVideo(stream.getVideoTracks().length > 0)
     setEnabling(false)
     setStage('ready')
+    // Voix de la première question préparée pendant que le candidat vérifie son micro, avant « Commencer ».
+    if (questions.length > 0) void prepareSpeech({ kind: 'question', index: 0 })
+    // Chrome charge la liste de ses voix après la première demande : prête si la voix du navigateur doit servir.
+    window.speechSynthesis?.getVoices()
   }
 
   function attachPreview(el: HTMLVideoElement | null) {
@@ -250,6 +298,10 @@ export function VoiceInterviewRoom({ sessionId, candidateName, jobTitle, questio
       const safety = setTimeout(() => { synth.cancel(); resolve() }, readingMs + 4000)
       const utt = new SpeechSynthesisUtterance(text)
       utt.lang = 'fr-FR'
+      // Voix française masculine si le navigateur en a une, comme celle d'Alex ; sinon sa voix française par défaut.
+      const voices = synth.getVoices()
+      const male = fallbackVoiceIndex(voices)
+      if (male >= 0) utt.voice = voices[male]
       const done = () => { clearTimeout(safety); resolve() }
       utt.onend = done
       utt.onerror = done
@@ -258,25 +310,65 @@ export function VoiceInterviewRoom({ sessionId, candidateName, jobTitle, questio
     })
   }
 
-  /** Alex dit `text`. La demande de voix part avant toute attente : une action appelée juste après passe derrière elle. */
-  async function say(text: string): Promise<void> {
-    const pending = generateInterviewSpeech(sessionId, text)
-    setSpokenLine(text)
-    setActivity('speaking')
-    let res: { audioBase64?: string; error?: string }
-    try {
-      res = await withTimeout(pending, SPEECH_TIMEOUT_MS, () => ({ error: 'voix trop lente à générer' }))
-    } catch (err) {
-      res = { error: err instanceof Error ? err.message : String(err) }
+  /**
+   * Demande la voix de `line` sans l’attendre (une seule fois par phrase) : appelée pour la question suivante pendant
+   * que le candidat répond, la voix est prête quand vient son tour. Par fetch et non par une Server Action, que le
+   * navigateur exécuterait une par une (la transcription de la réponse attendrait derrière).
+   */
+  function prepareSpeech(line: SpeechLine): Promise<PreparedSpeech> {
+    const cache = speechRef.current
+    const key = JSON.stringify(line)
+    let pending = cache.get(key)
+    if (!pending) {
+      // La phrase est désignée (question n, fin, relance) et construite par le serveur : aucun texte n'est envoyé.
+      pending = fetch(`/api/interview/${encodeURIComponent(sessionId)}/speech`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: key,
+      }).then(
+        async (res): Promise<PreparedSpeech> => (res.ok ? { bytes: await res.arrayBuffer() } : { error: `voix refusée (${res.status})` }),
+        (err: unknown): PreparedSpeech => ({ error: `voix injoignable : ${err instanceof Error ? err.message : String(err)}` }),
+      ).then(result => {
+        // Échec non gardé : une voix préparée à l'avance qui a échoué est redemandée quand vient son tour.
+        if ('error' in result && cache.get(key) === pending) cache.delete(key)
+        return result
+      })
+      cache.set(key, pending)
     }
+    return pending
+  }
+
+  /**
+   * Alex dit `line`. Pendant l’attente de sa voix, « Alex réfléchit… » ; `onStart` (texte de la question, compteur)
+   * s'applique quand elle commence, pour que le texte n'apparaisse pas avant la voix.
+   */
+  async function say(line: SpeechLine, onStart?: () => void): Promise<void> {
+    setActivity('thinking')
+    const text = textOf(line)
+    const key = JSON.stringify(line)
+    let prepared = await withTimeout(prepareSpeech(line), SPEECH_TIMEOUT_MS, () => ({ error: 'voix trop lente à générer' }))
+    if ('error' in prepared && !stoppedRef.current) {
+      // Un nouvel essai plutôt que la voix du navigateur tout de suite : elle n'a pas le timbre d'Alex (souvent féminine).
+      console.warn('Voix d’Alex en échec, nouvel essai :', prepared.error)
+      speechRef.current.delete(key)
+      prepared = await withTimeout(prepareSpeech(line), SPEECH_RETRY_TIMEOUT_MS, () => ({ error: 'voix trop lente à générer (nouvel essai)' }))
+    }
+    // Phrase dite une fois : retirée pour libérer sa mémoire (une relance redemandée plus tard est générée de nouveau).
+    speechRef.current.delete(key)
     if (stoppedRef.current) return
+    const start = () => {
+      onStart?.()
+      setSpokenLine(text)
+      setActivity('speaking')
+    }
     const ctx = ctxRef.current
-    let failure = res.error ?? 'lecture impossible'
-    if (res.audioBase64 && ctx) {
+    let failure = 'error' in prepared ? prepared.error : 'lecture impossible'
+    if ('bytes' in prepared && ctx) {
       try {
-        const bytes = Uint8Array.from(atob(res.audioBase64), c => c.charCodeAt(0))
-        const buffer = await ctx.decodeAudioData(bytes.buffer)
+        // Copie : decodeAudioData vide le tampon qu'on lui donne.
+        const buffer = await ctx.decodeAudioData(prepared.bytes.slice(0))
         if (await audioRunning()) {
+          start()
           await playBuffer(ctx, buffer)
           return
         }
@@ -289,23 +381,24 @@ export function VoiceInterviewRoom({ sessionId, candidateName, jobTitle, questio
     }
     console.error('Voix d’Alex indisponible, voix du navigateur à la place :', failure)
     reportOnce(`voix d'Alex indisponible : ${failure}`)
+    start()
     await speakWithBrowser(text)
   }
 
+  /** Tours déjà connus (les réponses encore en transcription n'y sont pas) : l'entretien est noté « en cours ». */
   function saveProgress() {
-    saveInterviewProgress(sessionId, transcriptRef.current, 'in_progress')
+    const known = turnsRef.current.flatMap(t => (typeof t.content === 'string' ? [{ ...t, content: t.content }] : []))
+    saveInterviewProgress(sessionId, known, 'in_progress')
       .catch(err => console.error('Progression de l’entretien non enregistrée :', err))
   }
 
-  /** Alex parle, et la progression est enregistrée pendant ce temps (sans retarder la voix). */
-  async function sayAndSave(text: string) {
-    const speaking = say(text)
-    saveProgress()
-    await speaking
+  /** Texte de `line`, calculé comme par la route de la voix (lineText) : affiché, et lu par le navigateur en secours. */
+  function textOf(line: SpeechLine): string {
+    return lineText(line, { questions: questions.map(q => q.text), candidateName }) ?? ''
   }
 
-  function addTurn(role: TranscriptEntry['role'], content: string) {
-    transcriptRef.current = [...transcriptRef.current, { role, content, timestamp: new Date().toISOString() }]
+  function addTurn(role: TranscriptEntry['role'], content: string | Promise<string>) {
+    turnsRef.current = [...turnsRef.current, { role, content, timestamp: new Date().toISOString() }]
   }
 
   // ── Écoute d'une réponse ──
@@ -380,45 +473,49 @@ export function VoiceInterviewRoom({ sessionId, candidateName, jobTitle, questio
     })
   }
 
-  /** Réponse du candidat à la question `questionId` (ou à sa relance) : texte, ou '' s'il n'a rien dit après une relance. */
-  async function listenForAnswer(questionId: string): Promise<string> {
-    setLastAnswer('')
+  /**
+   * Transcription d'une réponse en arrière-plan, pendant que l'entretien continue (ADR 0053) ; un second essai en cas
+   * d'échec, puis UNTRANSCRIBED (la réponse reste dans l'enregistrement de l'entretien). Ne rejette jamais.
+   */
+  async function transcribeInBackground(blob: Blob, questionId: string): Promise<string> {
+    let failure = ''
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const form = new FormData()
+      form.append('audio', blob)
+      form.append('questionId', questionId)
+      try {
+        const res = await transcribeInterviewAnswer(sessionId, form)
+        // Transcription vide : un bruit a été pris pour de la parole, traité comme une absence de réponse.
+        if ('text' in res) return res.text || NO_ANSWER
+        failure = res.error
+      } catch (err) {
+        failure = err instanceof Error ? err.message : String(err)
+      }
+      console.error('Transcription de la réponse impossible :', failure)
+    }
+    reportOnce(`transcription impossible : ${failure}`)
+    return UNTRANSCRIBED
+  }
+
+  /**
+   * Réponse du candidat à la question `questionId`, sans attendre sa transcription (lancée en arrière-plan) ; absence de
+   * réponse après une relance orale : NO_ANSWER.
+   */
+  async function listenForAnswer(questionId: string): Promise<Answer> {
     for (let attempt = 0; attempt < 2; attempt++) {
       // Contexte audio suspendu : la mesure du micro ne lirait que du silence et la réponse serait perdue.
       const captured: Captured = (await audioRunning())
         ? await captureAnswer()
         : { kind: 'unavailable', reason: 'contexte audio suspendu pendant l’écoute' }
-      if (stoppedRef.current) return ''
+      if (stoppedRef.current) return { text: NO_ANSWER }
       if (captured.kind === 'unavailable') {
         reportOnce(captured.reason)
-        return askTypedAnswer('Votre réponse orale n’a pas pu être enregistrée. Écrivez-la ci-dessous pour continuer.')
+        return { text: await askTypedAnswer('Votre réponse orale n’a pas pu être enregistrée. Écrivez-la ci-dessous pour continuer.') }
       }
-      if (captured.kind === 'audio') {
-        setActivity('transcribing')
-        const form = new FormData()
-        form.append('audio', captured.blob)
-        form.append('questionId', questionId)
-        let res: { text: string } | { error: string }
-        try {
-          res = await transcribeInterviewAnswer(sessionId, form)
-        } catch (err) {
-          res = { error: err instanceof Error ? err.message : String(err) }
-        }
-        if (stoppedRef.current) return ''
-        if ('error' in res) {
-          console.error('Transcription de la réponse impossible :', res.error)
-          reportOnce(`transcription impossible : ${res.error}`)
-          return askTypedAnswer('Votre réponse n’a pas pu être transcrite. Écrivez-la ci-dessous pour continuer — l’entretien reprend ensuite à la voix.')
-        }
-        if (res.text) {
-          setLastAnswer(res.text)
-          return res.text
-        }
-        // Transcription vide : un bruit a été pris pour de la parole, traité comme une absence de réponse.
-      }
-      if (attempt === 0) await say(REPROMPT)
+      if (captured.kind === 'audio') return { pending: transcribeInBackground(captured.blob, questionId) }
+      if (attempt === 0) await say({ kind: 'reprompt' })
     }
-    return ''
+    return { text: NO_ANSWER }
   }
 
   // ── Déroulé de l'entretien ──
@@ -426,79 +523,58 @@ export function VoiceInterviewRoom({ sessionId, candidateName, jobTitle, questio
     for (let i = 0; i < questions.length; i++) {
       if (stoppedRef.current) return
       const q = questions[i]
-      setQIndex(i)
-      setPrompt(q.text)
-      setIsFollowUp(false)
       addTurn('interviewer', q.text)
-      const spoken = i === 0
-        ? `Bonjour ${candidateName}. Je suis Alex, votre recruteur pour ce poste. Je vais vous poser ${questions.length} questions. Répondez simplement à voix haute : je passerai à la suite dès que vous aurez terminé. ${q.text}`
-        : `${transitionPhrase(i)} ${q.text}`
-      await sayAndSave(spoken)
+      // Voix de la question suivante (ou du mot de la fin) préparée pendant celle-ci et la réponse du candidat.
+      void prepareSpeech(i + 1 < questions.length ? { kind: 'question', index: i + 1 } : { kind: 'closing' })
+      // Entretien noté « en cours » une seule fois, pendant la première question (le recruteur voit qu'il a commencé) ;
+      // la retranscription n'est enregistrée qu'à la fin (completeInterview) : un enregistrement par question ralentissait
+      // l'entretien (les actions passent une par une, essai du 2026-11-20).
+      if (i === 0) saveProgress()
+      await say({ kind: 'question', index: i }, () => {
+        setQIndex(i)
+        setPrompt(q.text)
+      })
       if (stoppedRef.current) return
 
+      // Question suivante tout de suite : la transcription de cette réponse continue en arrière-plan (ADR 0053).
       const answer = await listenForAnswer(q.id)
-      addTurn('candidate', answer || NO_ANSWER)
-      if (!answer || stoppedRef.current) continue
-
-      setActivity('thinking')
-      if (q.category === 'closing') {
-        // Une vraie question du candidat reçoit une réponse qui clôt l'échange, sans nouvelle question (comme la salle actuelle).
-        let reply: string | null = null
-        try {
-          reply = (await withTimeout(answerClosingQuestion(sessionId, answer), AI_TIMEOUT_MS, () => {
-            console.error('Réponse à la question du candidat trop lente, suite de l’entretien')
-            return { answer: null }
-          })).answer
-        } catch (err) {
-          console.error('Réponse à la question du candidat impossible :', err)
-        }
-        if (reply && !stoppedRef.current) {
-          addTurn('interviewer', reply)
-          setPrompt(reply)
-          await say(reply)
-        }
-        continue
-      }
-
-      let followUp: string | null = null
-      try {
-        followUp = (await withTimeout(getCandidateAIFollowUp(sessionId, q, answer), AI_TIMEOUT_MS, () => {
-          console.error('Relance de l’IA trop lente, question suivante')
-          return { followUp: null }
-        })).followUp
-      } catch (err) {
-        console.error('Relance de l’IA impossible, question suivante :', err)
-      }
-      if (!followUp || stoppedRef.current) continue
-      addTurn('interviewer', followUp)
-      setPrompt(followUp)
-      setIsFollowUp(true)
-      // Progression enregistrée une fois par question (avec la question suivante, voir sayAndSave) : chaque appel prend
-      // une place sur le plafond de la session, qu'un rechargement en cours d'entretien entame déjà.
-      await say(followUp)
-      const followUpAnswer = await listenForAnswer(q.id)
-      addTurn('candidate', followUpAnswer || NO_ANSWER)
+      addTurn('candidate', 'text' in answer ? answer.text : answer.pending)
     }
     if (stoppedRef.current) return
     await finishInterview()
   }
 
   async function finishInterview() {
-    setPrompt('')
-    await say(`Merci ${candidateName}, l'entretien est terminé. Vos réponses ont été enregistrées et le recruteur vous contactera prochainement. Bonne chance !`)
+    await say({ kind: 'closing' }, () => setPrompt(''))
     setStage('saving')
     stopAndUploadRecording()
+    // Retranscription complète : les transcriptions encore en cours sont attendues (bornées), puis enregistrées une fois.
+    const transcript = await settledTranscript()
     // Après la voix : l'analyse lancée par la fin de l'entretien est longue, et les actions passent une par une. La fin
     // passe avant le rattachement de l'enregistrement (comme la salle actuelle) : c'est elle qui déclenche l'analyse et
     // prévient le recruteur ; un enregistrement non rattaché se retrouve par son nom de fichier.
-    setFinalized((await completeInterview()) ? 'ok' : 'failed')
+    setFinalized((await completeInterview(transcript)) ? 'ok' : 'failed')
+  }
+
+  /** Retranscription de l'entretien, une fois les transcriptions d'arrière-plan finies (ou abandonnées après 90 s). */
+  async function settledTranscript(): Promise<TranscriptEntry[]> {
+    return Promise.all(turnsRef.current.map(async turn => ({
+      role: turn.role,
+      timestamp: turn.timestamp,
+      content: typeof turn.content === 'string'
+        ? turn.content
+        : await withTimeout(turn.content, TRANSCRIPTION_WAIT_MS, () => {
+          reportOnce('transcription trop lente à la fin de l’entretien')
+          return UNTRANSCRIBED
+        }),
+    })))
   }
 
   /** Enregistre la fin de l'entretien et vérifie qu'elle a été prise en compte ; un second essai si besoin. */
-  async function completeInterview(): Promise<boolean> {
+  async function completeInterview(transcript: TranscriptEntry[]): Promise<boolean> {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        await saveInterviewProgress(sessionId, transcriptRef.current, 'completed')
+        await saveInterviewProgress(sessionId, transcript, 'completed')
       } catch (err) {
         console.error('Fin de l’entretien non enregistrée :', err)
       }
@@ -620,7 +696,7 @@ export function VoiceInterviewRoom({ sessionId, candidateName, jobTitle, questio
             'Installez-vous dans un endroit calme ; un casque ou des écouteurs évitent l’écho.',
             `Après ${TURN_RULES.endSilenceMs / 1000} secondes de silence, votre réponse est considérée comme terminée.`,
             'Comptez 15 à 20 minutes. Gardez cette page ouverte jusqu’à la fin.',
-            'Vos réponses orales sont envoyées à notre sous-traitant OpenAI pour être transcrites ; le texte et l’enregistrement de l’entretien sont transmis au recruteur.',
+            'Vos réponses orales sont envoyées à notre sous-traitant OpenAI pour être transcrites, et la voix d’Alex est produite par un service de synthèse vocale (Google ou OpenAI) ; le texte et l’enregistrement de l’entretien sont transmis au recruteur.',
           ].map(tip => (
             <li key={tip} style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.6)', padding: '0.65rem 0.9rem', borderRadius: 12, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
               {tip}
@@ -635,11 +711,15 @@ export function VoiceInterviewRoom({ sessionId, candidateName, jobTitle, questio
                 style={{ display: 'block', width: '100%', maxWidth: 320, aspectRatio: '4 / 3', objectFit: 'cover', borderRadius: 12, transform: 'scaleX(-1)', background: '#111', margin: '0 auto 0.9rem' }} />
             )}
             <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)', marginBottom: '0.5rem' }}>
-              Dites quelques mots : la jauge doit bouger.
+              {hasVideo ? 'Dites quelques mots : la jauge doit bouger.' : 'Dites quelques mots : l’onde doit bouger.'}
             </p>
-            <div style={{ height: 6, borderRadius: 6, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-              <div ref={meterRef} style={{ width: '0%', height: '100%', background: '#10b981', transition: 'width 80ms linear' }} />
-            </div>
+            {hasVideo ? (
+              <div style={{ height: 6, borderRadius: 6, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <div ref={meterRef} style={{ width: '0%', height: '100%', background: '#10b981', transition: 'width 80ms linear' }} />
+              </div>
+            ) : (
+              <canvas ref={waveRef} aria-hidden="true" style={{ display: 'block', width: '100%', height: 72, borderRadius: 12, background: 'rgba(255,255,255,0.04)' }} />
+            )}
             {mediaMode === 'video' && !hasVideo && (
               <p style={{ fontSize: '0.75rem', color: '#fbbf24', marginTop: '0.75rem' }}>
                 Caméra indisponible : l’entretien se déroulera en audio seulement.
@@ -729,7 +809,6 @@ export function VoiceInterviewRoom({ sessionId, candidateName, jobTitle, questio
   // ── Entretien en cours ──
   const status = activity === 'speaking' ? 'Alex parle…'
     : activity === 'listening' ? (candidateSpeaking ? 'Je vous écoute…' : 'À vous — répondez à voix haute')
-    : activity === 'transcribing' ? 'Je note votre réponse…'
     : activity === 'thinking' ? 'Alex réfléchit…'
     : 'Écrivez votre réponse'
   const statusColor = activity === 'listening' ? '#10b981' : activity === 'speaking' ? '#a78bfa' : '#f59e0b'
@@ -758,31 +837,32 @@ export function VoiceInterviewRoom({ sessionId, candidateName, jobTitle, questio
             <span style={TILE_LABEL}>Alex · Recruteur IA</span>
           </div>
           <div style={{ position: 'relative', aspectRatio: '4 / 3', borderRadius: 20, overflow: 'hidden', background: '#0d0f14', border: `2px solid ${candidateSpeaking ? 'rgba(16,185,129,0.7)' : 'rgba(255,255,255,0.06)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'border-color 0.2s' }}>
-            {hasVideo ? (
+            {hasVideo ? (<>
               <video ref={attachPreview} autoPlay muted playsInline aria-label="Votre caméra"
                 style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
-            ) : (
-              <Mic style={{ width: 48, height: 48, color: 'rgba(255,255,255,0.25)' }} aria-hidden="true" />
+              <div style={{ position: 'absolute', left: 12, right: 12, bottom: 10, height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.12)', overflow: 'hidden' }} aria-hidden="true">
+                <div ref={meterRef} style={{ width: '0%', height: '100%', background: '#10b981', transition: 'width 80ms linear' }} />
+              </div>
+            </>) : (
+              // Entretien audio : l'onde de la voix, sans caméra.
+              <canvas ref={waveRef} aria-hidden="true" style={{ display: 'block', width: '86%', height: '40%' }} />
             )}
             <span style={TILE_LABEL}>Vous</span>
-            <div style={{ position: 'absolute', left: 12, right: 12, bottom: 10, height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.12)', overflow: 'hidden' }} aria-hidden="true">
-              <div ref={meterRef} style={{ width: '0%', height: '100%', background: '#10b981', transition: 'width 80ms linear' }} />
-            </div>
           </div>
         </div>
 
         <div aria-live="polite" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
           <span data-vr-motion style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor, animation: 'vr-pulse 1.2s infinite' }} aria-hidden="true" />
           <p style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.75)' }}>{status}</p>
-          {(activity === 'transcribing' || activity === 'thinking') && (
+          {activity === 'thinking' && (
             <Loader2 style={{ width: 14, height: 14, color: '#f59e0b', animation: 'vr-spin 1s linear infinite' }} aria-hidden="true" />
           )}
         </div>
 
         {prompt && current && (
           <section aria-label="Question en cours" style={{ borderRadius: 20, padding: '1.4rem 1.5rem', background: 'rgba(124,58,237,0.07)', border: '1px solid rgba(124,58,237,0.22)' }}>
-            <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: isFollowUp ? '#f59e0b' : '#a78bfa', marginBottom: '0.6rem' }}>
-              {isFollowUp ? 'Question de précision' : CAT_LABELS[current.category] ?? 'Question'}
+            <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#a78bfa', marginBottom: '0.6rem' }}>
+              {CAT_LABELS[current.category] ?? 'Question'}
             </p>
             <p style={{ fontSize: '1.05rem', color: 'rgba(255,255,255,0.92)', lineHeight: 1.7 }}>{prompt}</p>
           </section>
@@ -804,12 +884,6 @@ export function VoiceInterviewRoom({ sessionId, candidateName, jobTitle, questio
               </button>
             )}
           </div>
-        )}
-
-        {lastAnswer && activity !== 'listening' && activity !== 'typing' && (
-          <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', lineHeight: 1.6, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-            <span style={{ color: 'rgba(52,211,153,0.85)', fontWeight: 600 }}>Votre réponse : </span>{lastAnswer}
-          </p>
         )}
 
         {activity === 'typing' && typedReason && (

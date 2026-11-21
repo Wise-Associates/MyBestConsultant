@@ -62,6 +62,7 @@ describe('organisations', () => {
       `${counterIdFor('interviewAiOrg', long, day)}_9999`, `${counterIdFor('interviewAiAll', 'platform', day)}_4999`, `${counterIdFor('mbcPhoneOrg', long, day)}_19`, `${counterIdFor('mbcPhoneAll', 'platform', day)}_199`,
       `${counterIdFor('interviewInviteOrg', long, day)}_99`, `${counterIdFor('interviewRoom', long, day)}_199`, `${counterIdFor('interviewRoomStt', long, day)}_99`,
       `${counterIdFor('interviewSttOrg', long, day)}_299`, `${counterIdFor('interviewSttAll', 'platform', day)}_2999`,
+      `${counterIdFor('interviewRoomTts', long, day)}_159`, `${counterIdFor('interviewTtsOrg', long, day)}_599`, `${counterIdFor('interviewTtsAll', 'platform', day)}_5999`,
     ]) {
       assert.match(id, /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,35}$/, id)
     }
@@ -70,6 +71,7 @@ describe('organisations', () => {
       'cvTemplateOrg', 'cvTemplatePreview', 'aoSourcingOrg', 'aoSourcingAll', 'aoRetryOrg', 'aoRetryAll', 'aoRewriteOrg', 'aoRewriteAll',
       'vivierMatchOrg', 'vivierMatchAll', 'cvTemplateAll', 'socialScenes', 'socialScenesAll', 'mbcSearchOrg', 'mbcSearchAll', 'mbcRevealOrg', 'mbcRevealAll',
       'aoPageOrg', 'aoPageAll', 'interviewAiOrg', 'interviewAiAll', 'interviewInviteOrg', 'interviewRoom', 'interviewRoomStt', 'interviewSttOrg', 'interviewSttAll',
+      'interviewRoomTts', 'interviewTtsOrg', 'interviewTtsAll', 'interviewImportOrg', 'interviewImportAll',
     ] as const).map(c => counterIdFor(c, 't1', day).split('_')[0])
     assert.equal(new Set(prefixes).size, prefixes.length, 'un préfixe par compteur')
     assert.notEqual(lockIdFor('t1'), lockIdFor('t2'))

@@ -42,11 +42,51 @@ export function roomTranscriptionCap(questionsJson: unknown): number {
  */
 export const TRANSCRIPTION_DAILY_LIMITS = { organisation: 300, allOrganisations: 3000 } as const
 
+/**
+ * Phrases lues à voix haute par jour pour une session de l'entretien vocal (/v2, ADR 0052), comptées à part des appels
+ * ci-dessus : 5 par question (la question, sa relance, deux relances orales après un silence, une voix préparée à
+ * l'avance redemandée après un échec) et 10 de marge (mot de la fin, réponse à la question de clôture).
+ */
+export function roomSpeechCap(questionsJson: unknown): number {
+  return 5 * questionCount(questionsJson) + 10
+}
+
+/**
+ * Voix de l'entretien vocal par jour, par organisation et pour toutes (ADR 0052) : un service payant au caractère,
+ * appelé par une route publique ; 600 = environ 25 entretiens de 10 questions par jour.
+ */
+export const SPEECH_DAILY_LIMITS = { organisation: 600, allOrganisations: 6000 } as const
+
+const MAX_QUESTIONS = 30
+
+/** Texte de chaque question de la session ('' pour une question abîmée), 30 au plus ; [] si illisibles. */
+export function questionTexts(questionsJson: unknown): string[] {
+  const parsed = parseQuestions(questionsJson)
+  return parsed.slice(0, MAX_QUESTIONS).map(q => {
+    const text = (q as { text?: unknown } | null)?.text
+    return typeof text === 'string' ? text : ''
+  })
+}
+
 function questionCount(questionsJson: unknown): number {
+  // Questions illisibles : la marge seule.
+  return Math.min(parseQuestions(questionsJson).length, MAX_QUESTIONS)
+}
+
+function parseQuestions(questionsJson: unknown): unknown[] {
   try {
-    const parsed = JSON.parse(typeof questionsJson === 'string' ? questionsJson : '[]')
-    return Array.isArray(parsed) ? Math.min(parsed.length, 30) : 0
+    const parsed: unknown = JSON.parse(typeof questionsJson === 'string' ? questionsJson : '[]')
+    return Array.isArray(parsed) ? parsed : []
   } catch {
-    return 0 // questions illisibles : la marge seule
+    return []
   }
+}
+
+/**
+ * Lien de l'entretien envoyé au candidat : la salle vocale /v2 (demande du 2026-11-21 : toute nouvelle invitation y mène),
+ * au format choisi à la création ; sans format connu, vidéo, comme la salle /v2. Chemin seulement : l'origine du site est
+ * ajoutée par l'appelant (e-mail : NEXT_PUBLIC_APP_URL ; écran : window.location.origin).
+ */
+export function interviewPath(sessionId: string, mediaMode?: 'audio' | 'video'): string {
+  return `/interview/${encodeURIComponent(sessionId)}/v2?mode=${mediaMode === 'audio' ? 'audio' : 'video'}`
 }

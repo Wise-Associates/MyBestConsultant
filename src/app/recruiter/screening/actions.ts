@@ -18,6 +18,7 @@ import {
   applicationOfOrganisation, getCandidateAuthUserId, scoreApplication, sendAutoScreeningEmail, type ApplicationToScreen, type ScreeningScore,
 } from '@/lib/screening-core'
 import { finalOfferDetails } from '@/lib/sourcing-core'
+import { interviewPath } from '@/lib/interview-room'
 
 export type { ApplicationToScreen, ScreeningScore } from '@/lib/screening-core'
 
@@ -109,11 +110,12 @@ export async function sendInterviewInvitationEmail(params: {
     if (!candidateAuthId) return { error: 'Aucun compte candidat associé à cet email' }
 
     const origin = process.env.NEXT_PUBLIC_APP_URL ?? 'https://mybestconsultant.fr'
-    const interviewLink = params.mediaMode === 'video'
-      ? `${origin}/interview/${session.$id}?mode=video`
-      : `${origin}/interview/${session.$id}`
+    // Salle vocale /v2 pour toute invitation (demande du 2026-11-21) ; sans format choisi (renvoi d'une invitation),
+    // vidéo, comme la salle sans format — le texte de l'e-mail suit le format du lien.
+    const mediaMode = params.mediaMode === 'audio' ? 'audio' : 'video'
+    const interviewLink = `${origin}${interviewPath(session.$id, mediaMode)}`
 
-    const webcamNote = params.mediaMode === 'video'
+    const webcamNote = mediaMode === 'video'
       ? `<br><br>📹 Cet entretien se déroule en <strong>vidéo</strong> — votre caméra et votre micro vous seront demandés au démarrage, pensez à vous installer dans un endroit calme et bien éclairé.`
       : `<br><br>🎙️ Cet entretien s'enregistre en <strong>audio</strong> — votre micro vous sera demandé au démarrage.`
 
