@@ -11,7 +11,7 @@ import { AdminPageHeader } from '@/components/admin/admin-page-header'
 
 const NET_COLOR: Record<Network, string> = { linkedin: '#0a66c2', instagram: '#e1306c', facebook: '#1877f2', x: '#e5e7eb' }
 const STATUS: Record<SocialStatus, { label: string; color: string }> = {
-  queued: { label: 'Création du visuel', color: '#9ca3af' }, sent: { label: 'Envoyée à Make', color: '#60a5fa' }, images_ready: { label: 'Visuels prêts', color: '#a78bfa' },
+  queued: { label: 'Création du visuel', color: '#9ca3af' }, sent: { label: 'Envoyée', color: '#60a5fa' }, images_ready: { label: 'Visuels prêts', color: '#a78bfa' },
   published: { label: 'Publié', color: '#34d399' }, partial: { label: 'Partiel', color: '#fbbf24' }, failed: { label: 'Échec', color: '#f87171' },
 }
 const card = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }

@@ -2,7 +2,7 @@ import 'server-only'
 import { Query } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
-import { getSocialConfig, isMakeConfigured, latestSocialStateByJob } from '@/lib/social'
+import { getSocialConfig, isDiffusionConfigured, latestSocialStateByJob } from '@/lib/social'
 import { SOURCING_MIN_SCORE } from '@/lib/sourcing-rules'
 import { batchByLength } from './repo'
 import { trackingSteps, type AoTrackingFacts, type TrackingStep } from './tracking'
@@ -27,7 +27,7 @@ export async function loadAoTracking(
     labelled('diffusions (social_posts)', Promise.all(batches.map(latestSocialStateByJob)).then(maps => new Map(maps.flatMap(m => [...m])))),
     labelled('sourcing (job_matches)', readScores(batches)),
     // Réglage relu comme le fait la publication automatique (tryAutoPublishJob).
-    isMakeConfigured() ? getSocialConfig().then(cfg => cfg.autoPublish) : Promise.resolve(false),
+    isDiffusionConfigured() ? getSocialConfig().then(cfg => cfg.autoPublish) : Promise.resolve(false),
   ])
   return Object.fromEntries(published.map(r => {
     const score = scores.get(r.jobId)

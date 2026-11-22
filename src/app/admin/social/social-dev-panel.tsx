@@ -16,7 +16,7 @@ const BUFFER_IG = `"metadata":{"instagram":{"type":"post","shouldShareToFeed":tr
 const CALLBACK_NET = `{"publicationId":"{{1.publicationId}}","results":[{"network":"linkedin","status":"{{if(BUFFER.data.data.createPost.post.id; "published"; "failed")}}","error":"{{BUFFER.data.data.createPost.message}}"}]}`
 
 export function SocialDevPanel({ env, callbackUrl, posterEnv, zernioEnv }: {
-  env: { webhook: boolean; secret: boolean; configured: boolean }; callbackUrl: string
+  env: { buffer: boolean; webhook: boolean; secret: boolean; configured: boolean }; callbackUrl: string
   posterEnv: { openai: boolean; scenes: boolean }
   zernioEnv?: { key: boolean; account: boolean }
 }) {
@@ -43,9 +43,10 @@ export function SocialDevPanel({ env, callbackUrl, posterEnv, zernioEnv }: {
 
   return (
     <>
+      <BufferPanel configured={env.buffer} />
       <section className="rounded-2xl p-5 space-y-4" style={card}>
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h2 style={{ fontSize: "1rem" }} className="font-semibold text-white">Outils développeur — connexion à Make</h2>
+          <h2 style={{ fontSize: "1rem" }} className="font-semibold text-white">Outils développeur — connexion à Make{env.buffer ? ' (inutilisée : Buffer en direct)' : ''}</h2>
           <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: env.configured ? 'rgba(52,211,153,0.15)' : 'rgba(248,113,113,0.15)', color: env.configured ? '#34d399' : '#f87171' }}>{env.configured ? '● Configuré' : '● À configurer'}</span>
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
@@ -84,6 +85,21 @@ export function SocialDevPanel({ env, callbackUrl, posterEnv, zernioEnv }: {
       <PosterPanel env={posterEnv} />
       {zernioEnv && <ZernioPilot env={zernioEnv} />}
     </>
+  )
+}
+
+// Publication LinkedIn directe par l'API de Buffer (ADR 0056) : quand elle est configurée, Make n'est plus appelé.
+function BufferPanel({ configured }: { configured: boolean }) {
+  return (
+    <section className="rounded-2xl p-5 space-y-3" style={card}>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h2 style={{ fontSize: '1rem' }} className="font-semibold text-white">LinkedIn via Buffer (sans Make)</h2>
+        <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: configured ? 'rgba(52,211,153,0.15)' : 'rgba(248,113,113,0.15)', color: configured ? '#34d399' : '#f87171' }}>{configured ? '● Configuré' : '● À configurer'}</span>
+      </div>
+      <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
+        La plateforme publie elle-même sur LinkedIn par l’API de Buffer, puis enregistre le résultat : Make n’est plus appelé. Variables <code>BUFFER_API_KEY</code> (Buffer → Settings → API → « Create a new API key ») et <code>BUFFER_LINKEDIN_CHANNEL_ID</code> (identifiant dans l’adresse du canal : <code>publish.buffer.com/channels/&lt;identifiant&gt;/…</code>). « Envoyer un test » vérifie la clé et le canal sans rien publier. Instagram, Facebook et X ne sont pas publiés par cette voie.
+      </p>
+    </section>
   )
 }
 
