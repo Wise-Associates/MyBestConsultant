@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 import { getCurrentUser } from '@/lib/appwrite/auth'
-import { deliverSocialPost, deliveryDeadline, listRecentPosts, prepareSocialPost, retryPost, saveSocialConfig, sendTestToMake, testZernioInstagram, type SocialPost } from '@/lib/social'
+import { deliverSocialPost, deliveryDeadline, listRecentPosts, prepareSocialPost, retryPost, saveSocialConfig, testDiffusion, testZernioInstagram, type SocialPost } from '@/lib/social'
 import type { SocialConfig } from '@/lib/social-content'
 
 async function requireAdmin() {
@@ -26,8 +26,7 @@ export async function saveSocialConfigAction(cfg: SocialConfig): Promise<{ confi
 export async function sendTestAction(): Promise<{ ok: boolean; message: string }> {
   try {
     await requireAdmin()
-    const r = await sendTestToMake()
-    return { ok: r.ok, message: r.ok ? 'Le service de diffusion a bien reçu le test.' : r.error ?? 'Échec' }
+    return await testDiffusion()
   } catch (e) { return { ok: false, message: (fail(e).error) } }
 }
 
@@ -48,7 +47,7 @@ export async function publishJobAction(jobId: string, force = false): Promise<{ 
     revalidatePath('/admin/social')
     if (r.error) return { error: r.error, message: r.error }
     if (r.skipped || !r.id) return { id: r.id, message: 'Cette offre a déjà une publication en cours ou terminée (utilisez « Republier » pour la refaire).' }
-    // Photo de l'affiche (jusqu'à 2 min) puis envoi à Make, après la réponse.
+    // Photo de l'affiche (jusqu'à 2 min) puis envoi à Buffer (ou Make), après la réponse.
     const id = r.id
     after(() => deliverSocialPost(id, deliveryDeadline(requestStart)))
     return { id, message: 'Publication lancée : le visuel est en cours de création.' }
@@ -62,7 +61,7 @@ export async function retryPostAction(id: string): Promise<{ status?: string; er
     const r = await retryPost(id)
     revalidatePath('/admin/social')
     if (r.error || !r.id) return { error: r.error ?? 'Relance impossible.' }
-    // Photo (si elle manque) puis envoi à Make, après la réponse.
+    // Photo (si elle manque) puis envoi à Buffer (ou Make), après la réponse.
     const queuedId = r.id
     after(() => deliverSocialPost(queuedId, deliveryDeadline(requestStart)))
     return { status: r.status }

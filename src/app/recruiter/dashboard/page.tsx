@@ -72,7 +72,7 @@ export default async function RecruiterDashboard({ searchParams }: {
   const viewer = await loadOfferViewer(user)
   const memberOnly = viewer.seesAllOffers ? null : { ids: [user.$id, user.userId], unassigned: false }
 
-  const { latestPostsByJob, isMakeConfigured } = await import('@/lib/social')
+  const { latestPostsByJob, isDiffusionConfigured } = await import('@/lib/social')
   // Équipe, pour le recruteur affecté à chaque offre et le filtre : illisible, les offres s'affichent sans ce choix ni
   // ce filtre (la sélection ne peut pas être vérifiée : toutes les offres).
   const recruitersRead = listTenantRecruiters(tenantId).catch((e: unknown) => {
@@ -179,7 +179,7 @@ export default async function RecruiterDashboard({ searchParams }: {
         {/* Indicateurs puis « Mes offres » ; les tuiles « À traiter » sont dans le panneau « Filtres » et filtrent la liste.
             Les autres outils sont dans le menu latéral de l'espace (layout recruteur). */}
         <JobsListClient rows={rows} appsByJob={appsByJobRecord} funnelStages={funnelStages} header={header}
-          socialEnabled={isMakeConfigured()} socialUnavailable={socialPosts === null} recruiters={recruiters && recruiterOptions(recruiters)} jobsWithNew={summary.applications.jobsWithNew}
+          socialEnabled={isDiffusionConfigured()} socialUnavailable={socialPosts === null} recruiters={recruiters && recruiterOptions(recruiters)} jobsWithNew={summary.applications.jobsWithNew}
           focusJobId={typeof offre === 'string' ? offre : undefined}
           recruiterFiltered={selection !== null} recruiterChip={selectionNames.join(', ')}
           recruiterFilter={recruiters && !memberOnly && (

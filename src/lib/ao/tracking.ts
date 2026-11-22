@@ -33,7 +33,7 @@ export interface AoTrackingFacts {
 
 export interface TrackingContext {
   now: number
-  /** « Publication automatique » activée dans /admin/social et Make configuré : chaque publication est diffusée. */
+  /** « Publication automatique » activée dans /admin/social et Buffer ou Make configuré : chaque publication est diffusée. */
   socialAuto: boolean
 }
 

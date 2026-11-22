@@ -12,15 +12,19 @@ import {
 } from '@/lib/social-content'
 import { SAMPLE_POSTER_ID, SCENE_DAILY_LIMITS, isQueuedOverdue, parsePosterImage, posterUrl, sceneTimeoutMs } from '@/lib/social-poster/rules'
 import { isPublicationStopped } from '@/lib/ao/state'
+import type { BufferResult } from '@/lib/buffer'
 import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 import { STOPPED_DIFFUSION_ERROR, diffusionStopOutcome, isStoppedDiffusion, stopsDelivery } from '@/lib/publication-stop'
 import type { Job } from '@/types'
 
 // Publication multi-réseaux (Modules 9 et 15) — orchestration côté plateforme.
 // Flux (ADR 0015) : offre créée → contenu préparé (lib/social-content, textes par l'IA de Config IA) et publication
-// « queued » (prepareSocialPost) → en arrière-plan, photo de la scène par OpenAI puis envoi au webhook Make
-// (deliverSocialPost) → Make publie via Buffer l'affiche dessinée par la plateforme (/api/social/poster/<id>.png) sur
-// LinkedIn / Instagram / Facebook / X → Make rappelle /api/social/callback avec les liens.
+// « queued » (prepareSocialPost) → en arrière-plan, photo de la scène par OpenAI puis envoi (deliverSocialPost) de
+// l'affiche dessinée par la plateforme (/api/social/poster/<id>.png) :
+// - Buffer configuré (ADR 0056) : la plateforme publie elle-même sur LinkedIn par l'API de Buffer et enregistre le
+//   résultat (deliverViaBuffer), sans Make ;
+// - sinon, webhook Make → Make publie via Buffer sur LinkedIn / Instagram / Facebook / X → Make rappelle
+//   /api/social/callback avec les résultats.
 
 export type SocialStatus = 'queued' | 'sent' | 'images_ready' | 'published' | 'partial' | 'failed'
 
@@ -56,6 +60,12 @@ const webhookUrl = () => process.env.MAKE_SOCIAL_WEBHOOK_URL ?? ''
 // https obligatoire en production ; en développement, un Make local (http://localhost) est accepté pour les tests.
 export const isMakeConfigured = () =>
   (/^https:\/\//.test(webhookUrl()) || (process.env.NODE_ENV !== 'production' && /^http:\/\/localhost[:/]/.test(webhookUrl()))) && secret().length >= 16
+const bufferApiKey = () => process.env.BUFFER_API_KEY ?? ''
+const bufferLinkedInChannel = () => process.env.BUFFER_LINKEDIN_CHANNEL_ID ?? ''
+/** Publication LinkedIn directe par l'API de Buffer (ADR 0056) : prioritaire sur Make quand elle est configurée. */
+export const isBufferConfigured = () => bufferApiKey().length > 0 && bufferLinkedInChannel().length > 0
+/** Une voie de diffusion existe : Buffer en direct, sinon Make. */
+export const isDiffusionConfigured = () => isBufferConfigured() || isMakeConfigured()
 /** Outils de configuration visibles uniquement pour les développeurs (local, ou production avec SOCIAL_DEV_TOOLS=1). */
 export const isDevToolsEnabled = () => process.env.NODE_ENV !== 'production' || process.env.SOCIAL_DEV_TOOLS === '1'
 export const callbackUrl = () => `${origin()}/api/social/callback`
@@ -294,11 +304,22 @@ function buildPayload(publicationId: string, job: JobLite, content: SocialConten
  * L'évènement vaut « test » (et non « job.published ») : le filtre du scénario l'arrête, rien n'est publié.
  * L'affiche jointe est l'affiche d'exemple (sans photo) : aucun appel à OpenAI.
  */
-export async function sendTestToMake(): Promise<{ ok: boolean; status: number; error?: string }> {
+async function sendTestToMake(): Promise<{ ok: boolean; status: number; error?: string }> {
   const cfg = await getSocialConfig()
   const site = await canonicalOrigin()
   const content = buildContent(SAMPLE_JOB, fallbackCopy(SAMPLE_JOB), cfg, { baseUrl: site, calendlyUrl: resolveCalendly(cfg) })
   return postToMake({ ...buildPayload('test', SAMPLE_JOB, content, cfg, site, SAMPLE_POSTER_ID), event: 'test', sentAt: new Date().toISOString() })
+}
+
+/** « Envoyer un test » : avec Buffer, vérifie la clé et le canal LinkedIn sans rien publier ; sinon, test envoyé à Make. */
+export async function testDiffusion(): Promise<{ ok: boolean; message: string }> {
+  if (isBufferConfigured()) {
+    const { checkBufferLinkedInChannel } = await import('@/lib/buffer')
+    const r = await checkBufferLinkedInChannel(bufferApiKey(), bufferLinkedInChannel())
+    return r.ok ? { ok: true, message: `Buffer est prêt : canal LinkedIn « ${r.value} ». Rien n’a été publié.` } : { ok: false, message: r.error }
+  }
+  const r = await sendTestToMake()
+  return { ok: r.ok, message: r.ok ? 'Le service de diffusion a bien reçu le test.' : r.error ?? 'Échec' }
 }
 
 /**
@@ -335,7 +356,7 @@ export const deliveryDeadline = (requestStart: number) => requestStart + 270_000
  */
 export async function prepareSocialPost(jobId: string, opts: { trigger: 'auto' | 'manual'; requestedBy: string; force?: boolean }): Promise<{ id?: string; status?: SocialStatus; skipped?: boolean; error?: string }> {
   const cfg = await getSocialConfig()
-  if (!isMakeConfigured()) return { error: 'La publication sur les réseaux n’est pas encore configurée.' }
+  if (!isDiffusionConfigured()) return { error: 'La publication sur les réseaux n’est pas encore configurée.' }
   if (!NETWORKS.some(n => cfg.networks[n])) return { error: 'Aucun réseau n’est activé.' }
   const job = await getJobById(jobId)
   if (!job || !job.isActive) return { error: 'Offre introuvable ou inactive.' }
@@ -413,14 +434,15 @@ async function ensureScene(id: string, tenantId: string, image: PostImage, deadl
 }
 
 /**
- * Envoie à Make une publication préparée : photo de la scène d'abord (sans elle, l'affiche part quand même), puis le
- * contenu enregistré. « sent » est écrit avant l'appel à Make : un rappel de Make arrivé dans la foulée n'est jamais
- * écrasé, et une erreur après l'envoi ne fait pas croire à un échec (qui pousserait à republier). Conclut toujours le
- * document, sauf si la fonction est interrompue (docToPost la tient alors pour échouée après QUEUED_MAX_MS).
+ * Envoie une publication préparée (à Buffer en direct, sinon à Make) : photo de la scène d'abord (sans elle, l'affiche
+ * part quand même), puis le contenu enregistré. « sent » est écrit avant l'envoi : un rappel de Make arrivé dans la
+ * foulée n'est jamais écrasé, et une erreur après l'envoi ne fait pas croire à un échec (qui pousserait à republier).
+ * Conclut toujours le document, sauf si la fonction est interrompue (docToPost la tient alors pour échouée après
+ * QUEUED_MAX_MS).
  */
 export async function deliverSocialPost(id: string, deadline = deliveryDeadline(Date.now())): Promise<{ status: SocialStatus; error?: string }> {
   let attempts = 0
-  let sentToMake = false
+  let handedOff = false
   try {
     const { databases } = createAdminClient()
     const doc = await databases.getDocument(DB_ID, COLLECTIONS.SOCIAL_POSTS, id)
@@ -451,7 +473,8 @@ export async function deliverSocialPost(id: string, deadline = deliveryDeadline(
       status: 'sent', attempts: attempts + 1, sentAt: new Date().toISOString(), completedAt: null, error: null,
       resultsJson: '[]', imagesJson: JSON.stringify([rawImage.url]), payloadJson: JSON.stringify({ ...payload, posterNote }),
     })
-    sentToMake = true
+    handedOff = true
+    if (isBufferConfigured()) return await deliverViaBuffer(id, payload)
     const sent = await postToMake(payload)
     if (sent.ok) return { status: 'sent' }
     const error = (sent.error ?? 'Échec').slice(0, 500)
@@ -459,9 +482,9 @@ export async function deliverSocialPost(id: string, deadline = deliveryDeadline(
     return { status: 'failed', error }
   } catch (e) {
     const message = e instanceof Error ? e.message : 'erreur inattendue'
-    console.error('[social] envoi impossible', id, sentToMake ? '(après l’appel à Make)' : '', message)
-    // Make a peut-être reçu la publication : on ne la déclare pas en échec (une relance la publierait deux fois).
-    if (sentToMake) return { status: 'sent', error: `Envoyée, mais état non enregistré : ${message}` }
+    console.error('[social] envoi impossible', id, handedOff ? '(après l’envoi à Buffer ou Make)' : '', message)
+    // Buffer ou Make a peut-être reçu la publication : on ne la déclare pas en échec (une relance la publierait deux fois).
+    if (handedOff) return { status: 'sent', error: `Envoyée, mais état non enregistré : ${message}` }
     const failure = { status: 'failed' as const, attempts: attempts + 1, error: `Envoi impossible : ${message}`.slice(0, 500) }
     const { databases } = createAdminClient()
     // Un second essai d'écriture : sinon la publication resterait « en file » jusqu'à QUEUED_MAX_MS.
@@ -470,6 +493,36 @@ export async function deliverSocialPost(id: string, deadline = deliveryDeadline(
       .catch(err => console.error('[social] publication restée « en file »', id, err instanceof Error ? err.message : err))
     return { status: 'failed', error: failure.error }
   }
+}
+
+/**
+ * Le scénario Make, fait par la plateforme (ADR 0056) : publication LinkedIn par l'API de Buffer, puis résultat
+ * enregistré comme un rappel de Make (handleCallback). Les autres réseaux activés ne sont pas reliés à Buffer : notés
+ * « sautés » avec la raison, pour que la publication conclue tout de suite au lieu d'attendre un rappel.
+ */
+async function deliverViaBuffer(id: string, payload: Record<string, unknown>): Promise<{ status: SocialStatus; error?: string }> {
+  const content = payload.content as { captions?: { linkedin?: unknown }; image?: { url?: unknown } } | undefined
+  const networks = (payload.networks ?? {}) as Partial<Record<Network, boolean>>
+  const results: NetworkResult[] = []
+  if (networks.linkedin) {
+    const text = content?.captions?.linkedin
+    const imageUrl = content?.image?.url
+    const { createBufferPost, imageUrlProblem } = await import('@/lib/buffer')
+    let r: BufferResult<string>
+    if (typeof text !== 'string' || typeof imageUrl !== 'string') r = { ok: false, error: 'Texte LinkedIn ou affiche absents de la publication.' }
+    else {
+      const problem = imageUrlProblem(imageUrl)
+      r = problem ? { ok: false, error: problem } : await createBufferPost(bufferApiKey(), bufferLinkedInChannel(), text, imageUrl)
+    }
+    if (!r.ok) console.error('[social] publication LinkedIn refusée par Buffer', id, r.error)
+    results.push(r.ok ? { network: 'linkedin', status: 'published' } : { network: 'linkedin', status: 'failed', error: r.error })
+  }
+  for (const n of NETWORKS) {
+    if (n !== 'linkedin' && networks[n]) results.push({ network: n, status: 'skipped', error: 'Non publié : seul LinkedIn est relié à Buffer.' })
+  }
+  const recorded = await handleCallback({ publicationId: id, results })
+  if (!recorded.ok || !recorded.status) throw new Error(`résultat de Buffer non enregistré (${recorded.error ?? 'raison inconnue'})`)
+  return { status: recorded.status, error: results.find(r => r.status === 'failed')?.error }
 }
 
 /** Arrêt demandé pour l'offre `jobId` ; illisible : journalisé, la diffusion continue comme sans arrêt. */
@@ -595,18 +648,18 @@ export async function handleCallback(body: unknown): Promise<{ ok: boolean; erro
 // ── Point d'entrée à la création d'une offre de recruteur ────────────────────────────────────
 
 /**
- * Publie la nouvelle offre sur les réseaux (si l'admin a activé la publication automatique et que Make est configuré).
- * Quand LinkedIn est pris en charge par ce circuit, l'ancienne publication LinkedIn directe est sautée (pas de doublon) ;
- * si l'envoi à Make échoue, elle sert de secours.
+ * Publie la nouvelle offre sur les réseaux (si l'admin a activé la publication automatique et que Buffer ou Make est
+ * configuré). Quand LinkedIn est pris en charge par ce circuit, l'ancienne publication LinkedIn directe est sautée (pas
+ * de doublon) ; si aucune publication n'a pu être créée, elle sert de secours.
  */
 export async function tryAutoPublishJob(job: Job & { $id: string }, deadline?: number): Promise<void> {
   let linkedInHandled = false
   try {
     const cfg = await getSocialConfig()
-    if (cfg.autoPublish && isMakeConfigured()) {
+    if (cfg.autoPublish && isDiffusionConfigured()) {
       const r = await publishJobSocially(job.$id, { trigger: 'auto', requestedBy: 'Automatique' }, deadline)
       // Une publication existe (même en échec : elle se relance depuis /admin/social) : pas de publication LinkedIn
-      // directe en plus, Make a pu la recevoir et cela ferait un doublon sur la page.
+      // directe en plus, Buffer ou Make a pu la recevoir et cela ferait un doublon sur la page.
       linkedInHandled = cfg.networks.linkedin && !!r.id
     }
   } catch (e) {
