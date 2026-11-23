@@ -33,10 +33,10 @@ export default async function RecruiterCvthequePage({ searchParams }: { searchPa
     }
   }
 
-  const [{ candidates, error }, cvExport] = await Promise.all([getRecruiterCvthequeCandidates(), recruiterCvExportAccess(user)])
+  const [{ candidates, jobFamiliesAvailable, error }, cvExport] = await Promise.all([getRecruiterCvthequeCandidates(), recruiterCvExportAccess(user)])
 
   return (
     <CvthequeClient initialCandidates={candidates} loadError={error} cvExport={cvExport.access} cvExportError={cvExport.error}
-      savedSearches={savedSearches} openSearch={openSearch} />
+      savedSearches={savedSearches} openSearch={openSearch} jobFamiliesAvailable={jobFamiliesAvailable} />
   )
 }

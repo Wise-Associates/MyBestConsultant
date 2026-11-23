@@ -14,7 +14,7 @@ const candidate: SearchableCandidate = {
   name: 'John Exemple', city: 'Lyon', mobilityRadiusKm: null, skills: ['Node.js', 'NestJS', 'PostgreSQL', 'AWS', 'Microservices'],
   experienceSummary: '', experiences: [{ title: 'Développeur Backend Node.js', company: 'Société Fictive', missions: [] }],
   education: [], languages: [], yearsOfExperience: 7, openToWork: true, desiredSector: [], desiredRoles: ['Backend Software Engineer'],
-  createdAt: '2026-11-18T10:00:00.000Z',
+  createdAt: '2026-11-18T10:00:00.000Z', jobFamily: null,
 }
 const offer = (id: string, title: string, skills: string[], location = 'Lyon') => ({ $id: id, title, skills, location })
 

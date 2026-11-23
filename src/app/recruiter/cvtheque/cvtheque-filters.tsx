@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react'
 import { MapPin, X } from 'lucide-react'
 import { RangeSlider } from '@/components/shared/range-slider'
 import { EMPTY_FILTERS, EXPERIENCE_MAX, RADIUS_MAX, normalizeText, type CvthequeFilters } from '@/lib/cvtheque-search'
+import { JOB_FAMILIES, type JobFamily } from '@/lib/job-families'
 
 // Colonne des filtres de la CV Thèque (refonte du 2026-11-13, à la manière des outils de recherche de profils) : titre
 // « Filtres » et « Réinitialiser », puis un filtre par donnée réellement connue des profils (règles :
@@ -95,8 +96,11 @@ export function CvthequeFiltersPanel({ filters, onChange, activeCount, options }
   filters: CvthequeFilters
   onChange: (f: CvthequeFilters) => void
   activeCount: number
-  /** Valeurs proposées, tirées des profils (les plus fréquentes d'abord). */
-  options: { skills: string[]; sectors: string[]; languages: string[] }
+  /**
+   * Valeurs proposées, tirées des profils (les plus fréquentes d'abord). `jobFamilies` : familles de métiers avec leur
+   * nombre de profils ; null quand la classification des CV n'est pas lisible (filtre masqué).
+   */
+  options: { skills: string[]; sectors: string[]; languages: string[]; jobFamilies: { family: JobFamily; label: string; count: number }[] | null }
 }) {
   const set = <K extends keyof CvthequeFilters>(key: K, value: CvthequeFilters[K]) => onChange({ ...filters, [key]: value })
   return (
@@ -140,6 +144,27 @@ export function CvthequeFiltersPanel({ filters, onChange, activeCount, options }
 
       <ChipPicker id="cvt-skills" label="Compétences" hint="toutes requises" values={filters.skills} options={options.skills}
         placeholder="Saisir une compétence" onChange={v => set('skills', v)} />
+
+      {options.jobFamilies && (
+        <fieldset>
+          <legend className="flex items-baseline justify-between gap-2 w-full text-[13px] font-semibold mb-1.5" style={{ color: 'var(--color-text)' }}>
+            Métier <span className="text-xs font-normal" style={{ color: 'var(--color-text-muted)' }}>l&apos;un d&apos;eux</span>
+          </legend>
+          {/* Famille du métier principal, lue dans le CV par la classification (ADR 0057) ; familles sans profil masquées. */}
+          <div className="space-y-1.5">
+            {options.jobFamilies.filter(f => f.count > 0 || filters.jobFamilies.includes(f.family)).map(f => (
+              <label key={f.family} className="flex items-center gap-2.5 text-sm cursor-pointer" style={{ color: 'var(--color-text)' }}>
+                <input type="checkbox" checked={filters.jobFamilies.includes(f.family)} className="w-4 h-4 accent-[var(--color-brand-orange)]"
+                  onChange={e => set('jobFamilies', e.target.checked
+                    ? (Object.keys(JOB_FAMILIES) as JobFamily[]).filter(k => k === f.family || filters.jobFamilies.includes(k))
+                    : filters.jobFamilies.filter(k => k !== f.family))} />
+                <span className="flex-1 min-w-0">{f.label}</span>
+                <span className="text-xs tabular-nums" style={{ color: 'var(--color-text-muted)' }}>{f.count}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
 
       <TextFilter id="cvt-location" label="Localisation" value={filters.location} placeholder="Ville, région, pays"
         onChange={v => set('location', v)} icon={<MapPin className="h-3.5 w-3.5" />} />

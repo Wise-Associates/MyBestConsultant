@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto'
-import { AppwriteException } from 'node-appwrite'
+import { AppwriteException, Query } from 'node-appwrite'
 import { createAdminClient } from './client'
 import { DB_ID, COLLECTIONS } from './config'
 import type { CvClassification } from '@/lib/cv-classification'
+import { isJobFamily, type JobFamily } from '@/lib/job-families'
+import { listAllByValues } from './list-all'
 import { removeCvFromIndex } from '@/lib/search/cv-index'
 
 // Classifications des CV (collection `cv_classifications`, ADR 0044) : une par CV source — candidat ou profil de chasseur
@@ -39,6 +41,37 @@ export interface ClassificationRecord {
   sourceKey: string
   model: string
   classification: CvClassification
+}
+
+/** Famille de métier enregistrée dans une classification ; null si illisible. */
+function jobFamilyOfData(data: unknown): JobFamily | null {
+  try {
+    const parsed: unknown = JSON.parse(String(data ?? ''))
+    const family = parsed && typeof parsed === 'object' ? (parsed as { jobFamily?: unknown }).jobFamily : null
+    return isJobFamily(family) ? family : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Familles de métiers des candidats classés, pour le filtre « Métier » de la CV Thèque et des recherches enregistrées
+ * (ADR 0057). Un candidat absent de la carte n'est pas (encore) classé. Classification désactivée : carte vide.
+ * Lève si la lecture échoue : l'appelant choisit (liste sans le filtre, alerte rattrapée par le cron).
+ */
+export async function candidateJobFamilies(candidateIds: string[]): Promise<Map<string, JobFamily>> {
+  const families = new Map<string, JobFamily>()
+  if (!isCvClassificationsConfigured() || candidateIds.length === 0) return families
+  const sourceOf = new Map(candidateIds.map(id => [classificationId('candidate', id), id]))
+  const docs = await listAllByValues(createAdminClient().databases, DB_ID, COLLECTIONS.CV_CLASSIFICATIONS, '$id', [...sourceOf.keys()], [
+    Query.select(['$id', 'data']),
+  ])
+  for (const doc of docs) {
+    const source = sourceOf.get(doc.$id)
+    const family = jobFamilyOfData(doc.data)
+    if (source && family) families.set(source, family)
+  }
+  return families
 }
 
 /** Enregistre (ou remplace) la classification d'une source. */

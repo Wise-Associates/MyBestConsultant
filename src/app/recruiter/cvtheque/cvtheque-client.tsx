@@ -16,8 +16,8 @@ import { SECTORS } from '@/lib/candidate-taxonomy'
 import { Pagination } from '@/components/shared/pagination'
 import { CandidateAvatar } from '@/components/shared/candidate-avatar'
 import {
-  EMPTY_FILTERS, activeFilterCount, filterCandidates, filtersFromSearchParams, hasSearchCriteria, valuesByFrequency, withFilters,
-  type CvthequeFilters,
+  EMPTY_FILTERS, activeFilterCount, filterCandidates, jobFamilyCounts, filtersFromSearchParams, hasSearchCriteria, rankBySkillUse, skillCorrespondences,
+  valuesByFrequency, withFilters, type CvthequeFilters,
 } from '@/lib/cvtheque-search'
 import { initialUrlListSync, noteListWrite, syncFromUrl } from '@/lib/url-list-state'
 import type { SavedSearch } from '@/lib/saved-searches'
@@ -41,7 +41,7 @@ const headerButtonStyle = { color: 'var(--color-text)', border: '1px solid var(-
 
 const SEARCH_HELP ='Tous les mots sont requis ; OR entre deux mots pour l\'un ou l\'autre ; guillemets pour une expression : java "react native" OR kotlin'
 
-export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExportError, savedSearches, openSearch }: {
+export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExportError, savedSearches, openSearch, jobFamiliesAvailable }: {
   initialCandidates: CvThequeCandidate[]
   loadError?: string
   cvExport: CvExportAccess | null
@@ -50,6 +50,8 @@ export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExpor
   savedSearches: boolean
   /** Recherche enregistrée ouverte (?recherche=), vérifiée par la page. */
   openSearch: SavedSearch | null
+  /** Familles de métiers lues : sinon pas de filtre « Métier » (ADR 0057). */
+  jobFamiliesAvailable: boolean
 }) {
   const [exportFor, setExportFor] = useState<CvThequeCandidate | null>(null)
   const searchParams = useSearchParams()
@@ -107,9 +109,19 @@ export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExpor
     skills: valuesByFrequency(initialCandidates.map(c => c.skills)),
     sectors: valuesByFrequency([[...SECTORS], ...initialCandidates.map(c => c.desiredSector)]),
     languages: valuesByFrequency(initialCandidates.map(c => c.languages.map(l => l.name))),
-  }), [initialCandidates])
+    jobFamilies: jobFamiliesAvailable ? jobFamilyCounts(initialCandidates) : null,
+  }), [initialCandidates, jobFamiliesAvailable])
+  // Familles illisibles : filtre « Métier » ignoré (signalé au-dessus de la liste) plutôt que zéro profil.
+  const appliedFilters = useMemo(
+    () => (jobFamiliesAvailable ? filters : { ...filters, jobFamilies: [] }),
+    [filters, jobFamiliesAvailable],
+  )
 
-  const filtered = useMemo(() => filterCandidates(initialCandidates, filters, openedAt), [initialCandidates, filters, openedAt])
+  // Avec des compétences demandées, ceux qui les exercent d'abord (intitulé, puis missions), ceux qui les listent seulement ensuite.
+  const filtered = useMemo(
+    () => rankBySkillUse(filterCandidates(initialCandidates, appliedFilters, openedAt), filters.skills),
+    [initialCandidates, appliedFilters, filters.skills, openedAt],
+  )
   const available = filtered.filter(c => c.openToWork).length
   const activeCount = activeFilterCount(filters)
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
@@ -209,6 +221,16 @@ export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExpor
               {' '}· dont {available} disponible{available > 1 ? 's' : ''}
               {narrowed && <> · sur {initialCandidates.length} avec CV</>}
               {filtered.length > PAGE_SIZE && <> · {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} affichés</>}
+              {!jobFamiliesAvailable && filters.jobFamilies.length > 0 && (
+                <span className="block text-xs mt-0.5" style={{ color: '#b45309' }}>
+                  Filtre Métier indisponible pour le moment : la liste ne le prend pas en compte.
+                </span>
+              )}
+              {filters.skills.length > 0 && filtered.length > 1 && (
+                <span className="block text-xs mt-0.5">
+                  D&apos;abord les profils dont un poste nomme les compétences demandées, puis ceux qui les citent dans leurs missions.
+                </span>
+              )}
             </p>
             {savedSearches && (
               <button type="button" onClick={() => { setNotice(null); setSaveOpen(true) }} disabled={!hasSearchCriteria(filters)}
@@ -244,6 +266,7 @@ export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExpor
               <div className="space-y-4">
                 {paged.map(c => (
                   <CandidateCard key={c.$id} candidate={c} onOpenProfile={() => setOpenProfile(c)}
+                    correspondences={skillCorrespondences(c.skills, filters.skills)}
                     onExport={cvExport?.template && c.cvFileId ? () => setExportFor(c) : undefined} />
                 ))}
               </div>
@@ -275,7 +298,13 @@ export function CvthequeClient({ initialCandidates, loadError, cvExport, cvExpor
   )
 }
 
-function CandidateCard({ candidate: c, onOpenProfile, onExport }: { candidate: CvThequeCandidate; onOpenProfile: () => void; onExport?: () => void }) {
+function CandidateCard({ candidate: c, onOpenProfile, onExport, correspondences }: {
+  candidate: CvThequeCandidate
+  onOpenProfile: () => void
+  onExport?: () => void
+  /** Compétences demandées trouvées par une équivalence (« Node.js » via « NestJS », ADR 0057). */
+  correspondences: { asked: string; own: string }[]
+}) {
   return (
     <div className="rounded-3xl p-6 transition-all duration-300 hover:-translate-y-1"
       style={{
@@ -318,6 +347,11 @@ function CandidateCard({ candidate: c, onOpenProfile, onExport }: { candidate: C
                 </span>
               ))}
             </div>
+          )}
+          {correspondences.length > 0 && (
+            <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
+              {correspondences.map(m => `${m.asked} : trouvé via ${m.own}`).join(' · ')}
+            </p>
           )}
         </div>
 

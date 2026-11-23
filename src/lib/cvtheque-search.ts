@@ -1,4 +1,6 @@
 import { expandLocationSearch, normalizeLocation } from '@/lib/regions'
+import { SKILL_IMPLIES, SKILL_VARIANTS } from '@/lib/skill-equivalences'
+import { JOB_FAMILIES, isJobFamily, type JobFamily } from '@/lib/job-families'
 
 // Recherche de la CV Thèque du recruteur (/recruiter/cvtheque, refonte du 2026-11-13 : barre de recherche et filtres à
 // gauche, à la manière des outils de recherche de profils). Règles pures, testées dans cvtheque-search.test.ts : lecture
@@ -20,6 +22,8 @@ export interface SearchableCandidate {
   desiredSector: string[]
   desiredRoles: string[]
   createdAt: string
+  /** Famille de métier lue dans la classification du CV (ADR 0044) ; null : CV pas encore classé. */
+  jobFamily: JobFamily | null
 }
 
 export const EXPERIENCE_MAX = 15
@@ -42,6 +46,8 @@ export interface CvthequeFilters {
   skills: string[]
   /** L'un d'eux suffit. */
   sectors: string[]
+  /** Familles de métiers de la classification des CV (ADR 0057) ; l'une d'elles suffit. Un CV pas encore classé est écarté. */
+  jobFamilies: JobFamily[]
   /** Toutes requises. */
   languages: string[]
   /** Entreprise actuelle ou passée. */
@@ -56,7 +62,7 @@ export interface CvthequeFilters {
 
 export const EMPTY_FILTERS: CvthequeFilters = {
   query: '', exclude: '', availableOnly: false, addedWithinDays: 0, experience: [0, EXPERIENCE_MAX], radius: [0, RADIUS_MAX],
-  location: '', skills: [], sectors: [], languages: [], company: '', school: '', titleQuery: '', experienceQuery: '',
+  location: '', skills: [], sectors: [], jobFamilies: [], languages: [], company: '', school: '', titleQuery: '', experienceQuery: '',
 }
 
 /**
@@ -108,6 +114,138 @@ export function hasPhrase(haystack: string[], term: string): boolean {
   return false
 }
 
+// ── Compétences et leurs équivalences (ADR 0057) ─────────────────────────────────────────────────────────────────────
+
+/** Mots d'une compétence collés : « Node.js », « NodeJS » et « node js » donnent la même clé, « nodejs ». */
+export function skillKey(s: string): string {
+  return words(s).join('')
+}
+
+interface EquivalenceIndex {
+  /** Clé d'une écriture → clé de la forme usuelle de son groupe. */
+  groupOf: Map<string, string>
+  /** Clé de la forme usuelle → clés de toutes les écritures du groupe. */
+  members: Map<string, string[]>
+  /** Clé de la forme usuelle → formes usuelles des compétences qui l'impliquent directement. */
+  impliedBy: Map<string, string[]>
+  /** Clé de la forme usuelle → écritures des tables (« Node.js », « Node »), pour les chercher dans un texte. */
+  names: Map<string, string[]>
+}
+
+let equivalenceIndex: EquivalenceIndex | null = null
+
+/** Index des tables de skill-equivalences.ts, construit au premier usage. */
+function equivalences(): EquivalenceIndex {
+  if (equivalenceIndex) return equivalenceIndex
+  const groupOf = new Map<string, string>()
+  const members = new Map<string, string[]>()
+  const names = new Map<string, string[]>()
+  const addName = (key: string, name: string) => { if (!names.get(key)?.includes(name)) names.set(key, [...(names.get(key) ?? []), name]) }
+  for (const group of SKILL_VARIANTS) {
+    const keys = [...new Set(group.map(skillKey).filter(Boolean))]
+    if (keys.length === 0) continue
+    for (const k of keys) groupOf.set(k, keys[0])
+    members.set(keys[0], keys)
+    for (const name of group) addName(keys[0], name)
+  }
+  const usual = (s: string) => groupOf.get(skillKey(s)) ?? skillKey(s)
+  const impliedBy = new Map<string, string[]>()
+  for (const [from, targets] of SKILL_IMPLIES) {
+    addName(usual(from), from)
+    for (const target of targets) {
+      addName(usual(target), target)
+      impliedBy.set(usual(target), [...(impliedBy.get(usual(target)) ?? []), usual(from)])
+    }
+  }
+  equivalenceIndex = { groupOf, members, impliedBy, names }
+  return equivalenceIndex
+}
+
+/** Formes usuelles de `askedKey` et de toutes les compétences qui l'impliquent, de proche en proche. */
+function reachedFrom(askedKey: string): string[] {
+  const { groupOf, impliedBy } = equivalences()
+  const reached = [groupOf.get(askedKey) ?? askedKey]
+  for (let i = 0; i < reached.length; i++) {
+    for (const from of impliedBy.get(reached[i]) ?? []) if (!reached.includes(from)) reached.push(from)
+  }
+  return reached
+}
+
+/**
+ * Clés des compétences d'un profil qui valent `asked` : ses propres écritures, puis celles de toutes les compétences
+ * qui l'impliquent, de proche en proche (« JavaScript » : JS, TypeScript, Node.js, NestJS, React, Next.js…).
+ */
+export function equivalentSkillKeys(asked: string): Set<string> {
+  const own = skillKey(asked)
+  if (!own) return new Set()
+  const { members } = equivalences()
+  const keys = new Set([own])
+  for (const k of reachedFrom(own)) for (const m of members.get(k) ?? [k]) keys.add(m)
+  return keys
+}
+
+/** Mêmes équivalences que `equivalentSkillKeys`, écrites comme dans les tables, pour les chercher dans un texte. */
+export function equivalentSkillNames(asked: string): string[] {
+  const own = skillKey(asked)
+  if (!own) return []
+  const { names } = equivalences()
+  return [...new Set([asked, ...reachedFrom(own).flatMap(k => names.get(k) ?? [])])]
+}
+
+/** Compétence du profil qui répond à une compétence demandée ; `viaEquivalence` : écrite autrement ou voisine. */
+export interface SkillMatch {
+  own: string
+  viaEquivalence: boolean
+}
+
+/**
+ * Règle d'une compétence demandée, à appliquer à la liste des compétences d'un profil : mot à mot d'abord (la règle
+ * d'avant : « React » trouve « React Native »), sinon une compétence entière du profil qui lui est équivalente
+ * (« NodeJS » ou « NestJS » pour « Node.js »). Préparée une fois par recherche, appliquée à chaque profil.
+ */
+export function skillMatcher(asked: string): (own: string[]) => SkillMatch | null {
+  const askedKey = skillKey(asked)
+  const keys = equivalentSkillKeys(asked)
+  return own => {
+    const direct = own.find(o => hasPhrase(words(o), asked))
+    if (direct !== undefined) return { own: direct, viaEquivalence: false }
+    const equivalent = own.find(o => keys.has(skillKey(o)))
+    return equivalent === undefined ? null : { own: equivalent, viaEquivalence: skillKey(equivalent) !== askedKey }
+  }
+}
+
+/** Compétences demandées trouvées par une équivalence, pour dire au recruteur pourquoi le profil est retenu. */
+export function skillCorrespondences(own: string[], asked: string[]): { asked: string; own: string }[] {
+  return asked.filter(a => words(a).length > 0).flatMap(a => {
+    const match = skillMatcher(a)(own)
+    return match?.viaEquivalence ? [{ asked: a, own: match.own }] : []
+  })
+}
+
+/** Un des `texts` contient un des `terms`, en mots entiers. */
+const mentions = (texts: string[], terms: string[]) => texts.some(t => {
+  const h = words(t)
+  return terms.some(term => hasPhrase(h, term))
+})
+
+/**
+ * Tri des profils retenus par les compétences demandées (demande du 2026-11-23, ADR 0057) : le filtre retient tout CV qui
+ * cite la compétence, y compris un chef de projet qui l'a seulement listée. Les profils qui l'exercent passent d'abord :
+ * pour chaque compétence, 2 points si un intitulé (poste visé ou exercé) la nomme, 1 si le résumé ou une mission la
+ * nomme, 0 si seule la liste de compétences la cite. Ses équivalences comptent aussi (« JS » ou « Angular » dans
+ * l'intitulé pour une recherche « JavaScript »). Personne n'est écarté ; à égalité, l'ordre d'arrivée est gardé.
+ */
+export function rankBySkillUse<T extends SearchableCandidate>(list: T[], skills: string[]): T[] {
+  const asked = skills.filter(s => words(s).length > 0).map(equivalentSkillNames)
+  if (asked.length === 0) return list
+  const score = (c: T) => {
+    const titles = [...c.desiredRoles, ...c.experiences.map(e => e.title)]
+    const details = [c.experienceSummary, ...c.experiences.flatMap(e => e.missions)]
+    return asked.reduce((sum, terms) => sum + (mentions(titles, terms) ? 2 : mentions(details, terms) ? 1 : 0), 0)
+  }
+  return list.map((c, i) => ({ c, i, s: score(c) })).sort((a, b) => b.s - a.s || a.i - b.i).map(x => x.c)
+}
+
 /** `text` répond à la recherche `groups` (aucune recherche : oui), terme par terme en mots entiers. */
 export function matchesQuery(text: string, groups: string[][]): boolean {
   if (groups.length === 0) return true
@@ -137,8 +275,9 @@ export function filterCandidates<T extends SearchableCandidate>(list: T[], f: Cv
   const titleQuery = parseQuery(f.titleQuery)
   const experienceQuery = parseQuery(f.experienceQuery)
   const locations = f.location.trim() ? expandLocationSearch(f.location) : null
-  const skills = f.skills.filter(s => words(s).length > 0)
+  const skills = f.skills.filter(s => words(s).length > 0).map(skillMatcher)
   const sectors = new Set(f.sectors.map(normalizeText))
+  const families = new Set<JobFamily>(f.jobFamilies)
   const languages = f.languages.filter(l => words(l).length > 0)
   const company = words(f.company).length > 0 ? f.company : ''
   const school = words(f.school).length > 0 ? f.school : ''
@@ -154,11 +293,9 @@ export function filterCandidates<T extends SearchableCandidate>(list: T[], f: Cv
       const loc = normalizeLocation(c.city)
       if (!loc || !locations.some(l => loc.includes(l) || l.includes(loc))) return false
     }
-    if (skills.length > 0) {
-      const own = c.skills.map(words)
-      if (!skills.every(s => own.some(o => hasPhrase(o, s)))) return false
-    }
+    if (skills.length > 0 && !skills.every(match => match(c.skills) !== null)) return false
     if (sectors.size > 0 && !c.desiredSector.some(s => sectors.has(normalizeText(s)))) return false
+    if (families.size > 0 && (c.jobFamily === null || !families.has(c.jobFamily))) return false
     if (languages.length > 0) {
       const own = c.languages.map(l => words(l.name))
       if (!languages.every(l => own.some(o => hasPhrase(o, l)))) return false
@@ -178,9 +315,16 @@ export function activeFilterCount(f: CvthequeFilters): number {
   return [
     f.exclude.trim() !== '', f.availableOnly, f.addedWithinDays > 0,
     f.experience[0] > 0 || f.experience[1] < EXPERIENCE_MAX, f.radius[0] > 0 || f.radius[1] < RADIUS_MAX,
-    f.location.trim() !== '', f.skills.length > 0, f.sectors.length > 0, f.languages.length > 0,
+    f.location.trim() !== '', f.skills.length > 0, f.sectors.length > 0, f.jobFamilies.length > 0, f.languages.length > 0,
     f.company.trim() !== '', f.school.trim() !== '', f.titleQuery.trim() !== '', f.experienceQuery.trim() !== '',
   ].filter(Boolean).length
+}
+
+/** Familles de métiers des profils chargés, dans l'ordre de la liste, avec leur nombre (filtre « Métier »). */
+export function jobFamilyCounts(list: { jobFamily: JobFamily | null }[]): { family: JobFamily; label: string; count: number }[] {
+  const counts = new Map<JobFamily, number>()
+  for (const c of list) if (c.jobFamily) counts.set(c.jobFamily, (counts.get(c.jobFamily) ?? 0) + 1)
+  return (Object.keys(JOB_FAMILIES) as JobFamily[]).map(family => ({ family, label: JOB_FAMILIES[family], count: counts.get(family) ?? 0 }))
 }
 
 /** Valeurs présentes dans les profils, les plus fréquentes d'abord (casse et accents près), pour les propositions des champs. */
@@ -224,6 +368,11 @@ const values = (v: unknown) => {
   }
   return out
 }
+/** Familles connues seulement, sans doublon, dans l'ordre de la liste (une recherche enregistrée garde la même adresse). */
+const families = (v: unknown): JobFamily[] => {
+  const asked = new Set(Array.isArray(v) ? v.filter(isJobFamily) : [])
+  return (Object.keys(JOB_FAMILIES) as JobFamily[]).filter(k => asked.has(k))
+}
 function range(v: unknown, max: number): [number, number] {
   const [lo, hi] = Array.isArray(v) ? v : []
   const int = (x: unknown, fallback: number) => (typeof x === 'number' && Number.isFinite(x) ? Math.min(max, Math.max(0, Math.round(x))) : fallback)
@@ -239,13 +388,14 @@ export function sanitizeFilters(raw: unknown): CvthequeFilters {
   return {
     query: clip(r.query, MAX_QUERY), exclude: clip(r.exclude, MAX_QUERY), availableOnly: r.availableOnly === true, addedWithinDays: added,
     experience: range(r.experience, EXPERIENCE_MAX), radius: range(r.radius, RADIUS_MAX), location: clip(r.location, MAX_FIELD),
-    skills: values(r.skills), sectors: values(r.sectors), languages: values(r.languages), company: clip(r.company, MAX_FIELD),
+    skills: values(r.skills), sectors: values(r.sectors), jobFamilies: families(r.jobFamilies), languages: values(r.languages),
+    company: clip(r.company, MAX_FIELD),
     school: clip(r.school, MAX_FIELD), titleQuery: clip(r.titleQuery, MAX_FIELD), experienceQuery: clip(r.experienceQuery, MAX_FIELD),
   }
 }
 
 /** Paramètres de l'adresse qui portent les filtres (les autres, comme `recherche`, sont gardés tels quels). */
-const PARAMS = ['q', 'exclure', 'dispo', 'ajout', 'exp', 'rayon', 'lieu', 'competence', 'secteur', 'langue', 'entreprise', 'ecole', 'intitule', 'experiences'] as const
+const PARAMS = ['q', 'exclure', 'dispo', 'ajout', 'exp', 'rayon', 'lieu', 'competence', 'secteur', 'metier', 'langue', 'entreprise', 'ecole', 'intitule', 'experiences'] as const
 
 function rangeParam(v: string | null): [number, number] | undefined {
   const m = v?.match(/^(\d{1,3})-(\d{1,3})$/)
@@ -258,7 +408,7 @@ export function filtersFromSearchParams(sp: URLSearchParams): CvthequeFilters {
   return sanitizeFilters({
     query: sp.get('q') ?? '', exclude: sp.get('exclure') ?? '', availableOnly: sp.get('dispo') === '1', addedWithinDays: ajout,
     experience: rangeParam(sp.get('exp')), radius: rangeParam(sp.get('rayon')), location: sp.get('lieu') ?? '',
-    skills: sp.getAll('competence'), sectors: sp.getAll('secteur'), languages: sp.getAll('langue'), company: sp.get('entreprise') ?? '',
+    skills: sp.getAll('competence'), sectors: sp.getAll('secteur'), jobFamilies: sp.getAll('metier'), languages: sp.getAll('langue'), company: sp.get('entreprise') ?? '',
     school: sp.get('ecole') ?? '', titleQuery: sp.get('intitule') ?? '', experienceQuery: sp.get('experiences') ?? '',
   })
 }
@@ -277,6 +427,7 @@ export function withFilters(sp: URLSearchParams, f: CvthequeFilters): URLSearchP
   set('lieu', f.location)
   for (const v of f.skills) next.append('competence', v)
   for (const v of f.sectors) next.append('secteur', v)
+  for (const v of f.jobFamilies) next.append('metier', v)
   for (const v of f.languages) next.append('langue', v)
   set('entreprise', f.company)
   set('ecole', f.school)
@@ -292,7 +443,7 @@ export function withFilters(sp: URLSearchParams, f: CvthequeFilters): URLSearchP
 export function hasSearchCriteria(f: CvthequeFilters): boolean {
   return [
     f.query, f.location, f.company, f.school, f.titleQuery, f.experienceQuery,
-  ].some(v => words(v).length > 0) || f.skills.length > 0 || f.sectors.length > 0 || f.languages.length > 0
+  ].some(v => words(v).length > 0) || f.skills.length > 0 || f.sectors.length > 0 || f.jobFamilies.length > 0 || f.languages.length > 0
     || f.experience[0] > 0 || f.experience[1] < EXPERIENCE_MAX || f.radius[0] > 0 || f.radius[1] < RADIUS_MAX
 }
 
@@ -304,6 +455,7 @@ export function filtersSummary(f: CvthequeFilters): string[] {
   const out: string[] = []
   const add = (label: string, value: string) => { if (value.trim()) out.push(`${label} : ${value.trim()}`) }
   add('Recherche', f.query)
+  add('Métier', f.jobFamilies.map(k => JOB_FAMILIES[k]).join(' ou '))
   add('Intitulé', f.titleQuery)
   add('Compétences', f.skills.join(', '))
   if (f.experience[0] > 0 || f.experience[1] < EXPERIENCE_MAX) out.push(`Expérience : ${rangeText(f.experience, EXPERIENCE_MAX, 'ans')}`)

@@ -27,6 +27,7 @@ const MAX_SIZE = 10 * 1024 * 1024
 function toCandidate(cv: VivierCv): CvThequeCandidate {
   return {
     $id: cv.$id, name: cv.candidateName, email: cv.candidateEmail, phone: cv.candidatePhone, whatsapp: '', city: '', mobilityRadiusKm: null,
+    jobFamily: null,
     skills: cv.skills, experienceSummary: cv.experienceSummary, experiences: cv.experiences, education: cv.education, languages: cv.languages,
     yearsOfExperience: cv.yearsOfExperience, cvFileId: cv.cvFileId, photoUrl: '', openToWork: false, desiredSector: [],
     desiredRoles: cv.title ? [cv.title] : [], createdAt: cv.createdAt,
