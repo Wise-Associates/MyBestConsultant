@@ -32,14 +32,18 @@ export async function saveCvFileId(fileId: string): Promise<void> {
       })
     }
   } catch { /* profile stays as-is — candidate can still fill it in manually */ }
-  // Classification du nouveau CV (ADR 0044), en arrière-plan : jamais bloquante, un échec est journalisé.
-  after(() => classifySourceInBackground('candidate', user.$id))
-
-  // Recherches enregistrées des recruteurs (ADR 0046) : après la réponse, le dépôt du CV n'attend ni la comparaison ni
-  // les e-mails. Comparaison interrompue : rattrapée par le cron recruiter-alerts.
-  after(async () => {
+  // Recherches enregistrées des recruteurs (ADR 0046), après la réponse, en deux temps (ADR 0057) : tout de suite, sans
+  // attendre l'IA ; puis une fois le nouveau CV classé (ADR 0044 ; jamais bloquante, un échec est journalisé), pour les
+  // recherches filtrées par métier, qui lisent sa classification. Une alerte a un identifiant fixe : le second passage
+  // ne recrée pas celles du premier. Comparaison interrompue : rattrapée par le cron recruiter-alerts.
+  const alertRecruiters = async () => {
     const { alertSavedSearches } = await import('@/lib/saved-searches-store')
     await alertSavedSearches(user.$id, { newCv: firstCv })
+  }
+  after(alertRecruiters)
+  after(async () => {
+    await classifySourceInBackground('candidate', user.$id)
+    await alertRecruiters()
   })
 
   // Correspondances IA (ADR 0047) : un nouveau candidat est comparé aux offres actives. Mis en file maintenant (la tâche

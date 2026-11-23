@@ -13,7 +13,7 @@ const candidate: SearchableCandidate = {
   name: 'Alex Exemple', city: 'Antananarivo, Madagascar', mobilityRadiusKm: null, skills: ['Revit', 'AutoCAD', 'Architecture'],
   experienceSummary: 'Modeleur BIM', experiences: [{ title: 'Modeleur BIM senior', company: 'Studio Démo', missions: ['Maquettes Revit'] }],
   education: [], languages: [{ name: 'Anglais' }], yearsOfExperience: 7, openToWork: true, desiredSector: [], desiredRoles: [],
-  createdAt: '2026-11-18T10:00:00.000Z',
+  createdAt: '2026-11-18T10:00:00.000Z', jobFamily: 'design_ux',
 }
 const search: SavedSearch = {
   id: 's1', tenantId: 't1', ownerId: 'r1', name: 'Senior Revit Modelers — Madagascar', description: '',
@@ -136,5 +136,33 @@ describe('Recherches enregistrées : lecture d\'un candidat', () => {
     assert.deepEqual(c.desiredRoles, ['Lead', 'Architecte'])
     assert.equal(c.openToWork, true)
     assert.deepEqual(searchableCandidateOf({ cvProfileJson: '{oops' }).skills, [])
+  })
+})
+
+describe('Recherches enregistrées : compétences équivalentes (ADR 0057)', () => {
+  // Cas signalé le 2026-11-20 : recherche « Angular + Node.js », candidat fictif qui a Angular et NestJS.
+  const nodeSearch: SavedSearch = { ...search, filters: { ...EMPTY_FILTERS, skills: ['Angular', 'Node.js'] } }
+  const dev: SearchableCandidate = { ...candidate, skills: ['TypeScript', 'Docker', 'Angular', 'NestJS'], languages: [] }
+
+  it('alerte pour un candidat qui a la compétence voisine, comme la liste le retient', () => {
+    assert.equal(shouldAlert(nodeSearch, dev, { newCv: true, now }), true)
+    assert.equal(shouldAlert(nodeSearch, { ...dev, skills: ['Angular', 'Python'] }, { newCv: true, now }), false)
+  })
+
+  it('met en tête de l\'e-mail les compétences qui ont retenu le candidat, équivalences comprises', () => {
+    assert.deepEqual(candidateHighlights(dev, [nodeSearch.filters]).skills, ['Angular', 'NestJS', 'TypeScript', 'Docker'])
+  })
+})
+
+describe('Recherches enregistrées : filtre Métier (ADR 0057)', () => {
+  const byFamily: SavedSearch = { ...search, filters: { ...EMPTY_FILTERS, jobFamilies: ['design_ux'] } }
+  it('alerte pour un candidat de la famille choisie, pas pour un autre métier ni pour un CV pas encore classé', () => {
+    assert.equal(shouldAlert(byFamily, candidate, { newCv: true, now }), true)
+    assert.equal(shouldAlert(byFamily, { ...candidate, jobFamily: 'rh' }, { newCv: true, now }), false)
+    assert.equal(shouldAlert(byFamily, { ...candidate, jobFamily: null }, { newCv: true, now }), false)
+  })
+  it('lit la famille passée par la classification', () => {
+    assert.equal(searchableCandidateOf({ cvProfileJson: '{}' }, 'rh').jobFamily, 'rh')
+    assert.equal(searchableCandidateOf({ cvProfileJson: '{}' }).jobFamily, null)
   })
 })

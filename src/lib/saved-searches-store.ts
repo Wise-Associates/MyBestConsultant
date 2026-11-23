@@ -3,6 +3,7 @@ import { ID, Query, type Models } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { listAllByValues, listAllDocuments } from '@/lib/appwrite/list-all'
+import { candidateJobFamilies, isCvClassificationsConfigured } from '@/lib/appwrite/cv-classifications'
 import { mapLimit } from '@/lib/concurrency'
 import { wrapEmailHtml } from '@/lib/email-template'
 import { filterCandidates } from '@/lib/cvtheque-search'
@@ -106,12 +107,25 @@ export async function deleteSavedSearchesOf(ownerId: string): Promise<void> {
 
 // ── Chiffres de la page « Alertes » ─────────────────────────────────────────────────────────────────────────────────
 
-/** Candidats de la CV Thèque (rôle candidat, avec un CV), lus pour la recherche. */
-async function listSearchableCandidates() {
-  const docs = await listAllDocuments(createAdminClient().databases, DB_ID, COLLECTIONS.USERS, [
+/**
+ * Candidats de la CV Thèque (rôle candidat, avec un CV), lus pour la recherche. Familles de métiers lues seulement si
+ * une recherche filtre par métier (ADR 0057) : sinon une requête par centaine de candidats pour rien.
+ */
+async function listSearchableCandidates(withJobFamilies: boolean) {
+  const docs = (await listAllDocuments(createAdminClient().databases, DB_ID, COLLECTIONS.USERS, [
     Query.equal('role', 'candidate'), Query.isNotNull('cvFileId'), Query.select([...SEARCHABLE_FIELDS]),
-  ])
-  return docs.filter(d => str(d.cvFileId)).map(d => searchableCandidateOf(d as unknown as Record<string, unknown>))
+  ])).filter(d => str(d.cvFileId))
+  const families = withJobFamilies ? await candidateJobFamilies(docs.map(d => d.$id)) : new Map()
+  return docs.map(d => searchableCandidateOf(d as unknown as Record<string, unknown>, families.get(d.$id) ?? null))
+}
+
+/**
+ * Classification des CV désactivée : le filtre « Métier » d'une recherche est ignoré, comme dans la liste de la CV
+ * Thèque (ADR 0057). Une recherche qui n'avait que ce critère n'en a plus : elle n'alerte personne (shouldAlert).
+ */
+function applicable(search: SavedSearch): SavedSearch {
+  if (search.filters.jobFamilies.length === 0 || isCvClassificationsConfigured()) return search
+  return { ...search, filters: { ...search.filters, jobFamilies: [] } }
 }
 
 export interface SavedSearchStats {
@@ -127,14 +141,14 @@ export async function savedSearchStats(ownerId: string, searches: SavedSearch[],
   if (searches.length === 0) return stats
   const { databases } = createAdminClient()
   const [candidates, alerts] = await Promise.all([
-    listSearchableCandidates(),
+    listSearchableCandidates(searches.some(s => s.filters.jobFamilies.length > 0)),
     listAllByValues(databases, DB_ID, COLLECTIONS.RECRUITER_ALERTS, 'searchId', searches.map(s => s.id), [
       Query.equal('recipientId', ownerId), Query.select(['$id', '$createdAt', 'searchId']),
     ]),
   ])
   for (const s of searches) {
     stats.set(s.id, {
-      matching: filterCandidates(candidates, s.filters, now).length,
+      matching: filterCandidates(candidates, applicable(s).filters, now).length,
       newMatches: newMatchCount(alerts.filter(a => a.searchId === s.id).map(a => a.$createdAt), s.lastOpenedAt),
     })
   }
@@ -186,9 +200,9 @@ export async function alertSavedSearches(candidateProfileId: string, opts: { new
     const { databases } = createAdminClient()
     const doc = await databases.getDocument(DB_ID, COLLECTIONS.USERS, candidateProfileId, [Query.select([...SEARCHABLE_FIELDS])])
     if (doc.role !== 'candidate' || !str(doc.cvFileId)) return
-    const candidate = searchableCandidateOf(doc as unknown as Record<string, unknown>)
+    const candidate = searchableCandidateOf(doc as unknown as Record<string, unknown>, await jobFamilyOf(candidateProfileId))
     const now = opts.now ?? new Date()
-    const matched = (opts.searches ?? await activeSearches()).filter(s => shouldAlert(s, candidate, { newCv: opts.newCv, now }))
+    const matched = (opts.searches ?? await activeSearches()).map(applicable).filter(s => shouldAlert(s, candidate, { newCv: opts.newCv, now }))
     if (matched.length === 0) return
 
     const byOwner = new Map<string, SavedSearch[]>()
@@ -203,6 +217,19 @@ export async function alertSavedSearches(candidateProfileId: string, opts: { new
   } catch (err) {
     if (codeOf(err) === 404) return
     console.error('[recherches] comparaison du candidat aux recherches en échec', message(err))
+  }
+}
+
+/**
+ * Famille de métier du candidat pour les recherches filtrées par métier (ADR 0057). Lecture impossible : null, le
+ * candidat ne répond pas à ces recherches-là cette fois ; le cron le compare de nouveau pendant 6 h.
+ */
+async function jobFamilyOf(candidateId: string) {
+  try {
+    return (await candidateJobFamilies([candidateId])).get(candidateId) ?? null
+  } catch (err) {
+    console.error('[recherches] famille de métier illisible', candidateId, message(err))
+    return null
   }
 }
 

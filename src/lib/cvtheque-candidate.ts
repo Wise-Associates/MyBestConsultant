@@ -1,4 +1,5 @@
 import type { SearchableCandidate } from '@/lib/cvtheque-search'
+import type { JobFamily } from '@/lib/job-families'
 
 // Ce que la recherche de la CV Thèque lit d'un document `users` de candidat, pour les recherches enregistrées (comptes et
 // alertes, ADR 0046). Mêmes champs et mêmes valeurs par défaut que la liste de la page (getRecruiterCvthequeCandidates,
@@ -21,7 +22,8 @@ function profileOf(json: unknown): Record<string, unknown> {
   }
 }
 
-export function searchableCandidateOf(doc: Record<string, unknown>): SearchableCandidate {
+/** `jobFamily` : famille lue dans la classification du CV (candidateJobFamilies) ; null : pas classé ou pas lue. */
+export function searchableCandidateOf(doc: Record<string, unknown>, jobFamily: JobFamily | null = null): SearchableCandidate {
   const p = profileOf(doc.cvProfileJson)
   return {
     name: `${str(doc.firstName)} ${str(doc.lastName)}`.trim(),
@@ -37,6 +39,7 @@ export function searchableCandidateOf(doc: Record<string, unknown>): SearchableC
     desiredSector: list(doc.desiredSector),
     desiredRoles: list(doc.desiredRoles),
     createdAt: str(doc.$createdAt),
+    jobFamily,
   }
 }
 

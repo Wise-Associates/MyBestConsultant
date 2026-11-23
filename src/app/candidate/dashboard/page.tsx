@@ -20,6 +20,10 @@ const STATUS: Record<string, { label: string; bg: string; text: string }> = {
   on_hold:   { label: 'Vivier',       bg: 'rgba(245,158,11,0.1)',  text: '#f59e0b' },
 }
 
+// Dépôt du CV (actions.ts) : classification par l'IA puis alertes des recherches filtrées par métier, après la réponse
+// (ADR 0057) ; le délai par défaut couperait une classification qui passe par plusieurs modèles.
+export const maxDuration = 300
+
 export default async function CandidateDashboard({
   searchParams,
 }: {

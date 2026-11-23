@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import {
-  EMPTY_FILTERS, filterCandidates, filtersSummary, hasPhrase, hasSearchCriteria, sanitizeFilters, words, type CvthequeFilters,
+  EMPTY_FILTERS, filterCandidates, filtersSummary, hasSearchCriteria, sanitizeFilters, skillMatcher, words, type CvthequeFilters,
   type SearchableCandidate,
 } from '@/lib/cvtheque-search'
 import { alertDocId, escapeHtml } from '@/lib/recruiter-alerts'
@@ -120,9 +120,10 @@ export interface CandidateHighlights {
 
 /** Ce que l'e-mail montre du candidat : seulement ce que la CV Thèque montre déjà à tout recruteur. */
 export function candidateHighlights(c: SearchableCandidate, searches: CvthequeFilters[]): CandidateHighlights {
-  const asked = searches.flatMap(f => f.skills)
+  // Même règle que la liste (équivalences comprises) : une compétence voisine qui a retenu le candidat passe en tête.
+  const asked = searches.flatMap(f => f.skills).filter(a => words(a).length > 0).map(skillMatcher)
   const own = c.skills.filter(s => s.trim())
-  const matching = own.filter(s => asked.some(a => hasPhrase(words(s), a)))
+  const matching = own.filter(s => asked.some(match => match([s]) !== null))
   const skills = [...matching, ...own.filter(s => !matching.includes(s))].slice(0, 6)
   return {
     position: c.desiredRoles[0] || c.experiences[0]?.title || '',

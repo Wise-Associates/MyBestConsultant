@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { maskContacts } from './contact-mask'
+import { JOB_FAMILIES, type JobFamily } from './job-families'
 
 // Classification d'un CV (ADR 0044, phase 1) : champs normalisés tirés une fois par version de CV, pour le préfiltre
 // avant l'IA (phase 2, index de recherche) et les statistiques (phase 3). Listes fermées pour la famille de métiers, les
@@ -10,24 +11,8 @@ import { maskContacts } from './contact-mask'
 /** À changer quand les consignes ou les champs changent : toutes les classifications sont alors refaites. */
 export const CLASSIFICATION_VERSION = 1
 
-export const JOB_FAMILIES = {
-  developpement: 'Développement',
-  data_ia: 'Data et IA',
-  infrastructure_cloud: 'Infrastructure, cloud, DevOps',
-  cybersecurite: 'Cybersécurité',
-  architecture: 'Architecture',
-  pilotage_projet: 'Pilotage de projet, PMO',
-  produit_agilite: 'Produit et agilité',
-  conseil_fonctionnel: 'Conseil fonctionnel, MOA',
-  erp_crm: 'ERP et CRM',
-  support_exploitation: 'Support et exploitation',
-  design_ux: 'Design, UX',
-  finance_metier: 'Finance, banque, assurance (métier)',
-  rh: 'Ressources humaines',
-  commercial_achats: 'Commercial, achats',
-  autre: 'Autre',
-} as const
-export type JobFamily = keyof typeof JOB_FAMILIES
+// Liste des familles dans job-families.ts, lue aussi dans le navigateur (filtre « Métier » de la CV Thèque).
+export { JOB_FAMILIES, type JobFamily }
 
 export const SECTORS = {
   banque: 'Banque', assurance: 'Assurance', marches_financiers: 'Marchés financiers', energie: 'Énergie',

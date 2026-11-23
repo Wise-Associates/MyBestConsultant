@@ -3,6 +3,8 @@
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { ID, Query } from 'node-appwrite'
+import { candidateJobFamilies, isCvClassificationsConfigured } from '@/lib/appwrite/cv-classifications'
+import type { JobFamily } from '@/lib/job-families'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import type { CvProfile, CvExperience, CvEducation, CvLanguage } from '@/lib/cv-profile-extract'
@@ -116,9 +118,15 @@ export interface CvThequeCandidate {
   desiredSector: string[]
   desiredRoles: string[]
   createdAt: string
+  /** Famille de métier de la classification du CV (filtre « Métier », ADR 0057) ; null : pas encore classé. */
+  jobFamily: JobFamily | null
 }
 
-export async function getRecruiterCvthequeCandidates(): Promise<{ candidates: CvThequeCandidate[]; error?: string }> {
+/**
+ * `jobFamiliesAvailable` : familles lues (classification configurée et lisible). Sinon la page masque le filtre « Métier »
+ * plutôt que d'écarter tous les profils.
+ */
+export async function getRecruiterCvthequeCandidates(): Promise<{ candidates: CvThequeCandidate[]; jobFamiliesAvailable: boolean; error?: string }> {
   try {
     await requireRecruiter()
     const { databases } = createAdminClient()
@@ -131,8 +139,18 @@ export async function getRecruiterCvthequeCandidates(): Promise<{ candidates: Cv
       Query.limit(500),
     ])
 
-    const candidates: CvThequeCandidate[] = res.documents
-      .filter(d => d.cvFileId) // recruiters only see candidates with a usable CV on file
+    const withCv = res.documents.filter(d => d.cvFileId) // recruiters only see candidates with a usable CV on file
+    let families = new Map<string, JobFamily>()
+    let jobFamiliesAvailable = isCvClassificationsConfigured()
+    if (jobFamiliesAvailable) {
+      try {
+        families = await candidateJobFamilies(withCv.map(d => d.$id))
+      } catch (err) {
+        jobFamiliesAvailable = false
+        console.error('[cvtheque] familles de métiers illisibles', err instanceof Error ? err.message : String(err))
+      }
+    }
+    const candidates: CvThequeCandidate[] = withCv
       .map(d => {
         const profile: Partial<CvProfile> = d.cvProfileJson ? JSON.parse(d.cvProfileJson as string) : {}
         return {
@@ -155,12 +173,13 @@ export async function getRecruiterCvthequeCandidates(): Promise<{ candidates: Cv
           desiredSector: d.desiredSector ? (d.desiredSector as string).split(',').map((s: string) => s.trim()).filter(Boolean) : [],
           desiredRoles: d.desiredRoles ? (d.desiredRoles as string).split(',').map((s: string) => s.trim()).filter(Boolean) : [],
           createdAt: d.$createdAt as string,
+          jobFamily: families.get(d.$id) ?? null,
         }
       })
 
-    return { candidates }
+    return { candidates, jobFamiliesAvailable }
   } catch (e) {
-    return { candidates: [], error: e instanceof Error ? e.message : 'Erreur inconnue' }
+    return { candidates: [], jobFamiliesAvailable: false, error: e instanceof Error ? e.message : 'Erreur inconnue' }
   }
 }
 
