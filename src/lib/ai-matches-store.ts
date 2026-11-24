@@ -10,7 +10,8 @@ import { mapLimit } from '@/lib/concurrency'
 import { offerDetails } from '@/lib/match-scoring'
 import { poolRowId } from '@/lib/pool-matching'
 import { alertIdealCandidates } from '@/lib/recruiter-alerts-store'
-import { aoSourceContext, cvScorer, readCvForScoring } from '@/lib/sourcing-core'
+import { aoSourceContext, matchingScorer, readCvForScoring } from '@/lib/sourcing-core'
+import { loadOfferCriteria } from '@/lib/offer-criteria-store'
 import {
   AUTO_MATCH_DAILY_LIMIT, AUTO_MATCH_LEASE_MS, AUTO_MATCH_MIN_SCORE, autoMatchDecision, autoMatchTaskId, isAutoMatchable, matchHighlights,
   parseAutoMatchState, pickOffersForCandidate, type AutoMatchState, type AutoMatchTask,
@@ -182,15 +183,17 @@ async function compareWithOffers(candidateId: string, now: Date): Promise<'done'
     return 'done'
   }
 
-  // Une notation par offre, la même que « Rafraîchir » du Matching IA (cvScorer : barème du matching, cache des
-  // notations, préfixe mis en cache chez Claude) : le candidat a le même score dans l'alerte et dans l'offre.
+  // Une notation par offre, la même que « Rafraîchir » du Matching IA (matchingScorer : critères de l'offre ou barème du
+  // matching, cache des notations, préfixe mis en cache chez Claude) : le candidat a le même score dans l'alerte et dans
+  // l'offre.
   let failed = false
   const scores = (await mapLimit(picked, SCORING_CONCURRENCY, async job => {
     try {
-      const scored = await cvScorer({
+      // Critères de l'offre s'il y en a (ADR 0061), comme « Rafraîchir » du Matching IA.
+      const scored = await matchingScorer({
         title: job.title ?? '', skills: job.skills, description: job.description ?? '', details: offerDetails(job),
-        sourceContext: await aoSourceContext(job),
-      }, 'matching')(cvText)
+        sourceContext: await aoSourceContext(job), criteria: await loadOfferCriteria(job.$id),
+      })(cvText)
       // Réponse sans jugement lisible : offre non notée (jamais un score inventé).
       if (!scored) {
         failed = true

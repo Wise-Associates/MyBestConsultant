@@ -162,7 +162,9 @@ Mise en œuvre (2026-11-18, phase 2 a) :
   postulé ou déjà notés) ; résultats réunis puis classés par un **pré-score du code** (métier 45 %, compétences 45 %,
   ville 10 %) ; les **15** premiers (`PREFILTER_KEEP`, au lieu des 30 plus récents) passent à l'IA, après revérification
   dans Appwrite (CV présent, désinscription, exclusions). Places restantes (moins de CV classés que de places) : les plus
-  récents, comme avant. Meilisearch absent ou en panne : comportement d'avant, journalisé.
+  récents, comme avant. Meilisearch absent ou en panne : comportement d'avant, journalisé. **Remplacé le 2026-11-24 par
+  le filtre des critères de l'offre (ADR 0061, phase 2)** : recherches, ★ requis assouplis pas à pas, pré-score aux poids
+  de l'offre, 10 CV ; les plus récents ne complètent plus que si l'index ne trouve aucun CV pour l'offre.
 - Pas encore : recherche par le sens (embeddings, phase 2 b, à décider après les premiers résultats), préfiltre des
   viviers (leurs CV sont notés à l'import, un par un), statistiques (phase 3).
 

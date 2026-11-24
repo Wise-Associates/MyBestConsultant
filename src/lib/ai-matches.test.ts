@@ -126,4 +126,8 @@ describe('correspondances IA : contenu de l’e-mail', () => {
   it('sans résumé lisible, ne donne que les compétences', () => {
     assert.deepEqual(matchHighlights('Texte libre', candidate.skills, ['AWS']), { why: '', skills: ['AWS'], gaps: [] })
   })
+
+  it('score noté sur les critères de l’offre (ADR 0061) : la phrase de l’IA, sans les lettres du résumé', () => {
+    assert.deepEqual(matchHighlights('Critères v1#0a1b2c3d · op · o — Pas d’Angular.', candidate.skills, ['AWS']), { why: 'Pas d’Angular.', skills: ['AWS'], gaps: [] })
+  })
 })

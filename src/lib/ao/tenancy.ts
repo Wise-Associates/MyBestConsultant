@@ -76,6 +76,8 @@ const COUNTER_PREFIX = {
   statsProfilesOrg: 'sp', statsProfilesAll: 'sq',
   // Textes du post LinkedIn rédigés par l'IA à la préparation de la publication d'un AO (ADR 0058) : par organisation, pour toutes.
   aoSocialOrg: 'so', aoSocialAll: 'sb',
+  // Notation des candidats d'une offre sur les critères propres d'un recruteur (ADR 0061 phase 3) : par organisation, pour toutes.
+  criteriaJudgeOrg: 'kj', criteriaJudgeAll: 'kk',
 } as const
 export type DailyCounter = keyof typeof COUNTER_PREFIX
 

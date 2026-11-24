@@ -1,4 +1,5 @@
 import type { JobMatchResult } from '@/lib/matching-core'
+import type { OfferCriteriaSet } from '@/lib/offer-criteria'
 import type { SocialEdits } from '@/lib/social-content'
 import type { SocialPreview } from './publication-social'
 import type { BulkDeleteResult, ExpiredSearch } from './bulk-delete'
@@ -34,6 +35,11 @@ export interface PublicationDraft {
    * diffusion. Absents (aucun post prévu à la préparation) : rédigés par l'IA au moment de la diffusion, comme avant.
    */
   social?: SocialEdits
+  /**
+   * Critères de matching de l'offre (ADR 0061), relus avec la version : enregistrés à la publication comme pondération
+   * générale de l'offre. Absents (navigateur d'avant ce changement) : offre notée sur le barème par défaut.
+   */
+  criteria?: OfferCriteriaSet
 }
 
 /** anonymized : version anonymisée (IA ou règles, ADR 0013) ; raw : l'offre telle que reçue, à relire (sans IA). */
@@ -65,6 +71,12 @@ export interface PublicationPreview {
   hiddenNames: string[][]
   /** Post LinkedIn que la publication fera partir, construit dans le navigateur à partir de la version (ADR 0058). */
   social: SocialPreview
+  /**
+   * D'où viennent les critères de matching du brouillon : saved, enregistrés pour cet AO ; ai, proposés par l'IA ;
+   * default, critères par défaut (IA refusée ou en échec : `criteriaNotice` dit pourquoi ; version non anonymisée).
+   */
+  criteriaSource: 'saved' | 'ai' | 'default'
+  criteriaNotice: string
 }
 
 /** Candidat retenu pour une offre AO (les 5 meilleurs notés 65 ou plus, sourcing-rules.ts). */
@@ -167,7 +179,10 @@ export interface AoDashboardActions {
    */
   deleteOffers(ids: string[]): Promise<BulkDeleteResult | { error: string }>
   previewPublication(id: string, mode?: PublicationMode): Promise<{ preview?: PublicationPreview; error?: string }>
-  publish(id: string, input: PublicationDraft): Promise<{ jobId?: string; error?: string }>
+  /** `notice` : offre publiée, mais un point à signaler (critères de matching non enregistrés). */
+  publish(id: string, input: PublicationDraft): Promise<{ jobId?: string; error?: string; notice?: string }>
+  /** Critères de matching d'un AO pas encore publié (ADR 0061), gardés pour sa section Sourcing et sa publication ; null les retire. */
+  saveCriteria?: (id: string, criteria: OfferCriteriaSet | null) => Promise<{ error?: string }>
   setStatus(id: string, status: 'to_review' | 'ignored'): Promise<{ error?: string }>
   /**
    * « Tout arrêter » du panneau d'une offre publiée : diffusion LinkedIn pas encore remise à Make et e-mails automatiques

@@ -3,6 +3,7 @@
 // CVs the recruiter picked for this job). Not 'use server' on purpose, same reasoning as
 // sourcing-core.ts: everything exported from a 'use server' file becomes a remotely-callable
 // action, and these skip auth checks since they're called from trusted server contexts only.
+import { rescoreOnCriteria, type CriteriaContext } from '@/lib/criteria-view'
 import { displayEmail } from '@/lib/candidate-identity'
 import { callLLM } from '@/lib/ai/llm-router'
 import { createAdminClient } from '@/lib/appwrite/client'
@@ -18,7 +19,8 @@ import { listAllByValues, listAllDocuments } from '@/lib/appwrite/list-all'
 import { listVivierOfferMatches } from '@/lib/appwrite/vivier-offer-matches'
 import { planPoolRows, poolRowId } from '@/lib/pool-matching'
 import { withCheckedTitles } from '@/lib/title-check'
-import { aoSourceContext, cvScorer, readCvForScoring, type MatchResult } from '@/lib/sourcing-core'
+import { aoSourceContext, matchingScorer, readCvForScoring, type MatchResult } from '@/lib/sourcing-core'
+import { loadOfferCriteria } from '@/lib/offer-criteria-store'
 import { SCORING_AI } from '@/lib/ai/models'
 import { offerDetails } from '@/lib/match-scoring'
 import { rescoreForRecruiter, type RecruiterWeights, type WeightsOverride } from '@/lib/scoring-weights'
@@ -57,6 +59,10 @@ export interface JobMatchResult {
   /** Base candidats : ville et compétences du profil, pour la recherche de la page. */
   city?: string
   skills?: string[]
+  /** Critères propres du recruteur aux libellés pas encore jugés pour ce candidat (ADR 0061) : score de l'offre affiché. */
+  criteriaPending?: boolean
+  /** Score noté sur d'anciens libellés de l'offre (renotation en cours ou interrompue : « Rafraîchir ») ; score affiché tel quel. */
+  criteriaStale?: boolean
 }
 
 /**
@@ -149,7 +155,7 @@ export async function vivierCvText(cvFileId: string | null | undefined, profile:
 }
 
 // Population 2 — scores a single vivier CV against a job right after it's uploaded, with the scoring used for
-// applications and the candidate database (cvScorer, ADR 0029).
+// applications and the candidate database (cvScorer, ADR 0029; matchingScorer: the offer's criteria, ADR 0061).
 export async function matchVivierCvAgainstJob(jobId: string, vivierCvId: string, profile: CvProfile): Promise<void> {
   try {
     const { databases } = createAdminClient()
@@ -162,10 +168,11 @@ export async function matchVivierCvAgainstJob(jobId: string, vivierCvId: string,
       console.error('[matching] CV du vivier de l\'offre sans texte à noter', jobId, vivierCvId)
       return
     }
-    const scored = await cvScorer({
+    // Critères de l'offre s'il y en a (ADR 0061) : le même score qu'à « Rafraîchir » pour la base candidats.
+    const scored = await matchingScorer({
       title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? ''), details: offerDetails(job),
-      sourceContext: await aoSourceContext(job),
-    }, 'matching')(cvText)
+      sourceContext: await aoSourceContext(job), criteria: await loadOfferCriteria(jobId),
+    })(cvText)
     // Réponse sans jugement : CV non noté (jamais un score inventé).
     if (!scored) {
       console.error('[matching] réponse de l\'IA sans jugement lisible pour un CV du vivier de l\'offre', jobId, vivierCvId)
@@ -238,6 +245,8 @@ export async function getJobMatches(
   jobId: string, tenantId: string, vivierOwner: string | null, weights?: RecruiterWeights,
   /** Poids propres à certains candidats, par clé candidateWeightsKey (ADR 0049), par-dessus `weights`. */
   candidateWeights: Record<string, WeightsOverride> = {},
+  /** Offre notée sur ses critères (ADR 0061) : critères du recruteur et jugements pour leurs libellés (criteria-view.ts). */
+  criteria?: CriteriaContext,
 ): Promise<{ matches: JobMatchResult[]; poolComputedAt: string | null }> {
   const { databases } = createAdminClient()
   const jobDoc = await databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId).catch(err => {
@@ -366,7 +375,8 @@ export async function getJobMatches(
   })
 
   const all = [...poolMatches, ...vivierMatches, ...applicationMatches]
-  const matches = (weights ? rescoreForRecruiter(all, weights, candidateWeights) : all)
+  const weighted = weights ? rescoreForRecruiter(all, weights, candidateWeights) : all
+  const matches = (criteria ? rescoreOnCriteria(weighted, criteria) : weighted)
     .sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
   const poolComputedAt = poolDocs[0]?.$createdAt as string | undefined ?? null
 

@@ -1,3 +1,4 @@
+import { isCriteriaSummary, reasonWithoutCriteria } from './criteria-scoring'
 import { createHash } from 'node:crypto'
 import type { SearchableCandidate } from '@/lib/cvtheque-search'
 import { covers, preScore } from '@/lib/search/cv-search'
@@ -118,7 +119,9 @@ const JUDGEMENT_GAP = 50
 export function matchHighlights(reason: string, candidateSkills: string[], offerSkills: string[]): MatchHighlights {
   const skills = unique(offerSkills).filter(s => covers(candidateSkills, s)).slice(0, 8)
   const breakdown = scoreBreakdown(reason)
-  if (!breakdown) return { why: '', skills, gaps: [] }
+  // Score noté sur les critères de l'offre (ADR 0061) : la phrase de l'IA ; les critères faibles demandent les critères
+  // de l'offre, que l'e-mail ne lit pas.
+  if (!breakdown) return { why: isCriteriaSummary(reason) ? reasonWithoutCriteria(reason).trim() : '', skills, gaps: [] }
   return {
     why: breakdown.rest.trim(),
     skills,

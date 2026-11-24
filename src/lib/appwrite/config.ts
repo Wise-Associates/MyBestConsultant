@@ -44,6 +44,9 @@ export const COLLECTIONS = {
   SCORE_CACHE: process.env.APPWRITE_COLLECTION_SCORE_CACHE ?? '',
   // Poids du matching d'un recruteur pour une offre (ADR 0049) ; vide : seulement ses poids globaux, pas de réglage par offre.
   JOB_SCORING_WEIGHTS: process.env.APPWRITE_COLLECTION_JOB_SCORING_WEIGHTS ?? '',
+  // Jugements de l'IA pour les critères propres d'un recruteur (ADR 0061, phase 3) ; vide : critères propres sans libellé
+  // nouveau seulement (poids et ★ des mêmes libellés).
+  CRITERIA_JUDGEMENTS: process.env.APPWRITE_COLLECTION_CRITERIA_JUDGEMENTS ?? '',
   // Classifications des CV (ADR 0044) ; vide : pas de classification (rien d'autre ne change).
   CV_CLASSIFICATIONS: process.env.APPWRITE_COLLECTION_CV_CLASSIFICATIONS ?? '',
   // Alertes « profil idéal » des recruteurs (ADR 0045) ; vide : aucune alerte ni e-mail, la page « Alertes » le dit.

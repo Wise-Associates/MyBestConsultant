@@ -8,6 +8,8 @@ import {
   type WeightsOverride,
 } from '@/lib/scoring-weights'
 import type { ActiveScale } from '@/lib/match-scoring'
+import { OFFER_CRITERIA_OWNER, serializeCriteria } from '@/lib/offer-criteria-store'
+import { parseCriteriaSet, type OfferCriteriaSet } from '@/lib/offer-criteria'
 
 // Poids personnels du recruteur (scoring-weights.ts) gardés dans les préférences de son compte Appwrite : propres à la
 // personne, sans collection ni attribut à créer. Les préférences portent aussi le jeton d'invitation (team.ts) : on les
@@ -38,7 +40,9 @@ export async function saveRecruiterWeights(authUserId: string, scale: ActiveScal
 }
 
 // Poids d'un recruteur pour une offre et pour un candidat de cette offre (ADR 0049) : collection `job_scoring_weights`,
-// un document par compte, offre et candidat (`candidate` vide : l'offre), d'identifiant déduit des trois. Champ
+// un document par compte, offre et candidat (`candidate` vide : l'offre), d'identifiant déduit des trois. La même
+// collection garde les critères généraux de chaque offre (ADR 0061, offer-criteria-store.ts) : document `jc…`, `userId`
+// OFFER_CRITERIA_OWNER ; une lecture par offre seule (`jobId`) les verrait aussi. Champ
 // `weights` : poids remplaçants par barème (WeightsOverride, JSON). Serveur seulement, aucune permission client ; l'accès
 // à l'offre est contrôlé par l'appelant (requireJobAccess, matching-actions.ts), et un recruteur ne lit et n'écrit que les
 // siens (son compte).
@@ -48,6 +52,14 @@ export const isJobWeightsConfigured = () => !!COLLECTIONS.JOB_SCORING_WEIGHTS
 /** Identifiant du document (36 caractères au plus) ; `candidate` : clé candidateWeightsKey, absente pour l'offre. */
 const weightsDocId = (authUserId: string, jobId: string, candidate?: string) =>
   `jw${createHash('sha256').update(candidate ? `${authUserId}:${jobId}:${candidate}` : `${authUserId}:${jobId}`).digest('hex').slice(0, 34)}`
+
+/**
+ * Critères propres d'un recruteur pour une offre ou un candidat (ADR 0061 phase 3) : des documents à part (`jk…`,
+ * `weights` « {} », attribut `criteria`), pour que retirer ses poids (qui supprime leur document) ne retire pas ses
+ * critères, ni l'inverse. Lus avec les poids (même compte, même offre).
+ */
+const criteriaDocId = (authUserId: string, jobId: string, candidate?: string) =>
+  `jk${createHash('sha256').update(candidate ? `${authUserId}:${jobId}:${candidate}` : `${authUserId}:${jobId}`).digest('hex').slice(0, 34)}`
 
 export interface JobWeightsState {
   /** Poids qui s'appliquent pour l'offre : ceux de l'offre, sinon les globaux du recruteur, sinon ceux par défaut. */
@@ -64,6 +76,10 @@ export interface JobWeightsState {
   jobUnreadable: boolean
   /** Poids d'au moins un candidat illisibles (ceux de l'offre lui sont appliqués). */
   candidatesUnreadable: boolean
+  /** Critères propres du recruteur pour l'offre (ADR 0061 phase 3) ; null : ceux de l'offre. */
+  criteria: OfferCriteriaSet | null
+  /** Critères propres du recruteur pour un candidat de l'offre, par clé candidateWeightsKey. */
+  candidateCriteria: Record<string, OfferCriteriaSet>
 }
 
 /**
@@ -73,17 +89,29 @@ export interface JobWeightsState {
 export const MAX_WEIGHTED_CANDIDATES = 200
 
 /** Poids enregistrés par ce recruteur pour l'offre et ses candidats (une lecture, bornée). Une panne est levée. */
-async function readJobDocs(authUserId: string, jobId: string): Promise<Pick<JobWeightsState, 'job' | 'candidates' | 'jobUnreadable' | 'candidatesUnreadable'>> {
-  const empty = { job: null, candidates: {}, jobUnreadable: false, candidatesUnreadable: false }
+type SavedDocs = Pick<JobWeightsState, 'job' | 'candidates' | 'jobUnreadable' | 'candidatesUnreadable' | 'criteria' | 'candidateCriteria'>
+
+async function readJobDocs(authUserId: string, jobId: string): Promise<SavedDocs> {
+  const empty: SavedDocs = { job: null, candidates: {}, jobUnreadable: false, candidatesUnreadable: false, criteria: null, candidateCriteria: {} }
   if (!isJobWeightsConfigured()) return empty
-  // L'offre et MAX_WEIGHTED_CANDIDATES candidats : une page suffit (l'écriture refuse au-delà).
+  // Les deux documents de l'offre (poids `jw`, critères propres `jk`) et MAX_WEIGHTED_CANDIDATES autres : une page suffit
+  // (l'écriture refuse au-delà).
   const { documents: docs, total } = await createAdminClient().databases.listDocuments(DB_ID, COLLECTIONS.JOB_SCORING_WEIGHTS, [
-    Query.equal('userId', authUserId), Query.equal('jobId', jobId), Query.select(['$id', 'candidate', 'weights']),
-    Query.limit(MAX_WEIGHTED_CANDIDATES + 1),
+    Query.equal('userId', authUserId), Query.equal('jobId', jobId), Query.select(['$id', 'candidate', 'weights', 'criteria']),
+    Query.limit(MAX_WEIGHTED_CANDIDATES + 2),
   ])
   if (total > docs.length) console.error('[poids] plus de poids enregistrés que la limite pour une offre : les suivants sont ignorés', jobId, total)
-  const state: Pick<JobWeightsState, 'job' | 'candidates' | 'jobUnreadable' | 'candidatesUnreadable'> = { ...empty, candidates: {} }
+  const state: SavedDocs = { ...empty, candidates: {}, candidateCriteria: {} }
   for (const doc of docs) {
+    if (doc.$id.startsWith('jk')) {
+      // Critères propres (ADR 0061) : invalides, ceux du niveau au-dessus s'appliquent.
+      const set = parseCriteriaSet(doc.criteria)
+      const candidate = typeof doc.candidate === 'string' ? doc.candidate : ''
+      if (!set) console.error('[poids] critères propres invalides ignorés', jobId, candidate ? 'candidat' : 'offre')
+      else if (candidate) state.candidateCriteria[candidate] = set
+      else state.criteria = set
+      continue
+    }
     const override = parseWeightsOverride(doc.weights)
     const candidate = typeof doc.candidate === 'string' ? doc.candidate : ''
     if (!override) {
@@ -102,7 +130,7 @@ export async function loadWeightsForJob(authUserId: string, jobId: string): Prom
     loadRecruiterWeights(authUserId),
     readJobDocs(authUserId, jobId).catch(err => {
       console.error('[poids] poids de l\'offre non lus : poids globaux', jobId, err instanceof Error ? err.message : err)
-      return { job: null, candidates: {}, jobUnreadable: true, candidatesUnreadable: true }
+      return { job: null, candidates: {}, jobUnreadable: true, candidatesUnreadable: true, criteria: null, candidateCriteria: {} }
     }),
   ])
   return { weights: withOverride(global, saved.job && { matching: saved.job }), global, ...saved, unreadable }
@@ -172,6 +200,43 @@ export async function saveCandidateWeights(
   return 'saved'
 }
 
+/**
+ * Critères propres d'un recruteur pour une offre (`candidate` vide) ou un candidat de l'offre (clé déjà vérifiée), déjà
+ * validés ; null les retire. Un nouveau document compte dans la même limite que ses poids (MAX_WEIGHTED_CANDIDATES).
+ */
+export async function saveOwnCriteria(
+  authUserId: string, jobId: string, candidate: string, set: OfferCriteriaSet | null,
+): Promise<'saved' | 'limit'> {
+  const { databases } = createAdminClient()
+  const id = criteriaDocId(authUserId, jobId, candidate || undefined)
+  if (!set) {
+    await deleteWeightsDoc(id)
+    return 'saved'
+  }
+  const criteria = serializeCriteria(set)
+  if (!criteria) throw new Error('Critères trop longs : retirez des libellés.')
+  const data = { userId: authUserId, jobId, candidate, weights: '{}', criteria }
+  try {
+    await databases.updateDocument(DB_ID, COLLECTIONS.JOB_SCORING_WEIGHTS, id, { criteria })
+    return 'saved'
+  } catch (err) {
+    if (!(err instanceof AppwriteException && err.code === 404)) throw err
+  }
+  // Même borne que les poids (une page de lecture, readJobDocs) : un document de plus serait ignoré à la lecture.
+  const { total } = await databases.listDocuments(DB_ID, COLLECTIONS.JOB_SCORING_WEIGHTS, [
+    Query.equal('userId', authUserId), Query.equal('jobId', jobId), Query.select(['$id']), Query.limit(1),
+  ])
+  if (total >= MAX_WEIGHTED_CANDIDATES + 1) return 'limit'
+  try {
+    await databases.createDocument(DB_ID, COLLECTIONS.JOB_SCORING_WEIGHTS, id, data)
+  } catch (err) {
+    // Créé entre-temps (deux onglets) : le dernier enregistrement l'emporte.
+    if (!(err instanceof AppwriteException && err.code === 409)) throw err
+    await databases.updateDocument(DB_ID, COLLECTIONS.JOB_SCORING_WEIGHTS, id, { criteria })
+  }
+  return 'saved'
+}
+
 /** Supprime tous les poids qui répondent à `field` = `value`, par pages de 100 jusqu'au dernier. */
 async function deleteWeightsWhere(field: 'jobId' | 'userId', value: string): Promise<void> {
   const { databases } = createAdminClient()
@@ -195,6 +260,11 @@ export async function deleteWeightsOfJob(jobId: string): Promise<void> {
  */
 export async function deleteWeightsOfUser(authUserId: string): Promise<void> {
   if (!isJobWeightsConfigured()) return
+  // Jamais les critères généraux des offres (ADR 0061) : aucun compte ne porte cette valeur, garde-fou en plus.
+  if (authUserId === OFFER_CRITERIA_OWNER) {
+    console.error('[poids] suppression des poids d\'un compte refusée : valeur réservée aux critères des offres')
+    return
+  }
   await deleteWeightsWhere('userId', authUserId).catch(err =>
     console.error('[poids] poids d\'offre du compte supprimé non effacés', err instanceof Error ? err.message : err))
 }

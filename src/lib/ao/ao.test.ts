@@ -8,6 +8,7 @@ const RECEIVED = new Date('2026-10-21T09:00:00Z')
 import { cityKey, offerFingerprint, titleKey } from './fingerprint'
 import { DEFAULT_CLIENT_LABEL, distinctNames, namesToHide, rawPublicOffer, revealsName, scrubContacts, toPublicOffer } from './anonymize'
 import { parsePublishInput } from './publication-input'
+import { defaultCriteriaSet } from '@/lib/offer-criteria'
 import Anthropic from '@anthropic-ai/sdk'
 import { LLMChainError, LLMHttpError, LLMNotConfiguredError, LLMUnreachableError } from '@/lib/ai/llm-router'
 import { claudeProblem, llmFailureDetail, llmUnavailableReason, openAiProblem } from './ai-failures'
@@ -1146,6 +1147,18 @@ describe('publication non anonymisée (« Publier sans anonymiser »)', () => {
   it('exige la relecture, que la version soit anonymisée ou non', () => {
     assert.match(parsePublishInput({ ...draft, anonymized: false, reviewed: false }).error ?? '', /J'ai relu/)
     assert.match(parsePublishInput({ ...draft, reviewed: undefined }).error ?? '', /J'ai relu/)
+  })
+
+  it('critères de matching (ADR 0061) : facultatifs, validés, jamais dans les champs de l’offre publique', () => {
+    const criteria = defaultCriteriaSet({ title: 'Chef de projet', description: '', skills: ['SAFe'] })
+    const parsed = parsePublishInput({ ...draft, criteria })
+    assert.equal(parsed.error, undefined)
+    assert.deepEqual(parsed.error === undefined && parsed.criteria, criteria)
+    assert.equal(parsed.error === undefined && 'criteria' in parsed.fields, false)
+    const without = parsePublishInput(draft)
+    assert.equal(without.error === undefined ? without.criteria : 'refusée', undefined)
+    const unbalanced = { ...criteria, criteria: criteria.criteria.map((c, i) => (i === 0 ? { ...c, weight: c.weight + 1 } : c)) }
+    assert.equal(parsePublishInput({ ...draft, criteria: unbalanced }).error, 'Critères de matching invalides : Les poids des critères doivent totaliser 100.')
   })
 })
 

@@ -5,7 +5,8 @@
 // puis affiche les jugements, leurs preuves, le score calculé et son plafond, à côté du score enregistré aujourd'hui.
 // Sert à vérifier un score contesté avant de le recalculer sur la page.
 //   npm run matching:explain -- .env.dev --job <id de l'offre> --cv <id du fichier CV> [--final]
-// Barème du matching par défaut (base candidats, viviers) ; --final : score final d'une candidature (ADR 0036).
+// Barème du matching par défaut (base candidats, viviers), ou les critères de l'offre si elle en a (ADR 0061) ; --final :
+// score final d'une candidature (ADR 0036).
 //   npm run matching:explain -- .env.prod --prod --job <…> --cv <…>    (production : lecture seule, un appel d'IA)
 // L'identifiant du CV est celui de l'adresse /api/cv/<id>. Aucune valeur secrète n'est affichée ; les preuves citées par
 // l'IA reprennent des expériences du CV (à ne pas copier hors de l'équipe).
@@ -57,7 +58,9 @@ Object.assign(process.env, env)
 const { Query } = await import('node-appwrite')
 const { createAdminClient } = await import('../src/lib/appwrite/client')
 const { DB_ID, COLLECTIONS } = await import('../src/lib/appwrite/config')
-const { aoSourceContext, cvScorer, finalOfferDetails, readCvForScoring } = await import('../src/lib/sourcing-core')
+const { aoSourceContext, criteriaScorer, cvScorer, finalOfferDetails, readCvForScoring } = await import('../src/lib/sourcing-core')
+const { loadOfferCriteria } = await import('../src/lib/offer-criteria-store')
+const { criteriaBreakdown } = await import('../src/lib/criteria-scoring')
 const { judgedResult, labelOf, offerDetails } = await import('../src/lib/match-scoring')
 const scale = args.includes('--final') ? 'final' as const : 'matching' as const
 
@@ -91,12 +94,15 @@ console.log(`Projet ${env.APPWRITE_PROJECT_ID} — offre « ${job.title} » — 
 console.log(`CV ${cvFileId} : ${cvText.length} caractères lus. Score enregistré aujourd'hui : ${stored.join(' ; ') || 'aucun'}.`)
 console.log('Notation en cours (un appel d\'IA, rien n\'est enregistré)…\n')
 
-const result = await cvScorer({
+const offer = {
   title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? ''),
   details: scale === 'final' ? await finalOfferDetails(job) : offerDetails(job),
   sourceContext: await aoSourceContext(job),
-  // Toujours un vrai appel d'IA : le script montre ce que l'IA répond, jamais une notation gardée (ADR 0044).
-}, scale, { useCache: false })(cvText)
+}
+// Critères de l'offre (ADR 0061) : la notation « matching » de l'application se fait sur eux.
+const criteriaSet = scale === 'matching' ? await loadOfferCriteria(job.$id) : null
+// Toujours un vrai appel d'IA : le script montre ce que l'IA répond, jamais une notation gardée (ADR 0044).
+const result = criteriaSet ? await criteriaScorer(offer, criteriaSet, { useCache: false })(cvText) : await cvScorer(offer, scale, { useCache: false })(cvText)
 if (!result) {
   console.error('Réponse de l\'IA sans jugement lisible : relancez (l\'application laisserait ce CV à noter).')
   process.exit(1)
@@ -114,6 +120,22 @@ const proofOf = (item: unknown, kept: string) => {
 }
 const answer = result.answer as Record<string, unknown>
 const at = (key: string, i: number) => (Array.isArray(answer[key]) ? (answer[key] as unknown[])[i] : answer[key])
+
+if ('set' in result) {
+  // Critères de l'offre : chaque libellé, son jugement et sa preuve, puis le score aux poids des critères.
+  const breakdown = criteriaBreakdown(result.reason, result.set)
+  console.log('Critères de l\'offre (poids ; libellés : poids dans le critère, ★ requis) :')
+  result.set.criteria.forEach((c, ci) => {
+    console.log(`${c.name} (${c.weight}) : ${breakdown ? `${breakdown.parts[ci].percent} %` : ''}`)
+    const values = c.id === 'poste' ? result.judgements.roles.map(r => r.fit) : result.judgements.criteria[ci].values
+    const names = c.labels.length > 0 ? c.labels.map(l => `${l.label} (${l.weight}${l.required ? ' ★' : ''})`)
+      : c.id === 'poste' ? result.judgements.roles.map(r => r.title || 'poste') : [c.labels.length ? '' : 'ensemble']
+    values.forEach((v, k) => console.log(`  - ${names[k] ?? 'ensemble'} : ${v}${proofOf(at(c.id, k), v)}`))
+  })
+  console.log(`\nScore calculé : ${result.score}${breakdown?.cap ? ` (plafonné à ${breakdown.cap.value} : ${breakdown.cap.reason})` : ''}`)
+  console.log(`Raison enregistrée : ${result.reason}`)
+  process.exit(0)
+}
 const { judgements: j, criteria } = result
 
 console.log('Poste (titre de l\'offre) :')

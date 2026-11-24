@@ -89,17 +89,6 @@ export function poolFilter(exclude: Iterable<string>): string {
 /** Offre telle que le préfiltre la lit. */
 export interface OfferForSearch { title: string; skills: string[]; location?: string }
 
-/** Requêtes d'une offre : son titre, puis une par compétence demandée (12 au plus), réunies ensuite. */
-export function offerSearchQueries(offer: OfferForSearch, filter: string, indexUid: string): { indexUid: string; q: string; filter: string; limit: number; attributesToRetrieve: string[]; matchingStrategy: 'last' }[] {
-  const attributesToRetrieve = ['id', 'sourceId', 'roles', 'skills', 'city', 'jobFamily', 'seniority']
-  // Compétences distinctes (sans tenir compte de la casse), 12 au plus, après le titre.
-  const seen = new Set<string>()
-  const skills = offer.skills.map(s => s.trim()).filter(s => s && !seen.has(s.toLowerCase()) && seen.add(s.toLowerCase())).slice(0, 12)
-  const title = cleanTitle(offer.title)
-  const terms = [title, ...skills.filter(s => s.toLowerCase() !== title.toLowerCase())].filter(Boolean)
-  return terms.map((q, i) => ({ indexUid, q, filter, limit: i === 0 ? 100 : 50, attributesToRetrieve, matchingStrategy: 'last' }))
-}
-
 const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
 // Mots vides des titres d'offres (« Chef de projet H/F », « Développeur (F/H) – Lyon »).
 const STOP = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'et', 'en', 'au', 'aux', 'a', 'pour', 'sur', 'un', 'une', 'h', 'f', 'hf', 'fh', 'cdi', 'cdd', 'freelance', 'mission', 'senior', 'junior', 'confirme', 'expert'])
@@ -108,7 +97,11 @@ const words = (s: string) => fold(s).split(/[^a-z0-9+#]+/).filter(w => w.length 
 export const cleanTitle = (title: string) => title.replace(/\(([hf]\s*\/\s*[hf])\)|\b[hf]\s*\/\s*[hf]\b/gi, '').split(/\s[–—-]\s/)[0].trim()
 
 /** CV trouvé par la recherche, avec ses champs classés. */
-export interface SearchHit { id: string; sourceId: string; roles?: string[]; skills?: string[]; city?: string }
+export interface SearchHit {
+  id: string; sourceId: string; roles?: string[]; skills?: string[]; city?: string
+  /** Champs lus par le filtre des critères (offer-filter.ts) : clés de SECTORS, noms des langues, années d'expérience. */
+  sectors?: string[]; languages?: string[]; yearsOfExperience?: number | null
+}
 
 /** Une compétence de l'offre est couverte : même nom, ou l'un contient l'autre en mots entiers (« SAP » / « SAP FI »). */
 export function covers(candidate: string[], wanted: string): boolean {
@@ -134,15 +127,4 @@ export function preScore(offer: OfferForSearch, hit: SearchHit): number {
   const skills = wanted.length ? wanted.filter(s => covers(hit.skills ?? [], s)).length / wanted.length : 0.5
   const city = offer.location && hit.city ? (words(offer.location)[0] === words(hit.city)[0] ? 1 : 0) : 0.5
   return 0.45 * role + 0.45 * skills + 0.1 * city
-}
-
-/** Résultats de toutes les requêtes réunis (un CV une fois), classés par pré-score : les `keep` premiers identifiants de source. */
-export function rankHits(offer: OfferForSearch, hitLists: SearchHit[][], keep: number): string[] {
-  const byId = new Map<string, SearchHit>()
-  for (const list of hitLists) for (const hit of list) if (!byId.has(hit.sourceId)) byId.set(hit.sourceId, hit)
-  return [...byId.values()]
-    .map(hit => ({ id: hit.sourceId, score: preScore(offer, hit) }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, keep)
-    .map(h => h.id)
 }

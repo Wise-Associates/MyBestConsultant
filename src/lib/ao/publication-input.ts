@@ -1,3 +1,4 @@
+import { CriteriaSetSchema, type OfferCriteriaSet } from '@/lib/offer-criteria'
 import { z } from 'zod'
 import { SOCIAL_CONTEXT_MAX, type SocialEdits } from '@/lib/social-content'
 
@@ -39,12 +40,14 @@ const PublishSchema = DraftFieldsSchema.extend({
   maskTerms: z.array(z.string().trim().max(80)).max(30),
   anonymized: z.boolean().default(true),
   social: SocialEditsSchema.optional(),
+  // Critères de matching relus avec la version (ADR 0061) ; absents : offre notée sur le barème par défaut.
+  criteria: CriteriaSetSchema.optional(),
 })
 
 export type PublicationFields = z.infer<typeof DraftFieldsSchema>
 
 export type PublishInput =
-  | { fields: PublicationFields; maskTerms: string[]; anonymized: boolean; social?: SocialEdits; error?: undefined }
+  | { fields: PublicationFields; maskTerms: string[]; anonymized: boolean; social?: SocialEdits; criteria?: OfferCriteriaSet; error?: undefined }
   | { error: string }
 
 /** Version validée (champs de l'offre publique à part), ou le message à afficher. */
@@ -53,10 +56,15 @@ export function parsePublishInput(input: unknown): PublishInput {
   if (!parsed.success) {
     if (parsed.error.issues.some(issue => issue.path[0] === 'reviewed')) return { error: 'Relisez la version publiée, puis cochez « J\'ai relu » pour la valider.' }
     if (parsed.error.issues.some(issue => issue.path[0] === 'social')) return { error: `Post LinkedIn invalide : « Le projet » fait ${SOCIAL_CONTEXT_MAX} caractères au plus.` }
+    const criteriaIssue = parsed.error.issues.find(issue => issue.path[0] === 'criteria')
+    if (criteriaIssue) return { error: `Critères de matching invalides : ${criteriaIssue.message}` }
     return { error: 'Champs invalides : vérifiez le titre, l\'entreprise affichée, la description (20 caractères minimum) et le montant.' }
   }
-  // Sans `reviewed`, `maskTerms`, `anonymized` ni `social`, qui ne font pas partie de l'offre publique.
-  return { fields: DraftFieldsSchema.parse(parsed.data), maskTerms: parsed.data.maskTerms, anonymized: parsed.data.anonymized, social: parsed.data.social }
+  // Sans `reviewed`, `maskTerms`, `anonymized`, `social` ni `criteria`, qui ne font pas partie de l'offre publique.
+  return {
+    fields: DraftFieldsSchema.parse(parsed.data), maskTerms: parsed.data.maskTerms, anonymized: parsed.data.anonymized,
+    social: parsed.data.social, criteria: parsed.data.criteria,
+  }
 }
 
 /** Champs de l'offre publique tels que le serveur les validera (espaces retirés), ou null s'il les refuserait. */

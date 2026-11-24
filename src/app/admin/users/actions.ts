@@ -1,5 +1,6 @@
 'use server'
 
+import { deleteJudgementsOfCandidate } from '@/lib/criteria-judgements-store'
 import { deleteSavedSearchesOf } from '@/lib/saved-searches-store'
 import { deleteJobMatchesOfCandidate } from '@/lib/ai-matches-store'
 import { deleteAlertsAboutCandidate } from '@/lib/recruiter-alerts-store'
@@ -196,6 +197,7 @@ export async function deleteUserAccount(authId: string, listedProfileId: string 
         await databases.deleteDocument(DB_ID, COLLECTIONS.USERS, profileId)
       } catch { /* profile doc may already be gone */ }
       await deleteClassification('candidate', profileId) // classification du CV (ADR 0044) ; ne lève jamais
+      await deleteJudgementsOfCandidate(`p:${profileId}`) // jugements sur des critères propres (ADR 0061) ; ne lève jamais
       // Second passage après la fiche : une analyse du candidat en cours (correspondances IA, ADR 0047) relit la fiche
       // après ses écritures et retire ses associations si elle a disparu ; ce passage couvre ce qu'elle a pu écrire avant.
       await deleteJobMatchesOfCandidate(profileId).catch(e => console.error('[correspondances IA] second passage de suppression en échec, lignes job_matches de ce candidat à supprimer à la main', e instanceof Error ? e.message : String(e)))

@@ -139,8 +139,8 @@ export const MAX_REQUIRED_SKILLS = 12
 /** Exigences tirées de la description et jugées une à une : profil recherché d'abord, puis missions. */
 export const MAX_REQUIREMENTS = 10
 
-/** Consigne de chaque critère, champ JSON en tête ; numérotées dans l'ordre du barème par matchRules. */
-const RULES: Record<CriterionKey, string> = {
+/** Consigne de chaque critère, champ JSON en tête ; numérotées dans l'ordre du barème par matchRules (et par criteria-scoring.ts). */
+export const RULES: Record<CriterionKey, string> = {
   poste: '"poste" : le titre de l\'offre (« Poste : … ») est la référence. Il peut réunir plusieurs métiers (« Scrum Master et Développeur Full Stack ») : un élément par métier du titre, dans son ordre, avec "intitule" : l\'intitulé exact, recopié du CV, du poste du candidat qui se rapproche le plus de ce métier. "oui" si le candidat a occupé ce métier (intitulé équivalent), "partiel" pour un métier de la même famille (développeur back-end pour un développeur full stack, Product Owner pour un Scrum Master) ou exercé peu de temps, "non" sinon. Un métier du titre non exercé ne se compense pas par un autre. Travailler dans une équipe agile ou avec des développeurs n\'est pas exercer ces métiers : un expert sécurité n\'est ni Scrum Master ni développeur, un développeur n\'est pas un chef de projet.',
   exigences: '"exigences" : le contexte et la description de l\'offre. Pour chaque exigence (liste numérotée, tirée de son profil recherché et de ses missions), dans l\'ordre : "oui" si une expérience du CV y répond, "partiel" si elle y répond en partie ou de loin, "non" sinon. Sans liste, un seul jugement pour ce que la description demande.',
   projet: '"projet" : le type de projet que décrit l\'offre (création ou refonte d\'une application, migration, intégration d\'un progiciel, maintenance, exploitation, transformation…) : "oui" si une expérience du CV porte sur un projet de ce type, "partiel" pour un type voisin, "non" sinon, "non précisé" si l\'offre ne décrit pas le projet.',
@@ -270,7 +270,7 @@ export interface RoleFit {
 }
 
 /** Métiers du titre jugés au plus (une offre n'en réunit guère plus de deux). */
-const MAX_ROLES = 4
+export const MAX_ROLES = 4
 
 export interface MatchJudgements {
   scale: ActiveScale
@@ -291,7 +291,7 @@ export interface MatchJudgements {
 // preuves sont des citations du CV, que le code vérifie. Règles volontairement simples, testées sur le cas de production.
 
 /** Mots d'un texte, sans casse, accents ni ponctuation (« full-stack » → full, stack). */
-const wordsOf = (text: string) => normalized(text).replace(/[^a-z0-9+#]+/g, ' ').split(' ').filter(w => w.length > 1)
+export const wordsOf = (text: string) => normalized(text).replace(/[^a-z0-9+#]+/g, ' ').split(' ').filter(w => w.length > 1)
 
 /** Une citation est une ligne d'expérience : au moins 5 mots. */
 const MIN_CITATION_WORDS = 5
@@ -336,7 +336,7 @@ function verifiedEvidence(item: unknown, cvWords: Set<string>, skill?: string): 
  * Liste jugée de `names.length` éléments (aucun : un jugement d'ensemble) : un élément oublié vaut « non », un en trop
  * est ignoré, un seul jugement vaut pour tous. null si rien n'est lisible.
  */
-function parseEvidenceList(value: unknown, names: string[], cvWords: Set<string>, namesAreSkills: boolean): Judgement[] | null {
+export function parseEvidenceList(value: unknown, names: string[], cvWords: Set<string>, namesAreSkills: boolean): Judgement[] | null {
   const name = (i: number) => (namesAreSkills ? names[i] : undefined)
   if (!Array.isArray(value)) {
     const single = verifiedEvidence(value, cvWords)
@@ -378,7 +378,7 @@ export function parseJudgements(raw: unknown, criteria: OfferCriteria, cvText: s
  * doit citer l'intitulé d'un poste du CV : sans intitulé, « non » ; intitulé absent du CV, un niveau de moins. Le
  * rapprochement de l'intitulé et du métier est vérifié ensuite (rolePairs, withTitleRelations).
  */
-function parseRoles(value: unknown, cvWords: Set<string>): RoleFit[] | null {
+export function parseRoles(value: unknown, cvWords: Set<string>): RoleFit[] | null {
   const items = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value]
   if (items.length === 0) return null
   const roles = items.slice(0, MAX_ROLES).map((item): RoleFit | null => {
@@ -408,7 +408,7 @@ export interface TitlePair {
 }
 
 /** Métiers du titre jugés exercés, avec l'intitulé du CV cité : ceux dont le rapprochement est à vérifier, dans l'ordre. */
-export function rolePairs(j: MatchJudgements): TitlePair[] {
+export function rolePairs(j: Pick<MatchJudgements, 'roles'>): TitlePair[] {
   return j.roles.filter(r => r.fit !== 'non' && r.cited).map(r => ({ metier: r.title || 'métier du titre de l\'offre', intitule: r.cited ?? '' }))
 }
 
@@ -437,7 +437,7 @@ export function parseTitleRelations(content: string, count: number, exact = fals
  * jugement gardé ; même famille, « partiel » au plus ; autre métier, « non » ; comparaison impossible, « partiel » au
  * plus (jamais « oui » sans elle).
  */
-export function withTitleRelations(j: MatchJudgements, relations: (TitleRelation | null)[]): MatchJudgements {
+export function withTitleRelations<J extends Pick<MatchJudgements, 'roles'>>(j: J, relations: (TitleRelation | null)[]): J {
   let next = 0
   const roles = j.roles.map(r => {
     if (r.fit === 'non' || !r.cited) return r
@@ -625,7 +625,7 @@ export function sourceContextForScoring(text: string): string {
 }
 
 /** Champs demandés à l'IA en plus des jugements ; « competences_vues » seulement quand l'offre n'a pas de liste de compétences (affichage du screening). */
-function scoringNotesFields(counts: CriteriaCounts): string {
+export function scoringNotesFields(counts: CriteriaCounts): string {
   return [
     ...(counts.skills === 0 ? [`"competences_vues":[{"nom":"…","jugement":"oui"|"partiel"|"non"}, …] (les compétences que la description demande, ${MAX_REQUIRED_SKILLS} au plus)`] : []),
     '"points_forts":["…"] (4 au plus)',

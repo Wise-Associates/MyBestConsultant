@@ -1,7 +1,9 @@
 import { AppwriteException, Query } from 'node-appwrite'
 import { createAdminClient } from './client'
 import { DB_ID, COLLECTIONS } from './config'
-import { isFreshScore, parseCachedScore, scoreCacheCutoff, serializeCachedScore, type CachedScore } from '@/lib/score-cache'
+import {
+  isFreshScore, parseCachedCriteriaScore, parseCachedScore, scoreCacheCutoff, serializeCachedScore, type CachedCriteriaScore, type CachedScore,
+} from '@/lib/score-cache'
 import type { ActiveScale } from '@/lib/match-scoring'
 
 // Notations gardées (collection `score_cache`, ADR 0044). Simple économie : une panne est journalisée et la notation se
@@ -12,20 +14,30 @@ export const isScoreCacheConfigured = () => !!COLLECTIONS.SCORE_CACHE
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
-/** Notation gardée `id` encore valable pour ce barème ; null sinon (absente, périmée, illisible ou cache en panne). */
-export async function readCachedScore(id: string, scale: ActiveScale, now = new Date()): Promise<CachedScore | null> {
+/** Texte gardé sous `id` s'il est encore frais ; null sinon (absent, périmé ou cache en panne, journalisé). */
+async function readFreshResult(id: string, now: Date): Promise<unknown> {
   if (!isScoreCacheConfigured()) return null
   try {
     const doc = await createAdminClient().databases.getDocument(DB_ID, COLLECTIONS.SCORE_CACHE, id)
-    return isFreshScore(doc.$createdAt, now) ? parseCachedScore(doc.result, scale) : null
+    return isFreshScore(doc.$createdAt, now) ? doc.result : null
   } catch (err) {
     if (!(err instanceof AppwriteException && err.code === 404)) console.error('[score-cache] lecture impossible', id, errorText(err))
     return null
   }
 }
 
+/** Notation gardée `id` encore valable pour ce barème ; null sinon (absente, périmée, illisible ou cache en panne). */
+export async function readCachedScore(id: string, scale: ActiveScale, now = new Date()): Promise<CachedScore | null> {
+  return parseCachedScore(await readFreshResult(id, now), scale)
+}
+
+/** Notation sur les critères d'une offre (v3) gardée `id`, pour ces libellés (empreinte) ; null sinon. */
+export async function readCachedCriteriaScore(id: string, fingerprint: string, now = new Date()): Promise<CachedCriteriaScore | null> {
+  return parseCachedCriteriaScore(await readFreshResult(id, now), fingerprint)
+}
+
 /** Garde une notation ; une notation périmée au même identifiant est remplacée (nouvelle date de création). */
-export async function writeCachedScore(id: string, entry: CachedScore, now = new Date()): Promise<void> {
+export async function writeCachedScore(id: string, entry: CachedScore | CachedCriteriaScore, now = new Date()): Promise<void> {
   if (!isScoreCacheConfigured()) return
   const result = serializeCachedScore(entry)
   if (!result) return
