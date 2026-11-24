@@ -316,7 +316,10 @@ function splitLead(description: string): { lead: string; rest: string } {
 
 /** Intitulé dans la phrase de recrutement : sans « H/F », parenthèses ni « Consultant » en tête (« Consultant SAP FI (H/F) » → « SAP FI »). */
 function recruitTitle(title: string): string {
-  return title.replace(/\([^)]*\)/g, ' ').replace(/\b[HF]\s*\/\s*[HF]\b/gi, ' ').replace(/^\s*consultant(e|\(e\))?\s+/i, '').replace(/\s+/g, ' ').trim()
+  return title.replace(/\([^)]*\)/g, ' ').replace(/\b[HF]\s*\/\s*[HF]\b/gi, ' ')
+    // Intitulé d'un lot d'appel d'offres (« Lot 2. Expert en… ») : le numéro du lot n'a pas de sens dans la phrase.
+    .replace(/^\s*lot\s*(?:n°|no\.?)?\s*\d+\s*[.:\-–—]?\s*/i, '')
+    .replace(/^\s*consultant(e|\(e\))?\s+/i, '').replace(/\s+/g, ' ').trim()
 }
 
 /** Offre de la plateforme : phrase de la direction (texte de David, 2026-11-17) ; sans pôle, « ses équipes ». */
