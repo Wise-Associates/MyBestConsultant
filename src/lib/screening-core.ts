@@ -10,7 +10,7 @@ import { viewerCanSeeApplication, type OfferViewer } from '@/lib/job-ownership'
 import { recommendationFor, type Judgement } from '@/lib/match-scoring'
 import { withRecommendationBonus } from '@/lib/recommendation-boost'
 import { alertIdealCandidates } from '@/lib/recruiter-alerts-store'
-import { cvScorer, finalOfferDetails, readCvForScoring } from '@/lib/sourcing-core'
+import { aoSourceContext, cvScorer, finalOfferDetails, readCvForScoring } from '@/lib/sourcing-core'
 
 // Notation des candidatures (screening manuel et automatique) et contrôle d'accès à une candidature. Hors des fichiers
 // « use server » (revue de sécurité du 2026-11-13) : `autoScreenApplication`, appelée sans session après une
@@ -113,6 +113,8 @@ export interface ApplicationToScreen {
   jobSkills: string[]
   /** Lieu, télétravail, rémunération et clients de l'offre (finalOfferDetails). */
   jobDetails: string[]
+  /** Offre publiée depuis un appel d'offres : sa description d'origine (aoSourceContext) ; '' sinon. */
+  jobSourceContext?: string
   /** CV joint à la candidature ; sans CV lisible, pas de score (jamais une note sur un texte d'erreur). */
   cvFileId?: string
 }
@@ -133,7 +135,9 @@ export async function scoreApplication(app: ApplicationToScreen): Promise<Screen
     }
     if (!cvText) return { error: 'CV sans texte lisible (PDF scanné) : score impossible' }
 
-    const scored = await cvScorer({ title: app.jobTitle, skills: app.jobSkills, description: app.jobDescription, details: app.jobDetails }, 'final')(cvText)
+    const scored = await cvScorer({
+      title: app.jobTitle, skills: app.jobSkills, description: app.jobDescription, details: app.jobDetails, sourceContext: app.jobSourceContext,
+    }, 'final')(cvText)
     if (!scored) return { error: 'Réponse de l\'IA sans jugement lisible : relancez le screening' }
     const jobText = `${app.jobTitle} ${app.jobSkills.join(' ')} ${app.jobDescription}`
     const { score, reason } = withRecommendationBonus(scored.score, scored.reason, await recommendationsOf(app.candidateId), jobText)
@@ -214,6 +218,7 @@ export async function autoScreenApplication(applicationId: string, { notify = tr
       jobDescription: jobDoc.description as string,
       jobSkills: (jobDoc.skills as string[]) ?? [],
       jobDetails: await finalOfferDetails(jobDoc),
+      jobSourceContext: await aoSourceContext(jobDoc),
       cvFileId: appDoc.cvFileId as string | undefined,
     })
     if ('error' in result) {

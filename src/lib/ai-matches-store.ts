@@ -10,7 +10,7 @@ import { mapLimit } from '@/lib/concurrency'
 import { offerDetails } from '@/lib/match-scoring'
 import { poolRowId } from '@/lib/pool-matching'
 import { alertIdealCandidates } from '@/lib/recruiter-alerts-store'
-import { cvScorer, readCvForScoring } from '@/lib/sourcing-core'
+import { aoSourceContext, cvScorer, readCvForScoring } from '@/lib/sourcing-core'
 import {
   AUTO_MATCH_DAILY_LIMIT, AUTO_MATCH_LEASE_MS, AUTO_MATCH_MIN_SCORE, autoMatchDecision, autoMatchTaskId, isAutoMatchable, matchHighlights,
   parseAutoMatchState, pickOffersForCandidate, type AutoMatchState, type AutoMatchTask,
@@ -189,6 +189,7 @@ async function compareWithOffers(candidateId: string, now: Date): Promise<'done'
     try {
       const scored = await cvScorer({
         title: job.title ?? '', skills: job.skills, description: job.description ?? '', details: offerDetails(job),
+        sourceContext: await aoSourceContext(job),
       }, 'matching')(cvText)
       // Réponse sans jugement lisible : offre non notée (jamais un score inventé).
       if (!scored) {

@@ -17,7 +17,7 @@ import { screeningCsv } from '@/lib/screening-csv'
 import {
   applicationOfOrganisation, getCandidateAuthUserId, scoreApplication, sendAutoScreeningEmail, type ApplicationToScreen, type ScreeningScore,
 } from '@/lib/screening-core'
-import { finalOfferDetails } from '@/lib/sourcing-core'
+import { aoSourceContext, finalOfferDetails } from '@/lib/sourcing-core'
 import { interviewPath } from '@/lib/interview-room'
 
 export type { ApplicationToScreen, ScreeningScore } from '@/lib/screening-core'
@@ -315,6 +315,7 @@ export async function screenAllApplications(jobId: string, appIds: string[]): Pr
     description: jobDoc.description as string,
     skills: (jobDoc.skills as string[]) ?? [],
     details: await finalOfferDetails(jobDoc),
+    sourceContext: await aoSourceContext(jobDoc),
   }
 
   const results: ScreeningScore[] = []
@@ -349,6 +350,7 @@ export async function screenAllApplications(jobId: string, appIds: string[]): Pr
         jobDescription: job.description,
         jobSkills: job.skills,
         jobDetails: job.details,
+        jobSourceContext: job.sourceContext,
         cvFileId: appDoc.cvFileId as string | undefined,
       }
 

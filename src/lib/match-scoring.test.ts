@@ -5,7 +5,7 @@ import {
   offerDetails, parseFit, parseScoringNotes, scoringSystemPrompt, scoringUserMessage, type OfferCriteria, criteriaBlock, judgedScore,
   judgementFields, judgementSummary, offerCriteria, offerRequirements, offerTextForAi, parseJudgements, parseTitleRelations, recommendationFor,
   requiredSkills, rolePairs, titleCheckPrompt, withBonus, withTitleRelations, type ActiveScale, type MatchJudgements,
-  CURRENT_WEIGHTS_VERSION, WEIGHT_VERSIONS, scaleKeys,
+  CURRENT_WEIGHTS_VERSION, WEIGHT_VERSIONS, scaleKeys, SOURCE_CONTEXT_CHARS, sourceContextForScoring,
 } from './match-scoring'
 
 describe('deux barèmes : matching des CV disponibles, score final de l\'AO (ADR 0036)', () => {
@@ -352,6 +352,23 @@ describe('une seule notation pour tous les candidats (ADR 0029)', () => {
     assert.match(message, /1\. Python/)
     assert.match(message, /=== CV DU CANDIDAT ===\nCV fictif$/)
     assert.match(scoringUserMessage({ ...offer, details: ['Technologies : Python'] }, listed, 'CV'), /\nTechnologies : Python\nDescription : /)
+  })
+
+  it('offre publiée depuis un appel d’offres : sa description d’origine suit la description, avant le CV (contexte interne)', () => {
+    const message = scoringUserMessage({ ...offer, sourceContext: 'Refonte de la chaîne de paiement de Banque Exemple.' }, listed, 'CV fictif')
+    assert.match(message, /\nDescription : [^\n]*[\s\S]*\n\nContexte de l'appel d'offres d'origine \(usage interne[^\n]*\nRefonte de la chaîne de paiement de Banque Exemple\.\n\n=== CV DU CANDIDAT ===\nCV fictif$/)
+    // Les listes jugées restent celles de l'offre relue : le contexte vient après elles.
+    assert.ok(message.indexOf('1. Python') < message.indexOf('Contexte de l\'appel d\'offres'), message)
+    // Sans contexte (offre ordinaire, AO supprimé) : message inchangé, notations gardées reprises du cache.
+    assert.equal(scoringUserMessage({ ...offer, sourceContext: '' }, listed, 'CV'), scoringUserMessage(offer, listed, 'CV'))
+    assert.ok(!scoringUserMessage(offer, listed, 'CV').includes('Contexte de l\'appel d\'offres'))
+  })
+
+  it('description d’origine d’un appel d’offres : coordonnées et liens de l’interlocuteur masqués, bornée', () => {
+    const text = sourceContextForScoring(`Contexte : refonte du SI.\n\n\n\nContact : jean.martin@exemple.test · 06 07 08 09 10 · https://exemple.test/ao\n${'x'.repeat(10_000)}`)
+    assert.ok(text.startsWith('Contexte : refonte du SI.\n\nContact : '), text.slice(0, 80))
+    assert.ok(!text.includes('jean.martin@exemple.test') && !text.includes('06 07 08 09 10') && !text.includes('https://exemple.test'), text.slice(0, 200))
+    assert.equal(text.length, SOURCE_CONTEXT_CHARS)
   })
 
   it('lit les notes de l\'IA, bornées ; une réponse sans notes donne des listes vides', () => {
