@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { AoDashboardActions, PublicationDraft, PublicationMode, PublicationPreview } from '@/lib/ao/dashboard-types'
+import { splitSkills } from '@/lib/ao/publication-social'
 
 // Préparation et publication d'une offre AO, tenues par la section AO (AoPublicationsProvider, dans le layout de la
 // section : liste et pages des offres) et non par la page de l'offre : elles durent (rédaction par l'IA : une trentaine
@@ -76,7 +77,7 @@ function useOfferPublications(
 
   async function publish(id: string, title: string, draft: PublicationDraft, skillsText: string) {
     update(id, { running: 'publishing', error: '' })
-    const skills = skillsText.split(',').map(s => s.trim()).filter(Boolean).slice(0, 10)
+    const skills = splitSkills(skillsText)
     let error = ''
     try {
       const res = await actions.publish(id, { ...draft, skills })

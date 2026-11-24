@@ -8,6 +8,7 @@ import {
 } from '@/lib/ao/offer-actions'
 import { AO_RETRY_DAILY_LIMITS, RETRY_QUOTA_MESSAGE } from '@/lib/ao/attempts'
 import { AO_PUBLICATION_AI_DAILY_LIMITS, PUBLICATION_AI_QUOTA_MESSAGE } from '@/lib/ao/publication-copy'
+import { SOCIAL_AI_QUOTA_MESSAGE } from '@/lib/ao/publication-social'
 import { AO_SOURCING_DAILY_LIMITS, SOURCING_QUOTA_MESSAGE, sourcingDenial } from '@/lib/ao/sourcing-access'
 import { releaseDailySlot, takeDailySlotId } from '@/lib/ao/state'
 import { aoRefusal } from '@/lib/ao/tenancy'
@@ -126,14 +127,36 @@ async function rewriteSlot(user: UserProfile, tenantId: string): Promise<string 
   return null
 }
 
+/**
+ * Avant la rédaction par l'IA des textes du post LinkedIn (« Le projet », pôle, hashtags, ADR 0058), qui suit celle de
+ * la version (rewriteSlot, dont les contrôles d'abonnement et d'adresse viennent de passer) : une place sur ses propres
+ * quotas du jour (organisation, au même nombre que les rédactions de la formule ; puis toutes). Un refus donne des
+ * textes sans IA, avec ce message.
+ */
+async function socialSlot(tenantId: string): Promise<string | null> {
+  const access = await loadTenantAccess(tenantId)
+  const now = new Date()
+  const limit = access.entitlements.dailyQuotas.aoRewrite
+  const own = await takeDailySlotId('aoSocialOrg', tenantId, now, limit)
+  if (!own) return SOCIAL_AI_QUOTA_MESSAGE.organisation(limit)
+  if (!(await takeDailySlotId('aoSocialAll', 'platform', now, AO_PUBLICATION_AI_DAILY_LIMITS.allOrganisations))) {
+    console.warn('AO: plafond quotidien des rédactions de posts par l\'IA atteint pour toutes les organisations')
+    // La place de l'organisation n'a pas servi : rendue, pour ne pas compter un refus de la plateforme contre elle.
+    await releaseDailySlot(own)
+    return SOCIAL_AI_QUOTA_MESSAGE.platform
+  }
+  return null
+}
+
 export async function previewRecruiterAoPublication(id: string, mode?: PublicationMode) {
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
   // Valeur venue du navigateur : tout ce qui n'est pas « raw » donne la version anonymisée. La version non anonymisée
-  // n'appelle pas l'IA : aucune place de quota prise.
+  // n'appelle pas l'IA, textes du post compris : aucune place de quota prise.
   return previewAoPublicationOf(me.tenantId, id, {
     mode: mode === 'raw' ? 'raw' : 'anonymized',
     beforeAi: () => rewriteSlot(me.user, me.tenantId),
+    beforeSocialAi: () => socialSlot(me.tenantId),
   })
 }
 

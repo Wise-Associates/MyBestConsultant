@@ -1,7 +1,8 @@
-import { LEGAL_SUFFIXES } from './fingerprint'
+import { LEGAL_SUFFIXES } from './legal-suffixes'
 import { REFERENCE_CODE, replaceNames, words } from './name-match'
 import { identifyingLabel, type Sender } from './origin'
 import type { AoOfferFields } from './types'
+import type { SocialEdits } from '@/lib/social-content'
 
 // Anonymisation des offres publiées depuis AO Offers : le client final et l'intermédiaire qui a envoyé
 // l'appel d'offres ne doivent pas apparaître sur le site, ni les coordonnées des interlocuteurs.
@@ -217,4 +218,23 @@ export function rawPublicOffer(offer: AoOfferFields): PublicOffer {
     skills: offer.skills.map(removePersonalContacts).filter(Boolean),
     location: removePersonalContacts(offer.location),
   }
+}
+
+/**
+ * Textes du post LinkedIn relus (ADR 0058), version anonymisée : « Le projet » passe par les mêmes règles que l'offre
+ * (toPublicOffer) ; hashtags qui nomment le client (en mots séparés) retirés. Un nom collé (« BanqueExemple ») ne part
+ * pas non plus : la diffusion ne garde que les hashtags présents dans l'offre publiée (offerHashtags), déjà anonymisée.
+ */
+export function toPublicSocial(edits: SocialEdits, names: string[][], label = DEFAULT_CLIENT_LABEL, extra: string[][] = []): SocialEdits {
+  const known = scrubContacts(edits.context, names, label)
+  return {
+    ...edits,
+    context: extra.length ? scrubContacts(known, extra, label) : known,
+    hashtags: edits.hashtags.filter(tag => !revealsName(tag, names) && !revealsName(tag, extra)),
+  }
+}
+
+/** Textes du post, version non anonymisée : seules les coordonnées personnelles sont retirées, comme rawPublicOffer. */
+export function rawPublicSocial(edits: SocialEdits): SocialEdits {
+  return { ...edits, context: removePersonalContacts(edits.context) }
 }

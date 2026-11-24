@@ -72,6 +72,7 @@ describe('organisations', () => {
       'vivierMatchOrg', 'vivierMatchAll', 'cvTemplateAll', 'socialScenes', 'socialScenesAll', 'mbcSearchOrg', 'mbcSearchAll', 'mbcRevealOrg', 'mbcRevealAll',
       'aoPageOrg', 'aoPageAll', 'interviewAiOrg', 'interviewAiAll', 'interviewInviteOrg', 'interviewRoom', 'interviewRoomStt', 'interviewSttOrg', 'interviewSttAll',
       'interviewRoomTts', 'interviewTtsOrg', 'interviewTtsAll', 'interviewImportOrg', 'interviewImportAll',
+      'mbcPhoneOrg', 'mbcPhoneAll', 'autoMatchAll', 'statsProfilesOrg', 'statsProfilesAll', 'aoSocialOrg', 'aoSocialAll',
     ] as const).map(c => counterIdFor(c, 't1', day).split('_')[0])
     assert.equal(new Set(prefixes).size, prefixes.length, 'un préfixe par compteur')
     assert.notEqual(lockIdFor('t1'), lockIdFor('t2'))

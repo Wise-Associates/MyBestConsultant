@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { AlertTriangle, Ban, Check, CircleStop, Copy, Download, ExternalLink, Eye, Loader2, Mail, Paperclip, Phone, RotateCcw, Send, ShieldAlert, Sparkles, Users, X } from 'lucide-react'
 import { AO_CHANNEL_LABEL, type AoOfferRow } from '@/lib/ao/filters'
 import { findIdentifiers, findNames } from '@/lib/ao/name-match'
@@ -8,6 +8,8 @@ import { PLAIN_EMAIL } from '@/lib/ao/origin'
 import { pageFillText } from '@/lib/ao/source-page/page-fill'
 import type { AoDashboardActions, AoDashboardPaths, PublicationDraft, PublicationMode, SourcedCandidate, SourcingResult } from '@/lib/ao/dashboard-types'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
+import { linkedInPostOf, splitSkills, type SocialPreview } from '@/lib/ao/publication-social'
+import { SOCIAL_CONTEXT_MAX, WISE_POLES, type SocialEdits } from '@/lib/social-content'
 import { Skeleton, SkeletonRegion } from '@/components/shared/skeleton'
 import { AoDescription } from './ao-description'
 import { WorkBadge, type OfferPublication } from './offer-publications'
@@ -73,11 +75,14 @@ export function AoOfferDetail({ row, actions, paths, publishNote, tracking, soci
   // Toute modification invalide la relecture : la version validée est toujours celle qui sera publiée.
   const edit = <K extends keyof PublicationDraft>(key: K, value: PublicationDraft[K]) => { if (draft) onEdit({ draft: { ...draft, [key]: value, reviewed: false } }) }
   const editSkills = (value: string) => onEdit({ skillsText: value, ...(draft && { draft: { ...draft, reviewed: false } }) })
+  // Textes du post LinkedIn (« Le projet », pôle) : relus et validés avec la version, comme le reste (ADR 0058).
+  const editSocial = (patch: Partial<SocialEdits>) => { if (draft?.social) onEdit({ draft: { ...draft, social: { ...draft.social, ...patch }, reviewed: false } }) }
   // Noms à masquer et références encore présents, champ par champ, recalculés à chaque modification.
   const risks = useMemo(() => {
     if (!draft || !preview) return []
     const fields: [string, string][] = [
       ['titre', draft.title], ['entreprise affichée', draft.companyName], ['ville', draft.location], ['compétences', skillsText], ['description', draft.description],
+      ['post LinkedIn, « Le projet »', draft.social?.context ?? ''],
     ]
     // Version non anonymisée : client et références restent volontairement, seuls les noms de personnes sont signalés.
     const find = draft.anonymized === false ? findNames : findIdentifiers
@@ -355,7 +360,7 @@ export function AoOfferDetail({ row, actions, paths, publishNote, tracking, soci
                   style={{ ...control, width: '100%', height: 'auto', padding: 12, lineHeight: 1.55 }} />
               </Field>
             </div>
-            <PublicationPreviewCard draft={draft} skills={skillsText} />
+            <PublicationPreviewTabs draft={draft} skills={skillsText} social={preview.social} hiddenNames={preview.hiddenNames} onSocial={editSocial} />
           </div>
 
           <label className="flex items-start gap-3 p-3 rounded-lg cursor-pointer text-sm text-admin-fg" style={{ background: 'var(--admin-panel-raised)', border: '1px solid var(--admin-line)' }}>
@@ -402,14 +407,127 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
+type PreviewTab = 'offer' | 'linkedin'
+
+const PREVIEW_TABS: { key: PreviewTab; label: string }[] = [{ key: 'offer', label: 'Offre publique' }, { key: 'linkedin', label: 'Post LinkedIn' }]
+
+/**
+ * Ce que la publication mettra en ligne, mis à jour à chaque modification : l'offre publique et le post LinkedIn
+ * (ADR 0058), relus et validés ensemble par la case « J'ai relu ».
+ */
+function PublicationPreviewTabs({ draft, skills, social, hiddenNames, onSocial }: {
+  draft: PublicationDraft; skills: string; social: SocialPreview; hiddenNames: string[][]; onSocial: (patch: Partial<SocialEdits>) => void
+}) {
+  const [tab, setTab] = useState<PreviewTab>('offer')
+  const tabRefs = useRef<Record<PreviewTab, HTMLButtonElement | null>>({ offer: null, linkedin: null })
+  // Flèches gauche / droite entre les onglets (motif « tabs » de l'ARIA). Touche consommée : sur la page de l'offre,
+  // les mêmes flèches passent à l'offre précédente ou suivante (ao-offer-page.tsx).
+  function onKey(e: KeyboardEvent) {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+    e.preventDefault()
+    e.stopPropagation()
+    const next: PreviewTab = tab === 'offer' ? 'linkedin' : 'offer'
+    setTab(next)
+    tabRefs.current[next]?.focus()
+  }
+  return (
+    <div className="min-w-0">
+      <div role="tablist" aria-label="Aperçu de la publication" onKeyDown={onKey} className="flex gap-1 mb-3" style={{ borderBottom: '1px solid var(--admin-line)' }}>
+        {PREVIEW_TABS.map(t => (
+          <button key={t.key} type="button" role="tab" id={`ao-preview-tab-${t.key}`} aria-controls={`ao-preview-panel-${t.key}`}
+            aria-selected={tab === t.key} tabIndex={tab === t.key ? 0 : -1} ref={el => { tabRefs.current[t.key] = el }}
+            onClick={() => setTab(t.key)}
+            className="px-3 py-2 -mb-px text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2"
+            style={{
+              color: tab === t.key ? 'var(--admin-fg)' : 'var(--admin-fg-muted)',
+              borderBottom: `2px solid ${tab === t.key ? BRAND : 'transparent'}`,
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" id={`ao-preview-panel-${tab}`} aria-labelledby={`ao-preview-tab-${tab}`}>
+        {tab === 'offer'
+          ? <PublicationPreviewCard draft={draft} skills={skills} />
+          : <LinkedInPostPreview draft={draft} skills={skills} social={social} hiddenNames={hiddenNames} onSocial={onSocial} />}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Post LinkedIn tel que la diffusion le publiera : version publiée (mêmes règles que la publication) et même code que la
+ * diffusion (linkedInPostOf), avec les textes relus ici. Seuls « Le projet » et le pôle se modifient ; le reste suit
+ * l'offre et les réglages (plateforme, marque employeur de l'organisation).
+ */
+function LinkedInPostPreview({ draft, skills, social, hiddenNames, onSocial }: {
+  draft: PublicationDraft; skills: string; social: SocialPreview; hiddenNames: string[][]; onSocial: (patch: Partial<SocialEdits>) => void
+}) {
+  const { settings } = social
+  const copy = draft.social
+  const post = useMemo(() => (settings && copy ? linkedInPostOf(draft, skills, settings, hiddenNames) : null), [draft, skills, settings, copy, hiddenNames])
+  if (!settings || !copy) {
+    return (
+      <div className="flex gap-2 text-sm p-3 rounded-lg" style={{ color: 'var(--admin-fg-muted)', background: 'var(--admin-bg)', border: '1px solid var(--admin-line)' }}>
+        <AlertTriangle size={16} className="shrink-0 mt-0.5" aria-hidden />
+        <p>{social.off || 'Le post LinkedIn n’a pas été préparé avec cette version : s’il part, l’IA le rédigera à la publication.'}</p>
+      </div>
+    )
+  }
+  const projectId = 'ao-social-project'
+  return (
+    <div className="space-y-4">
+      {social.notice && (
+        <div className="flex gap-2 text-sm p-3 rounded-lg" style={{ color: '#b45309', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
+          <AlertTriangle size={16} className="shrink-0 mt-0.5" aria-hidden />
+          <p>« Le projet », le pôle et les hashtags ont été préparés sans IA ({social.notice}) : complétez « Le projet » si besoin.</p>
+        </div>
+      )}
+      {post === null
+        ? (
+          <p className="text-sm p-3 rounded-lg" style={{ color: 'var(--admin-fg-muted)', background: 'var(--admin-bg)', border: '1px solid var(--admin-line)' }}>
+            Complétez la version (titre, entreprise affichée, description de 20 caractères au moins) pour voir le post.
+          </p>
+        )
+        : (
+          <article aria-label="Post LinkedIn" className="rounded-xl p-5" style={{ background: 'var(--admin-bg)', border: '1px solid var(--admin-line)' }}>
+            <p className="text-sm text-admin-fg whitespace-pre-wrap break-words" style={{ lineHeight: 1.55 }}>{post}</p>
+          </article>
+        )}
+      <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
+        {post !== null && `${post.length.toLocaleString('fr-FR')} caractères sur 3 000 (limite de LinkedIn). Une offre trop longue est raccourcie section par section, avec un renvoi vers l’offre. `}
+        {settings.fromPlatform
+          ? 'Présentation de Wise Associates et hashtags par défaut : réglages « Réseaux sociaux » de la plateforme.'
+          : 'Présentation de l’organisation : début de l’« À propos » de sa marque employeur (sinon son accroche).'}
+        {' '}Les noms du client restés dans le texte sont masqués comme à la publication.
+      </p>
+      <label className="block" htmlFor={projectId}>
+        <span style={{ ...fieldLabel, display: 'block' }}>Le projet (contexte du post)</span>
+        <textarea id={projectId} value={copy.context} maxLength={SOCIAL_CONTEXT_MAX} rows={3}
+          onChange={e => onSocial({ context: e.target.value })}
+          placeholder="Vide : l’accroche de l’offre sert de projet."
+          style={{ ...control, width: '100%', height: 'auto', padding: 12, lineHeight: 1.55 }} />
+        <span className="block text-xs mt-1" style={{ color: 'var(--admin-fg-muted)' }}>{copy.context.length} / {SOCIAL_CONTEXT_MAX} caractères</span>
+      </label>
+      {settings.fromPlatform && (
+        <Field label="Pôle d’expertise de Wise Associates">
+          <select value={copy.pole} onChange={e => onSocial({ pole: e.target.value })} style={{ ...control, width: '100%' }}>
+            {WISE_POLES.map(p => <option key={p} value={p} style={optionStyle}>{p}</option>)}
+            <option value="" style={optionStyle}>Aucun (« pour rejoindre ses équipes »)</option>
+          </select>
+        </Field>
+      )}
+    </div>
+  )
+}
+
 /** Aperçu de l'offre telle qu'elle sera publiée, mis à jour à chaque modification : c'est ce qui est relu et validé. */
 function PublicationPreviewCard({ draft, skills }: { draft: PublicationDraft; skills: string }) {
-  const tags = skills.split(',').map(s => s.trim()).filter(Boolean).slice(0, 10)
+  const tags = splitSkills(skills)
   const facts = [CONTRACT_LABEL[draft.contractType], REMOTE_LABEL[draft.remote], draft.salary ? formatAmount(draft.salary, draft.contractType) : '']
     .filter(Boolean)
   return (
     <div>
-      <p style={fieldLabel}>Aperçu de l&apos;offre publiée</p>
       <article className="rounded-xl p-5 space-y-4" style={{ background: 'var(--admin-bg)', border: '1px solid var(--admin-line)' }}>
         <header className="space-y-1">
           <h4 className="text-lg font-bold text-admin-fg" style={{ textWrap: 'balance' }}>{draft.title || 'Titre de l’offre'}</h4>

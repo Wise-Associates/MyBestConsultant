@@ -3,16 +3,18 @@ import { AppwriteException, ID, Query, type Models } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { getJobById } from '@/lib/appwrite/jobs'
+import { getBrandByTenantId } from '@/lib/appwrite/brand'
 import { listAllDocuments } from '@/lib/appwrite/list-all'
 import { callLLM } from '@/lib/ai/llm-router'
 import { CALENDLY_URL } from '@/lib/site-links'
 import {
-  DEFAULT_SOCIAL_CONFIG, NETWORKS, SAMPLE_JOB, WISE_POLES, buildContent, fallbackCopy, normalizeCopy, sanitizeSocialConfig,
-  type CopyDraft, type JobLite, type Network, type PostImage, type SocialConfig, type SocialContent,
+  DEFAULT_SOCIAL_CONFIG, NETWORKS, SAMPLE_JOB, WISE_POLES, brandPresentation, buildContent, fallbackCopy, jobLiteOf, normalizeCopy, sanitizeSocialConfig,
+  type CopyDraft, type JobLite, type Network, type PostImage, type SocialConfig, type SocialContent, type SocialEdits,
 } from '@/lib/social-content'
 import { SAMPLE_POSTER_ID, SCENE_DAILY_LIMITS, isQueuedOverdue, parsePosterImage, posterUrl, sceneTimeoutMs } from '@/lib/social-poster/rules'
 import { isPublicationStopped } from '@/lib/ao/state'
 import type { BufferResult } from '@/lib/buffer'
+import type { SocialPreview } from '@/lib/ao/publication-social'
 import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 import { STOPPED_DIFFUSION_ERROR, diffusionStopOutcome, isStoppedDiffusion, stopsDelivery } from '@/lib/publication-stop'
 import type { Job } from '@/types'
@@ -211,18 +213,21 @@ export async function getPost(id: string): Promise<SocialPost | null> {
 
 // ── Rédaction ────────────────────────────────────────────────────────────────────────────────
 
-const plainLines = (s: string) => s.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ').trim()
+/** AO des boîtes de la plateforme (« admin ») et offres partagées de l'admin (sans organisation) : publiées au nom de Wise Associates. */
+export const isPlatformTenant = (tenantId: string | undefined) => !tenantId || tenantId === PLATFORM_TENANT_ID
 
-/** Champs bornés : le corps envoyé à Make (et enregistré dans payloadJson, 20 000 caractères) doit tenir à coup sûr. */
-export function jobToLite(job: Job, company: string): JobLite {
-  return {
-    id: job.$id, title: job.title.slice(0, 200), company: (company || job.companyName || '').slice(0, 120), location: (job.location ?? '').slice(0, 120),
-    contractType: job.contractType, remote: job.remote, salary: job.salary,
-    // Retours à la ligne gardés : la description est publiée telle quelle sur LinkedIn, qui n'en affiche pas plus de 3 000 caractères.
-    skills: (job.skills ?? []).slice(0, 15).map(k => k.slice(0, 40)), description: plainLines(job.description ?? '').slice(0, 3000),
-    // AO des boîtes de la plateforme (« admin ») et offres partagées de l'admin (sans organisation) : publiées au nom de Wise Associates.
-    fromPlatform: !job.tenantId || job.tenantId === PLATFORM_TENANT_ID,
-  }
+/**
+ * Organisation de l'offre pour les textes des réseaux : son nom (vide : l'entreprise affichée de l'offre le remplace) et
+ * sa présentation tirée de sa marque employeur (ADR 0058). Facultatifs : sans document d'organisation (la plateforme
+ * « admin » n'en a pas forcément) ou illisible, rien (getBrandByTenantId).
+ */
+export async function tenantForSocial(tenantId: string | undefined): Promise<{ name: string; about: string }> {
+  const brand = tenantId ? await getBrandByTenantId(tenantId) : null
+  return brand ? { name: brand.name, about: brandPresentation(brand.profile.about, brand.profile.tagline) } : { name: '', about: '' }
+}
+
+export function jobToLite(job: Job, company: string, about = ''): JobLite {
+  return jobLiteOf({ ...job, id: job.$id }, company || job.companyName || '', isPlatformTenant(job.tenantId), about)
 }
 
 /** L'IA reformule l'offre en accroche + puces ; en cas d'échec, repli automatique (la publication ne dépend jamais de l'IA). */
@@ -246,6 +251,27 @@ Réponds UNIQUEMENT avec un JSON valide, sans markdown :
 
 /** Toujours le Calendly de My Best Consultant (réglage admin, sinon lien par défaut du site) — jamais celui d'un recruteur. */
 export const resolveCalendly = (cfg: SocialConfig): string => cfg.calendlyUrl || CALENDLY_URL
+
+/**
+ * Post LinkedIn à montrer avant la publication d'une offre de l'organisation `jobTenantId` (AO, ADR 0058) : réglages
+ * que la diffusion lira, ou la raison pour laquelle aucun post ne partira (mêmes conditions que tryAutoPublishJob).
+ */
+export async function linkedInPreviewOf(jobTenantId: string, jobId: string): Promise<SocialPreview> {
+  const cfg = await getSocialConfig()
+  if (!cfg.autoPublish || !isDiffusionConfigured()) {
+    return { settings: null, notice: '', off: 'La diffusion automatique sur les réseaux est désactivée (réglages de la plateforme) : la publication ne préparera pas ce post. Seul l’ancien envoi direct sur LinkedIn, s’il est configuré, publierait un texte court tiré de l’offre.' }
+  }
+  if (!cfg.networks.linkedin) return { settings: null, notice: '', off: 'LinkedIn n’est pas coché dans les réglages de diffusion de la plateforme : aucun post LinkedIn ne partira.' }
+  const tenant = await tenantForSocial(jobTenantId)
+  return {
+    settings: {
+      config: cfg, baseUrl: await canonicalOrigin(), calendlyUrl: resolveCalendly(cfg), jobId,
+      tenantName: tenant.name, publisherAbout: tenant.about, fromPlatform: isPlatformTenant(jobTenantId),
+    },
+    off: '',
+    notice: '',
+  }
+}
 
 // ── Envoi vers Make ──────────────────────────────────────────────────────────────────────────
 
@@ -350,11 +376,18 @@ const prepareLockId = (jobId: string) => `social_${createHash('sha1').update(job
 export const deliveryDeadline = (requestStart: number) => requestStart + 270_000
 
 /**
+ * `edits` : « Le projet », pôle et hashtags relus et validés par la personne qui publie (post LinkedIn montré par
+ * « Préparer la publication » d'un AO, ADR 0058), qui remplacent ceux de l'IA ; le reste (affiche, autres réseaux) est
+ * rédigé à la diffusion, comme sans eux.
+ */
+interface PrepareOptions { trigger: 'auto' | 'manual'; requestedBy: string; force?: boolean; edits?: SocialEdits }
+
+/**
  * Prépare la publication d'une offre : contrôles, textes (IA de Config IA, quelques secondes) et document « queued »
  * qui contient déjà tout ce qui partira chez Make. L'envoi suit avec deliverSocialPost, en arrière-plan (after()) :
  * la photo de l'affiche prend jusqu'à 2 min et ne doit pas faire attendre le recruteur.
  */
-export async function prepareSocialPost(jobId: string, opts: { trigger: 'auto' | 'manual'; requestedBy: string; force?: boolean }): Promise<{ id?: string; status?: SocialStatus; skipped?: boolean; error?: string }> {
+export async function prepareSocialPost(jobId: string, opts: PrepareOptions): Promise<{ id?: string; status?: SocialStatus; skipped?: boolean; error?: string }> {
   const cfg = await getSocialConfig()
   if (!isDiffusionConfigured()) return { error: 'La publication sur les réseaux n’est pas encore configurée.' }
   if (!NETWORKS.some(n => cfg.networks[n])) return { error: 'Aucun réseau n’est activé.' }
@@ -371,17 +404,19 @@ export async function prepareSocialPost(jobId: string, opts: { trigger: 'auto' |
   }
 }
 
-async function prepareLocked(job: Job, opts: { trigger: 'auto' | 'manual'; requestedBy: string; force?: boolean }, cfg: SocialConfig): Promise<{ id?: string; status?: SocialStatus; skipped?: boolean; error?: string }> {
+async function prepareLocked(job: Job, opts: PrepareOptions, cfg: SocialConfig): Promise<{ id?: string; status?: SocialStatus; skipped?: boolean; error?: string }> {
   const jobId = job.$id
   const { databases } = createAdminClient()
   const prev = (await databases.listDocuments(DB_ID, COLLECTIONS.SOCIAL_POSTS, [Query.equal('jobId', jobId), Query.orderDesc('$createdAt'), Query.limit(5)])).documents.map(docToPost)
   const active = prev.find(p => inProgress(p) || (!opts.force && alreadyPublished(p)))
   if (active) return { id: active.id, status: active.status, skipped: true }
 
-  let company = job.companyName ?? ''
-  if (job.tenantId) { try { company = ((await databases.getDocument(DB_ID, COLLECTIONS.TENANTS, job.tenantId)).name as string) || company } catch { /* nom facultatif */ } }
-  const lite = jobToLite(job, company)
-  const copy = await generateCopy(lite)
+  const tenant = await tenantForSocial(job.tenantId)
+  const lite = jobToLite(job, tenant.name, tenant.about)
+  // Textes relus avant la publication (aperçu du post d'un AO, ADR 0058) : ils remplacent ceux de l'IA, bornés de
+  // nouveau ; le post LinkedIn est alors celui de l'aperçu.
+  const generated = await generateCopy(lite)
+  const copy = opts.edits ? normalizeCopy({ ...generated, ...opts.edits }, lite) : generated
   const site = await canonicalOrigin()
   const content = buildContent(lite, copy, cfg, { baseUrl: site, calendlyUrl: resolveCalendly(cfg) })
 
@@ -558,7 +593,7 @@ export async function stopQueuedDiffusion(jobId: string): Promise<ReturnType<typ
 }
 
 /** Prépare puis envoie (création automatique d'une offre, déjà lancée en arrière-plan par l'appelant). */
-export async function publishJobSocially(jobId: string, opts: { trigger: 'auto' | 'manual'; requestedBy: string; force?: boolean }, deadline?: number): Promise<{ id?: string; status?: SocialStatus; skipped?: boolean; error?: string }> {
+export async function publishJobSocially(jobId: string, opts: PrepareOptions, deadline?: number): Promise<{ id?: string; status?: SocialStatus; skipped?: boolean; error?: string }> {
   const prepared = await prepareSocialPost(jobId, opts)
   if (!prepared.id || prepared.skipped || prepared.error) return prepared
   return { id: prepared.id, ...(await deliverSocialPost(prepared.id, deadline)) }
@@ -652,12 +687,12 @@ export async function handleCallback(body: unknown): Promise<{ ok: boolean; erro
  * configuré). Quand LinkedIn est pris en charge par ce circuit, l'ancienne publication LinkedIn directe est sautée (pas
  * de doublon) ; si aucune publication n'a pu être créée, elle sert de secours.
  */
-export async function tryAutoPublishJob(job: Job & { $id: string }, deadline?: number): Promise<void> {
+export async function tryAutoPublishJob(job: Job & { $id: string }, deadline?: number, edits?: SocialEdits): Promise<void> {
   let linkedInHandled = false
   try {
     const cfg = await getSocialConfig()
     if (cfg.autoPublish && isDiffusionConfigured()) {
-      const r = await publishJobSocially(job.$id, { trigger: 'auto', requestedBy: 'Automatique' }, deadline)
+      const r = await publishJobSocially(job.$id, { trigger: 'auto', requestedBy: 'Automatique', edits }, deadline)
       // Une publication existe (même en échec : elle se relance depuis /admin/social) : pas de publication LinkedIn
       // directe en plus, Buffer ou Make a pu la recevoir et cela ferait un doublon sur la page.
       linkedInHandled = cfg.networks.linkedin && !!r.id

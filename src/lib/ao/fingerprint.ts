@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { LEGAL_SUFFIXES } from './legal-suffixes'
 import { PLATFORM_TENANT_ID } from './tenancy'
 import type { AoOfferFields } from './types'
 
@@ -14,8 +15,6 @@ const STOP_WORDS = new Set([
   'h', 'f', 'hf', 'fh', 'x', 'homme', 'femme',
   'de', 'du', 'des', 'd', 'la', 'le', 'les', 'l', 'un', 'une', 'et', 'ou', 'en', 'a', 'au', 'aux', 'pour', 'sur', 'avec',
 ])
-
-export const LEGAL_SUFFIXES = new Set(['sa', 'sas', 'sasu', 'sarl', 'eurl', 'snc', 'se', 'group', 'groupe', 'france'])
 
 function words(value: string): string[] {
   return value

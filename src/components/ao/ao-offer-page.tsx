@@ -63,7 +63,8 @@ export function AoOfferPage({ row, tracking, trackingError, neighbours, query, a
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || isTyping(e.target)) return
+      // Touche déjà traitée par un élément de la page (flèches des onglets de l'aperçu) : pas de changement d'offre.
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || isTyping(e.target)) return
       const href = e.key === 'ArrowLeft' ? previousHref : e.key === 'ArrowRight' ? nextHref : null
       if (!href) return
       startNavigationProgress()

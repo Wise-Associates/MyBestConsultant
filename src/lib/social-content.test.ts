@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  DEFAULT_PUBLISHER_INTRO, DEFAULT_SOCIAL_CONFIG, boldText, buildContent, networkHashtags, normalizeCopy, offerHashtags, roleHashtag, sanitizeSocialConfig, toHashtag,
+  DEFAULT_PUBLISHER_INTRO, DEFAULT_SOCIAL_CONFIG, boldText, brandPresentation, buildContent, networkHashtags, normalizeCopy, offerHashtags, roleHashtag, sanitizeSocialConfig, toHashtag,
   type CopyDraft, type JobLite,
 } from './social-content'
 
@@ -54,7 +54,7 @@ describe('texte LinkedIn d’une offre', () => {
       '📋 Modalités',
       '• Durée : 12 mois',
     ].join('\n')), linkedin)
-    assert.ok(linkedin.startsWith(`🚀 ${boldText('Accompagnement du projet Gouvernance des données')} — Entreprise exemple\n\n📍 Paris (75) · Mission · Présentiel\n\n📣 Entreprise exemple recrute via`), linkedin)
+    assert.ok(linkedin.startsWith(`🚀 ${boldText('Accompagnement du projet Gouvernance des données')} — Entreprise exemple\n\n📍 Paris (75) · Mission · Présentiel\n\nDans le cadre de son développement, Entreprise exemple recherche`), linkedin)
     assert.ok(!linkedin.includes('###') && !linkedin.includes('**') && !linkedin.includes('…') && !linkedin.includes('➕'), linkedin)
     assert.ok(linkedin.endsWith(`${applyLine}\n📅 Envie d’en discuter ? Réservez un échange : https://calendly.com/exemple\n\n${tagLine}`), linkedin)
   })
@@ -64,7 +64,7 @@ describe('texte LinkedIn d’une offre', () => {
     const description = `Intro de l’offre.\n\n### Au programme\n${list('Tâche', 120)}\n\n### Profil recherché\n${list('Compétence', 60)}\n\n### Modalités\n- Démarrage : janvier 2027\n- Durée : 12 mois`
     const { linkedin } = buildContent({ ...job, description }, copy, DEFAULT_SOCIAL_CONFIG, opts).captions
     assert.ok(linkedin.length <= 3000, `${linkedin.length} caractères`)
-    assert.ok(linkedin.includes('\n🧭 Intro de l’offre.\n🔎 Pourquoi cette publication'), linkedin)
+    assert.ok(linkedin.includes('Wise Associates.\n\n🧭 Intro de l’offre.\n\n🎯 Au programme'), linkedin)
     assert.ok(linkedin.includes('\n\n🎯 Au programme\n• Tâche numéro 1 attendue du consultant\n'), linkedin)
     assert.ok(linkedin.includes('\n\n🧩 Profil recherché\n• Compétence numéro 1 attendue du consultant\n'), linkedin)
     assert.ok(linkedin.includes('\n\n📋 Modalités\n• Démarrage : janvier 2027\n• Durée : 12 mois\n\n➕ Suite de l’offre sur le lien ci-dessous\n\n'), linkedin)
@@ -123,11 +123,21 @@ describe('contexte en tête de la publication LinkedIn', () => {
     assert.ok(head({ ...platform, title: 'Ingénieur DevOps / Cloud AWS' }).includes('recherche un consultant Ingénieur DevOps / Cloud AWS pour'))
   })
 
-  it('offre d’une organisation cliente : l’organisation recrute, pas Wise Associates ; CDI annoncé', () => {
-    const text = head({ ...job, company: 'Acme', contractType: 'cdi' })
-    assert.ok(text.includes('\n\n📣 Acme recrute via MyBestConsultant, la plateforme de recrutement de Wise Associates.\n\n'), text)
-    assert.ok(text.includes('🔎 Pourquoi cette publication : Acme recherche un candidat ou une candidate pour ce poste en CDI.'), text)
-    assert.ok(!text.includes(DEFAULT_PUBLISHER_INTRO))
+  it('offre d’une organisation cliente : texte de la direction appliqué à l’organisation, sa présentation en tête (ADR 0058)', () => {
+    const about = 'Acme accompagne les collectivités dans la transformation de leurs ressources humaines.'
+    const text = head({ ...job, company: 'Acme', contractType: 'mission', title: 'Consultant SIRH (H/F)', publisherAbout: about })
+    assert.ok(text.endsWith([
+      '📍 Paris (75) · Mission · Présentiel', '', about, '',
+      'Dans le cadre de son développement, Acme recherche un consultant SIRH pour intervenir sur une mission.', '',
+      '📣 Offre diffusée via MyBestConsultant, la plateforme de recrutement de Wise Associates.', '',
+      '🧭 Une direction des systèmes d’information structure sa gouvernance des données.',
+    ].join('\n')), text)
+    assert.ok(!text.includes(DEFAULT_PUBLISHER_INTRO) && !text.includes('Wise Associates recherche') && !text.includes('Pourquoi cette publication'), text)
+  })
+
+  it('offre d’une organisation en CDI, sans présentation : « rejoindre ses équipes en CDI », pas de paragraphe vide', () => {
+    const text = head({ ...job, company: 'Acme', contractType: 'cdi', title: 'Chef de projet SI' })
+    assert.ok(text.includes('Présentiel\n\nDans le cadre de son développement, Acme recherche un consultant Chef de projet SI pour rejoindre ses équipes en CDI.\n\n📣 Offre diffusée'), text)
   })
 
   it('présentation vidée par l’admin : aucune ligne de présentation', () => {
@@ -275,5 +285,20 @@ describe('textes rédigés par l’IA', () => {
     assert.ok(image.skills.every(s => s.length <= 40), image.skills.join(' | '))
     assert.ok(captions.instagram.includes('Capacité à travailler en équipe pluridisciplinaire'))
     assert.ok(captions.facebook.includes(mission))
+  })
+})
+
+describe('présentation d’une organisation tirée de sa marque employeur (ADR 0058)', () => {
+  it('premières phrases entières de l’« À propos » qui tiennent en 300 caractères', () => {
+    const first = 'Acme accompagne les collectivités dans la transformation de leurs ressources humaines.'
+    const second = 'Ses équipes interviennent du choix du SIRH à son déploiement.'
+    const about = `${first}\n\n${second} Une troisième phrase ${'beaucoup '.repeat(30)}trop longue pour tenir dans la limite.`
+    assert.equal(brandPresentation(about, 'Accroche'), `${first} ${second}`)
+  })
+
+  it('sans « À propos » utilisable : l’accroche ; sans rien : aucune présentation', () => {
+    assert.equal(brandPresentation('', '  Le conseil RH des collectivités  '), 'Le conseil RH des collectivités')
+    assert.equal(brandPresentation(`${'x'.repeat(320)}.`, 'Accroche courte'), 'Accroche courte')
+    assert.equal(brandPresentation('', ''), '')
   })
 })
