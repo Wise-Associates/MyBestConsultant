@@ -1,5 +1,6 @@
 'use server'
 
+import { parseModelJson } from '@/lib/ai/model-json'
 import { callLLM } from '@/lib/ai/llm-router'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
@@ -117,7 +118,7 @@ Règles :
 
     let parsed: Omit<ExtractedJob, 'id'>[]
     try {
-      parsed = JSON.parse(jsonMatch[0])
+      parsed = parseModelJson(jsonMatch[0]) as Omit<ExtractedJob, 'id'>[]
     } catch {
       // Réponse tronquée ou malformée (ex. document trop long) — message clair plutôt
       // que l'erreur brute de JSON.parse (illisible pour un recruteur).
@@ -174,14 +175,14 @@ export async function improveExtractedJob(
     const jsonMatch = content.match(/\{[\s\S]*\}/)
     if (!jsonMatch) return { error: 'Réponse IA invalide, réessayez' }
 
-    const parsed = JSON.parse(jsonMatch[0])
+    const parsed = parseModelJson(jsonMatch[0]) as Partial<ImprovableJobFields>
     const result: ImprovableJobFields = {
       title: String(parsed.title ?? job.title).slice(0, 200),
       description: String(parsed.description ?? job.description),
       skills: Array.isArray(parsed.skills) ? parsed.skills.slice(0, 10).map(String) : job.skills,
       location: String(parsed.location ?? job.location),
-      contractType: IMPROVE_CONTRACT_TYPES.has(String(parsed.contractType)) ? parsed.contractType : job.contractType,
-      remote: IMPROVE_REMOTE_TYPES.has(String(parsed.remote)) ? parsed.remote : job.remote,
+      contractType: parsed.contractType && IMPROVE_CONTRACT_TYPES.has(String(parsed.contractType)) ? parsed.contractType : job.contractType,
+      remote: parsed.remote && IMPROVE_REMOTE_TYPES.has(String(parsed.remote)) ? parsed.remote : job.remote,
       salary: typeof parsed.salary === 'number' ? parsed.salary : job.salary,
     }
     if (!result.title || !result.description) return { error: 'Réponse IA incomplète, réessayez' }

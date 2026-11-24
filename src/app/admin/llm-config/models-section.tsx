@@ -6,9 +6,10 @@ import {
 } from 'lucide-react'
 import { testProvider } from './actions'
 import type { ProviderConfig } from './types'
-import { Row, TextInput, NumInput, ApiKeyInput } from './config-ui'
+import { Row, TextInput, NumInput, ApiKeyInput, TemperatureInput } from './config-ui'
 import {
-  AI_MODULES, MODEL_LIMITS, OS_HOSTS, OS_PRESETS, makeModelId, pickPrimary, type AIModule, type OpenSourceModel,
+  AI_MODULES, DEFAULT_OPEN_SOURCE_TEMPERATURE, MODEL_LIMITS, OS_HOSTS, OS_PRESETS, makeModelId, pickPrimary, sanitizeTemperature, type AIModule,
+  type OpenSourceModel,
 } from '@/lib/ai/models'
 
 type SetCfg = <K extends keyof ProviderConfig>(key: K, value: ProviderConfig[K]) => void
@@ -33,7 +34,8 @@ function testOverridesFor(id: string, cfg: ProviderConfig) {
   if (id === 'gpt4o') return { model: cfg.gpt4oModel, apiUrl: 'https://api.openai.com/v1', apiKey: cfg.openaiApiKey }
   if (id === 'teckia') return { model: cfg.teckiaModel, apiUrl: cfg.teckiaApiUrl, apiKey: cfg.teckiaApiKey }
   const m = cfg.openSourceModels.find(x => x.id === id)
-  return m ? { model: m.model, apiUrl: m.apiUrl, apiKey: m.apiKey } : undefined
+  // Température comprise : un hébergeur qui la refuse doit échouer au test, pas seulement en service (ADR 0057).
+  return m ? { model: m.model, apiUrl: m.apiUrl, apiKey: m.apiKey, temperature: m.temperature } : undefined
 }
 
 function TestBadge({ result }: { result: TestResult | null }) {
@@ -138,7 +140,9 @@ export function OpenSourceModels({ cfg, set }: { cfg: ProviderConfig; set: SetCf
   const [adding, setAdding] = useState(false)
   const [presetId, setPresetId] = useState(OS_PRESETS[0].id)
   const [hostId, setHostId] = useState('together')
-  const [draft, setDraft] = useState({ label: '', model: '', apiUrl: '', apiKey: '' })
+  const [draft, setDraft] = useState<{ label: string; model: string; apiUrl: string; apiKey: string; temperature: number | null }>(
+    { label: '', model: '', apiUrl: '', apiKey: '', temperature: DEFAULT_OPEN_SOURCE_TEMPERATURE },
+  )
   const [openId, setOpenId] = useState<string | null>(null)
 
   const host = OS_HOSTS.find(h => h.id === hostId) ?? OS_HOSTS[0]
@@ -155,7 +159,7 @@ export function OpenSourceModels({ cfg, set }: { cfg: ProviderConfig; set: SetCf
   function startAdd() {
     setAdding(true)
     pickPreset(OS_PRESETS[0].id, 'together')
-    setDraft(d => ({ ...d, apiKey: '' }))
+    setDraft(d => ({ ...d, apiKey: '', temperature: DEFAULT_OPEN_SOURCE_TEMPERATURE }))
   }
 
   function add() {
@@ -164,6 +168,7 @@ export function OpenSourceModels({ cfg, set }: { cfg: ProviderConfig; set: SetCf
     const m: OpenSourceModel = {
       id: makeModelId(draft.label), label: draft.label.trim(), family: preset?.family ?? '', model: draft.model.trim(),
       apiUrl: draft.apiUrl.trim().replace(/\/+$/, ''), apiKey: draft.apiKey.trim(), priceInput: 0, priceOutput: 0, enabled: true,
+      temperature: sanitizeTemperature(draft.temperature),
     }
     set('openSourceModels', [...cfg.openSourceModels, m])
     setOpenId(m.id)
@@ -230,6 +235,7 @@ export function OpenSourceModels({ cfg, set }: { cfg: ProviderConfig; set: SetCf
             <Row label="Nom du modèle" hint="Identifiant exact chez l'hébergeur — vérifiez-le dans sa documentation"><TextInput value={draft.model} onChange={v => setDraft(d => ({ ...d, model: v }))} mono placeholder="meta-llama/Llama-3.3-70B-Instruct-Turbo" width="w-72" /></Row>
             <Row label="URL de l'API"><TextInput value={draft.apiUrl} onChange={v => setDraft(d => ({ ...d, apiUrl: v }))} mono placeholder="https://…/v1" width="w-72" /></Row>
             <Row label="Clé API" hint={host.keyRequired ? 'Requise par cet hébergeur' : 'Laissez vide si votre serveur n’en requiert pas'}><ApiKeyInput value={draft.apiKey} onChange={v => setDraft(d => ({ ...d, apiKey: v }))} placeholder="(clé de l'hébergeur)" /></Row>
+            <Row label="Température" hint="0 à 2. Vide : celle du serveur (vLLM : 1,0 pour Ministral 3, réponses JSON abîmées). 0,15 conseillé pour MBC."><TemperatureInput label="Température" value={draft.temperature} onChange={v => setDraft(d => ({ ...d, temperature: v }))} /></Row>
           </div>
           <div className="flex items-center justify-end gap-2">
             <button type="button" onClick={() => setAdding(false)} className="px-4 py-2 rounded-lg text-sm" style={btn}>Annuler</button>
@@ -286,6 +292,7 @@ export function OpenSourceModels({ cfg, set }: { cfg: ProviderConfig; set: SetCf
                   <Row label="Nom du modèle"><TextInput value={m.model} onChange={v => update(m.id, { model: v })} mono width="w-72" /></Row>
                   <Row label="URL de l'API"><TextInput value={m.apiUrl} onChange={v => update(m.id, { apiUrl: v })} mono width="w-72" /></Row>
                   <Row label="Clé API"><ApiKeyInput value={m.apiKey} onChange={v => update(m.id, { apiKey: v })} placeholder="(optionnel)" /></Row>
+                  <Row label="Température" hint="0 à 2. Vide : celle du serveur (vLLM : 1,0 pour Ministral 3, réponses JSON abîmées). 0,15 conseillé pour MBC."><TemperatureInput label={`Température de ${m.label}`} value={m.temperature} onChange={v => update(m.id, { temperature: v })} /></Row>
                   <Row label="Coût base facturation (input)" hint="$ / 1M tokens — 0 si hébergé en interne"><NumInput value={m.priceInput} onChange={v => update(m.id, { priceInput: v })} step={0.1} prefix="$" /></Row>
                   <Row label="Coût base facturation (output)"><NumInput value={m.priceOutput} onChange={v => update(m.id, { priceOutput: v })} step={0.1} prefix="$" /></Row>
                   <Row label="Actif" hint="Un modèle désactivé n'est plus utilisé (les modules reviennent au modèle par défaut)">

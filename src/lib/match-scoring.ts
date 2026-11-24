@@ -1,3 +1,4 @@
+import { parseModelJson } from '@/lib/ai/model-json'
 import { parseDescription, stripInline, type DescriptionSection, type SectionKind } from './description-sections'
 import { SOURCING_MIN_SCORE } from './sourcing-rules'
 import { maskContacts } from './contact-mask'
@@ -423,7 +424,7 @@ const RELATION_ANSWERS: Record<string, TitleRelation> = {
 export function parseTitleRelations(content: string, count: number, exact = false): (TitleRelation | null)[] {
   const json = content.match(/\[[\s\S]*\]/)
   let raw: unknown = null
-  try { raw = json ? JSON.parse(json[0]) : null } catch { raw = null }
+  try { raw = json ? parseModelJson(json[0]) : null } catch { raw = null }
   const values = Array.isArray(raw) && (!exact || raw.length === count) ? raw : []
   return Array.from({ length: count }, (_, i) => {
     const v = values[i]

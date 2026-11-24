@@ -6,7 +6,7 @@ import { ID, Query } from 'node-appwrite'
 import { revalidatePath } from 'next/cache'
 import type { ProviderConfig } from './types'
 import { DEFAULT_CONFIG } from './types'
-import { BUILTIN_MODEL_IDS, sanitizeOpenSourceModels, sanitizeRouting } from '@/lib/ai/models'
+import { BUILTIN_MODEL_IDS, sanitizeOpenSourceModels, sanitizeRouting, sanitizeTemperature } from '@/lib/ai/models'
 import { invalidateLLMConfigCache } from '@/lib/ai/llm-router'
 import { forgetRecentLLMConfig, getLLMConfig as readLLMConfig } from '@/lib/ai/llm-config-store'
 import { requireAdmin } from '@/lib/appwrite/auth'
@@ -84,7 +84,7 @@ export async function saveLLMConfig(input: ProviderConfig): Promise<{ error?: st
 
 export async function testProvider(
   provider: string,
-  overrides?: { model?: string; apiUrl?: string; apiKey?: string },
+  overrides?: { model?: string; apiUrl?: string; apiKey?: string; temperature?: number | null },
 ): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
   await requireAdmin()
   if (overrides?.apiUrl) {
@@ -115,6 +115,8 @@ export async function testProvider(
 
       // OpenAI-compatible (teckia / gpt4o)
       const apiUrl = (overrides.apiUrl || 'https://api.openai.com/v1').trim()
+      // Même température que les appels de callOpenAICompat (modèles open source seulement) ; valeur du client revalidée.
+      const temperature = sanitizeTemperature(overrides.temperature)
       const res = await fetch(`${apiUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
@@ -124,6 +126,7 @@ export async function testProvider(
           // "think" n'existe que pour Qwen3 (TeckiA) — les autres API compatibles OpenAI
           // (Groq, GPT-4o, autres modèles open source) le refusent (voir lib/ai/llm-router.ts).
           ...(model.toLowerCase().includes('qwen') ? { think: false } : {}),
+          ...(typeof temperature === 'number' ? { temperature } : {}),
           messages: [{ role: 'user', content: 'Say hello' }],
         }),
         cache: 'no-store',

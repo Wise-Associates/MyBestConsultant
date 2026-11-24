@@ -1,3 +1,4 @@
+import { parseModelJson } from '@/lib/ai/model-json'
 import { createHash, createHmac, timingSafeEqual } from 'crypto'
 import { AppwriteException, ID, Query, type Models } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite/client'
@@ -241,7 +242,7 @@ export async function generateCopy(job: JobLite): Promise<CopyDraft> {
 Réponds UNIQUEMENT avec un JSON valide, sans markdown :
 {"hook":"accroche de 70 caractères maximum","tagline":"une phrase d'accroche inspirante de 85 caractères maximum, propre à ce poste, sans point d'exclamation","pitch":"2 à 3 phrases de présentation","missionBullets":["3 puces de 80 caractères maximum sur la mission"],"profileBullets":["3 à 5 compétences ou qualités clés, 35 caractères maximum chacune"],"context":"1 à 2 phrases, 300 caractères maximum, qui présentent le projet ou la mission : l'organisation telle que l'offre la désigne, ce qu'elle entreprend et dans quel cadre ; sans t'adresser au candidat","pole":"le pôle d'expertise de Wise Associates dont relève ce poste, exactement l'un de : ${WISE_POLES.join(', ')} ; chaîne vide si aucun ne convient","hashtags":["3 à 6 hashtags des principales expertises techniques ou métier demandées par l'offre (compétences, technologies, domaines), dans l'ordre d'importance, chacun en un seul mot sans accent ni espace ni #, écrit avec les mots de l'offre (ex. RisqueDeLiquidite, Java, AWS) ; aucun hashtag générique (recrutement, emploi, job) ni absent de l'offre"]}`, { timeoutMs: 30_000 })
     const m = content.match(/\{[\s\S]*\}/)
-    return normalizeCopy(m ? JSON.parse(m[0]) : null, job)
+    return normalizeCopy(m ? parseModelJson(m[0]) : null, job)
   } catch (e) {
     // Repli prévu : la publication ne dépend jamais de l'IA, mais l'admin doit pouvoir savoir pourquoi.
     console.warn('[social] textes par repli, IA indisponible :', e instanceof Error ? e.message.slice(0, 200) : e)

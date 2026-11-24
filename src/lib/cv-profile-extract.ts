@@ -1,6 +1,7 @@
 // Scans a candidate's CV and extracts a structured profile (skills, experience summary).
 // Shared by the candidate dashboard (auto-run on upload) and the admin CV Thèque
 // (manual re-scan for CVs uploaded before this feature existed).
+import { parseModelJson } from '@/lib/ai/model-json'
 import { callLLM } from '@/lib/ai/llm-router'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { BUCKETS } from '@/lib/appwrite/config'
@@ -98,7 +99,7 @@ export async function extractCvProfile(cvFileId: string, bucketId: string = BUCK
     const { content } = await callLLM([{ role: 'user', content: text }], SYSTEM)
     const jsonMatch = content.match(/\{[\s\S]*\}/)
     if (!jsonMatch) return null
-    const parsed = JSON.parse(jsonMatch[0])
+    const parsed = parseModelJson(jsonMatch[0]) as Record<string, unknown>
     return {
       skills: Array.isArray(parsed.skills) ? parsed.skills.slice(0, 20).map(String) : [],
       experienceSummary: String(parsed.experienceSummary ?? ''),

@@ -1,3 +1,4 @@
+import { parseModelJson } from '@/lib/ai/model-json'
 import { NextRequest, NextResponse } from 'next/server'
 import { callLLM } from '@/lib/ai/llm-router'
 import { getLLMConfig } from '@/lib/ai/llm-config-store'
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest) {
     let raw = result.content.trim()
     raw = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
 
-    const parsed = JSON.parse(raw) as Record<string, unknown>[]
+    const parsed = parseModelJson(raw) as Record<string, unknown>[]
 
     if (!Array.isArray(parsed)) throw new Error('Réponse LLM invalide : attendu un tableau')
     // Même règle qu'AO Offers : les dates citées sans libellé sont placées selon leur jour (lundi : démarrage).

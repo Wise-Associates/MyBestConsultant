@@ -1,3 +1,4 @@
+import { parseModelJson } from '@/lib/ai/model-json'
 import { z } from 'zod'
 import type { MbcPhone } from './phone'
 import type { TitleRelation } from '@/lib/match-scoring'
@@ -273,7 +274,7 @@ export function jsonObjectIn(text: string): Record<string, unknown> | null {
   if (start < 0 || end <= start) return null
   let raw: unknown
   try {
-    raw = JSON.parse(text.slice(start, end + 1))
+    raw = parseModelJson(text.slice(start, end + 1))
   } catch {
     return null
   }

@@ -1,3 +1,4 @@
+import { parseModelJson } from '@/lib/ai/model-json'
 import { z } from 'zod'
 import { STANDARD_DAILY_QUOTAS } from '@/lib/plans'
 import { SOURCING_MIN_SCORE } from './sourcing-rules'
@@ -219,7 +220,7 @@ export function parseVivierMatching(content: string, offers: OfferToScore[], cvT
   const json = content.match(/\[[\s\S]*\]/)
   if (!json) return null
   let raw: unknown
-  try { raw = JSON.parse(json[0]) } catch { return null }
+  try { raw = parseModelJson(json[0]) } catch { return null }
   if (!Array.isArray(raw)) return null
   const seen = new Set<number>()
   return raw.flatMap(item => {

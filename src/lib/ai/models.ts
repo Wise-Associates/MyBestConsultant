@@ -51,7 +51,18 @@ export interface OpenSourceModel {
   priceInput: number
   priceOutput: number
   enabled: boolean
+  /**
+   * Température envoyée au serveur (0 à 2) ; null : aucune, le serveur applique la sienne. vLLM prend alors celle du
+   * modèle, ou 1,0 si le modèle n'en donne pas (Ministral 3) : réponses JSON abîmées (ADR 0057).
+   */
+  temperature: number | null
 }
+
+/**
+ * Température d'un modèle ajouté dans Config IA. 0,15 : réponses JSON stables pour Ministral 3 sur vLLM (banc d'essai du
+ * 2026-11-23, ADR 0057) ; les tâches de MBC sont surtout de l'extraction et de la notation, pas de la création.
+ */
+export const DEFAULT_OPEN_SOURCE_TEMPERATURE = 0.15
 
 /** Hébergeurs d'inférence proposés (tous exposent une API compatible OpenAI). */
 export const OS_HOSTS: { id: string; label: string; apiUrl: string; keyRequired: boolean; hint: string }[] = [
@@ -77,6 +88,24 @@ export const MODEL_LIMITS = { label: 60, model: 120, url: 300, key: 400, maxMode
 const clip = (v: unknown, n: number) => (typeof v === 'string' ? v.trim().slice(0, n) : '')
 const num = (v: unknown) => (typeof v === 'number' && isFinite(v) && v >= 0 ? Math.min(v, 1000) : 0)
 
+/**
+ * Saisie du champ « Température » de Config IA : vide → null (celle du serveur) ; nombre de 0 à 2, avec une virgule ou
+ * un point → ce nombre ; autre chose → 'invalide', pour que le formulaire le signale au lieu de l'enregistrer comme vide.
+ */
+export function parseTemperatureInput(text: string): number | null | 'invalide' {
+  const t = text.trim()
+  if (!t) return null
+  if (!/^\d+([.,]\d*)?$/.test(t)) return 'invalide'
+  const n = Number(t.replace(',', '.'))
+  return n <= 2 ? n : 'invalide'
+}
+
+/** Température ramenée entre 0 et 2, au centième ; autre chose qu'un nombre : null (celle du serveur). */
+export function sanitizeTemperature(v: unknown): number | null {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null
+  return Math.round(Math.min(Math.max(v, 0), 2) * 100) / 100
+}
+
 /** Identifiant stable d'un modèle personnalisé (≤ 24 car. : stocké dans screenings.provider, 50 max). */
 export function makeModelId(label: string): string {
   const slug = label.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 14) || 'model'
@@ -101,6 +130,7 @@ export function sanitizeOpenSourceModels(input: unknown): OpenSourceModel[] {
       apiUrl: clip(r.apiUrl, MODEL_LIMITS.url).replace(/\/+$/, ''),
       apiKey: typeof r.apiKey === 'string' ? r.apiKey.trim().slice(0, MODEL_LIMITS.key) : '',
       priceInput: num(r.priceInput), priceOutput: num(r.priceOutput), enabled: r.enabled !== false,
+      temperature: sanitizeTemperature(r.temperature),
     })
   }
   return out

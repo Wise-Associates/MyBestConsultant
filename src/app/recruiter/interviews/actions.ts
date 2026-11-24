@@ -1,5 +1,6 @@
 'use server'
 
+import { parseModelJson } from '@/lib/ai/model-json'
 import { callLLMForModule } from '@/lib/ai/llm-router'
 
 // Tous les appels IA de ce fichier relèvent du module « Entretiens IA » (modèle réglable dans /admin/llm-config).
@@ -167,7 +168,7 @@ Utilise la méthode STAR pour les questions comportementales.`
     if (!jsonMatch) return { error: 'Génération échouée' }
 
     // L'IA peut en rendre plus que demandé : l'entretien garde exactement le nombre choisi.
-    const aiQuestions: InterviewQuestion[] = JSON.parse(jsonMatch[0]).slice(0, plan.count).map((q: InterviewQuestion, i: number) => ({
+    const aiQuestions: InterviewQuestion[] = (parseModelJson(jsonMatch[0]) as InterviewQuestion[]).slice(0, plan.count).map((q: InterviewQuestion, i: number) => ({
       ...q,
       id: q.id ?? `q${i + 1}`,
       aiGenerated: true,
@@ -260,7 +261,7 @@ export async function analyseInterview(
     const jsonMatch = content.match(/\{[\s\S]*\}/)
     if (!jsonMatch) return { error: 'Analyse échouée' }
 
-    const parsed = JSON.parse(jsonMatch[0])
+    const parsed = parseModelJson(jsonMatch[0]) as Partial<InterviewAnalysis>
     const analysis: InterviewAnalysis = {
       overallScore: Math.min(100, Math.max(0, Number(parsed.overallScore) || 0)),
       communicationScore: Math.min(100, Math.max(0, Number(parsed.communicationScore) || 0)),

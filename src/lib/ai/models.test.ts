@@ -1,6 +1,9 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { AI_MODULES, CLASSIFICATION_AI, fallbackOrder, pickPrimary, requestedModel, sanitizeRouting, type RoutingView } from './models'
+import {
+  AI_MODULES, CLASSIFICATION_AI, fallbackOrder, pickPrimary, requestedModel, parseTemperatureInput, sanitizeOpenSourceModels, sanitizeRouting, sanitizeTemperature,
+  type RoutingView,
+} from './models'
 
 const cfg = (over: Partial<RoutingView> = {}): RoutingView => ({ provider: 'teckia', moduleRouting: {}, openSourceModels: [], ...over })
 
@@ -52,5 +55,37 @@ describe('classification des CV (ADR 0044)', () => {
     assert.equal(requestedModel('claude', 'claude', { model: 'claude-x' }), 'claude-x')
     assert.equal(requestedModel('gpt4o', 'claude', { model: 'claude-x' }), undefined)
     assert.equal(requestedModel('claude', 'claude', { model: 'claude-x', providerModels: haikuAndMini }), 'claude-haiku-5-5')
+  })
+})
+
+describe('température des modèles open source (ADR 0057)', () => {
+  it('ramenée entre 0 et 2, au centième', () => {
+    assert.equal(sanitizeTemperature(0.15), 0.15)
+    assert.equal(sanitizeTemperature(0), 0)
+    assert.equal(sanitizeTemperature(0.123), 0.12)
+    assert.equal(sanitizeTemperature(5), 2)
+    assert.equal(sanitizeTemperature(-1), 0)
+  })
+
+  it('pas un nombre : null, le serveur applique la sienne', () => {
+    for (const v of [undefined, null, '0.2', Number.NaN, Number.POSITIVE_INFINITY]) assert.equal(sanitizeTemperature(v), null)
+  })
+
+  it('modèle enregistré avant la température : null, rien n\'est envoyé de plus qu\'avant', () => {
+    const [before, after] = sanitizeOpenSourceModels([
+      { id: 'os-ministral-abc', label: 'Ministral', model: 'ministral-3-14b', apiUrl: 'https://x/v1' },
+      { id: 'os-ministral-def', label: 'Ministral 2', model: 'ministral-3-14b', apiUrl: 'https://x/v1', temperature: 0.15 },
+    ])
+    assert.equal(before.temperature, null)
+    assert.equal(after.temperature, 0.15)
+  })
+
+  it('saisie du champ : virgule ou point, vide = celle du serveur, le reste signalé (jamais enregistré comme vide)', () => {
+    assert.equal(parseTemperatureInput('0,15'), 0.15)
+    assert.equal(parseTemperatureInput(' 0.2 '), 0.2)
+    assert.equal(parseTemperatureInput('0,'), 0)
+    assert.equal(parseTemperatureInput('2'), 2)
+    assert.equal(parseTemperatureInput(''), null)
+    for (const bad of ['2,5', '15', '-0,1', '0,1,5', 'abc', '1e']) assert.equal(parseTemperatureInput(bad), 'invalide', bad)
   })
 })
