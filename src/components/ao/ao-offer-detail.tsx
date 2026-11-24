@@ -498,7 +498,7 @@ function LinkedInPostPreview({ draft, skills, social, hiddenNames, onSocial }: {
         {post !== null && `${post.length.toLocaleString('fr-FR')} caractères sur 3 000 (limite de LinkedIn). Une offre trop longue est raccourcie section par section, avec un renvoi vers l’offre. `}
         {settings.fromPlatform
           ? 'Appel d’offres anonymisé : ni présentation de Wise Associates ni phrase de recrutement. Hashtags par défaut : réglages « Réseaux sociaux » de la plateforme.'
-          : 'Présentation de l’organisation : début de l’« À propos » de sa marque employeur (sinon son accroche).'}
+          : 'Appel d’offres anonymisé : publié au nom de l’entreprise affichée, sans la présentation de votre organisation ni la ligne « Offre diffusée via MyBestConsultant ».'}
         {' '}Les noms du client restés dans le texte sont masqués comme à la publication.
       </p>
       <label className="block" htmlFor={projectId}>

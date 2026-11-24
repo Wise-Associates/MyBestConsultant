@@ -106,16 +106,20 @@ describe('post LinkedIn relu avant la publication d’un AO : celui qui partira'
     assert.ok(withoutProject.includes('🧭 Rejoignez une équipe dédiée à la gouvernance des données.'), withoutProject)
   })
 
-  it('offre d’une organisation : sa présentation et le texte de David appliqué à elle, identique à la diffusion', () => {
-    const post = postOf(draft, organisation)
-    assert.equal(post, diffusedPost(draft, organisation, names))
+  it('AO d’une organisation : même logique que la plateforme, au nom de l’entreprise affichée, sans ligne de diffusion (ADR 0060)', () => {
+    const opening = 'Un grand groupe bancaire recrute un profil pour structurer la gouvernance de ses données.'
+    const withContext = { ...draft, description: draft.description.replace('\n\n### Au programme', `\n\n### Le contexte\n${opening} Le projet couvre ses filiales.\n\n### Au programme`) }
+    const post = postOf(withContext, organisation)
+    assert.equal(post, diffusedPost(withContext, organisation, names))
+    assert.ok(post.startsWith('🚀 '), post)
+    assert.ok(post.split('\n')[0].endsWith('— Grand groupe bancaire'), post)
     assert.ok(post.includes([
-      organisation.publisherAbout, '',
-      'Dans le cadre de son développement, Cabinet Exemple recherche un consultant gouvernance des données pour intervenir sur une mission.', '',
-      '📣 Offre diffusée via MyBestConsultant, la plateforme de recrutement de Wise Associates.', '',
+      opening, '',
       '🧭 Le projet :',
     ].join('\n')), post)
-    assert.ok(!post.includes(DEFAULT_PUBLISHER_INTRO) && !post.includes('Wise Associates recherche'), post)
+    // Ni l'organisation qui publie, ni sa présentation, ni sa phrase de recrutement, ni la ligne de diffusion.
+    assert.ok(!post.includes('Cabinet Exemple') && !post.includes('Dans le cadre de son développement'), post)
+    assert.ok(!/wise|Offre diffusée/i.test(post.replace('https://exemple.test', '')), post)
   })
 
   it('version non anonymisée : client gardé, coordonnées personnelles retirées, identique à la diffusion', () => {

@@ -105,7 +105,15 @@ export function brandPresentation(about: string, tagline: string): string {
 /** Champs d'une offre lus pour la publication : offre enregistrée, ou version relue avant sa publication. */
 export interface JobForSocial {
   id: string; title: string; location?: string; contractType?: string; remote?: string; salary?: number; skills?: string[]; description?: string
+  /** Entreprise affichée de l'offre : celle d'un appel d'offres (anonymisée) est la seule nommée dans ses textes. */
+  companyName?: string
 }
+
+/**
+ * Offre publiée depuis un appel d'offres : identifiant « ao<offre AO> » (publicJobIdOf) ; un identifiant Appwrite,
+ * hexadécimal, ne commence jamais par « o ».
+ */
+export const isTenderJob = (jobId: string) => jobId.startsWith('ao')
 
 /**
  * Offre telle que la lisent les textes des réseaux, champs bornés (le corps envoyé à Make et enregistré dans
@@ -115,12 +123,16 @@ export interface JobForSocial {
  * post avant publication (ao/publication-social.ts) : ils ne peuvent pas diverger.
  */
 export function jobLiteOf(job: JobForSocial, company: string, fromPlatform: boolean, publisherAbout = ''): JobLite {
+  // Appel d'offres : au nom de son entreprise affichée, sans l'organisation qui le publie ni sa présentation (ADR 0060).
+  const tender = isTenderJob(job.id)
+  const named = tender ? job.companyName?.trim() || company : company
+  const about = tender ? '' : publisherAbout
   return {
-    id: job.id, title: job.title.slice(0, 200), company: company.slice(0, 120), location: (job.location ?? '').slice(0, 120),
+    id: job.id, title: job.title.slice(0, 200), company: named.slice(0, 120), location: (job.location ?? '').slice(0, 120),
     contractType: job.contractType, remote: job.remote, salary: job.salary,
     // Retours à la ligne gardés : la description est publiée telle quelle sur LinkedIn, qui n'en affiche pas plus de 3 000 caractères.
     skills: (job.skills ?? []).slice(0, 15).map(k => k.slice(0, 40)), description: plainLines(job.description ?? '').slice(0, 3000),
-    fromPlatform, publisherAbout: publisherAbout.slice(0, PRESENTATION_MAX),
+    fromPlatform, publisherAbout: about.slice(0, PRESENTATION_MAX),
   }
 }
 
@@ -540,14 +552,16 @@ export function buildContent(job: JobLite, copy: CopyDraft, cfg: SocialConfig, o
   // Texte de la direction (David, 2026-11-17), chacun son paragraphe : offre de la plateforme, présentation de Wise
   // (réglage de /admin/social) et sa phrase de recrutement ; organisation cliente, sur le même modèle (ADR 0058), sa
   // présentation (marque employeur), sa phrase de recrutement et la ligne de diffusion. Puis le projet.
-  // Appel d'offres publié par la plateforme (identifiant « ao… », publicJobIdOf ; un identifiant Appwrite, hexadécimal,
-  // ne commence jamais par « o ») : offre anonymisée, sans mention de Wise Associates ni de son activité (ADR 0060).
-  // Qui recrute y est dit par la première phrase de « Le contexte » (« Un organisme public chargé de … recrute un profil
-  // pour … »), à la place de celle de Wise ; sans « Le projet », la section reste entière dans le corps.
-  const tender = job.id.startsWith('ao')
-  const context = job.fromPlatform
-    ? (tender ? join(copy.context ? contextOpening(job.description) : '', project) : join(cfg.publisherIntro, recruitLine(job, copy.pole), project))
-    : join(job.publisherAbout ?? '', orgRecruitLine(job), ORG_DIFFUSION_LINE, project)
+  // Appel d'offres (isTenderJob), de la plateforme ou d'une organisation, même logique (ADR 0060) : offre anonymisée,
+  // publiée au nom de l'entreprise affichée (jobLiteOf), sans présentation ni phrase de recrutement de Wise Associates ou
+  // de l'organisation qui le publie, ni ligne de diffusion. Qui recrute y est dit par la première phrase de « Le contexte » (« Un organisme
+  // public chargé de … recrute un profil pour … ») ; sans « Le projet », la section reste entière dans le corps.
+  const opening = copy.context ? contextOpening(job.description) : ''
+  const context = isTenderJob(job.id)
+    ? join(opening, project)
+    : job.fromPlatform
+      ? join(cfg.publisherIntro, recruitLine(job, copy.pole), project)
+      : join(job.publisherAbout ?? '', orgRecruitLine(job), ORG_DIFFUSION_LINE, project)
   const liEnd = join([cta(urls.linkedin), rdv].filter(Boolean).join('\n'), tags.linkedin.join(' '))
   const liTop = hasDescription ? join(head, meta, context) : join(head, copy.tagline, meta, context)
   // « Le projet » rédigé par l'IA tient lieu des sections de contexte de la description, qui ne sont pas répétées.

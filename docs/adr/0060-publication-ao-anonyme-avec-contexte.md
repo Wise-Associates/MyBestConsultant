@@ -58,8 +58,10 @@ Autres défauts constatés : un nom masqué après un article masculin devenait 
 - **Wise Associates** (`PLATFORM_NAMES`, `platformMentions`) : signalé en rouge à la relecture de toute version
   anonymisée, et une version anonymisée qui le mentionne encore est **refusée** à la publication (`publishAoOfferOf`),
   plutôt que remplacée par le libellé affiché, qui changerait le sens de la phrase (« Transmis par … »).
-- **Post LinkedIn d'un AO publié par la plateforme** (identifiant `ao…`, `buildContent`) : ni présentation de Wise
-  Associates ni phrase de recrutement à son nom : la première phrase de « Le contexte » (qui recrute, pour quoi) en tient
+- **Post LinkedIn d'un AO, publié par la plateforme ou par une organisation** (même logique, décision du 2026-11-24) :
+  au nom de l'entreprise affichée (`jobLiteOf`), sans l'organisation qui le publie, sa présentation ni la ligne de
+  diffusion. Dans les deux cas (identifiant `ao…`, `isTenderJob`, `buildContent`), ni présentation
+  ni phrase de recrutement de Wise Associates ou de l'organisation : la première phrase de « Le contexte » (qui recrute, pour quoi) en tient
   lieu (`contextOpening`), puis « Le projet ». Pour toute version anonymisée, « Le projet » proposé à la relecture est la suite de
   « Le contexte » (`tenderProject`, phrases entières, 320 caractères) : rédigé à part par l'IA de la diffusion, il
   répétait la phrase d'ouverture (essai du 2026-11-24). Le choix du pôle disparaît de la
@@ -81,7 +83,7 @@ Autres défauts constatés : un nom masqué après un article masculin devenait 
 - « au Grand groupe bancaire » devient « au client confidentiel » : moins précis quand le libellé était masculin, mais
   plus jamais faux.
 - La ligne de diffusion des offres des organisations (« Offre diffusée via MyBestConsultant, la plateforme de
-  recrutement de Wise Associates », ADR 0058) n'est pas modifiée (décision du 2026-11-24 : gardée pour le moment).
+  recrutement de Wise Associates », ADR 0058) reste dans les offres des organisations créées hors AO ; un post d'AO ne l'a plus (même logique que la plateforme).
 - La relecture humaine reste le dernier contrôle.
 
 ## Essais (DEV, 2026-11-24)

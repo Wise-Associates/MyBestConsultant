@@ -7,7 +7,7 @@ import {
 
 // Offre fictive, au format de « Préparer la publication » (accroche, puis sections « ### » et puces « - »).
 const job: JobLite = {
-  id: 'ao123', title: 'Accompagnement du projet Gouvernance des données', company: 'Entreprise exemple', location: 'Paris (75)',
+  id: '6a0000000000000000c1', title: 'Accompagnement du projet Gouvernance des données', company: 'Entreprise exemple', location: 'Paris (75)',
   contractType: 'mission', remote: 'onsite', skills: ['Gouvernance des données', 'Stratégie SI'],
   description: [
     'Une direction des systèmes d’information structure sa gouvernance des données.',
@@ -32,7 +32,7 @@ const copy: CopyDraft = {
   context: '', pole: '', hashtags: [],
 }
 const opts = { baseUrl: 'https://exemple.test', calendlyUrl: 'https://calendly.com/exemple' }
-const applyLine = '👉 Voir l’offre et postuler : https://exemple.test/jobs/ao123?utm_source=linkedin'
+const applyLine = '👉 Voir l’offre et postuler : https://exemple.test/jobs/6a0000000000000000c1?utm_source=linkedin'
 // Intitulé trop long pour un hashtag ; sans hashtag proposé par l'IA : les compétences de l'offre, le contrat (une
 // mission → Freelance), puis ceux du réglage ; 5 en tout.
 const tagLine = '#GouvernanceDesDonnees #StrategieSI #Freelance #Recrutement #Emploi'
