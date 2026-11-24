@@ -1,9 +1,13 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { findIdentifiers, findNames, words } from './name-match'
-import { descriptionFromCopy, maskNames, maskTermsOf, parsePublicationCopy, type PublicationCopy } from './publication-copy'
+import {
+  PLATFORM_NAMES, descriptionFromCopy, isGenericUnit, maskNames, maskTermsOf, modalityLines, parsePublicationCopy, platformMentions, type PublicationCopy,
+} from './publication-copy'
 import { publicLabel, toPublicOffer } from './anonymize'
 import type { AoOfferFields } from './types'
+import { parseDescription } from '@/lib/description-sections'
+import { offerRequirements } from '@/lib/match-scoring'
 
 // Version publiée d'une offre AO (« Préparer la publication ») : réponse de l'IA validée, description mise en forme,
 // et repérage de ce qui identifierait encore le client. Valeurs inventées.
@@ -46,7 +50,9 @@ describe('« Préparer la publication » : réponse de l\'IA', () => {
 
   it('met en forme la description comme le site l\'affiche : accroche, Au programme, Profil recherché, Modalités', () => {
     const copy = parsePublicationCopy(JSON.stringify(answer))!
-    assert.equal(descriptionFromCopy(copy), [
+    const modalities = modalityLines({ duration: ' 12 mois\n renouvelables ', startDate: 'ASAP', experience: '' })
+    assert.deepEqual(modalities, ['Durée : 12 mois renouvelables', 'Démarrage : ASAP'])
+    assert.equal(descriptionFromCopy(copy, modalities), [
       'Pilotez les achats IT d\'une direction des systèmes d\'information internationale.',
       '',
       '### Au programme',
@@ -58,10 +64,58 @@ describe('« Préparer la publication » : réponse de l\'IA', () => {
       '- Anglais courant',
       '',
       '### Modalités',
-      '- Durée : 12 mois',
+      '- Durée : 12 mois renouvelables',
       '- Démarrage : ASAP',
     ].join('\n'))
-    assert.ok(!descriptionFromCopy({ ...copy, terms: [] }).includes('Modalités'), 'section vide omise')
+    assert.ok(!descriptionFromCopy(copy).includes('Modalités'), 'section vide omise')
+  })
+
+  it('n\'écrit jamais les modalités de l\'IA : seules celles lues dans l\'e-mail sont publiées (ADR 0060)', () => {
+    // L'IA inventait une durée ou un démarrage dans la moitié des AO qui n'en donnaient pas.
+    const copy = parsePublicationCopy(JSON.stringify({ ...answer, terms: ['Mission de 6 mois renouvelable', 'Démarrage immédiat'] }))!
+    assert.ok(!descriptionFromCopy(copy).includes('6 mois') && !descriptionFromCopy(copy).includes('immédiat'))
+    assert.deepEqual(modalityLines({ duration: '', startDate: '  ', experience: '' }), [])
+  })
+
+  it('ne masque jamais une direction générique, même citée par l\'IA parmi les noms retirés (ADR 0060)', () => {
+    const copy = parsePublicationCopy(JSON.stringify(answer))!
+    const removed = ['DSI', 'DPII', 'Direction des opérations', 'direction des risques', 'MOA',
+      'Service Liquidation Aquitaine', 'Direction Générale des Finances Publiques', 'DSI de BHX', 'Pôle Actuariat Bretagne-Sud', 'Bureau Veritas']
+    assert.deepEqual(maskTermsOf({ ...copy, removed }),
+      ['Service Liquidation Aquitaine', 'Direction Générale des Finances Publiques', 'DSI de BHX', 'Pôle Actuariat Bretagne-Sud', 'Bureau Veritas'])
+    assert.equal(isGenericUnit('Directions'), true)
+    assert.equal(isGenericUnit('Directeur'), false)
+  })
+
+  it('repère Wise Associates dans une version anonymisée, quelle que soit la forme écrite (ADR 0060)', () => {
+    assert.deepEqual(platformMentions(['Mission pour une banque.', 'Transmis par WISE-ASSOCIATES.']), ['WISE-ASSOCIATES'])
+    assert.deepEqual(platformMentions(['Faire un choix avisé et sage.']), [])
+    assert.deepEqual(findIdentifiers('Offre relayée par Wise Associates.', PLATFORM_NAMES), ['Wise Associates'])
+  })
+
+  it('place « Le contexte » en paragraphe après l\'accroche, lu comme le contexte de l\'offre', () => {
+    const context = 'Un grand groupe bancaire international modernise le pilotage de ses achats informatiques. '
+      + 'Le projet vise à centraliser les demandes de prestations et à suivre les fournisseurs.'
+    const copy = parsePublicationCopy(JSON.stringify({ ...answer, context }))!
+    const description = descriptionFromCopy(copy)
+    assert.match(description, new RegExp(`^Pilotez[^\\n]+\\n\\n### Le contexte\\n${context.replace(/[.]/g, '\\.')}\\n\\n### Au programme\\n`))
+    const sections = parseDescription(description)
+    assert.equal(sections.find(s => s.title === 'Le contexte')?.kind, 'context')
+    // Le contexte n'est pas jugé comme une exigence par le matching (puces Profil et Missions seulement).
+    assert.ok(!offerRequirements(description).some(r => r.includes('grand groupe bancaire')))
+  })
+
+  it('accepte une réponse sans contexte (offre qui n\'en dit rien) et borne le contexte', () => {
+    const copy = parsePublicationCopy(JSON.stringify(answer))!
+    assert.equal(copy.context, '')
+    assert.ok(!descriptionFromCopy(copy).includes('Le contexte'))
+    const long = parsePublicationCopy(JSON.stringify({ ...answer, context: `<p>${'Projet de transformation. '.repeat(60)}</p>` }))!
+    assert.ok(long.context.length <= 600 && !/[<>]/.test(long.context))
+  })
+
+  it('signale à la relecture un nom du client resté dans le contexte', () => {
+    const copy = parsePublicationCopy(JSON.stringify({ ...answer, context: 'La BNPP modernise ses achats informatiques.' }))!
+    assert.deepEqual(findIdentifiers(descriptionFromCopy(copy), [words('BNPP')]), ['BNPP'])
   })
 
   it('masque à la publication les noms que l\'IA dit avoir retirés, même laissés par erreur, sauf la ville de l\'offre', () => {
@@ -69,6 +123,11 @@ describe('« Préparer la publication » : réponse de l\'IA', () => {
     // « Paris » est la ville de l'offre : la masquer la ferait disparaître partout.
     assert.deepEqual(maskTermsOf(copy), ['BNPP', 'CIB', 'RFC00094023'])
     assert.deepEqual(maskTermsOf({ ...copy, removed: ['X', ' ', 'Novobanco'] } satisfies PublicationCopy), ['Novobanco'])
+    // La ville suivie de son département reste la ville de l'offre.
+    assert.deepEqual(maskTermsOf({ ...copy, location: 'Montreuil', removed: ['Montreuil (93)', 'Montreuil-Bellay'] }), ['Montreuil-Bellay'])
+    // Expression ordinaire listée par l'IA : jamais masquée (elle deviendrait le libellé affiché dans tout le texte).
+    assert.deepEqual(maskTermsOf({ ...copy, removed: ['ORION', 'référents ORION', 'dispositifs nationaux', 'projet b-steady 2'] }),
+      ['ORION', 'référents ORION', 'projet b-steady 2'])
     // L'IA a retiré « BNPP »… mais l'a laissé dans une mission, à côté d'une norme : il reste masqué et signalé.
     const leaky = { ...copy, missions: ['Coordonner les demandes IT de BNPP CIB selon AS9100'] }
     assert.deepEqual(maskTermsOf(leaky), ['BNPP', 'CIB', 'RFC00094023'])
@@ -83,7 +142,7 @@ describe('« Préparer la publication » : réponse de l\'IA', () => {
     [], 'Grand groupe bancaire', maskNames(['Group IT']))
     assert.equal(pub.title, 'Chef de projet IT (H/F)')
     assert.deepEqual(pub.skills, ['Gouvernance IT'])
-    assert.equal(pub.description, 'Rattaché au Grand groupe bancaire, vous pilotez la gouvernance IT.')
+    assert.equal(pub.description, 'Rattaché au client confidentiel, vous pilotez la gouvernance IT.')
   })
 })
 

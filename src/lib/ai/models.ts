@@ -1,7 +1,7 @@
 // Catalogue et règles de sélection des modèles IA (Module 10) — pur, sans accès base ni clé :
 // partagé par le routeur serveur (llm-router.ts) et l'écran admin /admin/llm-config.
 
-export type AIModule = 'interview' | 'matching' | 'assistant' | 'cvExport' | 'classification'
+export type AIModule = 'interview' | 'matching' | 'assistant' | 'cvExport' | 'classification' | 'aoPublication'
 
 /**
  * Modèle de toute notation d'un candidat pour une offre : ligne « Matching IA » de Config IA, Claude si elle est sur
@@ -14,6 +14,13 @@ export const SCORING_AI = { module: 'matching', moduleDefault: 'claude' } as con
  * défaut », puis le repli habituel ; modèles précis de Claude et de GPT dans CLASSIFIER_MODELS (cv-classify.ts).
  */
 export const CLASSIFICATION_AI = { module: 'classification', moduleDefault: 'claude' } as const
+
+/**
+ * Version publiée d'un appel d'offres (« Préparer la publication », ADR 0060) : ligne « Publication des AO » de Config IA,
+ * Claude si elle est sur « Modèle par défaut », toujours en Sonnet 5.5 (mesure du 2026-11-24 sur 12 AO : seul à garder
+ * toutes les directions génériques en anonymisant ; Haiku 5.5 10/12, GPT-4o mini 3/12), effort bas ; repli habituel.
+ */
+export const PUBLICATION_AI = { module: 'aoPublication', moduleDefault: 'claude', providerModels: { claude: 'claude-sonnet-5-5' }, effort: 'low' } as const
 
 /**
  * Modèle précis demandé pour un fournisseur de la chaîne : celui de `providerModels` (ex. Claude Haiku pour la
@@ -36,6 +43,8 @@ export const AI_MODULES: { id: AIModule; label: string; description: string; mod
   { id: 'cvExport', label: 'Export CV (format cabinet)', description: 'Dossier de compétences anonymisé FR / EN (contenu du CV recopié tel quel) depuis la CV Thèque et le vivier — sans repli : en cas de panne, l’export affiche une erreur. Analyse des modèles CV déposés : Claude si « Modèle par défaut »' },
   // ADR 0044 : Claude Haiku et GPT-4o mini plutôt que les modèles de leur ligne (CLASSIFIER_MODELS, cv-classify.ts).
   { id: 'classification', label: 'Classification des CV', description: 'Métiers, compétences, séniorité… de chaque CV déposé, pour le préfiltre du matching et les statistiques — Claude (Haiku) si « Modèle par défaut », puis le repli habituel (GPT : GPT-4o mini) ; aucun modèle disponible : classement par règles, refait par l’IA ensuite', moduleDefault: CLASSIFICATION_AI.moduleDefault },
+  // ADR 0060 : Claude Sonnet 5.5 plutôt que le modèle Claude de la ligne (PUBLICATION_AI), choisi par la mesure.
+  { id: 'aoPublication', label: 'Publication des AO', description: 'Version anonymisée d’un appel d’offres à relire avant publication (« Préparer la publication ») — Claude (Sonnet 5.5) si « Modèle par défaut », puis le repli habituel ; aucun modèle disponible : version préparée par les règles', moduleDefault: PUBLICATION_AI.moduleDefault },
 ]
 
 export const BUILTIN_MODEL_IDS = ['claude', 'gpt4o', 'teckia'] as const
