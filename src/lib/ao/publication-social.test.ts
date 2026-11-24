@@ -97,15 +97,13 @@ describe('post LinkedIn relu avant la publication d’un AO : celui qui partira'
     assert.ok(!post.includes('Projet rédigé par l’IA') && !post.includes('HashtagDeLIA'), post)
   })
 
-  it('offre de la plateforme : texte de David, avec le pôle relu', () => {
+  it('offre de la plateforme : ni présentation de Wise Associates ni phrase de recrutement, le pôle est ignoré (ADR 0060)', () => {
     const post = postOf(draft, platform)
-    assert.ok(post.includes(DEFAULT_PUBLISHER_INTRO), post)
-    assert.ok(post.includes('Dans le cadre de son développement, Wise Associates recherche un consultant gouvernance des données pour rejoindre son pôle d’expertise Data et intelligence artificielle et intervenir auprès de ses clients du secteur financier et de l’assurance.'), post)
+    assert.ok(!post.includes(DEFAULT_PUBLISHER_INTRO) && !/wise/i.test(post.replace('https://exemple.test', '')), post)
     assert.ok(post.includes('https://exemple.test/jobs/aooffre1?utm_source=linkedin'), post)
-    const withoutPole = postOf({ ...draft, social: { ...edits, pole: '', context: '' } }, platform)
-    assert.ok(withoutPole.includes('pour rejoindre ses équipes et intervenir'), withoutPole)
+    const withoutProject = postOf({ ...draft, social: { ...edits, pole: '', context: '' } }, platform)
     // Sans projet, l'accroche de la description en tient lieu.
-    assert.ok(withoutPole.includes('🧭 Rejoignez une équipe dédiée à la gouvernance des données.'), withoutPole)
+    assert.ok(withoutProject.includes('🧭 Rejoignez une équipe dédiée à la gouvernance des données.'), withoutProject)
   })
 
   it('offre d’une organisation : sa présentation et le texte de David appliqué à elle, identique à la diffusion', () => {

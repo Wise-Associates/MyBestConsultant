@@ -276,9 +276,18 @@ describe('anonymisation', () => {
     assert.equal(scrubContacts('Mission pour ENSMIS, à l\'ENSMIS, au nom de l\'ENSMIS. À l\'ENSMIS !', names, 'Grande école'),
       'Mission pour Grande école, au client confidentiel, au nom du client confidentiel. Au client confidentiel !')
     assert.equal(scrubContacts('Avec l\' ENSMIS et l‘ENSMIS.', names, 'X'), 'Avec le client confidentiel et le client confidentiel.')
-    // Sans article élidé ou féminin, le libellé affiché ; le mot qui précède n'est pas touché.
-    assert.equal(scrubContacts('Appel de ENSMIS, voilà ENSMIS, au ENSMIS.', names, 'Grand établissement'),
-      'Appel de Grand établissement, voilà Grand établissement, au Grand établissement.')
+    // Sans article, le libellé affiché ; le mot qui précède n'est pas touché.
+    assert.equal(scrubContacts('Appel de ENSMIS, voilà ENSMIS.', names, 'Grand établissement'),
+      'Appel de Grand établissement, voilà Grand établissement.')
+  })
+
+  it('accorde aussi l\'article masculin : le libellé proposé par l\'IA n\'est pas toujours masculin', () => {
+    // « au Grande collectivité territoriale » : constaté sur la version d'un AO du secteur public.
+    const names = namesToHide(['CNES'])
+    assert.equal(scrubContacts('Le CNES lance, pour le CNES, du CNES au CNES, un CNES, ce CNES.', names, 'Grande collectivité territoriale'),
+      'Le client confidentiel lance, pour le client confidentiel, du client confidentiel au client confidentiel, un client confidentiel, ce client confidentiel.')
+    // Mot qui finit comme un article (« bureau », « Monaco ») : ce n'est pas un article, le libellé affiché reste.
+    assert.equal(scrubContacts('Un bureau CNES à Monaco CNES.', names, 'X'), 'Un bureau X à Monaco X.')
   })
 
   it('accorde aussi l\'article féminin devant un nom masqué (« la Grand groupe bancaire »)', () => {
@@ -292,7 +301,7 @@ describe('anonymisation', () => {
   it('ne répète pas le libellé quand le sigle et le nom complet se suivent', () => {
     const names = namesToHide(['BNP Paribas', 'BNPP'])
     assert.equal(scrubContacts('Le BNPP (BNP Paribas) et BNP Paribas ( BNPP ) recrutent.', names, 'Grand groupe bancaire'),
-      'Le Grand groupe bancaire et Grand groupe bancaire recrutent.')
+      'Le client confidentiel et Grand groupe bancaire recrutent.')
     assert.equal(scrubContacts('Chez l\'BNPP (BNP Paribas).', names, 'Grande banque'), 'Chez le client confidentiel.')
     assert.equal(scrubContacts('La BNPP (l\'BNPP) recrute.', names, 'Grande banque'), 'Le client confidentiel recrute.')
     // Une parenthèse qui ne contient pas que le nom reste.

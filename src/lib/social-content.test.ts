@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  DEFAULT_PUBLISHER_INTRO, DEFAULT_SOCIAL_CONFIG, boldText, brandPresentation, buildContent, networkHashtags, normalizeCopy, offerHashtags, roleHashtag, sanitizeSocialConfig, toHashtag,
+  DEFAULT_PUBLISHER_INTRO, DEFAULT_SOCIAL_CONFIG, boldText, brandPresentation, buildContent, networkHashtags, normalizeCopy, offerHashtags, roleHashtag, SOCIAL_CONTEXT_MAX, sanitizeSocialConfig, tenderProject, toHashtag,
   type CopyDraft, type JobLite,
 } from './social-content'
 
@@ -97,7 +97,8 @@ describe('texte LinkedIn d’une offre', () => {
 })
 
 describe('contexte en tête de la publication LinkedIn', () => {
-  const platform: JobLite = { ...job, fromPlatform: true, title: 'Consultant gouvernance des données (H/F)' }
+  // Offre de l'admin (identifiant Appwrite, hexadécimal) : un appel d'offres (« ao… ») n'a pas la présentation de Wise.
+  const platform: JobLite = { ...job, id: '6a1b2c3d4e5f60718293', fromPlatform: true, title: 'Consultant gouvernance des données (H/F)' }
   const recruit = (team: string) => `Dans le cadre de son développement, Wise Associates recherche un consultant gouvernance des données pour rejoindre ${team} et intervenir auprès de ses clients du secteur financier et de l’assurance.`
   const head = (j: JobLite, c: CopyDraft = copy, cfg = DEFAULT_SOCIAL_CONFIG) =>
     buildContent(j, c, cfg, opts).captions.linkedin.split('\n\n🎯 Au programme')[0]
@@ -111,6 +112,37 @@ describe('contexte en tête de la publication LinkedIn', () => {
     ].join('\n')), linkedin)
     assert.ok(!linkedin.includes('Une direction des systèmes d’information structure'), 'accroche répétée')
     assert.ok(!linkedin.includes('Pourquoi cette publication'), linkedin)
+  })
+
+  it('appel d’offres publié par la plateforme : ni présentation de Wise Associates ni phrase de recrutement (ADR 0060)', () => {
+    const context = 'Un organisme public modernise le paiement des aides.'
+    const linkedin = buildContent({ ...platform, id: 'ao6ade48df0003fdac503e' }, { ...copy, context, pole: 'Data et intelligence artificielle' },
+      DEFAULT_SOCIAL_CONFIG, opts).captions.linkedin
+    assert.ok(!/wise/i.test(linkedin), linkedin)
+    assert.ok(linkedin.includes(`📍 Paris (75) · Mission · Présentiel\n\n🧭 Le projet : ${context}`), linkedin)
+    // Qui recrute : la première phrase de « Le contexte », à la place de celle de Wise (le reste de la section n'est pas répété).
+    const opening = 'Un organisme public chargé de services numériques de télédéclaration recrute un profil pour assurer le support applicatif de niveau 2.'
+    const description = `Assurez la continuité de service.\n\n### Le contexte\n${opening} Son système sert des milliers d’usagers.\n\n### Au programme\n- Qualifier les incidents`
+    const withContext = buildContent({ ...platform, id: 'ao6ade48df0003fdac503e', description }, { ...copy, context }, DEFAULT_SOCIAL_CONFIG, opts).captions.linkedin
+    assert.ok(withContext.includes(`📍 Paris (75) · Mission · Présentiel\n\n${opening}\n\n🧭 Le projet : ${context}\n\n🎯 Au programme`), withContext)
+    assert.ok(!withContext.includes('milliers d’usagers'), withContext)
+    // « Le projet » proposé à la relecture : la suite de la section, sans sa première phrase, en phrases entières.
+    assert.equal(tenderProject(description), 'Son système sert des milliers d’usagers.')
+    assert.equal(tenderProject(`### Le contexte\n${opening} ${'Une phrase de plus. '.repeat(30)}`).length <= SOCIAL_CONTEXT_MAX, true)
+    assert.equal(tenderProject('### Au programme\n- Qualifier'), '')
+    // Une autre offre de la plateforme garde la présentation de Wise Associates.
+    assert.ok(buildContent(platform, copy, DEFAULT_SOCIAL_CONFIG, opts).captions.linkedin.includes(DEFAULT_PUBLISHER_INTRO))
+  })
+
+  it('« Le projet » tient lieu de la section « Le contexte » de la description, qui n’est pas répétée (ADR 0060)', () => {
+    const description = 'Pilotez la gouvernance des données.\n\n### Le contexte\nUn organisme public modernise son SI.\n\n### Au programme\n- Définir le cadre'
+    const context = 'Un organisme public modernise le SI de ses aides.'
+    const withProject = buildContent({ ...platform, description }, { ...copy, context }, DEFAULT_SOCIAL_CONFIG, opts).captions.linkedin
+    assert.ok(withProject.includes(`🧭 Le projet : ${context}\n\n🎯 Au programme\n• Définir le cadre`), withProject)
+    assert.ok(!withProject.includes('Le contexte'), withProject)
+    // Sans projet rédigé par l'IA : la section reste dans le corps.
+    const without = buildContent({ ...platform, description }, { ...copy, context: '' }, DEFAULT_SOCIAL_CONFIG, opts).captions.linkedin
+    assert.ok(without.includes('🏢 Le contexte\nUn organisme public modernise son SI.'), without)
   })
 
   it('sans pôle ni texte de l’IA : « ses équipes », et l’accroche de la description sert de projet', () => {

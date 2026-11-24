@@ -314,6 +314,55 @@ function splitLead(description: string): { lead: string; rest: string } {
   return { lead: stripInline(before.replace(/\s+/g, ' ')), rest: lines.slice(firstHeading).join('\n') }
 }
 
+/**
+ * Description sans ses sections de contexte (« ### Le contexte », « ### Contexte de la mission ») : quand le post a son
+ * paragraphe « Le projet », rédigé d'après la même description, il les répétait (constaté le 2026-11-24, ADR 0060). Les
+ * autres sections, présentation de l'entreprise comprise, restent.
+ */
+function withoutContextSections(description: string): string {
+  let skipping = false
+  return description.split('\n').filter(line => {
+    const heading = /^\s*#{1,6}\s+(.+)$/.exec(line)
+    if (heading) skipping = /contexte/i.test(heading[1])
+    return !skipping
+  }).join('\n')
+}
+
+/**
+ * Première phrase de la première section de contexte de la description (« ### Le contexte »), sans mise en forme ; vide
+ * sans section de contexte. Rédigée par « Préparer la publication » sur le modèle « <le client décrit> recrute un profil
+ * pour … » (ADR 0060).
+ */
+function contextOpening(description: string): string {
+  return contextSentences(description)[0] ?? ''
+}
+
+/** Phrases de la première section de contexte de la description, sans mise en forme. */
+function contextSentences(description: string): string[] {
+  const lines = description.split('\n')
+  const start = lines.findIndex(line => /^\s*#{1,6}\s+.*contexte/i.test(line))
+  if (start < 0) return []
+  const end = lines.findIndex((line, i) => i > start && /^\s*#{1,6}\s+\S/.test(line))
+  const text = stripInline(lines.slice(start + 1, end < 0 ? undefined : end).join(' ').replace(/\s+/g, ' ').trim())
+  return text.split(/(?<=[.!?])\s+/).filter(Boolean)
+}
+
+/**
+ * « Le projet » du post d'un appel d'offres, proposé à la relecture (ADR 0060) : la suite de la section « Le contexte »
+ * après sa première phrase (celle-ci dit déjà qui recrute, contextOpening), phrases entières tenant en
+ * SOCIAL_CONTEXT_MAX caractères ; vide sans section de contexte ou sans phrase qui tienne. Rédigé par l'IA de la
+ * diffusion à part, « Le projet » répétait la première phrase.
+ */
+export function tenderProject(description: string): string {
+  let text = ''
+  for (const sentence of contextSentences(description).slice(1)) {
+    const next = text ? `${text} ${sentence}` : sentence
+    if (next.length > SOCIAL_CONTEXT_MAX) break
+    text = next
+  }
+  return text
+}
+
 /** Intitulé dans la phrase de recrutement : sans « H/F », parenthèses ni « Consultant » en tête (« Consultant SAP FI (H/F) » → « SAP FI »). */
 function recruitTitle(title: string): string {
   return title.replace(/\([^)]*\)/g, ' ').replace(/\b[HF]\s*\/\s*[HF]\b/gi, ' ')
@@ -491,12 +540,19 @@ export function buildContent(job: JobLite, copy: CopyDraft, cfg: SocialConfig, o
   // Texte de la direction (David, 2026-11-17), chacun son paragraphe : offre de la plateforme, présentation de Wise
   // (réglage de /admin/social) et sa phrase de recrutement ; organisation cliente, sur le même modèle (ADR 0058), sa
   // présentation (marque employeur), sa phrase de recrutement et la ligne de diffusion. Puis le projet.
+  // Appel d'offres publié par la plateforme (identifiant « ao… », publicJobIdOf ; un identifiant Appwrite, hexadécimal,
+  // ne commence jamais par « o ») : offre anonymisée, sans mention de Wise Associates ni de son activité (ADR 0060).
+  // Qui recrute y est dit par la première phrase de « Le contexte » (« Un organisme public chargé de … recrute un profil
+  // pour … »), à la place de celle de Wise ; sans « Le projet », la section reste entière dans le corps.
+  const tender = job.id.startsWith('ao')
   const context = job.fromPlatform
-    ? join(cfg.publisherIntro, recruitLine(job, copy.pole), project)
+    ? (tender ? join(copy.context ? contextOpening(job.description) : '', project) : join(cfg.publisherIntro, recruitLine(job, copy.pole), project))
     : join(job.publisherAbout ?? '', orgRecruitLine(job), ORG_DIFFUSION_LINE, project)
   const liEnd = join([cta(urls.linkedin), rdv].filter(Boolean).join('\n'), tags.linkedin.join(' '))
   const liTop = hasDescription ? join(head, meta, context) : join(head, copy.tagline, meta, context)
-  const liBody = hasDescription ? fitDescription(lead ? rest : job.description, LINKEDIN_MAX_CHARS - liTop.length - liEnd.length - 4) : join(program, profile)
+  // « Le projet » rédigé par l'IA tient lieu des sections de contexte de la description, qui ne sont pas répétées.
+  const liText = copy.context ? withoutContextSections(lead ? rest : job.description) : lead ? rest : job.description
+  const liBody = hasDescription ? fitDescription(liText, LINKEDIN_MAX_CHARS - liTop.length - liEnd.length - 4) : join(program, profile)
   const linkedin = clip(join(liTop, liBody, liEnd), LINKEDIN_MAX_CHARS)
   const facebook = clip(join(head, copy.tagline, meta, program, [cta(urls.facebook), rdv].filter(Boolean).join('\n'), tags.facebook.join(' ')), 2900)
   // Instagram : les liens des légendes ne sont pas cliquables → on renvoie vers le lien de la bio.

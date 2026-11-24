@@ -108,13 +108,15 @@ const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const GENERIC_CLIENT = DEFAULT_CLIENT_LABEL.toLowerCase()
 const MASCULINE_ARTICLE: Record<string, string> = {
   'l': 'le', 'la': 'le', 'd': 'du', 'de l': 'du', 'de la': 'du', 'à l': 'au', 'à la': 'au', 'une': 'un', 'cette': 'ce',
+  'le': 'le', 'du': 'du', 'au': 'au', 'un': 'un', 'ce': 'ce',
 }
 
 /**
- * Nom masqué précédé d'un article élidé ou féminin : « L'ENSMIS lance » → « Le client confidentiel lance », « offre
- * d'ENSMIS » ou « de la SNCF » → « du client confidentiel », « à l'ENSMIS » → « au client confidentiel », « lorsqu'ENSMIS »
- * → « lorsque le client confidentiel ». Toujours le libellé générique, quel que soit le libellé affiché : « client » est
- * masculin, un secteur proposé par l'IA ne l'est pas toujours (« le Banque de détail »).
+ * Nom masqué précédé d'un article : « L'ENSMIS lance » → « Le client confidentiel lance », « offre d'ENSMIS » ou « de la
+ * SNCF » → « du client confidentiel », « à l'ENSMIS » ou « au BNPP » → « au client confidentiel », « lorsqu'ENSMIS » →
+ * « lorsque le client confidentiel ». Toujours le libellé générique, quel que soit le libellé affiché : « client » est
+ * masculin, un secteur proposé par l'IA ne l'est pas toujours (« au Grande collectivité territoriale »). Sans article,
+ * le libellé affiché (« Grand groupe bancaire recrute »).
  */
 function clientWithArticle(article: string): string {
   const lower = article.toLowerCase().replace(/[ \t]+/g, ' ')

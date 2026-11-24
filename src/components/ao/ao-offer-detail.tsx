@@ -9,7 +9,7 @@ import { pageFillText } from '@/lib/ao/source-page/page-fill'
 import type { AoDashboardActions, AoDashboardPaths, PublicationDraft, PublicationMode, SourcedCandidate, SourcingResult } from '@/lib/ao/dashboard-types'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
 import { linkedInPostOf, splitSkills, type SocialPreview } from '@/lib/ao/publication-social'
-import { SOCIAL_CONTEXT_MAX, WISE_POLES, type SocialEdits } from '@/lib/social-content'
+import { SOCIAL_CONTEXT_MAX, type SocialEdits } from '@/lib/social-content'
 import { Skeleton, SkeletonRegion } from '@/components/shared/skeleton'
 import { AoDescription } from './ao-description'
 import { WorkBadge, type OfferPublication } from './offer-publications'
@@ -480,7 +480,7 @@ function LinkedInPostPreview({ draft, skills, social, hiddenNames, onSocial }: {
       {social.notice && (
         <div className="flex gap-2 text-sm p-3 rounded-lg" style={{ color: '#b45309', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
           <AlertTriangle size={16} className="shrink-0 mt-0.5" aria-hidden />
-          <p>« Le projet », le pôle et les hashtags ont été préparés sans IA ({social.notice}) : complétez « Le projet » si besoin.</p>
+          <p>« Le projet » et les hashtags ont été préparés sans IA ({social.notice}) : complétez « Le projet » si besoin.</p>
         </div>
       )}
       {post === null
@@ -497,7 +497,7 @@ function LinkedInPostPreview({ draft, skills, social, hiddenNames, onSocial }: {
       <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
         {post !== null && `${post.length.toLocaleString('fr-FR')} caractères sur 3 000 (limite de LinkedIn). Une offre trop longue est raccourcie section par section, avec un renvoi vers l’offre. `}
         {settings.fromPlatform
-          ? 'Présentation de Wise Associates et hashtags par défaut : réglages « Réseaux sociaux » de la plateforme.'
+          ? 'Appel d’offres anonymisé : ni présentation de Wise Associates ni phrase de recrutement. Hashtags par défaut : réglages « Réseaux sociaux » de la plateforme.'
           : 'Présentation de l’organisation : début de l’« À propos » de sa marque employeur (sinon son accroche).'}
         {' '}Les noms du client restés dans le texte sont masqués comme à la publication.
       </p>
@@ -509,14 +509,6 @@ function LinkedInPostPreview({ draft, skills, social, hiddenNames, onSocial }: {
           style={{ ...control, width: '100%', height: 'auto', padding: 12, lineHeight: 1.55 }} />
         <span className="block text-xs mt-1" style={{ color: 'var(--admin-fg-muted)' }}>{copy.context.length} / {SOCIAL_CONTEXT_MAX} caractères</span>
       </label>
-      {settings.fromPlatform && (
-        <Field label="Pôle d’expertise de Wise Associates">
-          <select value={copy.pole} onChange={e => onSocial({ pole: e.target.value })} style={{ ...control, width: '100%' }}>
-            {WISE_POLES.map(p => <option key={p} value={p} style={optionStyle}>{p}</option>)}
-            <option value="" style={optionStyle}>Aucun (« pour rejoindre ses équipes »)</option>
-          </select>
-        </Field>
-      )}
     </div>
   )
 }

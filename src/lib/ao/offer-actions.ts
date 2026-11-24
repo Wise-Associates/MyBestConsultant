@@ -3,16 +3,18 @@ import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 import { parseDraftFields, parsePublishInput } from './publication-input'
 import { liteOfPublished, publicJobFields, publicJobIdOf, publicVersion, type SocialPreview } from './publication-social'
-import { fallbackCopy } from '@/lib/social-content'
+import { fallbackCopy, tenderProject } from '@/lib/social-content'
 import { createJob, getActiveJobs, getJobById, oneMonthFromNow } from '@/lib/appwrite/jobs'
 import { descriptionForPublication } from '@/lib/description-sections'
 import type { Job, UserProfile } from '@/types'
 import { isDocumentId } from './access'
 import { callLLM } from '@/lib/ai/llm-router'
+import { PUBLICATION_AI } from '@/lib/ai/models'
 import { llmUnavailableReason } from './ai-failures'
 import { distinctNames, namesToHide, publicLabel, rawPublicOffer, scrubContacts, toPublicOffer } from './anonymize'
 import {
-  PUBLICATION_PROMPT, descriptionFromCopy, maskNames, maskTermsOf, parsePublicationCopy, publicationRequest, type PublicationCopy,
+  PLATFORM_NAMES, PUBLICATION_PROMPT, descriptionFromCopy, maskNames, maskTermsOf, modalityLines, parsePublicationCopy, platformMentions,
+  publicationRequest, type PublicationCopy,
 } from './publication-copy'
 import { manualRetryPatch } from './attempts'
 import { deleteEach, parseBulkDeleteIds } from './bulk-delete'
@@ -179,7 +181,7 @@ export async function previewAoPublicationOf(
       // Mise en forme (sections, puces) après l'anonymisation, qui retire les lignes de contact d'après leur début de ligne.
       const draft = { ...pub, description: descriptionForPublication(pub.description), ...terms, maskTerms: [], anonymized: true }
       // IA refusée (quota) ou indisponible : textes du post sans IA non plus.
-      const preview = { draft, similarJobs, rewrite: 'rules' as const, notice: copy, watchNames: names, maskedNames: distinctNames(clients), hiddenNames: names }
+      const preview = { draft, similarJobs, rewrite: 'rules' as const, notice: copy, watchNames: [...names, ...PLATFORM_NAMES], maskedNames: distinctNames(clients), hiddenNames: names }
       return { preview: await withSocialPreview(tenantId, offer.$id, preview, null) }
     }
     const maskTerms = maskTermsOf(copy)
@@ -187,11 +189,11 @@ export async function previewAoPublicationOf(
     // Le secteur proposé par l'IA devient l'entreprise affichée, sauf s'il nomme le client ou contient des coordonnées.
     const label = publicLabel(copy.sector, [...names, ...extra])
     const pub = toPublicOffer({
-      ...offer, title: copy.title, description: descriptionFromCopy(copy), location: copy.location || offer.location, skills: copy.skills,
-      duration: '', startDate: '', experience: '', // déjà dans la section « Modalités »
+      ...offer, title: copy.title, description: descriptionFromCopy(copy, modalityLines(offer)), location: copy.location || offer.location, skills: copy.skills,
+      duration: '', startDate: '', experience: '', // déjà dans la section « Modalités », écrite par le code
     }, names, label, extra)
     const preview = {
-      draft: { ...pub, ...terms, maskTerms, anonymized: true }, similarJobs, rewrite: 'ai' as const, notice: '', watchNames: [...names, ...extra],
+      draft: { ...pub, ...terms, maskTerms, anonymized: true }, similarJobs, rewrite: 'ai' as const, notice: '', watchNames: [...names, ...extra, ...PLATFORM_NAMES],
       maskedNames: distinctNames([...clients, ...maskTerms]), hiddenNames: names,
     }
     return { preview: await withSocialPreview(tenantId, offer.$id, preview, beforeSocialAi ?? (async () => null)) }
@@ -223,7 +225,10 @@ async function withSocialPreview(
   const lite = liteOfPublished(parseDraftFields(preview.draft) ?? preview.draft, social.settings)
   const refusal = beforeSocialAi ? await beforeSocialAi() : null
   const copy = beforeSocialAi && !refusal ? await generateCopy(lite) : fallbackCopy(lite)
-  const edits = { context: copy.context, pole: copy.pole, hashtags: copy.hashtags }
+  // Version anonymisée : « Le projet » = la suite de « Le contexte », déjà relue avec l'offre (ADR 0060) ; rédigé à part
+  // par l'IA, il répétait la phrase qui ouvre le post. Vide : le post reprend la section « Le contexte » entière.
+  const context = preview.draft.anonymized ? tenderProject(lite.description) : copy.context
+  const edits = { context, pole: copy.pole, hashtags: copy.hashtags }
   return { ...preview, draft: { ...preview.draft, social: edits }, social: { ...social, notice: refusal ?? '' } }
 }
 
@@ -233,7 +238,8 @@ async function rewriteForPublication(offer: AoOffer, clients: string[], names: s
   const clean = (text: string) => scrubContacts(text, names, 'le client')
   const request = publicationRequest({ ...offer, title: clean(offer.title), location: clean(offer.location), description: clean(offer.description) }, clients)
   try {
-    const { content } = await callLLM([{ role: 'user', content: request }], PUBLICATION_PROMPT, { maxTokens: 3000, timeoutMs: 60_000 })
+    // 8 000 jetons : la réflexion de Claude (adaptative) compte dans la limite, la réponse en fait environ 1 500.
+    const { content } = await callLLM([{ role: 'user', content: request }], PUBLICATION_PROMPT, { ...PUBLICATION_AI, maxTokens: 8000, timeoutMs: 60_000 })
     return parsePublicationCopy(content) ?? 'réponse de l\'IA illisible'
   } catch (err) {
     console.error('AO: rédaction de la version publiée par l\'IA impossible', offer.$id, errorOf(err))
@@ -260,6 +266,12 @@ export async function publishAoOfferOf(
   const parsed = parsePublishInput(input)
   if (parsed.error !== undefined) return { error: parsed.error }
   const { fields } = parsed
+  // Version anonymisée : aucune mention de la plateforme (ADR 0060), signalée en rouge à la relecture ; refusée ici
+  // plutôt que remplacée, un libellé à sa place changerait le sens de la phrase (« Transmis par … »).
+  const platform = parsed.anonymized
+    ? platformMentions([fields.title, fields.companyName, fields.location, fields.description, ...fields.skills, parsed.social?.context ?? ''])
+    : []
+  if (platform.length > 0) return { error: `La version mentionne encore « ${platform[0]} » : retirez-le, puis publiez.` }
   try {
     const offer = await aoAccessFor(tenantId).offer(id)
     if (!offer) return { error: 'Offre introuvable.' }

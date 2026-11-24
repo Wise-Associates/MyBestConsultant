@@ -33,14 +33,15 @@ function occurrences(text: string, names: string[][]): { start: number; end: num
 }
 
 // Article juste avant un nom, qui ne s'accorde pas forcément avec le libellé qui le remplace : élidé (« L'ENSMIS »,
-// « d’ENSMIS », « de l'ENSMIS », « à l' ENSMIS », « lorsqu'ENSMIS » : « L'Client confidentiel ») ou féminin (« la SNCF »,
-// « de la SNCF », « une ESN », « cette école » : « la Grand groupe bancaire »). Les articles masculins restent.
-const ARTICLE_BEFORE = /(?<![\p{L}\p{N}])(?:((?:(?:à|de)[ \t]+)?l|d|\p{L}*qu)['’‘][ \t]?|((?:(?:à|de)[ \t]+)?la|une|cette)[ \t]+)$/iu
+// « d’ENSMIS », « de l'ENSMIS », « à l' ENSMIS », « lorsqu'ENSMIS » : « L'Client confidentiel »), féminin (« la SNCF »,
+// « de la SNCF », « une ESN », « cette école » : « la Grand groupe bancaire ») ou masculin (« au BNPP », « le CNES » :
+// « au Grande collectivité territoriale », le libellé proposé par l'IA n'étant pas toujours masculin).
+const ARTICLE_BEFORE = /(?<![\p{L}\p{N}])(?:((?:(?:à|de)[ \t]+)?l|d|\p{L}*qu)['’‘][ \t]?|((?:(?:à|de)[ \t]+)?la|une|cette|le|du|au|un|ce)[ \t]+)$/iu
 
 /**
- * Remplace chaque nom par `label`. `withArticle` : texte qui remplace un nom précédé d'un article élidé ou féminin,
- * article compris ; reçoit l'article tel qu'écrit, sans l'apostrophe (« L », « d », « de l », « à l », « lorsqu », « la »,
- * « de la », « une », « cette »).
+ * Remplace chaque nom par `label`. `withArticle` : texte qui remplace un nom précédé d'un article, article compris ;
+ * reçoit l'article tel qu'écrit, sans l'apostrophe (« L », « d », « de l », « à l », « lorsqu », « la », « de la »,
+ * « une », « cette », « le », « du », « au », « un », « ce »).
  */
 export function replaceNames(text: string, names: string[][], label: string, withArticle?: (article: string) => string): string {
   let out = ''
