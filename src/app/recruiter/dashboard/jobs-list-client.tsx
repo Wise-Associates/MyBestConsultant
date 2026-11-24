@@ -33,6 +33,8 @@ export interface DashboardJobRow {
   /** Candidats déjà notés par l'IA pour l'offre (base et vivier de l'offre). */
   matches: number
   social?: SocialInfo
+  /** Offre publiée depuis un appel d'offres de l'organisation encore présent : sa page (« Voir l'offre originale ») ; null sinon. */
+  aoHref: string | null
 }
 
 const SORT_LABELS: Record<JobSort, string> = {

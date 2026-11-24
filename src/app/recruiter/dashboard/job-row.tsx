@@ -135,7 +135,7 @@ export function JobRow({ row, apps, stages, canPublish, recruiters, first, focus
           style={{ color: previewed ? 'var(--color-primary)' : 'var(--color-text-muted)' }}>
           <PanelRight className="h-4 w-4" aria-hidden /><span className="sr-only">Aperçu de {job.title}</span>
         </button>
-        <JobActions job={job} state={facts.state} shared={row.shared} matchingHref={matchingHref}
+        <JobActions job={job} state={facts.state} shared={row.shared} matchingHref={matchingHref} aoHref={row.aoHref}
           canRepublish={canPublish && ownOnline && !!row.social && !working && !publish.pending}
           onRepublish={() => publish.run(true)} />
       </div>

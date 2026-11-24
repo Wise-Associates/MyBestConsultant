@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState, useTransition, type KeyboardEvent } from 'react'
 import Link from 'next/link'
-import { Loader2, Pencil, MoreHorizontal, RefreshCw, Archive, ArchiveRestore, Trash2, ExternalLink, Kanban, Brain } from 'lucide-react'
+import { Loader2, Pencil, MoreHorizontal, RefreshCw, Archive, ArchiveRestore, Trash2, ExternalLink, Kanban, Brain, Inbox } from 'lucide-react'
 import { toggleJobStatusAction, deleteJobAction, updateOwnJobAction } from './actions'
 import { JobEditModal } from '@/app/admin/jobs/job-edit-modal'
 import type { JobState } from '@/lib/recruiter-dashboard'
@@ -15,9 +15,12 @@ const item = 'w-full h-[38px] px-2.5 rounded-[9px] flex items-center gap-2.5 tex
 // Matching IA (icône, plus dans le menu : doublon retiré le 2026-11-17), « Modifier » et le menu « Autres actions ». Une
 // offre partagée de la plateforme (tenantId '') n'a ni « Modifier » ni archivage : le serveur refuse de la modifier.
 // « Voir l'offre » ouvre la page publique de l'offre (/jobs/<id>, affichée même archivée) dans un nouvel onglet, pour
-// garder la liste filtrée (demande du 2026-11-05).
-export function JobActions({ job, state, shared, matchingHref, canRepublish, onRepublish }: {
+// garder la liste filtrée (demande du 2026-11-05). « Voir l'offre originale » (demande du 2026-11-24) : l'appel d'offres
+// dont l'offre a été publiée, dans la même fenêtre, comme les autres pages de l'espace.
+export function JobActions({ job, state, shared, matchingHref, aoHref, canRepublish, onRepublish }: {
   job: Job; state: JobState; shared: boolean; matchingHref: string
+  /** Page de l'appel d'offres d'origine (offre publiée depuis un AO de l'organisation encore présent) ; null sinon. */
+  aoHref: string | null
   /** Offre en ligne déjà diffusée, aucune diffusion en cours : « Republier sur les réseaux ». */
   canRepublish: boolean; onRepublish: () => void
 }) {
@@ -110,6 +113,11 @@ export function JobActions({ job, state, shared, matchingHref, canRepublish, onR
                 style={{ color: 'var(--color-text)' }} onClick={() => setOpen(false)}>
                 <ExternalLink className="h-3.75 w-3.75" aria-hidden />Voir l’offre<span className="sr-only"> (nouvel onglet)</span>
               </a>
+              {aoHref && (
+                <Link href={aoHref} role="menuitem" className={item} style={{ color: 'var(--color-text)' }} onClick={() => setOpen(false)}>
+                  <Inbox className="h-3.75 w-3.75" aria-hidden />Voir l’offre originale
+                </Link>
+              )}
               {canRepublish && (
                 <button type="button" role="menuitem" className={item} style={{ color: 'var(--color-text)' }} onClick={() => { setOpen(false); onRepublish() }}>
                   <RefreshCw className="h-3.75 w-3.75" aria-hidden />Republier sur les réseaux
