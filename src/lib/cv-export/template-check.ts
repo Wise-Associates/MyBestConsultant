@@ -1,3 +1,4 @@
+import { parseModelJson } from '@/lib/ai/model-json'
 import { z } from 'zod'
 import { MAX_UNCOMPRESSED_BYTES, zipFitsWithin } from '@/lib/ao/extractors/office'
 import { MAX_MAP_LENGTH, MAX_TEMPLATE_BYTES, TEMPLATE_TOO_LARGE } from './limits'
@@ -55,7 +56,10 @@ export function parseTemplateMap(json: string): TemplateMap {
   if (json.length > MAX_MAP_LENGTH) throw new TemplateError(`Cartographie trop longue (${MAX_MAP_LENGTH} caractères au plus).`)
   let raw: unknown
   try {
-    raw = JSON.parse(json)
+    // Réponse de l'IA (template-mapping.ts) ou cartographie enregistrée, déjà vérifiée ici à l'enregistrement (depuis
+    // l'ADR 0014, aucun template_map.json n'est déposé). Une cartographie retouchée dans la console Appwrite profite aussi
+    // de la tolérance de l'ADR 0057 ; le schéma ci-dessous la valide de toute façon.
+    raw = parseModelJson(json)
   } catch {
     throw new TemplateError('Cartographie illisible : le fichier template_map.json n\'est pas du JSON valide.')
   }

@@ -1,5 +1,6 @@
 'use server'
 
+import { parseModelJson } from '@/lib/ai/model-json'
 import { z } from 'zod'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { acquireSyncLock, releaseDailySlot, releaseSyncLock, takeDailySlotId, type SyncLock } from '@/lib/ao/state'
@@ -674,7 +675,7 @@ export async function evaluateMbcProfile(input: unknown): Promise<{ evaluation?:
     // Lu comme une notation de CV (cvScorer, sourcing-core.ts) : jugements vérifiés dans le texte lu, intitulés comparés.
     const json = content.match(/\{[\s\S]*\}/)
     let answer: unknown = null
-    try { answer = json ? JSON.parse(json[0]) : null } catch { answer = null }
+    try { answer = json ? parseModelJson(json[0]) : null } catch { answer = null }
     const judgements = parseJudgements(answer, judged, cvText, 'matching')
     if (!judgements) return { error: failed }
     const [checked] = await withCheckedTitles([judgements])

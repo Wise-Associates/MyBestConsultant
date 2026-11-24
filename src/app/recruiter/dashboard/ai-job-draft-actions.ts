@@ -1,5 +1,6 @@
 'use server'
 
+import { parseModelJson } from '@/lib/ai/model-json'
 import { callLLM } from '@/lib/ai/llm-router'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 
@@ -64,7 +65,7 @@ export async function generateJobDraft(
     const jsonMatch = content.match(/\{[\s\S]*\}/)
     if (!jsonMatch) return { error: 'Réponse IA invalide, réessayez' }
 
-    const draft = toDraft(JSON.parse(jsonMatch[0]))
+    const draft = toDraft(parseModelJson(jsonMatch[0]) as Record<string, unknown>)
     if (!draft.title || !draft.description) return { error: 'Réponse IA incomplète, réessayez' }
 
     return { draft }
@@ -108,7 +109,7 @@ export async function improveJobDraft(
     const jsonMatch = content.match(/\{[\s\S]*\}/)
     if (!jsonMatch) return { error: 'Réponse IA invalide, réessayez' }
 
-    const draft = toDraft(JSON.parse(jsonMatch[0]))
+    const draft = toDraft(parseModelJson(jsonMatch[0]) as Record<string, unknown>)
     if (!draft.title || !draft.description) return { error: 'Réponse IA incomplète, réessayez' }
 
     return { draft }

@@ -4,6 +4,7 @@
 // to check). This file is NOT 'use server' on purpose — everything exported from
 // a 'use server' file becomes a remotely-callable action, and these functions
 // skip the admin auth check, so they must never be reachable directly from a client.
+import { parseModelJson } from '@/lib/ai/model-json'
 import { callLLM, primaryModel } from '@/lib/ai/llm-router'
 import { scoreCacheId } from '@/lib/score-cache'
 import { readCachedScore, writeCachedScore } from '@/lib/appwrite/score-cache'
@@ -274,7 +275,7 @@ export function cvScorer(offer: OfferForMatching, scale: ActiveScale, { useCache
     const { content, provider } = await callLLM([{ role: 'user', content: user }], system, { ...SCORING_AI, maxTokens: 8000, timeoutMs: 120_000, cachePrefix: offerPrefix })
     const json = content.match(/\{[\s\S]*\}/)
     let answer: unknown = null
-    try { answer = json ? JSON.parse(json[0]) : null } catch { answer = null }
+    try { answer = json ? parseModelJson(json[0]) : null } catch { answer = null }
     // Jugements vérifiés dans le texte du CV que l'IA a lu (citations, intitulés), métiers du titre confirmés par la
     // comparaison des intitulés (title-check.ts).
     const parsed = parseJudgements(answer, criteria, cvText, scale)
@@ -393,7 +394,7 @@ Réponds UNIQUEMENT avec un JSON valide : {"subject":"...", "message":"..."}
     const { content } = await callLLM([{ role: 'user', content: userMsg }], SYSTEM)
     const jsonMatch = content.match(/\{[\s\S]*\}/)
     if (!jsonMatch) return { subject: '', message: '', error: 'Réponse IA invalide' }
-    const parsed = JSON.parse(jsonMatch[0])
+    const parsed = parseModelJson(jsonMatch[0]) as Record<string, unknown>
     const subject = String(parsed.subject ?? '').trim() || `Opportunité — ${job.title}`
     return { subject, message: String(parsed.message ?? '') }
   } catch (e) {

@@ -1,3 +1,4 @@
+import { parseModelJson } from '@/lib/ai/model-json'
 import { z } from 'zod'
 import { contractOf, parseNumber, remoteOf } from '@/lib/job-import'
 import { placeUnlabeledDates } from './dates'
@@ -182,7 +183,7 @@ export function parseOffersJson(raw: string, reference: Date): ParsedOffers {
   let data: unknown
   try {
     if (end < start) throw new SyntaxError('tableau non refermé')
-    data = JSON.parse(raw.slice(start, end + 1))
+    data = parseModelJson(raw.slice(start, end + 1))
   } catch (err) {
     // JSON illisible et réponse qui ne se termine pas par le tableau : elle a été coupée en cours de route.
     if (!/\]\s*(```)?\s*$/.test(raw.trim())) {

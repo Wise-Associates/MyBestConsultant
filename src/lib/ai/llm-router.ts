@@ -170,6 +170,9 @@ async function callOpenAICompat(
   apiUrl: string,
   apiKey: string,
   limits: CallLimits,
+  // Température du modèle open source dans Config IA ; absente : aucune envoyée, le serveur applique la sienne (GPT,
+  // TeckiA, modèle sans réglage — comportement d'avant l'ADR 0057).
+  temperature?: number | null,
 ): Promise<string> {
   const timeoutMs = limits.timeoutMs ?? 55_000
   const controller = new AbortController()
@@ -189,6 +192,7 @@ async function callOpenAICompat(
         // "think" désactive le mode raisonnement de Qwen3 (TeckiA) — propriété non standard que
         // les autres API compatibles OpenAI (Groq, GPT-4o, autres modèles open source) refusent.
         ...(model.toLowerCase().includes('qwen') ? { think: false } : {}),
+        ...(typeof temperature === 'number' ? { temperature } : {}),
         messages: [
           ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
           ...messages,
@@ -209,6 +213,14 @@ async function callOpenAICompat(
   const msg = data.choices?.[0]?.message
   // qwen3 thinking mode returns content="" with answer in reasoning — accept either
   return msg?.content || msg?.reasoning || ''
+}
+
+/** Nature d'un échec, pour les journaux : jamais le message d'erreur, qui peut citer la demande ou la réponse. */
+function failureKind(err: unknown): string {
+  if (err instanceof LLMHttpError) return `HTTP ${err.status}`
+  if (err instanceof LLMUnreachableError) return err.timedOut ? 'délai dépassé' : 'injoignable'
+  if (err instanceof LLMNotConfiguredError) return 'non configuré'
+  return err instanceof Error ? err.name : 'erreur'
 }
 
 const isCustomId = (id: string) => id.startsWith('os-')
@@ -234,7 +246,7 @@ async function tryCall(
     const m = findCustom(cfg, provider)
     if (!m) throw new LLMNotConfiguredError(`Modèle ${provider} introuvable ou désactivé (voir /admin/llm-config)`)
     if (!m.apiUrl) throw new LLMNotConfiguredError(`Modèle « ${m.label} » : URL de l'API manquante (voir /admin/llm-config)`)
-    return callOpenAICompat(messages, systemPrompt, limits.model || m.model, m.apiUrl, m.apiKey, limits)
+    return callOpenAICompat(messages, systemPrompt, limits.model || m.model, m.apiUrl, m.apiKey, limits, m.temperature)
   }
   switch (provider) {
     case 'gpt4o':
@@ -290,11 +302,15 @@ export interface CallLLMOptions {
 export async function primaryModel(opts: Pick<CallLLMOptions, 'provider' | 'module' | 'moduleDefault'>): Promise<{ provider: string; signature: string }> {
   const cfg = await getRuntimeConfig()
   const provider = pickPrimary(cfg, opts)
-  const model = isCustomId(provider) ? findCustom(cfg, provider)?.model ?? ''
+  const custom = isCustomId(provider) ? findCustom(cfg, provider) : undefined
+  const model = isCustomId(provider) ? custom?.model ?? ''
     : provider === 'gpt4o' ? cfg.gpt4oModel
     : provider === 'teckia' ? cfg.teckiaModel
     : cfg.claudeModel
-  return { provider, signature: `${provider}:${model}` }
+  // Température d'un modèle open source comprise (ADR 0057) : la changer refait ses notations au lieu de reprendre
+  // celles du cache. Sans température, signature d'avant : les notations gardées restent valables.
+  const temperature = typeof custom?.temperature === 'number' ? `@t${custom.temperature}` : ''
+  return { provider, signature: `${provider}:${model}${temperature}` }
 }
 
 /** callLLM lié à un module : `const callLLM = callLLMForModule('interview')` suffit à router tout un fichier. */
@@ -338,6 +354,9 @@ export async function callLLM(
         // Le modèle forcé (`model`) est celui du fournisseur demandé : un modèle de repli garde le sien, sauf s'il est
         // précisé dans `providerModels` (GPT-4o mini pour la classification des CV).
         const content = await tryCall(fallback, cfg, messages, systemPrompt, { ...limits, model: requestedModel(fallback, primary, opts) })
+        // Un repli réussi ne doit pas cacher que le modèle choisi ne répond pas (hébergeur qui refuse un paramètre, clé
+        // expirée…) : la nature de chaque échec seulement, jamais le message, qui peut citer la demande.
+        console.warn('[llm] repli :', failures.map(f => `${f.provider} (${failureKind(f.error)})`).join(', '), '→ réponse de', fallback)
         return { content, provider: fallback }
       } catch (fallbackErr) {
         failures.push({ provider: fallback, error: fallbackErr })

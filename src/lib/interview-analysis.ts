@@ -1,3 +1,4 @@
+import { parseModelJson } from '@/lib/ai/model-json'
 import 'server-only'
 
 import { createAdminClient } from '@/lib/appwrite/client'
@@ -55,7 +56,7 @@ Réponds UNIQUEMENT avec ce JSON valide (sans markdown, sans commentaires):
 
     // Strip markdown code fences if present
     const raw = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
-    const analysis: InterviewDetail['analysis'] = JSON.parse(raw)
+    const analysis = parseModelJson(raw) as InterviewDetail['analysis']
 
     await databases.updateDocument(DB_ID, COLLECTIONS.INTERVIEWS, id, {
       analysis: JSON.stringify(analysis),

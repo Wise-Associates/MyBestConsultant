@@ -1,3 +1,4 @@
+import { parseModelJson } from '@/lib/ai/model-json'
 import { z } from 'zod'
 import type { CvData, CvLang, TemplateMap } from './types'
 
@@ -66,7 +67,7 @@ function parseJsonObject(raw: string): unknown {
   if (start < 0) throw new InvalidAnswerError('Réponse IA invalide : aucun objet JSON')
   try {
     if (end < start) throw new SyntaxError('objet non refermé')
-    return JSON.parse(raw.slice(start, end + 1))
+    return parseModelJson(raw.slice(start, end + 1))
   } catch {
     // JSON illisible et réponse qui ne se termine pas par l'objet : elle a été coupée en cours de route.
     if (!/\}\s*(```)?\s*$/.test(raw.trim())) throw new TruncatedAnswerError('Réponse IA tronquée : CV trop long pour une seule réponse')

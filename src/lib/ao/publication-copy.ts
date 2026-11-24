@@ -1,3 +1,4 @@
+import { parseModelJson } from '@/lib/ai/model-json'
 import { z } from 'zod'
 import { STANDARD_DAILY_QUOTAS } from '@/lib/plans'
 import { words } from './name-match'
@@ -78,7 +79,7 @@ export function parsePublicationCopy(raw: string): PublicationCopy | null {
   const end = raw.lastIndexOf('}')
   if (start < 0 || end < start) return null
   try {
-    const parsed = CopySchema.safeParse(JSON.parse(raw.slice(start, end + 1)))
+    const parsed = CopySchema.safeParse(parseModelJson(raw.slice(start, end + 1)))
     return parsed.success ? parsed.data : null
   } catch {
     return null // JSON coupé ou invalide : la version par les règles est proposée à la place

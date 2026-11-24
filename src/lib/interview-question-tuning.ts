@@ -1,3 +1,4 @@
+import { parseModelJson } from '@/lib/ai/model-json'
 import { z } from 'zod'
 import { IMPORT_LIMITS, type ParsedQuestion, type QuestionCategory } from '@/lib/interview-question-parser'
 
@@ -66,7 +67,7 @@ export function parseTunedQuestions(content: string, given: number, target: numb
   if (start < 0 || end <= start) return null
   let parsed: unknown
   try {
-    parsed = JSON.parse(content.slice(start, end + 1))
+    parsed = parseModelJson(content.slice(start, end + 1))
   } catch {
     return null
   }

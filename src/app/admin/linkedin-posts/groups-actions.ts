@@ -1,5 +1,6 @@
 'use server'
 
+import { parseModelJson } from '@/lib/ai/model-json'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { getLLMConfig } from '@/lib/ai/llm-config-store'
@@ -70,7 +71,7 @@ Trouve des groupes LinkedIn pertinents pour diffuser cette offre.`,
     const jsonMatch = rawText.match(/\[[\s\S]*\]/)
     if (!jsonMatch) return { groups: [], error: 'Aucun groupe trouvé — réessayez ou affinez les compétences de l\'offre' }
 
-    const parsed = JSON.parse(jsonMatch[0]) as Partial<SuggestedGroup>[]
+    const parsed = parseModelJson(jsonMatch[0]) as Partial<SuggestedGroup>[]
     const groups: SuggestedGroup[] = parsed
       .filter(g => g.name && g.url)
       .slice(0, 8)

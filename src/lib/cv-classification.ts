@@ -1,3 +1,4 @@
+import { parseModelJson } from '@/lib/ai/model-json'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { maskContacts } from './contact-mask'
@@ -152,7 +153,7 @@ export function parseClassification(content: string): CvClassification | null {
   const json = content.match(/\{[\s\S]*\}/)
   if (!json) return null
   let raw: unknown
-  try { raw = JSON.parse(json[0]) } catch { return null }
+  try { raw = parseModelJson(json[0]) } catch { return null }
   if (!raw || typeof raw !== 'object') return null
   const a = answerSchema.parse(raw)
   return {

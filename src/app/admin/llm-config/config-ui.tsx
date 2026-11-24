@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Eye, EyeOff, CheckCircle2 } from 'lucide-react'
+import { parseTemperatureInput } from '@/lib/ai/models'
 
 // ── Helpers ─────────────────────────────────────────────────────────
 export function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -41,6 +42,41 @@ export function NumInput({ value, onChange, step = 1, prefix }: {
         className="w-20 px-2 py-1.5 rounded-lg text-sm text-right focus:outline-none focus:ring-1 focus:ring-white/20"
         style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)' }}
       />
+    </div>
+  )
+}
+
+/**
+ * Champ « Température » d'un modèle : vide = celle du serveur. Texte et non type="number" : un navigateur réglé en
+ * anglais rend « 0,15 » comme un champ vide, qui serait enregistré comme « aucune température » (ADR 0057). Une saisie
+ * invalide est signalée et la valeur précédente gardée.
+ */
+export function TemperatureInput({ value, onChange, label }: { value: number | null; onChange: (v: number | null) => void; label: string }) {
+  const shown = (v: number | null) => (v === null ? '' : String(v).replace('.', ','))
+  const [text, setText] = useState(shown(value))
+  const [synced, setSynced] = useState(value)
+  // Valeur changée ailleurs (rechargement de la config) : le champ la reprend. Une saisie valide met `synced` à jour
+  // elle-même, pour ne pas réécrire ce qui est en train d'être tapé (« 0,10 » resterait « 0,1 »).
+  if (value !== synced) {
+    setSynced(value)
+    setText(shown(value))
+  }
+  const invalid = parseTemperatureInput(text) === 'invalide'
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <input
+        type="text" inputMode="decimal" aria-label={label} aria-invalid={invalid} value={text} placeholder="serveur"
+        onChange={e => {
+          setText(e.target.value)
+          const v = parseTemperatureInput(e.target.value)
+          if (v === 'invalide') return
+          setSynced(v)
+          onChange(v)
+        }}
+        className="w-24 px-2 py-1.5 rounded-lg text-sm text-right focus:outline-none focus:ring-1 focus:ring-white/20"
+        style={{ background: 'rgba(255,255,255,0.07)', border: invalid ? '1px solid rgba(248,113,113,0.8)' : '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)' }}
+      />
+      {invalid && <span role="alert" className="text-[11px] text-red-400">Nombre de 0 à 2 (ex. 0,15) : valeur précédente gardée</span>}
     </div>
   )
 }
