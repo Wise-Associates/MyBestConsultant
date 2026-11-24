@@ -1,4 +1,6 @@
 import type { JobMatchResult } from '@/lib/matching-core'
+import type { SocialEdits } from '@/lib/social-content'
+import type { SocialPreview } from './publication-social'
 import type { BulkDeleteResult, ExpiredSearch } from './bulk-delete'
 import type { AoOfferRow } from './filters'
 import type { AoSyncReport } from './sync'
@@ -27,6 +29,11 @@ export interface PublicationDraft {
    * noms gardés, coordonnées personnelles retirées (rawPublicOffer). Absent ou true : anonymisée (ADR 0013).
    */
   anonymized: boolean
+  /**
+   * « Le projet », pôle et hashtags du post LinkedIn, relus avec la version (ADR 0058) : ils remplacent ceux de l'IA à la
+   * diffusion. Absents (aucun post prévu à la préparation) : rédigés par l'IA au moment de la diffusion, comme avant.
+   */
+  social?: SocialEdits
 }
 
 /** anonymized : version anonymisée (IA ou règles, ADR 0013) ; raw : l'offre telle que reçue, à relire (sans IA). */
@@ -51,6 +58,13 @@ export interface PublicationPreview {
    * version non anonymisée.
    */
   maskedNames: string[]
+  /**
+   * Noms du client et des expéditeurs que la publication masquera (hiddenNamesFor), pour que l'aperçu du post applique
+   * exactement les mêmes règles (publicVersion) ; vide pour une version non anonymisée.
+   */
+  hiddenNames: string[][]
+  /** Post LinkedIn que la publication fera partir, construit dans le navigateur à partir de la version (ADR 0058). */
+  social: SocialPreview
 }
 
 /** Candidat retenu pour une offre AO (les 5 meilleurs notés 65 ou plus, sourcing-rules.ts). */

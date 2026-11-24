@@ -1,14 +1,16 @@
 import 'server-only'
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
-import { parsePublishInput } from './publication-input'
+import { parseDraftFields, parsePublishInput } from './publication-input'
+import { liteOfPublished, publicJobFields, publicJobIdOf, publicVersion, type SocialPreview } from './publication-social'
+import { fallbackCopy } from '@/lib/social-content'
 import { createJob, getActiveJobs, getJobById, oneMonthFromNow } from '@/lib/appwrite/jobs'
 import { descriptionForPublication } from '@/lib/description-sections'
 import type { Job, UserProfile } from '@/types'
 import { isDocumentId } from './access'
 import { callLLM } from '@/lib/ai/llm-router'
 import { llmUnavailableReason } from './ai-failures'
-import { distinctNames, namesToHide, publicLabel, rawPublicOffer, scrubContacts, toPublicOffer, type PublicOffer } from './anonymize'
+import { distinctNames, namesToHide, publicLabel, rawPublicOffer, scrubContacts, toPublicOffer } from './anonymize'
 import {
   PUBLICATION_PROMPT, descriptionFromCopy, maskNames, maskTermsOf, parsePublicationCopy, publicationRequest, type PublicationCopy,
 } from './publication-copy'
@@ -142,11 +144,15 @@ export async function retryAoEmailOf(
  * l'offre vérifiée : son message de refus (quota du jour des recruteurs…) donne la version des règles, comme une IA en
  * échec. Dans tous les cas, le résultat repasse par l'anonymisation, puis doit être relu et validé avant publication.
  * `mode: 'raw'` (« Publier sans anonymiser ») : l'offre telle que reçue, sans IA ni quota, à relire de la même façon.
+ * `beforeSocialAi` : appelé juste avant que l'IA rédige les textes du post LinkedIn (version de l'IA seulement, ADR
+ * 0058) ; son message de refus (quota du jour des recruteurs) donne des textes sans IA.
  */
 export async function previewAoPublicationOf(
   tenantId: string,
   id: string,
-  { beforeAi, mode = 'anonymized' }: { beforeAi?: () => Promise<string | null>; mode?: PublicationMode } = {},
+  { beforeAi, beforeSocialAi, mode = 'anonymized' }: {
+    beforeAi?: () => Promise<string | null>; beforeSocialAi?: () => Promise<string | null>; mode?: PublicationMode
+  } = {},
 ): ReturnType<AoDashboardActions['previewPublication']> {
   try {
     const offer = await aoAccessFor(tenantId).offer(id)
@@ -161,15 +167,20 @@ export async function previewAoPublicationOf(
     const { clients, names, people } = await hiddenNamesFor(offer)
     if (mode === 'raw') {
       // Version non anonymisée : client et références restent ; les noms de personnes connus sont signalés à la relecture.
+      // Sans IA ni quota, textes du post compris (ADR 0058) : ceux du repli, à relire et modifier (« Le projet » vide :
+      // l'accroche de l'offre en tient lieu ; aucun pôle ; hashtags tirés des compétences).
       const draft = { ...rawPublicOffer(offer), ...terms, maskTerms: [], anonymized: false }
-      return { preview: { draft, similarJobs, rewrite: 'raw', notice: '', watchNames: people, maskedNames: [] } }
+      const preview = { draft, similarJobs, rewrite: 'raw' as const, notice: '', watchNames: people, maskedNames: [], hiddenNames: [] }
+      return { preview: await withSocialPreview(tenantId, offer.$id, preview, null) }
     }
     const copy = (await beforeAi?.()) ?? (await rewriteForPublication(offer, clients, names))
     if (typeof copy === 'string') {
       const pub = toPublicOffer(offer, names)
       // Mise en forme (sections, puces) après l'anonymisation, qui retire les lignes de contact d'après leur début de ligne.
       const draft = { ...pub, description: descriptionForPublication(pub.description), ...terms, maskTerms: [], anonymized: true }
-      return { preview: { draft, similarJobs, rewrite: 'rules', notice: copy, watchNames: names, maskedNames: distinctNames(clients) } }
+      // IA refusée (quota) ou indisponible : textes du post sans IA non plus.
+      const preview = { draft, similarJobs, rewrite: 'rules' as const, notice: copy, watchNames: names, maskedNames: distinctNames(clients), hiddenNames: names }
+      return { preview: await withSocialPreview(tenantId, offer.$id, preview, null) }
     }
     const maskTerms = maskTermsOf(copy)
     const extra = maskNames(maskTerms)
@@ -179,14 +190,41 @@ export async function previewAoPublicationOf(
       ...offer, title: copy.title, description: descriptionFromCopy(copy), location: copy.location || offer.location, skills: copy.skills,
       duration: '', startDate: '', experience: '', // déjà dans la section « Modalités »
     }, names, label, extra)
-    const preview: PublicationPreview = {
-      draft: { ...pub, ...terms, maskTerms, anonymized: true }, similarJobs, rewrite: 'ai', notice: '', watchNames: [...names, ...extra],
-      maskedNames: distinctNames([...clients, ...maskTerms]),
+    const preview = {
+      draft: { ...pub, ...terms, maskTerms, anonymized: true }, similarJobs, rewrite: 'ai' as const, notice: '', watchNames: [...names, ...extra],
+      maskedNames: distinctNames([...clients, ...maskTerms]), hiddenNames: names,
     }
-    return { preview }
+    return { preview: await withSocialPreview(tenantId, offer.$id, preview, beforeSocialAi ?? (async () => null)) }
   } catch (err) {
     return { error: errorOf(err) }
   }
+}
+
+/**
+ * Post LinkedIn de la version à relire (ADR 0058) : « Le projet », pôle et hashtags, préparés maintenant à partir de
+ * cette version pour être relus, puis repris tels quels par la diffusion. `beforeSocialAi` : null, sans IA (version des
+ * règles, l'IA étant refusée ou indisponible ; version non anonymisée, sans quota) : le repli de la diffusion ; sinon
+ * appelé juste avant l'IA, son message de refus (quota des recruteurs) donne aussi le repli, avec la raison. Aucun post
+ * prévu (diffusion désactivée) ou réglages illisibles : rien n'est préparé, la diffusion fera comme avant. `tenantId`
+ * est aussi l'organisation de l'offre publique (« admin » pour la plateforme : actions des deux pages).
+ */
+async function withSocialPreview(
+  tenantId: string, offerId: string, preview: Omit<PublicationPreview, 'social'>, beforeSocialAi: (() => Promise<string | null>) | null,
+): Promise<PublicationPreview> {
+  const { generateCopy, linkedInPreviewOf } = await import('@/lib/social')
+  let social: SocialPreview
+  try {
+    social = await linkedInPreviewOf(tenantId, publicJobIdOf(offerId))
+  } catch (err) {
+    console.error('AO: réglages de diffusion illisibles, post LinkedIn non montré', offerId, errorOf(err))
+    social = { settings: null, notice: '', off: 'Réglages de diffusion illisibles : le post LinkedIn ne peut pas être montré. S’il part, l’IA le rédigera à la publication.' }
+  }
+  if (!social.settings) return { ...preview, social }
+  const lite = liteOfPublished(parseDraftFields(preview.draft) ?? preview.draft, social.settings)
+  const refusal = beforeSocialAi ? await beforeSocialAi() : null
+  const copy = beforeSocialAi && !refusal ? await generateCopy(lite) : fallbackCopy(lite)
+  const edits = { context: copy.context, pole: copy.pole, hashtags: copy.hashtags }
+  return { ...preview, draft: { ...preview.draft, social: edits }, social: { ...social, notice: refusal ?? '' } }
 }
 
 /** Version rédigée par l'IA, ou la raison pour laquelle elle n'a pas pu l'être (affichée à la relecture). */
@@ -227,26 +265,17 @@ export async function publishAoOfferOf(
     if (!offer) return { error: 'Offre introuvable.' }
     if (offer.status === 'published' || offer.jobId) return { error: 'Cette offre est déjà publiée.' }
 
-    const edited = { ...offer, ...fields, duration: '', startDate: '', experience: '' }
-    let pub: PublicOffer
-    if (parsed.anonymized) {
-      const { names } = await hiddenNamesFor(offer)
-      const extra = maskNames(parsed.maskTerms)
-      // Le client reste masqué sur le site, même si son nom (ou celui de l'expéditeur) ou des coordonnées ont été saisis
-      // comme libellé.
-      const label = publicLabel(fields.companyName, [...names, ...extra])
-      // Filet de sécurité : tout le texte édité repasse par l'anonymisation avant d'être publié.
-      pub = toPublicOffer(edited, names, label, extra)
-    } else {
-      // Non anonymisée : seules les coordonnées personnelles saisies ou restées dans le texte sont retirées.
-      pub = rawPublicOffer(edited)
-    }
+    // Filet de sécurité : tout le texte édité (offre et textes du post LinkedIn relus, ADR 0058) repasse par
+    // l'anonymisation, ou par le retrait des coordonnées personnelles pour une version non anonymisée. Même fonction que
+    // l'aperçu du post (publication-social.ts).
+    const names = parsed.anonymized ? (await hiddenNamesFor(offer)).names : []
+    const version = publicVersion(fields, { anonymized: parsed.anonymized, names, maskTerms: parsed.maskTerms }, parsed.social)
 
     // Identifiant fixe : une double publication (deux onglets, nouvel essai après une erreur) échoue en 409
     // au lieu de créer une seconde offre, une seconde diffusion et un second sourcing.
-    const jobId = `ao${offer.$id}`
+    const jobId = publicJobIdOf(offer.$id)
     await updateAoOffer(offer.$id, { status: 'published', jobId })
-    const job = { ...fields, ...pub }
+    const job = version.job
     // Recruteur affecté sur la page de l'AO : repris par l'offre publiée. Illisible, ou AO non affecté : celui qui publie.
     const aoAssigneeId = await getAoAssignee(offer.$id).catch(err => {
       console.error('AO: recruteur affecté illisible, offre affectée à celui qui publie', offer.$id, errorOf(err))
@@ -256,14 +285,8 @@ export async function publishAoOfferOf(
     try {
       created = await createJob({
         tenantId: jobTenantId,
-        title: job.title,
-        description: job.description,
-        skills: job.skills.slice(0, 10),
-        location: job.location || 'Non spécifié',
-        contractType: job.contractType,
-        remote: job.remote,
-        salary: job.salary ?? undefined,
-        companyName: job.companyName || undefined,
+        // Mêmes champs que ceux lus par l'aperçu du post LinkedIn (publication-social.ts).
+        ...publicJobFields(job),
         expiresAt: oneMonthFromNow(),
         ...jobOwnership(publisher, aoAssigneeId),
       }, jobId)
@@ -281,11 +304,11 @@ export async function publishAoOfferOf(
     if (created) {
       // Diffusion sur les réseaux (Make → Buffer ; à défaut, ancien auto-post LinkedIn) et sourcing automatique (CV
       // analysés par l'IA, e-mail aux meilleurs candidats) après la réponse, en parallèle : attendus ici, ils feraient
-      // patienter « Publier » environ 3 minutes.
+      // patienter « Publier » environ 3 minutes. Le post reprend les textes relus avec la version (ADR 0058).
       const publicJob = created
       const { tryAutoPublishJob, deliveryDeadline } = await import('@/lib/social')
       const { tryAutoSourceCandidates } = await import('@/lib/auto-source-candidates')
-      after(() => tryAutoPublishJob(publicJob, deliveryDeadline(requestStart)))
+      after(() => tryAutoPublishJob(publicJob, deliveryDeadline(requestStart), version.social))
       after(() => tryAutoSourceCandidates(publicJob))
     }
     for (const path of paths) revalidatePath(path)

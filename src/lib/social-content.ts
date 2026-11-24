@@ -73,6 +73,55 @@ export interface JobLite {
   description: string
   /** Offre de la plateforme (appels d'offres, offres de l'admin) : publiée au nom de Wise Associates. Sinon, offre d'une organisation cliente. */
   fromPlatform?: boolean
+  /**
+   * Offre d'une organisation cliente : sa présentation, tirée de sa marque employeur (brandPresentation), en tête du
+   * contexte LinkedIn comme celle de Wise Associates pour les offres de la plateforme ; vide : pas de présentation.
+   */
+  publisherAbout?: string
+}
+
+/** Texte brut d'une description, retours à la ligne gardés (titres « ### », puces « - ») : reprise telle quelle sur LinkedIn. */
+const plainLines = (s: string) => s.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ').trim()
+
+/** Longueur de la présentation d'une organisation dans le contexte LinkedIn. */
+const PRESENTATION_MAX = 300
+
+/**
+ * Présentation d'une organisation cliente pour ses posts LinkedIn (ADR 0058), écrite par elle dans sa marque employeur :
+ * les premières phrases entières de son « À propos » qui tiennent en 300 caractères ; sinon son accroche ; sinon rien
+ * (aucune présentation n'est inventée).
+ */
+export function brandPresentation(about: string, tagline: string): string {
+  const sentences = plain(about).split(/(?<=[.!?…])\s+/).filter(Boolean)
+  let text = ''
+  for (const sentence of sentences) {
+    const next = text ? `${text} ${sentence}` : sentence
+    if (next.length > PRESENTATION_MAX) break
+    text = next
+  }
+  return text || clip(plain(tagline), PRESENTATION_MAX)
+}
+
+/** Champs d'une offre lus pour la publication : offre enregistrée, ou version relue avant sa publication. */
+export interface JobForSocial {
+  id: string; title: string; location?: string; contractType?: string; remote?: string; salary?: number; skills?: string[]; description?: string
+}
+
+/**
+ * Offre telle que la lisent les textes des réseaux, champs bornés (le corps envoyé à Make et enregistré dans
+ * payloadJson, 20 000 caractères, doit tenir à coup sûr). `company` : l'organisation qui recrute (son nom, sinon
+ * l'entreprise affichée de l'offre) ; `fromPlatform` : offre publiée au nom de Wise Associates ; `publisherAbout` :
+ * présentation de l'organisation (brandPresentation). Partagée par la diffusion (jobToLite, social.ts) et l'aperçu du
+ * post avant publication (ao/publication-social.ts) : ils ne peuvent pas diverger.
+ */
+export function jobLiteOf(job: JobForSocial, company: string, fromPlatform: boolean, publisherAbout = ''): JobLite {
+  return {
+    id: job.id, title: job.title.slice(0, 200), company: company.slice(0, 120), location: (job.location ?? '').slice(0, 120),
+    contractType: job.contractType, remote: job.remote, salary: job.salary,
+    // Retours à la ligne gardés : la description est publiée telle quelle sur LinkedIn, qui n'en affiche pas plus de 3 000 caractères.
+    skills: (job.skills ?? []).slice(0, 15).map(k => k.slice(0, 40)), description: plainLines(job.description ?? '').slice(0, 3000),
+    fromPlatform, publisherAbout: publisherAbout.slice(0, PRESENTATION_MAX),
+  }
 }
 
 /** Offre fictive des tests (connexion à Make, pilote Zernio) et de l'affiche d'exemple : rien de réel n'est publié avec. */
@@ -92,6 +141,16 @@ export interface CopyDraft {
   pole: string             // pôle de Wise Associates (WISE_POLES) dont relève le poste ; vide = aucun ne convient
   hashtags: string[]       // expertises proposées par l'IA, vérifiées contre l'offre (offerHashtags)
 }
+
+/**
+ * Textes du post LinkedIn relus avant la publication d'un AO (ADR 0058). Pour une offre avec description (toujours le cas
+ * d'un AO), le post LinkedIn ne dépend que d'eux parmi les textes rédigés ; les autres (affiche, autres réseaux) sont
+ * rédigés à la diffusion.
+ */
+export type SocialEdits = Pick<CopyDraft, 'context' | 'pole' | 'hashtags'>
+
+/** Longueur de « Le projet » (contexte du post). */
+export const SOCIAL_CONTEXT_MAX = 320
 
 /** Textes de l'affiche unique publiée partout (dessinée par lib/social-poster, au format 4:5). */
 export interface PostImage {
@@ -158,7 +217,7 @@ export function normalizeCopy(raw: unknown, job: JobLite): CopyDraft {
     pitch: typeof r.pitch === 'string' && r.pitch.trim() ? clip(r.pitch.trim(), 320) : fb.pitch,
     missionBullets: mission.length ? mission : fb.missionBullets,
     profileBullets: profile.length ? profile : fb.profileBullets,
-    context: typeof r.context === 'string' ? clip(plain(r.context), 320) : '',
+    context: typeof r.context === 'string' ? clip(plain(r.context), SOCIAL_CONTEXT_MAX) : '',
     pole: knownPole(r.pole),
     hashtags: list(r.hashtags, 10).map(h => h.slice(0, 60)),
   }
@@ -255,30 +314,29 @@ function splitLead(description: string): { lead: string; rest: string } {
   return { lead: stripInline(before.replace(/\s+/g, ' ')), rest: lines.slice(firstHeading).join('\n') }
 }
 
-/** Qui publie : Wise Associates pour une offre de la plateforme, sinon l'organisation qui recrute, pour le compte de laquelle la plateforme diffuse. */
-function publisherLine(job: JobLite, cfg: SocialConfig): string {
-  if (job.fromPlatform) return cfg.publisherIntro
-  const via = 'MyBestConsultant, la plateforme de recrutement de Wise Associates'
-  return job.company ? `📣 ${job.company} recrute via ${via}.` : `📣 Offre diffusée par ${via}.`
+/** Intitulé dans la phrase de recrutement : sans « H/F », parenthèses ni « Consultant » en tête (« Consultant SAP FI (H/F) » → « SAP FI »). */
+function recruitTitle(title: string): string {
+  return title.replace(/\([^)]*\)/g, ' ').replace(/\b[HF]\s*\/\s*[HF]\b/gi, ' ').replace(/^\s*consultant(e|\(e\))?\s+/i, '').replace(/\s+/g, ' ').trim()
+}
+
+/** Offre de la plateforme : phrase de la direction (texte de David, 2026-11-17) ; sans pôle, « ses équipes ». */
+function recruitLine(job: JobLite, pole: string): string {
+  const team = pole ? `son pôle d’expertise ${pole}` : 'ses équipes'
+  return `Dans le cadre de son développement, Wise Associates recherche un consultant ${recruitTitle(job.title)} pour rejoindre ${team} et intervenir auprès de ses clients du secteur financier et de l’assurance.`
 }
 
 /**
- * Offre de la plateforme : phrase de la direction (2026-11-17), intitulé sans « H/F », parenthèses ni « Consultant »
- * en tête (« Consultant SAP FI (H/F) » → « un consultant SAP FI ») ; sans pôle, « ses équipes ».
+ * Offre d'une organisation cliente : même phrase que celle de la direction pour Wise Associates (ADR 0058), sans ce qui
+ * n'est vrai que de Wise (pôles, clients du secteur financier et de l'assurance), selon le contrat.
  */
-function recruitLine(job: JobLite, pole: string): string {
-  const title = job.title.replace(/\([^)]*\)/g, ' ').replace(/\b[HF]\s*\/\s*[HF]\b/gi, ' ').replace(/^\s*consultant(e|\(e\))?\s+/i, '').replace(/\s+/g, ' ').trim()
-  const team = pole ? `son pôle d’expertise ${pole}` : 'ses équipes'
-  return `Dans le cadre de son développement, Wise Associates recherche un consultant ${title} pour rejoindre ${team} et intervenir auprès de ses clients du secteur financier et de l’assurance.`
+function orgRecruitLine(job: JobLite): string {
+  const contract = job.contractType === 'cdi' || job.contractType === 'cdd' ? CONTRACT[job.contractType] : ''
+  const purpose = contract ? `rejoindre ses équipes en ${contract}` : 'intervenir sur une mission'
+  return `Dans le cadre de son développement, ${job.company || 'l’entreprise'} recherche un consultant ${recruitTitle(job.title)} pour ${purpose}.`
 }
 
-/** Objectif de la publication d'une organisation cliente, selon le type de contrat. */
-function objectiveLine(job: JobLite): string {
-  const who = `${job.company || 'cette entreprise'} recherche`
-  const contract = job.contractType === 'cdi' || job.contractType === 'cdd' ? CONTRACT[job.contractType] : ''
-  const what = contract ? `un candidat ou une candidate pour ce poste en ${contract}` : 'un consultant ou une consultante pour cette mission'
-  return `🔎 Pourquoi cette publication : ${who} ${what}. Vous avez ce profil, ou vous connaissez la bonne personne ? Postulez ou partagez cette publication.`
-}
+/** Offre d'une organisation cliente : la plateforme diffuse pour son compte. */
+const ORG_DIFFUSION_LINE = '📣 Offre diffusée via MyBestConsultant, la plateforme de recrutement de Wise Associates.'
 
 // ── Hashtags d'expertise ──
 
@@ -419,7 +477,7 @@ export function buildContent(job: JobLite, copy: CopyDraft, cfg: SocialConfig, o
   const rdv = calendly ? `📅 Envie d’en discuter ? Réservez un échange : ${calendly}` : ''
   const join = (...parts: string[]) => parts.filter(Boolean).join('\n\n')
 
-  // LinkedIn : qui publie, le projet et l'objectif de la publication, puis le texte complet de l'offre publiée (son accroche
+  // LinkedIn : qui recrute et pourquoi (texte de la direction), le projet, puis le texte complet de l'offre publiée (son accroche
   // remplace celle de l'IA), sans autre limite que celle de LinkedIn ; une offre trop longue est raccourcie section par
   // section (fitDescription), jamais le contexte, les liens ni les hashtags.
   const hasDescription = job.description.trim() !== ''
@@ -427,11 +485,12 @@ export function buildContent(job: JobLite, copy: CopyDraft, cfg: SocialConfig, o
   // candidat : « Pilotez… ») ; dans les deux cas l'accroche n'est pas répétée dans le corps.
   const { lead, rest } = splitLead(job.description)
   const project = copy.context ? `🧭 Le projet : ${copy.context}` : lead && `🧭 ${lead}`
-  // Offre de la plateforme : présentation de Wise, sa phrase de recrutement, puis le projet, chacun son paragraphe ;
-  // organisation cliente : qui recrute, puis le projet et l'objectif de la publication.
+  // Texte de la direction (David, 2026-11-17), chacun son paragraphe : offre de la plateforme, présentation de Wise
+  // (réglage de /admin/social) et sa phrase de recrutement ; organisation cliente, sur le même modèle (ADR 0058), sa
+  // présentation (marque employeur), sa phrase de recrutement et la ligne de diffusion. Puis le projet.
   const context = job.fromPlatform
-    ? join(publisherLine(job, cfg), recruitLine(job, copy.pole), project)
-    : join(publisherLine(job, cfg), [project, objectiveLine(job)].filter(Boolean).join('\n'))
+    ? join(cfg.publisherIntro, recruitLine(job, copy.pole), project)
+    : join(job.publisherAbout ?? '', orgRecruitLine(job), ORG_DIFFUSION_LINE, project)
   const liEnd = join([cta(urls.linkedin), rdv].filter(Boolean).join('\n'), tags.linkedin.join(' '))
   const liTop = hasDescription ? join(head, meta, context) : join(head, copy.tagline, meta, context)
   const liBody = hasDescription ? fitDescription(lead ? rest : job.description, LINKEDIN_MAX_CHARS - liTop.length - liEnd.length - 4) : join(program, profile)

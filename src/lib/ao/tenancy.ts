@@ -74,6 +74,8 @@ const COUNTER_PREFIX = {
   autoMatchAll: 'am',
   // Pages de profils ouvertes depuis les statistiques des CV (ADR 0044) : par organisation, pour toutes.
   statsProfilesOrg: 'sp', statsProfilesAll: 'sq',
+  // Textes du post LinkedIn rédigés par l'IA à la préparation de la publication d'un AO (ADR 0058) : par organisation, pour toutes.
+  aoSocialOrg: 'so', aoSocialAll: 'sb',
 } as const
 export type DailyCounter = keyof typeof COUNTER_PREFIX
 
