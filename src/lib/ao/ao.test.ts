@@ -227,6 +227,14 @@ describe('anonymisation', () => {
     assert.equal(scrubContacts('Envoyé par Marie Dupont (Dupont, Marie) pour Client Exemple.', names, 'X'), 'Envoyé par X pour X.')
   })
 
+  it('masque un nom qui contient sa propre parenthèse sans laisser la parenthèse fermante', () => {
+    const names = namesToHide(['ASP (Agence de services et de paiement)'])
+    assert.equal(scrubContacts('ASP (Agence de services et de paiement) recrute.', names, 'Grande agence publique'), 'Grande agence publique recrute.')
+    assert.equal(scrubContacts('Pour ASP (Agence de services et de paiement ), à Montreuil.', names, 'X'), 'Pour X, à Montreuil.')
+    // Parenthèse ouverte avant le nom : elle n'est pas au nom, celle qui la ferme reste.
+    assert.equal(scrubContacts('Mission (pour ASP) à Montreuil.', names, 'X'), 'Mission (pour X) à Montreuil.')
+  })
+
   it('liste les noms masqués tels qu\'écrits, sans doublon', () => {
     assert.deepEqual(distinctNames(['ENSMIS', ' la Fémis ', 'LA FEMIS', '', '—']), ['ENSMIS', 'la Fémis'])
   })

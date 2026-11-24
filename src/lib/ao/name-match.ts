@@ -20,7 +20,13 @@ function occurrences(text: string, names: string[][]): { start: number; end: num
   for (let i = 0; i < toks.length; i++) {
     const name = names.find(n => n.every((w, k) => toks[i + k]?.word === w))
     if (!name) continue
-    found.push({ start: toks[i].start, end: toks[i + name.length - 1].end })
+    const end = toks[i + name.length - 1].end
+    // Nom qui contient sa propre parenthèse (« ASP (Agence de services et de paiement) ») : sa parenthèse fermante, après
+    // le dernier mot, lui appartient aussi ; sinon le libellé serait suivi d'une « ) » orpheline.
+    const span = text.slice(toks[i].start, end)
+    const closing = /^[ \t]*\)/.exec(text.slice(end))
+    const unclosed = (span.match(/\(/g)?.length ?? 0) > (span.match(/\)/g)?.length ?? 0)
+    found.push({ start: toks[i].start, end: unclosed && closing ? end + closing[0].length : end })
     i += name.length - 1
   }
   return found
