@@ -12,7 +12,7 @@ import type { InterviewAnalysis } from '@/app/recruiter/interviews/actions'
 import {
   Mail, Phone, MapPin, Navigation, Briefcase, Building2,
   GraduationCap, FileText, ExternalLink, Link2, ClipboardList, Video, ChevronRight, Star,
-  GitBranch, ThumbsUp, ThumbsDown, Scale, CheckCircle2,
+  GitBranch, ThumbsUp, ThumbsDown, Scale, CheckCircle2, Inbox,
 } from 'lucide-react'
 import { CandidateAvatar } from '@/components/shared/candidate-avatar'
 import { CvDetailExpander } from '@/components/shared/cv-detail-expander'
@@ -24,6 +24,8 @@ import { resolveCandidateIdentities } from '@/lib/candidate-identity'
 import { WhatsAppContact } from '@/components/recruiter/whatsapp-contact'
 import { getSubmittedRecommendations } from '@/lib/appwrite/recommendations'
 import { RELATIONSHIP_LABEL } from '@/lib/recommendation-boost'
+import { jobOriginView } from '@/lib/job-origin'
+import { loadJobOrigin } from '@/lib/job-origin-store'
 
 const STATUS: Record<string, { label: string; bg: string; text: string }> = {
   pending:   { label: 'En attente',   bg: 'rgba(107,114,128,0.14)', text: '#6b7280' },
@@ -96,8 +98,15 @@ export default async function CandidateProfilePage({ params, searchParams }: {
   const viewer = await loadOfferViewer(user)
   if (job ? !viewerCanOpenJob({ tenantId: job.tenantId, recruiterId: job.recruiterId }, viewer) : !viewer.seesAllOffers) redirect('/recruiter/dashboard')
 
+  // Origine de l'offre (demande du 2026-11-24, comme sur son détail /recruiter/offres/<id>), lue seulement une fois
+  // l'offre ouverte par ce recruteur ; ne rejette jamais (« illisible »).
+  const [identities, origin] = await Promise.all([
+    resolveCandidateIdentities([candidate.$id]),
+    job ? loadJobOrigin(job.$id, user.tenantId, job.tenantId !== user.tenantId) : null,
+  ])
+  const originView = origin && jobOriginView(origin)
   // Profil proposé par un chasseur de têtes : c'est lui l'interlocuteur (coordonnées du candidat non exposées).
-  const identity = (await resolveCandidateIdentities([candidate.$id])).get(candidate.$id)
+  const identity = identities.get(candidate.$id)
   const hunter = identity?.hunter
   const isHunterProfile = candidate.role === 'hunter_profile'
 
@@ -351,21 +360,61 @@ export default async function CandidateProfilePage({ params, searchParams }: {
           </Block>
         )}
 
-        {/* Bloc CV / candidature */}
+        {/* Bloc CV / candidature ; à droite (dessous sur mobile), l'offre et son origine. */}
         <Block icon={FileText} title="Candidature">
-          <div className="flex flex-wrap gap-3">
-            {candidate.cvFileId ? (
-              <a href={`/api/cv/${candidate.cvFileId}`} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold no-underline transition-opacity hover:opacity-90"
-                style={{ background: 'var(--color-primary)', color: 'white' }}>
-                <ExternalLink className="h-3.5 w-3.5" /> Voir le CV
-              </a>
-            ) : (
-              <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Aucun CV joint</span>
-            )}
-            <span className="text-xs self-center" style={{ color: 'var(--color-text-muted)' }}>
-              Candidature du {new Date(application.$createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
-            </span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+            <div className="flex flex-wrap gap-3">
+              {candidate.cvFileId ? (
+                <a href={`/api/cv/${candidate.cvFileId}`} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold no-underline transition-opacity hover:opacity-90"
+                  style={{ background: 'var(--color-primary)', color: 'white' }}>
+                  <ExternalLink className="h-3.5 w-3.5" /> Voir le CV
+                </a>
+              ) : (
+                <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Aucun CV joint</span>
+              )}
+              <span className="text-xs self-center" style={{ color: 'var(--color-text-muted)' }}>
+                Candidature du {new Date(application.$createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+              </span>
+            </div>
+
+            <section aria-labelledby="offre-origine" className="p-4 rounded-2xl" style={{ background: 'rgba(11,29,81,0.03)', border: '1px solid var(--color-border)' }}>
+              <h3 id="offre-origine" className="text-[11px] font-bold uppercase tracking-widest mb-1.5" style={{ color: 'var(--color-text-muted)' }}>Offre et origine</h3>
+              {!job || !originView ? (
+                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>L’offre de cette candidature n’existe plus.</p>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--color-text)', overflowWrap: 'anywhere' }}>{job.title as string}</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--color-text)' }}>{originView.source}</p>
+                  {originView.note && <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{originView.note}</p>}
+                  {originView.facts.length > 0 && (
+                    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs mt-2">
+                      {originView.facts.map(f => (
+                        <div key={f.label} className="contents">
+                          <dt style={{ color: 'var(--color-text-muted)' }}>{f.label}</dt>
+                          {/* Adresses, objets et noms de fichiers sans espace : coupés plutôt que de déborder du bloc. */}
+                          <dd style={{ color: 'var(--color-text)', overflowWrap: 'anywhere' }}>{f.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                  <div className="no-print flex flex-wrap gap-x-4 gap-y-1 mt-3">
+                    <Link href={`/recruiter/offres/${job.$id}`}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold no-underline transition-opacity hover:opacity-75"
+                      style={{ color: 'var(--color-primary)' }}>
+                      <Briefcase className="h-3 w-3" aria-hidden /> Allez sur l’offre <ChevronRight className="h-3 w-3" aria-hidden />
+                    </Link>
+                    {originView.aoHref && (
+                      <Link href={originView.aoHref}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold no-underline transition-opacity hover:opacity-75"
+                        style={{ color: 'var(--color-primary)' }}>
+                        <Inbox className="h-3 w-3" aria-hidden /> Voir l’appel d’offres d’origine <ChevronRight className="h-3 w-3" aria-hidden />
+                      </Link>
+                    )}
+                  </div>
+                </>
+              )}
+            </section>
           </div>
         </Block>
       </div>

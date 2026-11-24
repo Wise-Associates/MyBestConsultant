@@ -306,6 +306,23 @@ export async function reindexAoOffer(offerId: string): Promise<void> {
 }
 
 /**
+ * Parmi `offerIds`, les offres AO encore présentes pour l'organisation `tenantId` : leur ligne d'index, supprimée avec
+ * l'offre et à la purge (365 jours). Sert à ne proposer « Voir l'offre originale » que vers une page qui existe ; la page
+ * de l'offre refait le contrôle complet (aoAccess). Une offre sans ligne d'index n'apparaît nulle part (ADR 0019).
+ */
+export async function existingAoOfferIdsOf(tenantId: string, offerIds: string[]): Promise<Set<string>> {
+  const { databases } = createAdminClient()
+  const found = new Set<string>()
+  for (const batch of batchByLength(offerIds, 3000, 100)) {
+    const res = await databases.listDocuments(DB_ID, COLLECTIONS.AO_OFFER_INDEX, [
+      Query.equal('$id', batch), Query.equal('tenantId', tenantId), Query.select(['$id']), Query.limit(batch.length),
+    ])
+    for (const doc of res.documents) found.add(doc.$id)
+  }
+  return found
+}
+
+/**
  * Rattrapage de l'index (passages planifiés) : les offres modifiées depuis `since` dont la ligne manque ou dont le
  * statut ou le nombre d'e-mails diffère sont reconstruites — une recopie qui a échoué, une offre écrite par l'ancien code
  * pendant un déploiement — sans attendre `npm run ao:index`. Renvoie le nombre de lignes reconstruites.

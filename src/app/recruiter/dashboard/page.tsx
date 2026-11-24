@@ -14,6 +14,8 @@ import { formatDateFr } from '@/lib/format-date'
 import { listTenantRecruiters, recruiterOptions } from '@/lib/recruiter-assignment'
 import { parseRecruiterSelection } from '@/lib/recruiter-job-filters'
 import { loadOfferViewer } from '@/lib/offer-viewer'
+import { aoOfferHref, aoOfferIdOfJob } from '@/lib/job-origin'
+import { existingAoOfferIdsOf } from '@/lib/ao/repo'
 import type { CandidateApp } from './applications-panel'
 import { JobsListClient, type DashboardJobRow } from './jobs-list-client'
 import { DashboardStats } from './dashboard-stats'
@@ -88,7 +90,16 @@ export default async function RecruiterDashboard({ searchParams }: {
       ? getTenantJobsOfRecruiters(tenantId, scope).then(async jobs => [jobs, await getApplicationsOfJobs(tenantId, jobs.map(job => job.$id))] as const)
       : Promise.all([getJobsByTenant(tenantId), getApplicationsByTenant(tenantId)])
   })
-  const [selection, [jobs, allApplications], matchCountByJob, funnelStages, socialPosts, recruiters] = await Promise.all([
+  // Offres publiées depuis un appel d'offres de l'organisation (`ao<id>`) dont l'AO existe encore : « Voir l'offre
+  // originale ». Illisible : aucune ligne n'a ce lien (journalisé), plutôt qu'un lien vers une page introuvable.
+  const aoOffersRead = jobsAndApplications.then(([jobs]) => {
+    const offerIds = jobs.filter(job => job.tenantId === tenantId).map(job => aoOfferIdOfJob(job.$id)).filter((id): id is string => id !== null)
+    return offerIds.length === 0 ? new Set<string>() : existingAoOfferIdsOf(tenantId, offerIds)
+  }).catch((e: unknown) => {
+    console.error('[dashboard] appels d’offres d’origine non lus', e instanceof Error ? e.message : e)
+    return new Set<string>()
+  })
+  const [selection, [jobs, allApplications], matchCountByJob, funnelStages, socialPosts, recruiters, aoOfferIds] = await Promise.all([
     selectionRead,
     jobsAndApplications,
     countMatchesByJob(tenantId),
@@ -99,6 +110,7 @@ export default async function RecruiterDashboard({ searchParams }: {
       return null
     }),
     recruitersRead,
+    aoOffersRead,
   ])
 
   const candidateMap = await resolveCandidateNames(allApplications)
@@ -136,6 +148,7 @@ export default async function RecruiterDashboard({ searchParams }: {
   const summary = summarize(jobs, Object.values(appsByJobRecord), keys, now)
   const rows: DashboardJobRow[] = jobs.map(job => {
     const post = socialPosts?.[job.$id]
+    const aoOfferId = aoOfferIdOfJob(job.$id)
     return {
       job,
       facts: jobFacts(job, appsByJobRecord[job.$id] ?? [], keys, post?.status, now),
@@ -143,6 +156,7 @@ export default async function RecruiterDashboard({ searchParams }: {
       shared: job.tenantId !== tenantId,
       matches: matchCountByJob[job.$id] ?? 0,
       social: post && { status: post.status, results: post.results, stale: post.stale, sentOn: formatDateFr(post.sentAt ?? post.createdAt) },
+      aoHref: job.tenantId === tenantId && aoOfferId && aoOfferIds.has(aoOfferId) ? aoOfferHref(aoOfferId) : null,
     }
   })
 

@@ -55,6 +55,11 @@ export function aoOfferIdOfJob(jobId: string): string | null {
   return jobId.startsWith('ao') && jobId.length > 2 ? jobId.slice(2) : null
 }
 
+/** Page de l'appel d'offres d'origine dans l'espace recruteur. */
+export function aoOfferHref(offerId: string): string {
+  return `/recruiter/parametres/boites-ao/${offerId}`
+}
+
 /** Site du scraper ou de la veille ; un flux RSS des réglages de la veille (non lus ici) garde son identifiant. */
 function siteLabel(veilleSource: string): string {
   if (!veilleSource) return 'site non enregistré'
@@ -98,7 +103,7 @@ export function jobOriginView(origin: JobOrigin): JobOriginView {
         source: scraping ? `${AO_CHANNEL_LABEL.scraping} · ${siteLabel(origin.veilleSource)}` : 'Appel d’offres reçu par e-mail',
         facts,
         note: '',
-        aoHref: `/recruiter/parametres/boites-ao/${origin.offerId}`,
+        aoHref: aoOfferHref(origin.offerId),
       }
     }
   }
