@@ -123,6 +123,14 @@ describe('contexte en tête de la publication LinkedIn', () => {
     assert.ok(head({ ...platform, title: 'Ingénieur DevOps / Cloud AWS' }).includes('recherche un consultant Ingénieur DevOps / Cloud AWS pour'))
   })
 
+  it('intitulé d’un lot d’appel d’offres repris sans « Lot N » en tête', () => {
+    for (const title of ['Lot 2. Expert en données fiscales', 'LOT 2 - Expert en données fiscales', 'Lot n°2 : Expert en données fiscales']) {
+      assert.ok(head({ ...platform, title }).includes('recherche un consultant Expert en données fiscales pour rejoindre'), title)
+    }
+    // « Lot » ailleurs que devant un numéro en tête de l'intitulé reste.
+    assert.ok(head({ ...platform, title: 'Gestionnaire de lots logistiques' }).includes('recherche un consultant Gestionnaire de lots logistiques pour'))
+  })
+
   it('offre d’une organisation cliente : texte de la direction appliqué à l’organisation, sa présentation en tête (ADR 0058)', () => {
     const about = 'Acme accompagne les collectivités dans la transformation de leurs ressources humaines.'
     const text = head({ ...job, company: 'Acme', contractType: 'mission', title: 'Consultant SIRH (H/F)', publisherAbout: about })
