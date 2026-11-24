@@ -9,7 +9,11 @@ import { descriptionForPublication } from '@/lib/description-sections'
 import type { Job, UserProfile } from '@/types'
 import { isDocumentId } from './access'
 import { callLLM } from '@/lib/ai/llm-router'
-import { PUBLICATION_AI } from '@/lib/ai/models'
+import { PUBLICATION_AI, SCORING_AI } from '@/lib/ai/models'
+import { CriteriaSetSchema, defaultCriteriaSet, type OfferCriteriaSet } from '@/lib/offer-criteria'
+import { saveOfferCriteria } from '@/lib/offer-criteria-store'
+import { CRITERIA_PROPOSAL_PROMPT, criteriaProposalRequest, parseCriteriaProposal } from './criteria-proposal'
+import { findIdentifiers } from './name-match'
 import { llmUnavailableReason } from './ai-failures'
 import { distinctNames, namesToHide, publicLabel, rawPublicOffer, scrubContacts, toPublicOffer } from './anonymize'
 import {
@@ -33,8 +37,8 @@ import { checkAssignee, getAoAssignee, notifyAssigneeWarning, setAoAssignee, set
 import { shouldNotifyAssignee } from '@/lib/assignment-email'
 import { jobOwnership, type JobCreator } from '@/lib/job-ownership'
 import {
-  deleteAoOfferAndDetails, getAoOfferSourcing, listAoEmailsByIds, listAoOfferDetails, saveAoOfferSourcing,
-  updateAoEmail, updateAoOffer,
+  deleteAoOfferAndDetails, getAoOfferCriteria, getAoOfferSourcing, listAoEmailsByIds, listAoOfferDetails, saveAoOfferCriteria,
+  saveAoOfferSourcing, updateAoEmail, updateAoOffer,
 } from './repo'
 import { getAoSource } from './sources'
 import { requestPublicationStop } from './state'
@@ -167,21 +171,38 @@ export async function previewAoPublicationOf(
     const terms = { contractType: offer.contractType, remote: offer.remote, salary: offer.salary, reviewed: false }
 
     const { clients, names, people } = await hiddenNamesFor(offer)
+    // Critères de matching (ADR 0061) : ceux déjà enregistrés pour cet AO, sinon proposés par l'IA (version anonymisée,
+    // même place du quota que sa rédaction), sinon ceux par défaut.
+    const saved = await getAoOfferCriteria(offer.$id)
     if (mode === 'raw') {
       // Version non anonymisée : client et références restent ; les noms de personnes connus sont signalés à la relecture.
       // Sans IA ni quota, textes du post compris (ADR 0058) : ceux du repli, à relire et modifier (« Le projet » vide :
       // l'accroche de l'offre en tient lieu ; aucun pôle ; hashtags tirés des compétences).
-      const draft = { ...rawPublicOffer(offer), ...terms, maskTerms: [], anonymized: false }
-      const preview = { draft, similarJobs, rewrite: 'raw' as const, notice: '', watchNames: people, maskedNames: [], hiddenNames: [] }
+      const draft = { ...rawPublicOffer(offer), ...terms, maskTerms: [], anonymized: false, criteria: saved ?? defaultAoCriteria(offer, names) }
+      const preview = {
+        draft, similarJobs, rewrite: 'raw' as const, notice: '', watchNames: people, maskedNames: [], hiddenNames: [],
+        criteriaSource: saved ? 'saved' as const : 'default' as const, criteriaNotice: '',
+      }
       return { preview: await withSocialPreview(tenantId, offer.$id, preview, null) }
     }
-    const copy = (await beforeAi?.()) ?? (await rewriteForPublication(offer, clients, names))
+    const refusal = (await beforeAi?.()) ?? null
+    const [copy, proposal] = refusal !== null
+      ? [refusal, null]
+      : await Promise.all([rewriteForPublication(offer, clients, names), saved ? null : proposeCriteria(offer, names)])
+    const criteria = saved ?? proposal?.set ?? defaultAoCriteria(offer, names)
+    const criteriaFields = {
+      criteriaSource: saved ? 'saved' as const : proposal && !proposal.notice ? 'ai' as const : 'default' as const,
+      criteriaNotice: saved ? '' : proposal?.notice ?? refusal ?? '',
+    }
     if (typeof copy === 'string') {
       const pub = toPublicOffer(offer, names)
       // Mise en forme (sections, puces) après l'anonymisation, qui retire les lignes de contact d'après leur début de ligne.
-      const draft = { ...pub, description: descriptionForPublication(pub.description), ...terms, maskTerms: [], anonymized: true }
+      const draft = { ...pub, description: descriptionForPublication(pub.description), ...terms, maskTerms: [], anonymized: true, criteria }
       // IA refusée (quota) ou indisponible : textes du post sans IA non plus.
-      const preview = { draft, similarJobs, rewrite: 'rules' as const, notice: copy, watchNames: [...names, ...PLATFORM_NAMES], maskedNames: distinctNames(clients), hiddenNames: names }
+      const preview = {
+        draft, similarJobs, rewrite: 'rules' as const, notice: copy, watchNames: [...names, ...PLATFORM_NAMES], maskedNames: distinctNames(clients),
+        hiddenNames: names, ...criteriaFields,
+      }
       return { preview: await withSocialPreview(tenantId, offer.$id, preview, null) }
     }
     const maskTerms = maskTermsOf(copy)
@@ -193,8 +214,8 @@ export async function previewAoPublicationOf(
       duration: '', startDate: '', experience: '', // déjà dans la section « Modalités », écrite par le code
     }, names, label, extra)
     const preview = {
-      draft: { ...pub, ...terms, maskTerms, anonymized: true }, similarJobs, rewrite: 'ai' as const, notice: '', watchNames: [...names, ...extra, ...PLATFORM_NAMES],
-      maskedNames: distinctNames([...clients, ...maskTerms]), hiddenNames: names,
+      draft: { ...pub, ...terms, maskTerms, anonymized: true, criteria }, similarJobs, rewrite: 'ai' as const, notice: '',
+      watchNames: [...names, ...extra, ...PLATFORM_NAMES], maskedNames: distinctNames([...clients, ...maskTerms]), hiddenNames: names, ...criteriaFields,
     }
     return { preview: await withSocialPreview(tenantId, offer.$id, preview, beforeSocialAi ?? (async () => null)) }
   } catch (err) {
@@ -231,6 +252,44 @@ async function withSocialPreview(
   const edits = { context, pole: copy.pole, hashtags: copy.hashtags }
   return { ...preview, draft: { ...preview.draft, social: edits }, social: { ...social, notice: refusal ?? '' } }
 }
+
+/** Texte de l'AO aux noms du client remplacés (« le client »), comme l'IA de la version publiée le reçoit. */
+const cleanedAo = (offer: AoOffer, names: string[][]) => {
+  const clean = (text: string) => scrubContacts(text, names, 'le client')
+  return {
+    title: clean(offer.title), description: clean(offer.description), skills: offer.skills.map(clean), location: clean(offer.location),
+    experience: clean(offer.experience),
+  }
+}
+
+/** Critères par défaut d'un AO (sans IA, ADR 0061), sur son texte aux noms du client remplacés. */
+const defaultAoCriteria = (offer: AoOffer, names: string[][]) => defaultCriteriaSet(cleanedAo(offer, names))
+
+/**
+ * Critères de matching proposés par l'IA de la notation (« Matching IA » de Config IA) à partir de l'AO aux noms du client
+ * remplacés (ADR 0061) ; sinon les critères par défaut et la raison, affichée à la relecture.
+ */
+async function proposeCriteria(offer: AoOffer, names: string[][]): Promise<{ set: OfferCriteriaSet; notice: string }> {
+  const fallback = defaultAoCriteria(offer, names)
+  try {
+    const { content } = await callLLM([{ role: 'user', content: criteriaProposalRequest(cleanedAo(offer, names)) }], CRITERIA_PROPOSAL_PROMPT, {
+      ...SCORING_AI, maxTokens: 4000, timeoutMs: 60_000,
+    })
+    const set = parseCriteriaProposal(content, fallback)
+    return set ? { set, notice: '' } : { set: fallback, notice: 'réponse de l\'IA illisible' }
+  } catch (err) {
+    console.error('AO: critères de matching non proposés par l\'IA', offer.$id, errorOf(err))
+    return { set: fallback, notice: llmUnavailableReason(err) ?? 'service d\'IA indisponible pour le moment' }
+  }
+}
+
+/**
+ * Libellés, noms et intitulés des critères qui nomment encore le client (version anonymisée) ; vide sinon. `names` : les
+ * noms connus et ceux que l'IA de la version publiée dit avoir retirés, comme pour le texte publié (publicVersion).
+ */
+const criteriaNaming = (set: OfferCriteriaSet, names: string[][]) => findIdentifiers(
+  [...set.criteria.flatMap(c => [c.name, ...c.labels.map(l => l.label)]), ...set.alternativeTitles].join(' · '), names,
+)
 
 /** Version rédigée par l'IA, ou la raison pour laquelle elle n'a pas pu l'être (affichée à la relecture). */
 async function rewriteForPublication(offer: AoOffer, clients: string[], names: string[][]): Promise<PublicationCopy | string> {
@@ -282,6 +341,9 @@ export async function publishAoOfferOf(
     // l'aperçu du post (publication-social.ts).
     const names = parsed.anonymized ? (await hiddenNamesFor(offer)).names : []
     const version = publicVersion(fields, { anonymized: parsed.anonymized, names, maskTerms: parsed.maskTerms }, parsed.social)
+    // Critères montrés à ceux qui ouvrent l'offre publiée : version anonymisée, jamais le client (mêmes noms que le texte).
+    const naming = parsed.criteria ? criteriaNaming(parsed.criteria, [...names, ...maskNames(parsed.maskTerms)]) : []
+    if (naming.length > 0) return { error: `Les critères de matching nomment encore « ${naming[0]} » : retirez-le, puis publiez.` }
 
     // Identifiant fixe : une double publication (deux onglets, nouvel essai après une erreur) échoue en 409
     // au lieu de créer une seconde offre, une seconde diffusion et un second sourcing.
@@ -313,6 +375,19 @@ export async function publishAoOfferOf(
       // elle reste publiée.
       console.error('AO: offre publique déjà créée', jobId, errorOf(err))
     }
+    let notice: string | undefined
+    if (created && parsed.criteria) {
+      // Avant le sourcing automatique (après la réponse), qui note les CV sur ces critères.
+      try {
+        await saveOfferCriteria(jobId, parsed.criteria)
+      } catch (err) {
+        console.error('AO: critères de matching de l\'offre publiée non enregistrés', jobId, errorOf(err))
+        notice = 'Offre publiée, mais ses critères de matching n\'ont pas pu être enregistrés : ses candidats sont notés sur le barème par défaut.'
+      }
+      // Copie sur l'AO (relecture, historique) : sans effet sur la notation, un échec est seulement journalisé.
+      await saveAoOfferCriteria(offer.$id, parsed.criteria).catch(err =>
+        console.error('AO: critères de matching non recopiés sur l\'appel d\'offres', offer.$id, errorOf(err)))
+    }
     if (created) {
       // Diffusion sur les réseaux (Make → Buffer ; à défaut, ancien auto-post LinkedIn) et sourcing automatique (CV
       // analysés par l'IA, e-mail aux meilleurs candidats) après la réponse, en parallèle : attendus ici, ils feraient
@@ -324,9 +399,31 @@ export async function publishAoOfferOf(
       after(() => tryAutoSourceCandidates(publicJob))
     }
     for (const path of paths) revalidatePath(path)
-    return { jobId }
+    return { jobId, notice }
   } catch (err) {
     return { error: `Publication impossible : ${errorOf(err)}` }
+  }
+}
+
+/**
+ * Critères de matching d'un AO pas encore publié (ADR 0061), réglés avant sa publication : gardés pour la relecture
+ * suivante et pour sa section Sourcing. `criteria` vient du navigateur : validé ici (CriteriaSetSchema) ; null les retire.
+ */
+export async function saveAoCriteriaOf(tenantId: string, id: string, criteria: unknown): Promise<{ error?: string }> {
+  try {
+    const offer = await aoAccessFor(tenantId).offer(id)
+    if (!offer) return { error: 'Offre introuvable : rechargez la page.' }
+    if (offer.status === 'published' || offer.jobId) return { error: 'Offre déjà publiée : ses critères ne se modifient plus ici.' }
+    if (criteria === null) {
+      await saveAoOfferCriteria(offer.$id, null)
+      return {}
+    }
+    const parsed = CriteriaSetSchema.safeParse(criteria)
+    if (!parsed.success) return { error: `Critères non enregistrés : ${parsed.error.issues[0]?.message ?? 'critères invalides.'}` }
+    await saveAoOfferCriteria(offer.$id, parsed.data)
+    return {}
+  } catch (err) {
+    return { error: `Critères non enregistrés : ${errorOf(err)}` }
   }
 }
 
@@ -419,6 +516,8 @@ export async function aoOfferSourcingOf(
           offer.experience ? `Expérience requise : ${offer.experience}` : '',
           ...offerDetails(offer),
         ].filter(Boolean),
+        // Critères enregistrés pour cet AO (ADR 0061) : les mêmes que ceux de l'offre une fois publiée.
+        criteria: await getAoOfferCriteria(offer.$id),
       })
       if (result.error) return { error: result.error, scanned: result.scanned }
       record = {

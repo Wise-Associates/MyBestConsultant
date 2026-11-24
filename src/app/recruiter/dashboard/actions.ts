@@ -1,5 +1,6 @@
 'use server'
 
+import { deleteJudgementsOfJob } from '@/lib/criteria-judgements-store'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { after } from 'next/server'
@@ -164,6 +165,7 @@ export async function deleteJobAction(jobId: string): Promise<{ error?: string }
     await deleteJob(own.jobId)
     await deleteJobClients(own.jobId) // contact du client effacé avec l'offre (ne lève jamais)
     await deleteWeightsOfJob(own.jobId) // poids du matching réglés pour l'offre (ne lève jamais)
+    await deleteJudgementsOfJob(own.jobId) // jugements des critères propres des recruteurs, ADR 0061 (ne lève jamais)
   } catch (e) {
     console.error('[dashboard] offre non supprimée', own.jobId, e instanceof Error ? e.message : e)
     return { error: 'L’offre n’a pas pu être supprimée. Réessayez.' }

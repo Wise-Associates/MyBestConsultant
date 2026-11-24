@@ -1,5 +1,6 @@
 'use client'
 
+import { reasonWithoutCriteria } from '@/lib/criteria-scoring'
 import { useMemo, useRef, useState } from 'react'
 import { ID } from 'appwrite'
 import {
@@ -333,7 +334,8 @@ export function VivierClient({ jobId, bucketId, initialCvs, loadError, isAdmin, 
                           : 'Aucune offre ouverte ne correspond à ce profil pour l’instant.'}
                       </p>
                     ))}
-                    {match.reason && <p className="text-xs italic line-clamp-2" style={{ color: 'var(--color-text-muted)' }}>« {match.reason} »</p>}
+                    {/* Score noté sur les critères de l'offre (ADR 0061) : la phrase de l'IA, sans les lettres du résumé. */}
+                    {reasonWithoutCriteria(match.reason) && <p className="text-xs italic line-clamp-2" style={{ color: 'var(--color-text-muted)' }}>« {reasonWithoutCriteria(match.reason)} »</p>}
                   </>
                 ) : (
                   <div className="rounded-xl p-3 text-xs flex items-start gap-2" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', color: '#92400e' }}>

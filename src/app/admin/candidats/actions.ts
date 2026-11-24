@@ -1,10 +1,11 @@
 'use server'
 
+import type { OfferCriteriaSet } from '@/lib/offer-criteria'
 import { requireAdmin } from '@/lib/appwrite/auth'
 import type { PublicationDraft, PublicationMode, SourcingResult } from '@/lib/ao/dashboard-types'
 import {
   addAoOfferCommentOf, aoOfferSourcingOf, deleteAoOfferCommentOf, deleteAoOfferOf, deleteAoOffersOf, listAoOfferCommentsOf, previewAoPublicationOf,
-  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, stopAoPublicationTasksOf,
+  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, stopAoPublicationTasksOf, saveAoCriteriaOf,
 } from '@/lib/ao/offer-actions'
 import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 
@@ -31,6 +32,12 @@ export async function previewAoPublication(id: string, mode?: PublicationMode) {
 export async function publishAoOffer(id: string, input: PublicationDraft) {
   const user = await requireAdmin()
   return publishAoOfferOf(PLATFORM_TENANT_ID, id, input, ADMIN_TENANT_ID, [PATH, '/admin/jobs'], user)
+}
+
+/** Critères de matching d'un AO de la plateforme pas encore publié (ADR 0061), validés par le cœur. */
+export async function saveAoCriteria(id: string, criteria: OfferCriteriaSet | null) {
+  await requireAdmin()
+  return saveAoCriteriaOf(PLATFORM_TENANT_ID, id, criteria)
 }
 
 export async function setAoOfferStatus(id: string, status: 'to_review' | 'ignored') {

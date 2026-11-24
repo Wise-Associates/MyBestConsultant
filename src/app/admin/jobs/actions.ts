@@ -1,5 +1,6 @@
 'use server'
 
+import { deleteJudgementsOfJob } from '@/lib/criteria-judgements-store'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { revalidatePath } from 'next/cache'
@@ -43,6 +44,7 @@ export async function deleteJob(id: string): Promise<{ ok?: boolean; error?: str
     await databases.deleteDocument(DB_ID, COLLECTIONS.JOBS, id)
     await deleteJobClients(id) // contacts des clients de l'offre effacés avec elle (ne lève jamais)
     await deleteWeightsOfJob(id) // poids du matching réglés pour l'offre (ne lève jamais)
+    await deleteJudgementsOfJob(id) // jugements des critères propres des recruteurs, ADR 0061 (ne lève jamais)
     revalidatePath('/admin/jobs')
     revalidatePath('/recruiter/dashboard')
     revalidatePath('/jobs')

@@ -1,10 +1,11 @@
 'use server'
 
+import type { OfferCriteriaSet } from '@/lib/offer-criteria'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import type { PublicationDraft, PublicationMode } from '@/lib/ao/dashboard-types'
 import {
   addAoOfferCommentOf, aoOfferSourcingOf, assignAoOfferOf, deleteAoOfferCommentOf, deleteAoOfferOf, deleteAoOffersOf, listAoOfferCommentsOf, previewAoPublicationOf,
-  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, stopAoPublicationTasksOf,
+  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, stopAoPublicationTasksOf, saveAoCriteriaOf,
 } from '@/lib/ao/offer-actions'
 import { AO_RETRY_DAILY_LIMITS, RETRY_QUOTA_MESSAGE } from '@/lib/ao/attempts'
 import { AO_PUBLICATION_AI_DAILY_LIMITS, PUBLICATION_AI_QUOTA_MESSAGE } from '@/lib/ao/publication-copy'
@@ -170,6 +171,13 @@ export async function publishRecruiterAoOffer(id: string, input: PublicationDraf
   const limited = await activeJobsLimitDenial(me.tenantId)
   if (limited) return { error: limited }
   return publishAoOfferOf(me.tenantId, id, input, me.tenantId, [PATH, '/recruiter/annonces', '/recruiter/dashboard'], me.user)
+}
+
+/** Critères de matching d'un AO de l'organisation pas encore publié (ADR 0061), validés par le cœur ; sans IA, sans quota. */
+export async function saveRecruiterAoCriteria(id: string, criteria: OfferCriteriaSet | null) {
+  const me = await recruiter()
+  if (!me) return { error: SESSION_EXPIRED }
+  return saveAoCriteriaOf(me.tenantId, id, criteria)
 }
 
 export async function setRecruiterAoOfferStatus(id: string, status: 'to_review' | 'ignored') {

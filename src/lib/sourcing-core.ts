@@ -7,8 +7,14 @@
 import { parseModelJson } from '@/lib/ai/model-json'
 import { callLLM, primaryModel } from '@/lib/ai/llm-router'
 import { scoreCacheId } from '@/lib/score-cache'
-import { readCachedScore, writeCachedScore } from '@/lib/appwrite/score-cache'
+import { readCachedCriteriaScore, readCachedScore, writeCachedScore } from '@/lib/appwrite/score-cache'
+import {
+  criteriaJudgedScore, criteriaSummary, criteriaSystemPrompt, criteriaUserMessage, parseCriteriaJudgements, type CriteriaJudgements,
+} from '@/lib/criteria-scoring'
+import { criteriaFingerprint, type OfferCriteriaSet } from '@/lib/offer-criteria'
+import { loadOfferCriteria } from '@/lib/offer-criteria-store'
 import { PREFILTER_KEEP, offerLocation, prefilterPool } from '@/lib/search/prefilter'
+import type { FilterResult } from '@/lib/search/offer-filter'
 import { SCORING_AI } from '@/lib/ai/models'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
@@ -140,6 +146,7 @@ export async function matchCandidatesForJob(jobId: string, { exclude: alsoExclud
       {
         title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? ''), details: offerDetails(job),
         sourceContext: await aoSourceContext(job),
+        criteria: await loadOfferCriteria(jobId),
       },
       exclude,
       only,
@@ -168,6 +175,8 @@ export interface OfferForMatching {
   details?: string[]
   /** Offre publiée depuis un appel d'offres : sa description d'origine (aoSourceContext), contexte interne de la notation. */
   sourceContext?: string
+  /** Critères de l'offre (ADR 0061) : notation « matching » sur eux (v3) ; absents, sur le barème (v2). */
+  criteria?: OfferCriteriaSet | null
 }
 
 const CANDIDATE_FIELDS = ['$id', 'firstName', 'lastName', 'email', 'cvFileId', 'optedOutOfOutreach']
@@ -292,11 +301,7 @@ export function cvScorer(offer: OfferForMatching, scale: ActiveScale, { useCache
     // Score et résumé refaits d'après les jugements gardés : les poids par défaut ont pu changer depuis (ADR 0049).
     if (cached) return { ...cached, ...scoredFrom(cached.judgements, cached.notes), criteria }
 
-    // Une preuve par élément jugé : réponse plus longue qu'une note (et la réflexion du modèle compte dans la limite).
-    const { content, provider } = await callLLM([{ role: 'user', content: user }], system, { ...SCORING_AI, maxTokens: 8000, timeoutMs: 120_000, cachePrefix: offerPrefix })
-    const json = content.match(/\{[\s\S]*\}/)
-    let answer: unknown = null
-    try { answer = json ? parseModelJson(json[0]) : null } catch { answer = null }
+    const { answer, provider } = await askScoring(system, user, offerPrefix)
     // Jugements vérifiés dans le texte du CV que l'IA a lu (citations, intitulés), métiers du titre confirmés par la
     // comparaison des intitulés (title-check.ts).
     const parsed = parseJudgements(answer, criteria, cvText, scale)
@@ -312,6 +317,68 @@ export function cvScorer(offer: OfferForMatching, scale: ActiveScale, { useCache
   }
 }
 
+/** Appel de la notation : objet JSON de la réponse (null si illisible) et modèle qui a répondu. */
+async function askScoring(system: string, user: string, offerPrefix: string): Promise<{ answer: unknown; provider: string }> {
+  // Une preuve par élément jugé : réponse plus longue qu'une note (et la réflexion du modèle compte dans la limite).
+  const { content, provider } = await callLLM([{ role: 'user', content: user }], system, { ...SCORING_AI, maxTokens: 8000, timeoutMs: 120_000, cachePrefix: offerPrefix })
+  const json = content.match(/\{[\s\S]*\}/)
+  let answer: unknown = null
+  try { answer = json ? parseModelJson(json[0]) : null } catch { answer = null }
+  return { answer, provider }
+}
+
+/** Note d'un CV sur les critères d'une offre (v3, ADR 0061) : jugements par libellé, score calculé par le code. */
+export interface CriteriaCvScore {
+  score: number
+  /** Résumé des jugements (lettres, criteria-scoring.ts), puis la phrase de l'IA. */
+  reason: string
+  judgements: CriteriaJudgements
+  set: OfferCriteriaSet
+  notes: ScoringNotes
+  provider: string
+  answer: unknown
+}
+
+/** Score (poids des critères `set`) et raison d'une notation sur critères. */
+const scoredOnCriteria = (judgements: CriteriaJudgements, set: OfferCriteriaSet, notes: ScoringNotes) => ({
+  score: criteriaJudgedScore(judgements, set),
+  reason: `${criteriaSummary(judgements)}${notes.reason ? ` — ${notes.reason}` : ''}`,
+})
+
+/**
+ * Notation d'un CV sur les critères d'une offre (ADR 0061) : comme cvScorer (même modèle, même texte du CV, même
+ * vérification des citations et des intitulés, même cache), mais l'IA juge chaque libellé des critères. Seuls les
+ * libellés lui sont envoyés : une notation gardée vaut pour toute pondération des mêmes libellés.
+ */
+export function criteriaScorer(offer: OfferForMatching, set: OfferCriteriaSet, { useCache = true }: { useCache?: boolean } = {}): (cvText: string) => Promise<CriteriaCvScore | null> {
+  const system = criteriaSystemPrompt(set)
+  const offerPrefix = criteriaUserMessage(offer, set, '')
+  const fingerprint = criteriaFingerprint(set)
+  return async cvText => {
+    const user = criteriaUserMessage(offer, set, cvText)
+    const model = useCache ? await primaryModel(SCORING_AI) : null
+    const cacheId = model && scoreCacheId({ model: model.signature, scale: 'matching', system, user })
+    const cached = cacheId ? await readCachedCriteriaScore(cacheId, fingerprint) : null
+    if (cached) return { ...cached, ...scoredOnCriteria(cached.judgements, set, cached.notes), set }
+
+    const { answer, provider } = await askScoring(system, user, offerPrefix)
+    const parsed = parseCriteriaJudgements(answer, set, cvText)
+    if (!parsed) return null
+    const [judgements] = await withCheckedTitles([parsed])
+    const notes = parseScoringNotes(answer)
+    const scored: CriteriaCvScore = { ...scoredOnCriteria(judgements, set, notes), judgements, set, notes, provider, answer }
+    if (cacheId && model && provider === model.provider) {
+      await writeCachedScore(cacheId, { score: scored.score, reason: scored.reason, judgements, notes, provider, answer })
+    }
+    return scored
+  }
+}
+
+/** Notation « matching » d'une offre : sur ses critères quand elle en a (v3, ADR 0061), sinon sur le barème (v2). */
+export function matchingScorer(offer: OfferForMatching, options: { useCache?: boolean } = {}): (cvText: string) => Promise<CvScore | CriteriaCvScore | null> {
+  return offer.criteria ? criteriaScorer(offer, offer.criteria, options) : cvScorer(offer, 'matching', options)
+}
+
 /**
  * Candidats de la base (avec CV, hors désinscrits et hors `excludeCandidateIds`), MAX_CANDIDATES au plus, les plus
  * récents d'abord, notés pour une offre ; les mieux notés d'abord. Partagé par le sourcing des offres publiées et celui
@@ -324,7 +391,7 @@ export async function matchCandidatesForOffer(
   offer: OfferForMatching, excludeCandidateIds: Set<string> = new Set(), only?: string[],
 ): Promise<MatchResult> {
   try {
-    const scoreCv = cvScorer(offer, 'matching')
+    const scoreCv = matchingScorer(offer)
     const scoreOne = async (d: Models.Document): Promise<CandidateMatch | 'failed' | 'unreadable'> => {
       const cvText = await readCvForScoring(d.cvFileId as string).catch(e => {
         console.error('[sourcing] lecture du CV impossible', d.$id, e instanceof Error ? e.message : e)
@@ -352,6 +419,8 @@ export async function matchCandidatesForOffer(
 
     const matches: CandidateMatch[] = []
     const considered: string[] = []
+    // Résultat du filtre des critères (ADR 0061 phase 2) : null sans préfiltre, ou pour une liste imposée (`only`).
+    let filtered: FilterResult | null = null
     let failed = 0
     let scanned = 0
     const scoreBatch = async (batch: Models.Document[]) => {
@@ -368,13 +437,17 @@ export async function matchCandidatesForOffer(
     else {
       // ADR 0044 phase 2 : les CV de toute la base les plus proches de l'offre (index de recherche), revérifiés dans
       // Appwrite (CV, désinscription, exclusions) ; null sans préfiltre (non configuré ou en panne) : comme avant.
-      const prefiltered = await prefilterPool(
-        { title: offer.title, skills: offer.skills, location: offerLocation(offer.details) }, excludeCandidateIds)
-      if (prefiltered?.length) await scoreBatch(await scorableCandidates(prefiltered, excludeCandidateIds))
-      // Places restantes (préfiltre absent, ou moins de CV classés que de places) : les candidats les plus récents.
-      // Un CV illisible (PDF scanné…) ne compte pas : le passage continue avec les candidats suivants, sinon les mêmes
-      // CV illisibles bloqueraient la notation des nouveaux candidats à chaque clic. 3 tours au plus.
-      const target = prefiltered ? PREFILTER_KEEP : MAX_CANDIDATES
+      // ADR 0061 phase 2 : puis filtrés sur les critères de l'offre (★ requis, assouplis pas à pas, offer-filter.ts).
+      filtered = await prefilterPool(
+        { title: offer.title, skills: offer.skills, location: offerLocation(offer.details) }, excludeCandidateIds, offer.criteria)
+      if (filtered?.ids.length) await scoreBatch(await scorableCandidates(filtered.ids, excludeCandidateIds))
+      // Les plus récents ne complètent que sans préfiltre (non configuré, en panne) ou quand l'index ne connaît aucun CV
+      // pour l'offre (index vide, CV pas encore classés) : sinon le filtre a choisi les seuls CV qui valent un appel
+      // d'IA (« un minimum de candidats à noter », demande du 2026-11-24) — en ajouter d'autres paierait des CV qu'il a
+      // écartés ; un CV illisible parmi eux n'est pas remplacé. Pour les plus récents, un CV illisible (PDF scanné…) ne
+      // compte pas : le passage continue avec les suivants, sinon les mêmes CV illisibles bloqueraient la notation des
+      // nouveaux candidats à chaque clic. 3 tours au plus.
+      const target = !filtered ? MAX_CANDIDATES : filtered.indexed ? 0 : PREFILTER_KEEP
       const tried = new Set([...excludeCandidateIds, ...considered])
       for (let round = 0; round < 3 && scanned < target; round++) {
         const batch = await candidatesToScore(tried, target - scanned)
@@ -384,7 +457,12 @@ export async function matchCandidatesForOffer(
       }
     }
     if (considered.length === 0) {
-      return { matches, scanned, considered, error: excludeCandidateIds.size > 0 ? 'Aucun nouveau candidat avec CV à noter' : 'Aucun candidat avec CV dans la base pour le moment' }
+      const error = filtered && filtered.ids.length > 0
+        ? 'Les CV retenus pour cette offre ne sont plus disponibles (supprimés ou désinscrits) : relancez plus tard.'
+        : filtered && filtered.found > 0 && filtered.excluded === filtered.found
+          ? 'Aucun candidat de la base n’a les technologies requises (★) de l’offre.'
+          : excludeCandidateIds.size > 0 ? 'Aucun nouveau candidat avec CV à noter' : 'Aucun candidat avec CV dans la base pour le moment'
+      return { matches, scanned, considered, error }
     }
 
     matches.sort((a, b) => b.score - a.score)

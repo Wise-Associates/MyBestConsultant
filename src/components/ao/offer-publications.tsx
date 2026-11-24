@@ -79,16 +79,20 @@ function useOfferPublications(
     update(id, { running: 'publishing', error: '' })
     const skills = splitSkills(skillsText)
     let error = ''
+    // Offre publiée avec un point à signaler (critères de matching non enregistrés) : affiché, sans être un échec.
+    let notice = ''
     try {
       const res = await actions.publish(id, { ...draft, skills })
-      if (res.jobId) update(id, { jobId: res.jobId, preview: null, draft: null })
-      else error = res.error ?? 'Publication impossible.'
+      if (res.jobId) {
+        update(id, { jobId: res.jobId, preview: null, draft: null })
+        notice = res.notice ?? ''
+      } else error = res.error ?? 'Publication impossible.'
     } catch (err) {
       console.error('AO: publication interrompue', err instanceof Error ? err.message : String(err))
       // La requête a pu aboutir sur le serveur : l'offre est peut-être publiée.
       error = 'Publication interrompue (connexion perdue) : rechargez la page pour voir si l\'offre a été publiée.'
     }
-    update(id, { running: null, error })
+    update(id, { running: null, error: error || notice })
     onSettled({ id, title, work: 'publishing', mode: draft.anonymized ? 'anonymized' : 'raw', error })
   }
 

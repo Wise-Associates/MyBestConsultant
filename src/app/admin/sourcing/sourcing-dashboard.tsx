@@ -1,5 +1,6 @@
 'use client'
 
+import { reasonWithoutCriteria } from '@/lib/criteria-scoring'
 import { useState, useEffect, useTransition } from 'react'
 import {
   Radar, Sparkles, Loader2, AlertCircle, Mail, Check, X, Send, User,
@@ -197,7 +198,7 @@ export function SourcingDashboard({ jobs }: { jobs: SourcingJob[] }) {
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm text-white">{m.name || 'Candidat'}</p>
                     <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{m.email}</p>
-                    <p className="text-sm mt-2" style={{ color: 'rgba(255,255,255,0.6)' }}>{m.reason}</p>
+                    <p className="text-sm mt-2" style={{ color: 'rgba(255,255,255,0.6)' }}>{reasonWithoutCriteria(m.reason)}</p>
                   </div>
                   <button onClick={() => setContacting(m)} disabled={isSent}
                     className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg font-semibold shrink-0"

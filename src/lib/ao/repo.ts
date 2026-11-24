@@ -1,3 +1,6 @@
+import { parseCriteriaSet, type OfferCriteriaSet } from '@/lib/offer-criteria'
+import { serializeCriteria } from '@/lib/offer-criteria-store'
+import { sourcingJson } from './sourcing-json'
 import { ID, Query, type Models } from 'node-appwrite'
 import { pageFillJson, parsePageFill, type PageFill } from './source-page/page-fill'
 import { z } from 'zod'
@@ -434,12 +437,51 @@ export async function getAoOfferSourcing(offerId: string): Promise<AoSourcingRec
 /** Enregistre le dernier sourcing d'une offre (document de détails créé s'il n'existe pas encore). */
 export async function saveAoOfferSourcing(offerId: string, record: AoSourcingRecord): Promise<void> {
   const { databases } = createAdminClient()
-  const sourcing = JSON.stringify(record).slice(0, 5000)
+  // Entier et dans l'attribut (sourcingJson) : un JSON coupé ferait passer le sourcing pour jamais fait.
+  const sourcing = sourcingJson(record)
   try {
     await databases.updateDocument(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, offerId, { sourcing })
   } catch (err) {
     if ((err as { code?: number }).code !== 404) throw err
     await databases.createDocument(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, offerId, { engagement: '', technologies: [], sourcing })
+  }
+}
+
+/**
+ * Critères de matching d'un AO pas encore publié (ADR 0061), réglés avant sa publication puis recopiés sur l'offre
+ * publiée (offer-criteria-store.ts) ; null sans critères, ou critères devenus invalides (journalisé). Une panne est levée.
+ */
+export async function getAoOfferCriteria(offerId: string): Promise<OfferCriteriaSet | null> {
+  const { databases } = createAdminClient()
+  let raw: unknown
+  try {
+    raw = (await databases.getDocument(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, offerId)).matchingCriteria
+  } catch (err) {
+    if ((err as { code?: number }).code === 404) return null
+    throw err
+  }
+  const set = parseCriteriaSet(raw)
+  if (!set && raw) console.error('AO: critères de matching enregistrés illisibles, ignorés', offerId)
+  return set
+}
+
+/** Enregistre les critères d'un AO (déjà validés) ; null les retire. Document de détails créé s'il n'existe pas encore. */
+export async function saveAoOfferCriteria(offerId: string, set: OfferCriteriaSet | null): Promise<void> {
+  const matchingCriteria = set ? serializeCriteria(set) : ''
+  if (matchingCriteria === null) throw new Error('Critères trop longs : retirez des libellés.')
+  const { databases } = createAdminClient()
+  const update = () => databases.updateDocument(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, offerId, { matchingCriteria })
+  try {
+    await update()
+  } catch (err) {
+    if ((err as { code?: number }).code !== 404) throw err
+    try {
+      await databases.createDocument(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, offerId, { engagement: '', technologies: [], matchingCriteria })
+    } catch (createErr) {
+      // Créé entre-temps par une autre écriture des détails (sourcing, synchronisation) : on le complète.
+      if ((createErr as { code?: number }).code !== 409) throw createErr
+      await update()
+    }
   }
 }
 
@@ -452,7 +494,11 @@ export async function listAoOfferDetails(offerIds: string[]): Promise<Map<string
   const map = new Map<string, AoOfferDetails & { channel: AoChannel; veilleSource: string; pageFill: PageFill | null }>()
   // Lots lus en parallèle : chaque appel à Appwrite coûte un aller-retour réseau.
   const pages = await Promise.all(batchByLength([...new Set(offerIds.filter(Boolean))]).map(batch =>
-    databases.listDocuments(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, [Query.equal('$id', batch), Query.limit(batch.length)])))
+    // Champs lus seulement : sourcing (5 000) et critères (20 000) n'ont rien à faire dans la liste.
+    databases.listDocuments(DB_ID, COLLECTIONS.AO_OFFER_DETAILS, [
+      Query.equal('$id', batch), Query.limit(batch.length),
+      Query.select(['$id', 'engagement', 'technologies', 'channel', 'veilleSource', 'contact', 'sourceUrl', 'pageFill']),
+    ])))
   for (const doc of pages.flatMap(res => res.documents) as (Models.Document & Record<string, unknown>)[]) {
     map.set(doc.$id, {
       engagement: engagementOf(str(doc.engagement)),

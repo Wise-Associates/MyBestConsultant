@@ -3696,6 +3696,15 @@
                     "size": 1000,
                     "default": null,
                     "encrypt": false
+                },
+                {
+                    "key": "matchingCriteria",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 20000,
+                    "default": null,
+                    "encrypt": false
                 }
             ],
             "indexes": []
@@ -5340,6 +5349,15 @@
                     "size": 2000,
                     "default": null,
                     "encrypt": false
+                },
+                {
+                    "key": "criteria",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 20000,
+                    "default": null,
+                    "encrypt": false
                 }
             ],
             "indexes": [
@@ -5359,6 +5377,73 @@
                     "attributes": [
                         "userId",
                         "jobId"
+                    ],
+                    "orders": []
+                }
+            ]
+        },
+        {
+            "$id": "criteria_judgements",
+            "$permissions": [],
+            "databaseId": "bestconsultant-dev",
+            "name": "criteria judgements",
+            "enabled": true,
+            "documentSecurity": false,
+            "attributes": [
+                {
+                    "key": "jobId",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 36,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "candidate",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 40,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "fingerprint",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 16,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "reason",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 1000,
+                    "default": null,
+                    "encrypt": false
+                }
+            ],
+            "indexes": [
+                {
+                    "key": "jobId_fingerprint_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "jobId",
+                        "fingerprint"
+                    ],
+                    "orders": []
+                },
+                {
+                    "key": "candidate_idx",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "candidate"
                     ],
                     "orders": []
                 }

@@ -11,7 +11,9 @@ import { AoOfferPage } from '@/components/ao/ao-offer-page'
 import { AoAssignee } from '@/components/ao/ao-assignee'
 import { getAoAssignee, listTenantRecruiters, recruiterOptions, type RecruiterOption } from '@/lib/recruiter-assignment'
 import { viewerCanUseAoOffer } from '@/lib/offer-viewer'
-import { assignRecruiterAoOffer, recruiterAoOfferSourcing, setRecruiterAoOfferStatus, stopRecruiterAoPublicationTasks } from '../actions'
+import {
+  assignRecruiterAoOffer, recruiterAoOfferSourcing, saveRecruiterAoCriteria, setRecruiterAoOfferStatus, stopRecruiterAoPublicationTasks,
+} from '../actions'
 
 // Page d'un appel d'offres de l'organisation du recruteur : détail, préparation et publication, sourcing, et offres
 // précédente et suivante de la liste filtrée (filtres de la liste gardés dans l'adresse). Offres des boîtes de son
@@ -78,7 +80,7 @@ export default async function RecruiterAoOfferPage({ params, searchParams }: {
       trackingError={trackingError}
       neighbours={neighbours}
       query={query}
-      actions={{ setStatus: setRecruiterAoOfferStatus, sourcing: recruiterAoOfferSourcing, stopTasks: stopRecruiterAoPublicationTasks }}
+      actions={{ setStatus: setRecruiterAoOfferStatus, sourcing: recruiterAoOfferSourcing, stopTasks: stopRecruiterAoPublicationTasks, saveCriteria: saveRecruiterAoCriteria }}
       paths={{ list: '/recruiter/parametres/boites-ao', originalApi: '/api/recruiter/ao/original', jobs: '/recruiter/annonces' }}
       copy={{
         title: 'Appels d’offres',

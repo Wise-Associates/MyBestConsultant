@@ -1,5 +1,6 @@
 'use server'
 
+import { deleteJudgementsOfCandidate } from '@/lib/criteria-judgements-store'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
 import { ID, Query } from 'node-appwrite'
@@ -446,6 +447,7 @@ export async function deleteVivierCv(jobId: string | null, docId: string): Promi
     }
     await databases.deleteDocument(DB_ID, COLLECTIONS.VIVIER_CVS, docId)
     await deleteClassification('vivier', docId) // ne lève jamais : un reste est purgé par npm run cv:classify
+    await deleteJudgementsOfCandidate(`v:${docId}`) // jugements sur des critères propres (ADR 0061) ; ne lève jamais
     // Correspondances aux offres (vivier général, ADR 0026) après le CV : supprimées avant, un échec de sa suppression
     // l'aurait retiré du Matching IA sans que rien ne les recrée. Restées, elles sont écartées à la lecture (CV absent)
     // et purgées par npm run vivier:matches.

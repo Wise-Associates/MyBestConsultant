@@ -8,10 +8,11 @@ import {
 // titre de l'offre / intitulé du CV » d'une notation (un CV, ou un CV et plusieurs offres du vivier général).
 
 /**
- * Jugements dont les métiers du titre sont confirmés par la comparaison des intitulés, dans l'ordre de `judged`.
+ * Jugements dont les métiers du titre sont confirmés par la comparaison des intitulés, dans l'ordre de `judged` (barème
+ * ou critères d'une offre, criteria-scoring.ts : seuls les métiers comptent).
  * Comparaison impossible (IA indisponible, réponse illisible) : journalisée, métiers gardés à « partiel » au plus.
  */
-export async function withCheckedTitles(judged: MatchJudgements[]): Promise<MatchJudgements[]> {
+export async function withCheckedTitles<J extends Pick<MatchJudgements, 'roles'>>(judged: J[]): Promise<J[]> {
   const pairsPerJudgement = judged.map(rolePairs)
   const pairs = pairsPerJudgement.flat()
   let relations: (TitleRelation | null)[] = pairs.map(() => null)

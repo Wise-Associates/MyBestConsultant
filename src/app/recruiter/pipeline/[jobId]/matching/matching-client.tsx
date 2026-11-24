@@ -25,6 +25,10 @@ import { JobHeaderGrid, JobTabs } from '@/components/recruiter/job-tabs'
 import { JobInfoButton } from '@/components/recruiter/job-info-button'
 import { ScoringWeightsButton } from '../scoring-weights-dialog'
 import { CandidateWeightsPanel, JobWeightsPanel } from '../weights-override-panel'
+import { CandidateCriteriaEditor, CriteriaPanel, CriteriaScoreDetail, type MatchingCriteria } from './criteria-detail'
+import { rowCriteria } from '@/lib/criteria-view'
+import { criteriaBreakdown, isCriteriaSummary, reasonWithoutCriteria } from '@/lib/criteria-scoring'
+import type { OfferCriteriaSet } from '@/lib/offer-criteria'
 import { SOURCING_MIN_SCORE } from '@/lib/sourcing-rules'
 
 const PAGE_SIZE = 25
@@ -128,7 +132,9 @@ function profileHref(m: JobMatchResult): string | null {
 }
 
 /** `now` : heure du rendu par le serveur (ISO), avancée à chaque actualisation de la liste. */
-export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMatches, tabCounts, weights, weightsUnreadable, globalWeights, jobWeights, now, reviewEnabled }: {
+export function MatchingClient({
+  jobId, jobTitle, jobMeta, jobSkills, initialMatches, tabCounts, weights, weightsUnreadable, globalWeights, jobWeights, criteria, criteriaStart, canEditCriteria, now, reviewEnabled,
+}: {
   jobId: string; jobTitle: string
   /** Revue des correspondances de la base activée (ADR 0047, AI_AUTO_MATCHING_ENABLED). */
   reviewEnabled: boolean
@@ -146,11 +152,38 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
   initialMatches: JobMatchResult[]; now: string
   /** Pastilles des onglets Funnel et Réponse client (absentes si illisibles). */
   tabCounts?: { funnel: number; client: number }
+  /**
+   * Critères de l'offre et les miens (ADR 0061) : ses scores « matching » sont notés sur eux, leur détail relu avec ceux
+   * qui s'appliquent au candidat ; les poids du barème (globaux, par offre, par candidat) ne s'appliquent pas à ces scores.
+   * null : offre notée sur le barème.
+   */
+  criteria: MatchingCriteria | null
+  /** Premiers critères proposés pour une offre qui n'en a pas (critères par défaut de l'offre). */
+  criteriaStart: OfferCriteriaSet
+  /** Le recruteur peut modifier l'offre (« Modifier ») : il règle ses critères généraux. */
+  canEditCriteria: boolean
 }) {
   const [matches, setMatches] = useState(initialMatches)
+  // Liste relue par le serveur (router.refresh après un enregistrement de critères, « Noter la suite », « Actualiser ») :
+  // elle remplace celle de l'état, scores recalculés par le serveur (ADR 0061 phase 3).
+  const [seed, setSeed] = useState(initialMatches)
+  if (seed !== initialMatches) {
+    setSeed(initialMatches)
+    setMatches(initialMatches)
+  }
   // Poids propres aux candidats : mis à jour sur place à l'enregistrement, puis la liste est relue (scores recalculés par le serveur).
   const [candWeights, setCandWeights] = useState(() => jobWeights?.candidates ?? {})
   const rowWeights = (m: JobMatchResult) => withOverride(weights, candWeights[candidateWeightsKey(m)])
+  /** Détail d'un score noté sur les critères de l'offre ; null pour un score du barème ou noté sur d'autres critères. */
+  const criteriaDetailOf = (m: JobMatchResult) => (criteria && m.score != null ? criteriaBreakdown(m.reason, rowCriteria(criteria, m)) : null)
+  /** Pourquoi un score noté sur critères n'a pas de détail : en attente d'un jugement sur mes libellés, ou noté sur d'autres. */
+  const noDetailText = (m: JobMatchResult) => (m.criteriaPending
+    ? 'Notation sur vos critères en cours : score de l’offre affiché en attendant'
+    : m.criteriaStale ? 'Score calculé sur les anciens critères de l’offre, renotation en cours ou interrompue'
+      : `Détail du score indisponible : score calculé ${isCriteriaSummary(m.reason) ? 'sur d’autres critères de l’offre' : 'avant la notation par critères'}`)
+  const pendingCount = matches.filter(m => m.criteriaPending).length
+  /** Raison affichée : la phrase de l'IA, sans le résumé des jugements (lettres pour un score noté sur critères). */
+  const reasonOf = (m: JobMatchResult, b: { rest: string } | null) => (b ? b.rest : reasonWithoutCriteria(m.reason))
   /** Le candidat a ses propres poids pour le barème de son score. */
   const ownWeights = (m: JobMatchResult, b: ScoreBreakdown | null) => !!b && b.scale !== 'legacy' && !!candWeights[candidateWeightsKey(m)]?.[b.scale]
   const saveCandidateWeights = (m: JobMatchResult, scale: ActiveScale) => async (saved: ScaleWeights | null) => {
@@ -408,7 +441,8 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
           </a>
         </div>
       )}
-      <ScoringGuide className="" weights={weights} />
+      {/* Offre notée sur ses critères : le guide du barème ne la décrit pas (ses critères sont dans la colonne de droite). */}
+      {!criteria && <ScoringGuide className="" weights={weights} />}
     </aside>
   )
 
@@ -434,7 +468,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
             const isFocused = focused !== null && keyOf(focused) === keyOf(m)
             const cv = cvHref(m)
             const breakdown = m.score != null ? scoreBreakdown(m.reason, rowWeights(m)) : null
-            const reasonText = breakdown ? breakdown.rest : m.reason
+            const reasonText = reasonOf(m, breakdown ?? criteriaDetailOf(m))
             return (
               <tr key={keyOf(m)} onClick={() => setFocusKey(keyOf(m))} aria-selected={isFocused}
                 className="cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_2.5%,transparent)]"
@@ -512,12 +546,14 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
   )
 
   const focusedBreakdown = focused && focused.score != null ? scoreBreakdown(focused.reason, rowWeights(focused)) : null
+  const focusedCriteria = focused && !focusedBreakdown ? criteriaDetailOf(focused) : null
   const focusedProfile = focused ? profileHref(focused) : null
   const focusedCv = focused ? cvHref(focused) : null
   const panelButton = 'h-10 px-3 rounded-[10px] inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold no-underline transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)'
   const panel = (
     <aside aria-label="Candidat et sélection" className="hidden min-[90rem]:flex flex-col gap-3 sticky top-[84px]">
-      {jobWeights && <JobWeightsPanel jobId={jobId} global={globalWeights.matching} job={jobWeights.weights} unreadable={jobWeights.unreadable} />}
+      <CriteriaPanel jobId={jobId} criteria={criteria} start={criteriaStart} canEdit={canEditCriteria} pending={pendingCount} />
+      {!criteria && jobWeights && <JobWeightsPanel jobId={jobId} global={globalWeights.matching} job={jobWeights.weights} unreadable={jobWeights.unreadable} />}
       {focused && (
         <section aria-label={`Détail de ${focused.name}`} className="rounded-[20px] p-4" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
           <div className="flex items-start justify-between gap-3">
@@ -542,17 +578,23 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
             <p className="text-[13px] mt-3 mb-3" style={muted}>{analysing(focused) ? 'Matching en cours…' : 'Pas encore analysé.'}</p>
           )}
           {focused.score != null && focusedBreakdown && <ScoreCriteriaList breakdown={focusedBreakdown} match={{ ...focused, score: focused.score }} />}
+          {focused.score != null && focusedCriteria && <CriteriaScoreDetail breakdown={focusedCriteria} match={{ ...focused, score: focused.score }} variant="list" />}
+          {criteria && focused.score != null && focused.source !== 'application' && isCriteriaSummary(focused.reason) && (
+            <CandidateCriteriaEditor key={keyOf(focused)} jobId={jobId} candidateKey={candidateWeightsKey(focused)} criteria={criteria} />
+          )}
           {jobWeights && focused.score != null && focusedBreakdown && focusedBreakdown.scale !== 'legacy' && (
             <CandidateWeightsPanel key={keyOf(focused)} className="mt-3" jobId={jobId} candidateKey={candidateWeightsKey(focused)} scale={focusedBreakdown.scale}
               reference={weights[focusedBreakdown.scale]} own={candWeights[candidateWeightsKey(focused)]?.[focusedBreakdown.scale] ?? null}
               onSaved={saveCandidateWeights(focused, focusedBreakdown.scale)} />
           )}
-          {focused.score != null && !focusedBreakdown && (
-            <p className="text-[11.5px]" style={muted}>Détail du score indisponible : score calculé avant la notation par critères.</p>
+          {focused.score != null && !focusedBreakdown && !focusedCriteria && (
+            <p className="text-[11.5px]" style={muted}>
+              {noDetailText(focused)}{!focused.criteriaPending && isCriteriaSummary(focused.reason) ? ' ; « Rafraîchir » le recalcule' : ''}.
+            </p>
           )}
-          {(focusedBreakdown ? focusedBreakdown.rest : focused.reason) && (
+          {reasonOf(focused, focusedBreakdown ?? focusedCriteria) && (
             <p className="text-[12.5px] leading-relaxed mt-3 pt-3" style={{ color: 'var(--color-text)', borderTop: '1px solid var(--color-border)' }}>
-              {focusedBreakdown ? focusedBreakdown.rest : focused.reason}
+              {reasonOf(focused, focusedBreakdown ?? focusedCriteria)}
             </p>
           )}
           {(focused.recommendation || focused.hunterName) && (
@@ -630,8 +672,11 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                   {isRefreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
                   Rafraîchir
                 </button>
-                <ScoringWeightsButton scale="matching" weights={globalWeights.matching} unreadable={weightsUnreadable}
-                  label={jobWeights ? 'Pondération globale' : 'Pondération'} />
+                {/* Poids du barème : sans effet sur une offre notée sur ses critères. */}
+                {!criteria && (
+                  <ScoringWeightsButton scale="matching" weights={globalWeights.matching} unreadable={weightsUnreadable}
+                    label={jobWeights ? 'Pondération globale' : 'Pondération'} />
+                )}
                 <Link href={`/recruiter/pipeline/${jobId}`}
                   className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold no-underline transition-opacity hover:opacity-85"
                   style={{ background: '#10b981', color: 'white', boxShadow: '0 6px 16px -6px rgba(16,185,129,0.6)' }}>
@@ -650,10 +695,15 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
           <p className="text-sm mb-3" style={{ color: 'var(--color-text-muted)' }}>
             L&apos;IA a comparé cette offre aux candidatures reçues, à la base de candidats et à votre vivier (celui de l&apos;offre et votre vivier général). Sélectionnez qui vous intéresse puis lancez (ou relancez) le screening.
           </p>
-          {jobWeights && (
-            <JobWeightsPanel className="mb-4" jobId={jobId} global={globalWeights.matching} job={jobWeights.weights} unreadable={jobWeights.unreadable} />
+          <CriteriaPanel className="mb-4" jobId={jobId} criteria={criteria} start={criteriaStart} canEdit={canEditCriteria} pending={pendingCount} />
+          {!criteria && (
+            <>
+              {jobWeights && (
+                <JobWeightsPanel className="mb-4" jobId={jobId} global={globalWeights.matching} job={jobWeights.weights} unreadable={jobWeights.unreadable} />
+              )}
+              <ScoringGuide weights={weights} />
+            </>
           )}
-          <ScoringGuide weights={weights} />
         </div>
 
         {flash && (
@@ -730,7 +780,8 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                 const cv = cvHref(m)
                 const profile = profileHref(m)
                 const breakdown = m.score != null ? scoreBreakdown(m.reason, rowWeights(m)) : null
-                const reasonText = breakdown ? breakdown.rest : m.reason
+                const criteriaDetail = breakdown ? null : criteriaDetailOf(m)
+                const reasonText = reasonOf(m, breakdown ?? criteriaDetail)
                 const disabled = m.alreadyInFunnel
                 return (
                   <div key={`${m.source}-${m.id}`} onClick={() => toggle(m)}
@@ -828,6 +879,7 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                         </p>
                       )}
                       {m.score != null && breakdown && <ScoreDetail breakdown={breakdown} match={{ ...m, score: m.score }} />}
+                      {m.score != null && criteriaDetail && <CriteriaScoreDetail breakdown={criteriaDetail} match={{ ...m, score: m.score }} variant="card" />}
                       {jobWeights && m.score != null && breakdown && breakdown.scale !== 'legacy' && (
                         // Formulaire dans la carte, qui coche le candidat au clic : le clic reste dans le formulaire.
                         <div onClick={e => e.stopPropagation()} className="mt-2.5">
@@ -836,9 +888,9 @@ export function MatchingClient({ jobId, jobTitle, jobMeta, jobSkills, initialMat
                             onSaved={saveCandidateWeights(m, breakdown.scale)} />
                         </div>
                       )}
-                      {m.score != null && !breakdown && (
+                      {m.score != null && !breakdown && !criteriaDetail && (
                         <p className="text-[11px] mt-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                          Détail du score indisponible : score calculé avant la notation par critères{m.source === 'pool' ? ' ; « Rafraîchir » le recalcule' : m.source === 'application' ? ' ; « Relancer » le recalcule' : ''}.
+                          {noDetailText(m)}{m.criteriaPending ? '' : m.source === 'pool' ? ' ; « Rafraîchir » le recalcule' : m.source === 'application' ? ' ; « Relancer » le recalcule' : ''}.
                         </p>
                       )}
                       {reasonText && <p className="text-xs mt-1.5 leading-snug" style={{ color: 'var(--color-text-muted)' }}>{reasonText}</p>}

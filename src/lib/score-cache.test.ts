@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  SCORE_CACHE_MAX_CHARS, SCORE_CACHE_TTL_DAYS, isFreshScore, parseCachedScore, scoreCacheCutoff, scoreCacheId,
-  serializeCachedScore, type CachedScore,
+  SCORE_CACHE_MAX_CHARS, SCORE_CACHE_TTL_DAYS, isFreshScore, parseCachedCriteriaScore, parseCachedScore, scoreCacheCutoff, scoreCacheId,
+  serializeCachedScore, type CachedCriteriaScore, type CachedScore,
 } from './score-cache'
 
 // Notation fictive.
@@ -35,6 +35,22 @@ describe('cache des notations (ADR 0044)', () => {
     assert.ok(text)
     assert.deepEqual(parseCachedScore(text, 'matching'), entry)
     assert.equal(parseCachedScore(text, 'final'), null)
+  })
+
+  it('notation sur les critères d’une offre (ADR 0061) : relue pour la même empreinte de libellés seulement', () => {
+    const criteria: CachedCriteriaScore = {
+      ...entry, reason: 'Critères v1#0a1b2c3d · o · op — Expérience bancaire solide.',
+      judgements: {
+        fingerprint: '0a1b2c3d', roles: [{ title: 'Chef de projet', fit: 'oui', cited: 'Chef de projet senior' }],
+        criteria: [{ id: 'poste', values: ['oui'] }, { id: 'competences', values: ['oui', 'partiel'] }],
+      },
+    }
+    const text = serializeCachedScore(criteria)
+    assert.deepEqual(parseCachedCriteriaScore(text, '0a1b2c3d'), criteria)
+    assert.equal(parseCachedCriteriaScore(text, 'ffffffff'), null)
+    // Jamais confondue avec une notation du barème, ni l'inverse.
+    assert.equal(parseCachedScore(text, 'matching'), null)
+    assert.equal(parseCachedCriteriaScore(serializeCachedScore(entry), '0a1b2c3d'), null)
   })
 
   it('traite comme absente une valeur abîmée, incomplète ou trop longue', () => {

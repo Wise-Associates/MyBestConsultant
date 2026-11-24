@@ -1,5 +1,6 @@
 'use client'
 
+import { reasonWithoutCriteria } from '@/lib/criteria-scoring'
 import { useEffect, useMemo, useRef, useState, useTransition, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { AlertTriangle, Ban, Check, CircleStop, Copy, Download, ExternalLink, Eye, Loader2, Mail, Paperclip, Phone, RotateCcw, Send, ShieldAlert, Sparkles, Users, X } from 'lucide-react'
 import { AO_CHANNEL_LABEL, type AoOfferRow } from '@/lib/ao/filters'
@@ -12,6 +13,8 @@ import { linkedInPostOf, splitSkills, type SocialPreview } from '@/lib/ao/public
 import { SOCIAL_CONTEXT_MAX, type SocialEdits } from '@/lib/social-content'
 import { Skeleton, SkeletonRegion } from '@/components/shared/skeleton'
 import { AoDescription } from './ao-description'
+import { CriteriaEditor } from './criteria-editor'
+import { criteriaSetProblem } from '@/lib/offer-criteria'
 import { WorkBadge, type OfferPublication } from './offer-publications'
 import { TrackingStepper } from './offer-tracking'
 import type { TrackingStep } from '@/lib/ao/tracking'
@@ -21,7 +24,7 @@ import {
 
 interface Props {
   row: AoOfferRow
-  actions: Pick<AoDashboardActions, 'setStatus' | 'sourcing' | 'stopTasks'>
+  actions: Pick<AoDashboardActions, 'setStatus' | 'sourcing' | 'stopTasks' | 'saveCriteria'>
   paths: Pick<AoDashboardPaths, 'originalApi' | 'jobs'>
   /** Sous le formulaire de publication : ce que la publication déclenche dans cet espace. */
   publishNote: string
@@ -62,6 +65,9 @@ export function AoOfferDetail({ row, actions, paths, publishNote, tracking, soci
   const [pending, start] = useTransition()
   const busy = pending || running !== null
   const error = statusError || publication.error
+  // Critères de matching (ADR 0061) : la publication attend des critères valides (refusés aussi par le serveur).
+  const criteriaProblem = draft?.criteria ? criteriaSetProblem(draft.criteria) : null
+  const saveCriteria = actions.saveCriteria
   const jobId = publication.jobId ?? row.jobId
 
   function changeStatus(status: 'to_review' | 'ignored') {
@@ -83,6 +89,8 @@ export function AoOfferDetail({ row, actions, paths, publishNote, tracking, soci
     const fields: [string, string][] = [
       ['titre', draft.title], ['entreprise affichée', draft.companyName], ['ville', draft.location], ['compétences', skillsText], ['description', draft.description],
       ['post LinkedIn, « Le projet »', draft.social?.context ?? ''],
+      // Jamais publiés, mais montrés à ceux qui ouvrent l'offre : refusés aussi à la publication s'ils nomment le client.
+      ['critères de matching', draft.criteria ? [...draft.criteria.criteria.flatMap(c => [c.name, ...c.labels.map(l => l.label)]), ...draft.criteria.alternativeTitles].join(' · ') : ''],
     ]
     // Version non anonymisée : client et références restent volontairement, seuls les noms de personnes sont signalés.
     const find = draft.anonymized === false ? findNames : findIdentifiers
@@ -363,6 +371,13 @@ export function AoOfferDetail({ row, actions, paths, publishNote, tracking, soci
             <PublicationPreviewTabs draft={draft} skills={skillsText} social={preview.social} hiddenNames={preview.hiddenNames} onSocial={editSocial} />
           </div>
 
+          {/* Jamais publiés : les modifier ne remet pas en cause la relecture de la version. */}
+          {draft.criteria && (
+            <CriteriaEditor criteria={draft.criteria} source={preview.criteriaSource} notice={preview.criteriaNotice}
+              onChange={criteria => onEdit({ draft: { ...draft, criteria } })}
+              save={saveCriteria && (criteria => saveCriteria(row.$id, criteria))} />
+          )}
+
           <label className="flex items-start gap-3 p-3 rounded-lg cursor-pointer text-sm text-admin-fg" style={{ background: 'var(--admin-panel-raised)', border: '1px solid var(--admin-line)' }}>
             <input type="checkbox" checked={draft.reviewed} onChange={e => onEdit({ draft: { ...draft, reviewed: e.target.checked } })}
               className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: '#F97316' }} />
@@ -374,13 +389,14 @@ export function AoOfferDetail({ row, actions, paths, publishNote, tracking, soci
           </label>
           </fieldset>
           <div className="flex flex-wrap items-center gap-3">
-            <button type="button" onClick={() => onPublish(draft, skillsText)} disabled={busy || !draft.reviewed}
-              style={{ ...primaryButton, opacity: busy || !draft.reviewed ? 0.5 : 1, cursor: busy || !draft.reviewed ? 'not-allowed' : 'pointer' }}>
+            <button type="button" onClick={() => onPublish(draft, skillsText)} disabled={busy || !draft.reviewed || !!criteriaProblem}
+              style={{ ...primaryButton, opacity: busy || !draft.reviewed || criteriaProblem ? 0.5 : 1, cursor: busy || !draft.reviewed || criteriaProblem ? 'not-allowed' : 'pointer' }}>
               {running === 'publishing' ? <Loader2 size={15} className="animate-spin motion-reduce:animate-none" /> : <Send size={15} />}
               {running === 'publishing' ? 'Publication en cours…' : raw ? 'Publier l\'offre non anonymisée' : 'Publier l\'offre anonymisée'}
             </button>
             <button type="button" onClick={onCancel} disabled={busy} style={secondaryButton}>Annuler</button>
             {!draft.reviewed && !running && <span className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>Cochez la case de relecture pour publier.</span>}
+            {draft.reviewed && criteriaProblem && !running && <span className="text-xs" style={{ color: '#b91c1c' }}>Corrigez les critères de matching pour publier.</span>}
           </div>
           <p role="status" aria-live="polite" className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
             {running === 'publishing'
@@ -798,7 +814,7 @@ function Sourcing({ offerId, sourcing, version, onComputingChange, stopRef }: {
                     {c.name || 'Candidat sans nom'}
                     <span className="ml-2 text-xs font-normal" style={{ color: 'var(--admin-fg-muted)' }}>{ORIGIN_LABEL[c.origin]}</span>
                   </span>
-                  <span className="block text-xs mt-0.5" style={{ color: 'var(--admin-fg-muted)' }}>{c.reason}</span>
+                  <span className="block text-xs mt-0.5" style={{ color: 'var(--admin-fg-muted)' }}>{reasonWithoutCriteria(c.reason)}</span>
                 </span>
               </li>
             ))}

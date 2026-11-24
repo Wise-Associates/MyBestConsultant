@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
+import type { CriteriaJudgements } from './criteria-scoring'
 import type { ActiveScale, MatchJudgements, ScoringNotes } from './match-scoring'
 
 // Cache des notations d'un CV pour une offre (ADR 0044, phase 1) : une notation déjà faite pour exactement le même texte
@@ -34,7 +35,19 @@ export interface CachedScore {
   answer: unknown
 }
 
+/**
+ * Notation gardée sur les critères d'une offre (v3, ADR 0061) : mêmes champs, jugements par libellé. Ses consignes
+ * diffèrent de celles du barème : jamais le même identifiant qu'une notation v2.
+ */
+export interface CachedCriteriaScore extends Omit<CachedScore, 'judgements'> {
+  judgements: CriteriaJudgements
+}
+
 const judgement = z.enum(['oui', 'partiel', 'non'])
+const notesSchema = z.object({
+  reason: z.string(), summary: z.string(), strengths: z.array(z.string()), concerns: z.array(z.string()),
+  namedSkills: z.array(z.object({ name: z.string(), match: judgement })),
+})
 // Données écrites par le serveur lui-même ; relues avec les seules vérifications qui évitent de planter un appelant.
 const cachedSchema = z.object({
   score: z.number().min(0).max(100),
@@ -46,16 +59,26 @@ const cachedSchema = z.object({
     skills: z.array(judgement),
     fits: z.record(z.string(), z.unknown()),
   }),
-  notes: z.object({
-    reason: z.string(), summary: z.string(), strengths: z.array(z.string()), concerns: z.array(z.string()),
-    namedSkills: z.array(z.object({ name: z.string(), match: judgement })),
+  notes: notesSchema,
+  provider: z.string(),
+  answer: z.unknown(),
+})
+
+const cachedCriteriaSchema = z.object({
+  score: z.number().min(0).max(100),
+  reason: z.string(),
+  judgements: z.object({
+    fingerprint: z.string(),
+    roles: z.array(z.object({ title: z.string(), fit: judgement, cited: z.string().optional() })),
+    criteria: z.array(z.object({ id: z.string(), values: z.array(z.enum(['oui', 'partiel', 'non', 'non requis', 'non précisé'])) })),
   }),
+  notes: notesSchema,
   provider: z.string(),
   answer: z.unknown(),
 })
 
 /** Texte à enregistrer ; null si la notation est trop longue pour l'attribut. */
-export function serializeCachedScore(entry: CachedScore): string | null {
+export function serializeCachedScore(entry: CachedScore | CachedCriteriaScore): string | null {
   const text = JSON.stringify(entry)
   return text.length <= SCORE_CACHE_MAX_CHARS ? text : null
 }
@@ -67,6 +90,17 @@ export function parseCachedScore(raw: unknown, scale: ActiveScale): CachedScore 
     const parsed = cachedSchema.safeParse(JSON.parse(raw))
     if (!parsed.success || parsed.data.judgements.scale !== scale) return null
     return parsed.data as unknown as CachedScore
+  } catch {
+    return null // valeur abîmée : la notation est refaite
+  }
+}
+
+/** Notation sur critères relue, pour cette empreinte de libellés ; null si illisible, d'un autre format ou d'autres libellés. */
+export function parseCachedCriteriaScore(raw: unknown, fingerprint: string): CachedCriteriaScore | null {
+  if (typeof raw !== 'string' || !raw) return null
+  try {
+    const parsed = cachedCriteriaSchema.safeParse(JSON.parse(raw))
+    return parsed.success && parsed.data.judgements.fingerprint === fingerprint ? parsed.data : null
   } catch {
     return null // valeur abîmée : la notation est refaite
   }
