@@ -79,7 +79,8 @@ describe('alertes des recruteurs sur leurs offres', () => {
     const mail = idealCandidateEmail({
       recipientName: 'Camille', candidateName: 'Alex <b>Test</b>', jobTitle: 'Data <script>alert(1)</script> Engineer',
       score: 41.6, source: 'candidature', threshold: 80, profileUrl: 'https://exemple.fr/recruiter/candidates/app1',
-      jobUrl: 'https://exemple.fr/recruiter/pipeline/job1/matching', alertsUrl: 'https://exemple.fr/recruiter/alertes',
+      jobUrl: 'https://exemple.fr/recruiter/pipeline/job1/matching', offerUrl: 'https://exemple.fr/recruiter/offres/job1',
+      alertsUrl: 'https://exemple.fr/recruiter/alertes',
     })
     assert.equal(mail.subject, 'Nouvelle candidature — Data <script>alert(1)</script> Engineer (42/100)')
     assert.equal(mail.heading, 'Nouvelle candidature')
@@ -91,7 +92,11 @@ describe('alertes des recruteurs sur leurs offres', () => {
     ))
     assert.ok(mail.bodyHtml.includes('<strong>42/100</strong>'))
     assert.ok(mail.bodyHtml.includes('>Voir la candidature</a>'))
-    assert.ok(mail.bodyHtml.includes('https://exemple.fr/recruiter/candidates/app1'))
+    // La candidature n'est que derrière le bouton ; « Allez sur l'offre » mène à l'offre (vue recruteur).
+    assert.equal(mail.bodyHtml.split('https://exemple.fr/recruiter/candidates/app1').length - 1, 1)
+    assert.ok(mail.bodyHtml.includes('<a href="https://exemple.fr/recruiter/offres/job1" style="color:#E8A33D;">Allez sur l’offre</a>'))
+    assert.ok(!mail.bodyHtml.includes('copiez'))
+    assert.ok(mail.bodyHtml.includes('<a href="https://exemple.fr/recruiter/pipeline/job1/matching" style="color:#E8A33D;">Voir le Matching IA de l’offre</a>'))
     // Le seuil du recruteur ne s'applique pas aux candidatures : l'e-mail ne le cite pas.
     assert.ok(mail.bodyHtml.includes('chaque candidature reçue sur une de vos offres, quel que soit son score'))
     assert.ok(!mail.bodyHtml.includes('80/100'))
@@ -101,7 +106,7 @@ describe('alertes des recruteurs sur leurs offres', () => {
   it('annonce une candidature sans score ni nom lisible', () => {
     const mail = idealCandidateEmail({
       recipientName: '', candidateName: ' ', jobTitle: 'Chef de projet', score: null, source: 'candidature', threshold: 70,
-      profileUrl: 'u', jobUrl: 'j', alertsUrl: 'a',
+      profileUrl: 'u', jobUrl: 'j', offerUrl: 'o', alertsUrl: 'a',
     })
     assert.equal(mail.subject, 'Nouvelle candidature — Chef de projet')
     assert.ok(mail.bodyHtml.includes('Nouvelle candidature pour votre offre <strong>« Chef de projet »</strong>. Elle n’a pas'))
@@ -113,7 +118,7 @@ describe('alertes des recruteurs sur leurs offres', () => {
   it('annonce un candidat de la base noté au seuil du recruteur', () => {
     const mail = idealCandidateEmail({
       recipientName: 'Camille', candidateName: 'Alex Exemple', jobTitle: 'Data Engineer', score: 88.4, source: 'base', threshold: 80,
-      profileUrl: 'https://exemple.fr/p', jobUrl: 'https://exemple.fr/j', alertsUrl: 'https://exemple.fr/a',
+      profileUrl: 'https://exemple.fr/p', jobUrl: 'https://exemple.fr/j', offerUrl: 'https://exemple.fr/o', alertsUrl: 'https://exemple.fr/a',
     })
     assert.equal(mail.subject, 'Candidat noté 88/100 pour « Data Engineer »')
     assert.ok(mail.bodyHtml.includes('inscrit sur la plateforme, correspond à votre offre'))
@@ -123,7 +128,7 @@ describe('alertes des recruteurs sur leurs offres', () => {
 
   it('coupe un intitulé très long dans l\'objet', () => {
     const mail = idealCandidateEmail({
-      recipientName: '', candidateName: '', jobTitle: 'x'.repeat(300), score: 90, source: 'base', threshold: 70, profileUrl: 'u', jobUrl: 'j', alertsUrl: 'a',
+      recipientName: '', candidateName: '', jobTitle: 'x'.repeat(300), score: 90, source: 'base', threshold: 70, profileUrl: 'u', jobUrl: 'j', offerUrl: 'o', alertsUrl: 'a',
     })
     assert.ok(mail.subject.length < 140)
     assert.ok(mail.bodyHtml.includes('Bonjour,'))
@@ -134,7 +139,7 @@ describe('alertes des recruteurs sur leurs offres', () => {
     const mail = idealCandidateEmail({
       recipientName: 'Sam', candidateName: 'Alex Exemple', jobTitle: 'Développeur Node.js', score: 94, source: 'base', threshold: 70,
       highlights: { why: 'Parcours <b>backend</b> solide.', skills: ['Node.js', 'NestJS'], gaps: ['Langue : non précisé'] },
-      profileUrl: 'https://exemple.fr/p', jobUrl: 'https://exemple.fr/recruiter/pipeline/job1/matching', alertsUrl: 'https://exemple.fr/a',
+      profileUrl: 'https://exemple.fr/p', jobUrl: 'https://exemple.fr/recruiter/pipeline/job1/matching', offerUrl: 'https://exemple.fr/o', alertsUrl: 'https://exemple.fr/a',
     })
     assert.equal(mail.subject, 'Nouveau candidat proposé par l’IA — Développeur Node.js (94/100)')
     assert.ok(mail.bodyHtml.includes('<li>Node.js</li><li>NestJS</li>'))

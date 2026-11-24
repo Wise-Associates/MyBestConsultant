@@ -46,6 +46,10 @@ puis « the recruiter don't need to configure alert, always he will be notified 
   - objet « Nouvelle candidature — <offre> (<score>/100) », sans score s'il n'y en a pas ;
   - corps « Nouvelle candidature pour votre offre « <offre> » : <nom> », avec le score de l'IA ou « pas encore de score » ;
   - bouton « Voir la candidature » ;
+  - sous le bouton, « Voir le Matching IA de l’offre » et le lien « Allez sur l’offre » : le détail de l'offre
+    (`/recruiter/offres/<id>`), pas la candidature, déjà derrière le bouton (demandes du 2026-11-24 ; l'adresse n'est
+    plus affichée en clair ; même ligne dans les alertes de la base candidats et du vivier, dont le bouton mène déjà
+    au profil) ;
   - rappel « pour chaque candidature reçue sur une de vos offres, quel que soit son score ».
 - **Alerte sans score** : enregistrée avec `score` vide, attribut déjà facultatif depuis l'ADR 0046. La page
   « Alertes » affiche alors « — ».

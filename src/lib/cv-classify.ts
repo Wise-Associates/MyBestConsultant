@@ -44,8 +44,11 @@ export type ClassifyOutcome = 'classified' | 'classified_by_rules' | 'invalid_an
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
 
-/** Texte d'un profil sans fichier (profil MBC Search, profil de chasseur saisi à la main) ; '' s'il est vide ou illisible. */
-function profileText(raw: unknown): string {
+/**
+ * Texte d'un profil sans fichier (profil MBC Search, profil de chasseur saisi à la main) ; '' s'il est vide ou illisible.
+ * Aussi lu par l'export des exemples d'entraînement (scripts/finetune-cv-dataset.mts) : le même texte que le classement.
+ */
+export function profileText(raw: unknown): string {
   try {
     const p = JSON.parse(str(raw) || '{}') as Partial<ProfileToScore>
     // Profil sans contenu (ni compétence, ni résumé, ni expérience) : rien à classer, pas d'appel d'IA.

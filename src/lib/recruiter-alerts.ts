@@ -131,9 +131,10 @@ export interface IdealCandidateEmailInput {
   threshold: number
   /** Correspondance trouvée au premier CV du candidat : détail du score. */
   highlights?: MatchHighlights
-  /** Adresses absolues du profil, de l'offre (Matching IA) et de la page des alertes. */
+  /** Adresses absolues du profil, du Matching IA de l'offre, du détail de l'offre (vue recruteur) et de la page des alertes. */
   profileUrl: string
   jobUrl: string
+  offerUrl: string
   alertsUrl: string
 }
 
@@ -159,6 +160,7 @@ export function idealCandidateEmail(input: IdealCandidateEmailInput): { subject:
   const scoreLabel = score === null ? 'non disponible' : `${score}/100`
   const profileUrl = escapeHtml(input.profileUrl)
   const jobUrl = escapeHtml(input.jobUrl)
+  const offerUrl = escapeHtml(input.offerUrl)
   const alertsUrl = escapeHtml(input.alertsUrl)
   const greeting = input.recipientName.trim() ? `Bonjour ${escapeHtml(input.recipientName.trim())},` : 'Bonjour,'
   const h = input.highlights
@@ -188,7 +190,7 @@ export function idealCandidateEmail(input: IdealCandidateEmailInput): { subject:
           <a href="${profileUrl}" target="_blank" style="display:inline-block; padding:12px 28px; font-size:14px; font-weight:700; color:#FFFFFF; text-decoration:none; border-radius:10px;">${application ? 'Voir la candidature' : 'Voir le profil'}</a>
         </td></tr>
       </table>
-      <p style="margin:0 0 8px; font-size:12px; color:#9B9B9E; text-align:center;"><a href="${jobUrl}" style="color:#E8A33D;">Voir le Matching IA de l’offre</a> · Ou copiez ce lien : <a href="${profileUrl}" style="color:#E8A33D;">${profileUrl}</a></p>
+      <p style="margin:0 0 8px; font-size:12px; color:#9B9B9E; text-align:center;"><a href="${jobUrl}" style="color:#E8A33D;">Voir le Matching IA de l’offre</a> · <a href="${offerUrl}" style="color:#E8A33D;">Allez sur l’offre</a></p>
       <p style="margin:0; font-size:12px; color:#9B9B9E; text-align:center;">${why} <a href="${alertsUrl}" style="color:#E8A33D;">Gérer mes alertes</a></p>`
   if (application) {
     return { subject: `Nouvelle candidature — ${shortTitle}${score === null ? '' : ` (${scoreLabel})`}`, heading: 'Nouvelle candidature', bodyHtml }

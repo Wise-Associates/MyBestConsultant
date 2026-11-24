@@ -1,7 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import type { CSSProperties } from 'react'
-import { Brain, ExternalLink, FileText, Kanban, Share2 } from 'lucide-react'
+import { Brain, ExternalLink, FileText, Inbox, Kanban, Share2 } from 'lucide-react'
 import { BackLink } from '@/components/recruiter/back-link'
 import { jobMetaLine } from '@/components/recruiter/job-tabs'
 import { JobDescription } from '@/components/shared/job-description'
@@ -17,11 +17,13 @@ import { diffusionText } from '@/lib/social-content'
 import { parseClientSubmission } from '@/lib/client-response'
 import { payText } from '@/lib/job-pay'
 import { formatDateFr } from '@/lib/format-date'
+import { jobOriginView } from '@/lib/job-origin'
+import { loadJobOrigin } from '@/lib/job-origin-store'
 import { EditJobButton } from './edit-job-button'
 
 // Détail d'une offre (demande du 2026-11-17) : ouvert par le titre d'une offre dans « Mes offres ». Description, suivi
-// (candidatures, correspondances IA, candidats par phase), informations clés et diffusion ; liens vers le Matching IA et
-// le funnel de l'offre. Mêmes règles d'accès que le funnel : offre de l'organisation ou offre partagée de la plateforme,
+// (candidatures, correspondances IA, candidats par phase), informations clés, origine (2026-11-24, job-origin.ts) et
+// diffusion ; liens vers le Matching IA et le funnel de l'offre. Mêmes règles d'accès que le funnel : offre de l'organisation ou offre partagée de la plateforme,
 // candidatures d'une autre organisation jamais comptées.
 
 const CONTRACT: Record<string, string> = { cdi: 'CDI', cdd: 'CDD', freelance: 'Freelance', mission: 'Mission' }
@@ -58,7 +60,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
   const shared = job.tenantId !== tenantId
 
   const { latestPostsByJob } = await import('@/lib/social')
-  const [allApps, { stages }, matchCounts, posts, team] = await Promise.all([
+  const [allApps, { stages }, matchCounts, posts, team, origin] = await Promise.all([
     getApplicationsByJob(jobId),
     getStagesForJob(tenantId, jobId),
     countMatchesByJob(tenantId, jobId),
@@ -71,6 +73,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
       console.error('[offre] recruteurs de l’organisation non lus', jobId, e instanceof Error ? e.message : e)
       return null
     }) : null,
+    loadJobOrigin(jobId, tenantId, shared),
   ])
 
   const apps = allApps.filter(a => viewerCanSeeApplication(job, a.tenantId ?? '', viewer))
@@ -95,6 +98,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
     { label: 'Publiée le', value: formatDateFr(job.createdAt) },
     ...(job.expiresAt ? [{ label: state === 'expired' ? 'Expirée le' : 'Expire le', value: formatDateFr(job.expiresAt) }] : []),
   ]
+  const originView = jobOriginView(origin)
   const pipelineHref = `/recruiter/pipeline/${jobId}`
   const matchingHref = `/recruiter/pipeline/${jobId}/matching`
   const matches = matchCounts[jobId] ?? 0
@@ -193,6 +197,28 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
                 </div>
               ))}
             </dl>
+          </section>
+
+          <section aria-labelledby="origine" className={card} style={cardStyle}>
+            <h2 id="origine" className="font-semibold uppercase mb-2.5" style={headingStyle}>Origine de l’offre</h2>
+            <p className="text-[13px] font-medium" style={{ color: 'var(--color-text)' }}>{originView.source}</p>
+            {originView.note && <p className="text-xs mt-1" style={muted}>{originView.note}</p>}
+            {originView.facts.length > 0 && (
+              <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-[13px] mt-3">
+                {originView.facts.map(f => (
+                  <div key={f.label} className="contents">
+                    <dt style={muted}>{f.label}</dt>
+                    {/* Adresses, objets et noms de fichiers sans espace : coupés plutôt que de déborder de la carte. */}
+                    <dd className="font-medium" style={{ color: 'var(--color-text)', overflowWrap: 'anywhere' }}>{f.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            {originView.aoHref && (
+              <Link href={originView.aoHref} className={`${cardButton} w-full mt-4`} style={{ border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
+                <Inbox className="h-4 w-4" aria-hidden />Voir l’appel d’offres d’origine
+              </Link>
+            )}
           </section>
 
           <section aria-labelledby="diffusion" className={card} style={cardStyle}>
