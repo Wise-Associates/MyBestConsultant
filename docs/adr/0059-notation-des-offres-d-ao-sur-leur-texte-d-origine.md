@@ -41,7 +41,8 @@ notation (ligne « Matching IA » de Config IA), qui reçoit déjà les vrais no
   dans le cache (ADR 0044) restent valables : leur message est inchangé.
 - Un appel d'IA un peu plus long pour les offres d'AO (jusqu'à 4 000 caractères de plus, dans la partie mise en cache
   chez Claude, identique pour tous les CV d'une offre).
-- Essai sur DEV (une offre, un CV, deux appels de chaque) : avec le contexte, le secteur est jugé « non » là où la
-  version publiée le laissait « partiel » (l'AO d'origine décrit un acteur associatif national). Les scores varient
-  beaucoup d'un appel à l'autre sur cette offre (28 à 50) : un essai sur plusieurs offres et CV, jugés par un recruteur,
-  reste à faire pour mesurer le gain.
+- Essais sur DEV (une offre, un CV, `matching:explain`, quatre appels sans le contexte et quatre avec) : sans le
+  contexte 42, 45, 41, 50 ; avec 40, 28, 46, 50. Le secteur a été jugé « non » avec le contexte au premier essai, puis
+  « partiel » au second, comme sans lui. Sur cette offre, l'écart d'un appel à l'autre (intitulé découpé en un ou deux
+  métiers, exigences de 1 à 4 sur 6) est plus grand que l'effet du contexte : **aucun gain mesuré à ce jour**. Un essai
+  sur plusieurs offres et CV, jugés par un recruteur, reste à faire avant de conclure.
