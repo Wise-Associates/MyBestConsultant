@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { EMPTY_AO_FILTERS, type AoFilters } from './filters'
-import { countQueries, indexDocumentOf, indexFilterQueries, senderOf } from './offer-index'
+import { countQueries, forwarderOf, indexDocumentOf, indexFilterQueries, senderOf } from './offer-index'
 import type { AoOffer } from './types'
 
 const offer = (over: Partial<AoOffer> = {}): AoOffer => ({
@@ -68,6 +68,14 @@ describe('index de la liste des offres AO', () => {
     assert.deepEqual(senderOf({ origin: 'Claire Martin <claire@client-fictif.fr>', fromName: 'Marc', fromAddress: 'marc@wise-associates.fr' }),
       { name: 'Claire Martin', address: 'claire@client-fictif.fr' })
     assert.deepEqual(senderOf({ origin: '', fromName: 'Marc', fromAddress: 'marc@wise-associates.fr' }), { name: 'Marc', address: 'marc@wise-associates.fr' })
+  })
+
+  it('nomme celui qui a transféré l\'e-mail, seulement quand l\'expéditeur d\'origine est un autre', () => {
+    assert.equal(forwarderOf({ origin: 'Claire Martin <claire@client-fictif.fr>', fromName: 'Marc', fromAddress: 'marc@wise-associates.fr' }), 'Marc')
+    assert.equal(forwarderOf({ origin: 'Claire Martin <claire@client-fictif.fr>', fromName: '', fromAddress: 'marc@wise-associates.fr' }), 'marc@wise-associates.fr')
+    assert.equal(forwarderOf({ origin: 'Claire Martin <claire@client-fictif.fr>', fromName: 'Claire', fromAddress: ' Claire@Client-Fictif.fr ' }), '')
+    assert.equal(forwarderOf({ origin: '', fromName: 'Marc', fromAddress: 'marc@wise-associates.fr' }), '')
+    assert.equal(forwarderOf(undefined), '')
   })
 
   it('fait suivre les filtres aux indicateurs : statuts sans le filtre de statut, doublons avec tous les filtres', () => {

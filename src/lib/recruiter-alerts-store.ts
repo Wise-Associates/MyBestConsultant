@@ -150,6 +150,7 @@ async function alertOne(
       highlights: candidate.highlights,
       profileUrl: `${origin()}${alertProfilePath(candidate.source, candidate.subjectId)}`,
       jobUrl: `${origin()}/recruiter/pipeline/${candidate.jobId}/matching`,
+      offerUrl: `${origin()}/recruiter/offres/${candidate.jobId}`,
       alertsUrl: `${origin()}/recruiter/alertes`,
     })
     await messaging.createEmail(ID.unique(), mail.subject, wrapEmailHtml(mail.heading, mail.bodyHtml), [], [recipientUserId], [], [], [], [], false, true)

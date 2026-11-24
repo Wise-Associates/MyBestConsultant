@@ -40,6 +40,12 @@ export function senderOf(email: Pick<AoEmail, 'origin' | 'fromName' | 'fromAddre
   return parseSender(email?.origin ?? '') ?? { name: email?.fromName ?? '', address: email?.fromAddress ?? '' }
 }
 
+/** Collaborateur qui a transféré l'e-mail (nom, sinon adresse) ; '' si l'e-mail vient directement de l'expéditeur d'origine. */
+export function forwarderOf(email: Pick<AoEmail, 'origin' | 'fromName' | 'fromAddress'> | undefined): string {
+  const origin = parseSender(email?.origin ?? '')
+  return email && origin && origin.address !== email.fromAddress.trim().toLowerCase() ? email.fromName || email.fromAddress : ''
+}
+
 /** Document d'index d'une offre. Les tailles sont celles des attributs (appwrite.config.json). */
 export function indexDocumentOf(offer: AoOffer, ctx: AoIndexContext): AoOfferIndexDoc {
   return {

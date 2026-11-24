@@ -7,8 +7,7 @@ import { MAX_ATTEMPTS } from './attempts'
 import type { AoOfferCounts } from './dashboard-types'
 import type { AoFilters, AoOfferRow } from './filters'
 import { AO_MAX_LISTED } from './filters'
-import { INDEX_ORDER, countQueries, indexDocumentOf, indexFilterQueries, senderOf, type AoIndexContext, type AoOfferIndexDoc } from './offer-index'
-import { parseSender } from './origin'
+import { INDEX_ORDER, countQueries, indexDocumentOf, indexFilterQueries, forwarderOf, senderOf, type AoIndexContext, type AoOfferIndexDoc } from './offer-index'
 import type { AoChannel, AoContact, AoEmail, AoEmailStatus, AoOffer, AoOfferDetails, AoOfferFields, AoOfferStatus } from './types'
 import { engagementOf } from './parse'
 
@@ -547,7 +546,6 @@ async function aoOfferRowsOf(offers: AoOffer[], tenantId: string): Promise<AoOff
     const email = emails.get(offer.emailId)
     // E-mail transféré : l'expéditeur affiché (et filtré) est celui du message d'origine ; le collaborateur qui l'a
     // transféré est indiqué à part.
-    const origin = parseSender(email?.origin ?? '')
     const sender = senderOf(email)
     return {
       ...offer,
@@ -557,7 +555,7 @@ async function aoOfferRowsOf(offers: AoOffer[], tenantId: string): Promise<AoOff
       sourceUrl: details.get(offer.$id)?.sourceUrl ?? '',
       senderAddress: sender.address,
       senderName: sender.name,
-      forwardedBy: email && origin && origin.address !== email.fromAddress.trim().toLowerCase() ? email.fromName || email.fromAddress : '',
+      forwardedBy: forwarderOf(email),
       deadline: email?.deadline ?? '',
       attachments: email?.attachments ?? [],
       commentCount: comments.get(offer.$id) ?? 0,

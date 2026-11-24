@@ -573,7 +573,7 @@ export function PublishJobSkeleton() {
 
 /**
  * Détail d'une offre (/recruiter/offres/<id>, 2026-11-17) : bandeau (retour, titre, statut et boutons), description à
- * gauche, suivi, informations clés et diffusion à droite dès 1024 px.
+ * gauche, suivi, informations clés, origine (2026-11-24) et diffusion à droite dès 1024 px.
  */
 export function JobDetailSkeleton() {
   return (
@@ -633,6 +633,10 @@ export function JobDetailSkeleton() {
                 <Skeleton className="h-3.5 flex-1" />
               </div>
             ))}
+          </div>
+          <div className="rounded-[20px] p-5 sm:p-6 space-y-2.5" style={card}>
+            <Skeleton className="h-3 w-32" />
+            <Skeleton className="h-3.5 w-2/3" />
           </div>
           <div className="rounded-[20px] p-5 sm:p-6 space-y-2.5" style={card}>
             <Skeleton className="h-3 w-20" />
