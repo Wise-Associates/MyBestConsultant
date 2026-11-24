@@ -18,7 +18,7 @@ import { listAllByValues, listAllDocuments } from '@/lib/appwrite/list-all'
 import { listVivierOfferMatches } from '@/lib/appwrite/vivier-offer-matches'
 import { planPoolRows, poolRowId } from '@/lib/pool-matching'
 import { withCheckedTitles } from '@/lib/title-check'
-import { cvScorer, readCvForScoring, type MatchResult } from '@/lib/sourcing-core'
+import { aoSourceContext, cvScorer, readCvForScoring, type MatchResult } from '@/lib/sourcing-core'
 import { SCORING_AI } from '@/lib/ai/models'
 import { offerDetails } from '@/lib/match-scoring'
 import { rescoreForRecruiter, type RecruiterWeights, type WeightsOverride } from '@/lib/scoring-weights'
@@ -164,6 +164,7 @@ export async function matchVivierCvAgainstJob(jobId: string, vivierCvId: string,
     }
     const scored = await cvScorer({
       title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? ''), details: offerDetails(job),
+      sourceContext: await aoSourceContext(job),
     }, 'matching')(cvText)
     // Réponse sans jugement : CV non noté (jamais un score inventé).
     if (!scored) {

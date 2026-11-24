@@ -610,6 +610,19 @@ export function cvTextForScoring(text: string): string {
   return maskContacts(text.replace(LINK, '‹lien masqué›')).slice(0, CV_CHARS_FOR_SCORING)
 }
 
+/** Description d'origine d'un appel d'offres lue jusqu'à ce nombre de caractères, comme la description de l'offre. */
+export const SOURCE_CONTEXT_CHARS = 4000
+
+/**
+ * Description d'origine de l'appel d'offres d'une offre publiée (`ao<offre>`) telle que l'IA la lit pour noter un CV : le
+ * contexte métier (activité du client, chaîne de traitement, enjeux) que la version publiée, anonymisée et réduite à
+ * quelques puces, ne garde pas. Usage interne, jamais publié ; sans e-mail, téléphone ni lien (ceux de l'interlocuteur
+ * du client), SOURCE_CONTEXT_CHARS caractères au plus.
+ */
+export function sourceContextForScoring(text: string): string {
+  return maskContacts(text.replace(LINK, '‹lien masqué›')).replace(/\n{3,}/g, '\n\n').trim().slice(0, SOURCE_CONTEXT_CHARS)
+}
+
 /** Champs demandés à l'IA en plus des jugements ; « competences_vues » seulement quand l'offre n'a pas de liste de compétences (affichage du screening). */
 function scoringNotesFields(counts: CriteriaCounts): string {
   return [
@@ -638,6 +651,8 @@ export interface OfferToJudge {
   title: string
   description: string
   details?: string[]
+  /** Description d'origine de l'appel d'offres (sourceContextForScoring) ; absente pour une offre qui n'en vient pas. */
+  sourceContext?: string
 }
 
 const REMOTE_LABEL: Record<string, string> = { onsite: 'sur site', hybrid: 'partiel', remote: 'complet' }
@@ -665,7 +680,12 @@ export function offerDetails(job: object, clients: string[] = []): string[] {
 /** Message de la notation : l'offre et le CV (cvTextForScoring), rien d'autre (ni lettre de motivation ni critère ajouté). */
 export function scoringUserMessage(offer: OfferToJudge, criteria: OfferCriteria, cvText: string): string {
   const details = (offer.details ?? []).map(line => `${line}\n`).join('')
-  return `=== OFFRE ===\nPoste : ${offer.title}\n${criteriaBlock(criteria)}\n${details}Description : ${offerTextForAi(offer.description, 4000)}\n\n=== CV DU CANDIDAT ===\n${cvText}`
+  // Après la description, pour que les listes à juger restent celles de l'offre relue ; absent, le message est inchangé
+  // (mêmes notations reprises du cache pour les offres qui ne viennent pas d'un appel d'offres).
+  const source = offer.sourceContext
+    ? `\n\nContexte de l'appel d'offres d'origine (usage interne : pour comprendre le métier, le domaine et l'environnement du poste ; les exigences et compétences à juger restent celles listées plus haut) :\n${offer.sourceContext}`
+    : ''
+  return `=== OFFRE ===\nPoste : ${offer.title}\n${criteriaBlock(criteria)}\n${details}Description : ${offerTextForAi(offer.description, 4000)}${source}\n\n=== CV DU CANDIDAT ===\n${cvText}`
 }
 
 /** Notes de l'IA à côté de ses jugements : affichées, jamais comptées dans le score. */

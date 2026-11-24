@@ -17,7 +17,7 @@ import { creatorReplyTo, escapeHtml, outreachEmailBody } from '@/lib/outreach-em
 import { sendSmtpEmail, type MailAddress } from '@/lib/smtp'
 import {
   CV_CHARS_FOR_SCORING, criteriaCounts, cvTextForScoring, judgedScore, judgementSummary, offerCriteria, offerDetails, parseJudgements,
-  parseScoringNotes, scoringSystemPrompt, scoringUserMessage, type ActiveScale, type MatchJudgements, type OfferCriteria, type ScoringNotes,
+  parseScoringNotes, scoringSystemPrompt, scoringUserMessage, sourceContextForScoring, type ActiveScale, type MatchJudgements, type OfferCriteria, type ScoringNotes,
 } from '@/lib/match-scoring'
 import { listAllByValues, listAllDocuments } from '@/lib/appwrite/list-all'
 import { mapLimit } from '@/lib/concurrency'
@@ -136,7 +136,10 @@ export async function matchCandidatesForJob(jobId: string, { exclude: alsoExclud
     ])
     const exclude = new Set([...applicants.map(a => a.candidateId as string), ...alsoExclude])
     return await matchCandidatesForOffer(
-      { title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? ''), details: offerDetails(job) },
+      {
+        title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? ''), details: offerDetails(job),
+        sourceContext: await aoSourceContext(job),
+      },
       exclude,
       only,
     )
@@ -162,6 +165,8 @@ export interface OfferForMatching {
   description: string
   /** Précisions ajoutées à l'offre envoyée à l'IA : lieu, télétravail, rémunération (offerDetails), « Technologies : … » d'un AO. */
   details?: string[]
+  /** Offre publiée depuis un appel d'offres : sa description d'origine (aoSourceContext), contexte interne de la notation. */
+  sourceContext?: string
 }
 
 const CANDIDATE_FIELDS = ['$id', 'firstName', 'lastName', 'email', 'cvFileId', 'optedOutOfOutreach']
@@ -226,6 +231,22 @@ export async function finalOfferDetails(job: Models.Document): Promise<string[]>
     }
   }
   return offerDetails(job, clients)
+}
+
+/**
+ * Offre publiée depuis un appel d'offres (`ao<offre AO>`) : description d'origine de l'AO, lue par l'IA de la notation
+ * pour le contexte métier que la version publiée n'a plus (sourceContextForScoring). Autre offre, AO supprimé (purge à
+ * 365 jours) ou sans description : ''. Lecture impossible : '' et journalisé, la notation se fait comme avant.
+ */
+export async function aoSourceContext(job: { $id: string }): Promise<string> {
+  if (!job.$id.startsWith('ao')) return ''
+  try {
+    const aoOffer = await documentOrNull(COLLECTIONS.AO_OFFERS, job.$id.slice(2))
+    return typeof aoOffer?.description === 'string' ? sourceContextForScoring(aoOffer.description) : ''
+  } catch (err) {
+    console.error('[matching] description d’origine de l’appel d’offres illisible, notation sans elle', job.$id, err instanceof Error ? err.message : err)
+    return ''
+  }
 }
 
 /** Note d'un CV pour une offre : jugements de l'IA (`answer` : sa réponse, preuves comprises), score calculé par le code. */

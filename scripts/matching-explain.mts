@@ -57,7 +57,7 @@ Object.assign(process.env, env)
 const { Query } = await import('node-appwrite')
 const { createAdminClient } = await import('../src/lib/appwrite/client')
 const { DB_ID, COLLECTIONS } = await import('../src/lib/appwrite/config')
-const { cvScorer, finalOfferDetails, readCvForScoring } = await import('../src/lib/sourcing-core')
+const { aoSourceContext, cvScorer, finalOfferDetails, readCvForScoring } = await import('../src/lib/sourcing-core')
 const { judgedResult, labelOf, offerDetails } = await import('../src/lib/match-scoring')
 const scale = args.includes('--final') ? 'final' as const : 'matching' as const
 
@@ -94,6 +94,7 @@ console.log('Notation en cours (un appel d\'IA, rien n\'est enregistré)…\n')
 const result = await cvScorer({
   title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? ''),
   details: scale === 'final' ? await finalOfferDetails(job) : offerDetails(job),
+  sourceContext: await aoSourceContext(job),
   // Toujours un vrai appel d'IA : le script montre ce que l'IA répond, jamais une notation gardée (ADR 0044).
 }, scale, { useCache: false })(cvText)
 if (!result) {
