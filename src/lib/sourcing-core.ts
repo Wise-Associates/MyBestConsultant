@@ -369,7 +369,8 @@ export async function matchCandidatesForOffer(
       // ADR 0044 phase 2 : les CV de toute la base les plus proches de l'offre (index de recherche), revérifiés dans
       // Appwrite (CV, désinscription, exclusions) ; null sans préfiltre (non configuré ou en panne) : comme avant.
       const prefiltered = await prefilterPool(
-        { title: offer.title, skills: offer.skills, location: offerLocation(offer.details) }, excludeCandidateIds)
+        { title: offer.title, skills: offer.skills, location: offerLocation(offer.details) }, excludeCandidateIds,
+        { description: offer.description, sourceContext: offer.sourceContext })
       if (prefiltered?.length) await scoreBatch(await scorableCandidates(prefiltered, excludeCandidateIds))
       // Places restantes (préfiltre absent, ou moins de CV classés que de places) : les candidats les plus récents.
       // Un CV illisible (PDF scanné…) ne compte pas : le passage continue avec les candidats suivants, sinon les mêmes

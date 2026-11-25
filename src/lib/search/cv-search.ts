@@ -1,4 +1,5 @@
 import type { CvClassification } from '@/lib/cv-classification'
+import { isJobFamily } from '@/lib/job-families'
 
 // Index de recherche des CV (Meilisearch, ADR 0044 phase 2) : documents, réglages, requêtes et pré-score. Règles pures,
 // testées dans cv-search.test.ts ; les appels : meili.ts. Un document ne contient que la classification (aucun nom ni
@@ -86,18 +87,34 @@ export function poolFilter(exclude: Iterable<string>): string {
   return ids.length ? `${base} AND sourceId NOT IN [${ids.map(id => `"${id}"`).join(', ')}]` : base
 }
 
-/** Offre telle que le préfiltre la lit. */
-export interface OfferForSearch { title: string; skills: string[]; location?: string }
+/**
+ * Offre telle que le préfiltre la lit. `classification` : famille de métier, secteurs et métiers de l'offre tirés par
+ * l'IA au moment du matching (job-classify.ts, ADR 0061) ; absente (IA indisponible), le préfiltre fait comme avant.
+ */
+export interface OfferForSearch {
+  title: string; skills: string[]; location?: string
+  classification?: { jobFamily: string; sectors: string[]; roles: string[] }
+}
 
-/** Requêtes d'une offre : son titre, puis une par compétence demandée (12 au plus), réunies ensuite. */
+/**
+ * Requêtes d'une offre, réunies ensuite : son titre, les métiers de son classement (le titre d'un AO en est souvent
+ * loin : « Lot 2. Expert… »), une par compétence demandée (12 au plus), et le titre parmi les CV de la même famille de
+ * métier (ADR 0061).
+ */
 export function offerSearchQueries(offer: OfferForSearch, filter: string, indexUid: string): { indexUid: string; q: string; filter: string; limit: number; attributesToRetrieve: string[]; matchingStrategy: 'last' }[] {
-  const attributesToRetrieve = ['id', 'sourceId', 'roles', 'skills', 'city', 'jobFamily', 'seniority']
-  // Compétences distinctes (sans tenir compte de la casse), 12 au plus, après le titre.
+  const attributesToRetrieve = ['id', 'sourceId', 'roles', 'skills', 'city', 'jobFamily', 'seniority', 'sectors']
+  // Termes distincts (sans tenir compte de la casse) : le titre, les métiers, puis 12 compétences au plus.
   const seen = new Set<string>()
-  const skills = offer.skills.map(s => s.trim()).filter(s => s && !seen.has(s.toLowerCase()) && seen.add(s.toLowerCase())).slice(0, 12)
+  const distinct = (values: string[]) => values.map(s => s.trim()).filter(s => s && !seen.has(s.toLowerCase()) && seen.add(s.toLowerCase()))
   const title = cleanTitle(offer.title)
-  const terms = [title, ...skills.filter(s => s.toLowerCase() !== title.toLowerCase())].filter(Boolean)
-  return terms.map((q, i) => ({ indexUid, q, filter, limit: i === 0 ? 100 : 50, attributesToRetrieve, matchingStrategy: 'last' }))
+  const [head, ...roles] = distinct([title, ...(offer.classification?.roles ?? [])])
+  const skills = distinct(offer.skills).slice(0, 12)
+  const query = (q: string, limit: number, f = filter) => ({ indexUid, q, filter: f, limit, attributesToRetrieve, matchingStrategy: 'last' as const })
+  const queries = [...(head ? [query(head, 100)] : []), ...roles.map(r => query(r, 50)), ...skills.map(s => query(s, 50))]
+  // Famille de la liste fermée seulement : rien d'autre n'entre dans le filtre (pas d'injection de syntaxe).
+  const family = offer.classification?.jobFamily
+  if (family && isJobFamily(family) && family !== 'autre' && head) queries.push(query(head, 100, `${filter} AND jobFamily = "${family}"`))
+  return queries
 }
 
 const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
@@ -108,7 +125,7 @@ const words = (s: string) => fold(s).split(/[^a-z0-9+#]+/).filter(w => w.length 
 export const cleanTitle = (title: string) => title.replace(/\(([hf]\s*\/\s*[hf])\)|\b[hf]\s*\/\s*[hf]\b/gi, '').split(/\s[–—-]\s/)[0].trim()
 
 /** CV trouvé par la recherche, avec ses champs classés. */
-export interface SearchHit { id: string; sourceId: string; roles?: string[]; skills?: string[]; city?: string }
+export interface SearchHit { id: string; sourceId: string; roles?: string[]; skills?: string[]; city?: string; jobFamily?: string; sectors?: string[] }
 
 /** Une compétence de l'offre est couverte : même nom, ou l'un contient l'autre en mots entiers (« SAP » / « SAP FI »). */
 export function covers(candidate: string[], wanted: string): boolean {
@@ -120,20 +137,26 @@ export function covers(candidate: string[], wanted: string): boolean {
   })
 }
 
+/** Bonus du pré-score (ADR 0061) : CV de la même famille de métier que l'offre, CV d'un secteur du client de l'offre. */
+export const CLASSIFICATION_BONUS = { family: 0.1, sector: 0.05 } as const
+
 /**
- * Pré-score (0 à 1) d'un CV pour une offre, calculé par le code sur les champs classés, pour choisir les CV notés par
- * l'IA : métier (titre de l'offre retrouvé dans les métiers exercés) 45 %, compétences demandées couvertes 45 %, même
- * ville 10 %. Mêmes poids que les deux critères forts du barème « matching » (poste, techno) ; jamais affiché.
+ * Pré-score d'un CV pour une offre, calculé par le code sur les champs classés, pour choisir les CV notés par l'IA :
+ * métier (titre de l'offre, ou l'un des métiers de son classement, retrouvé dans les métiers exercés) 45 %, compétences
+ * demandées couvertes 45 %, même ville 10 % ; mêmes poids que les deux critères forts du barème « matching » (poste,
+ * techno). Offre classée (ADR 0061) : plus CLASSIFICATION_BONUS, jusqu'à 1,15. Jamais affiché.
  */
 export function preScore(offer: OfferForSearch, hit: SearchHit): number {
-  const title = words(cleanTitle(offer.title))
-  const role = title.length
-    ? Math.max(0, ...(hit.roles ?? []).map(r => { const have = new Set(words(r)); return title.filter(w => have.has(w)).length / title.length }))
-    : 0.5
+  const wantedRoles = [cleanTitle(offer.title), ...(offer.classification?.roles ?? [])].map(words).filter(w => w.length > 0)
+  const overlap = (wanted: string[]) => Math.max(0, ...(hit.roles ?? []).map(r => { const have = new Set(words(r)); return wanted.filter(w => have.has(w)).length / wanted.length }))
+  const role = wantedRoles.length ? Math.max(...wantedRoles.map(overlap)) : 0.5
   const wanted = offer.skills.filter(s => words(s).length > 0)
   const skills = wanted.length ? wanted.filter(s => covers(hit.skills ?? [], s)).length / wanted.length : 0.5
   const city = offer.location && hit.city ? (words(offer.location)[0] === words(hit.city)[0] ? 1 : 0) : 0.5
-  return 0.45 * role + 0.45 * skills + 0.1 * city
+  const c = offer.classification
+  const family = c && c.jobFamily !== 'autre' && hit.jobFamily === c.jobFamily ? CLASSIFICATION_BONUS.family : 0
+  const sector = c && (hit.sectors ?? []).some(s => c.sectors.includes(s)) ? CLASSIFICATION_BONUS.sector : 0
+  return 0.45 * role + 0.45 * skills + 0.1 * city + family + sector
 }
 
 /** Résultats de toutes les requêtes réunis (un CV une fois), classés par pré-score : les `keep` premiers identifiants de source. */

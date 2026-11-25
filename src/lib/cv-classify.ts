@@ -1,6 +1,6 @@
 import { AppwriteException } from 'node-appwrite'
 import { LLMChainError, callLLM } from '@/lib/ai/llm-router'
-import { CLASSIFICATION_AI } from '@/lib/ai/models'
+import { CLASSIFICATION_AI, CLASSIFIER_MODELS } from '@/lib/ai/models'
 import { llmFailureDetail } from '@/lib/ao/ai-failures'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
@@ -21,8 +21,8 @@ import { profileForAi, type ProfileToScore } from '@/lib/vivier-matching'
 // en arrière-plan) et par `npm run cv:classify` (rattrapage). Le texte envoyé est celui de la notation (coordonnées
 // masquées), aux mêmes fournisseurs que la notation des CV.
 
-/** Modèle précis de Claude et de GPT pour la classification ; TeckiA et les modèles open source gardent celui de Config IA. */
-export const CLASSIFIER_MODELS: Partial<Record<string, string>> = { claude: 'claude-haiku-5-5', gpt4o: 'gpt-4o-mini' }
+// Modèles précis de la classification, dans ai/models.ts (aussi lus par le classement des offres, job-classify.ts).
+export { CLASSIFIER_MODELS }
 
 /**
  * Classe le texte d'un CV par le modèle de la ligne « Classification des CV », puis la chaîne de repli ; null si la

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { cleanTitle, offerSearchQueries, poolFilter, preScore, rankHits } from './cv-search'
+import { CLASSIFICATION_BONUS, cleanTitle, offerSearchQueries, poolFilter, preScore, rankHits } from './cv-search'
 
 // Offre et CV fictifs.
 const offer = { title: 'Chef de projet PMO (H/F) – Paris', skills: ['Jira', 'MS Project', 'SAFe', 'Power BI'], location: 'Paris' }
@@ -36,5 +36,52 @@ describe('préfiltre des CV avant l\'IA (ADR 0044, phase 2)', () => {
   it('reste neutre sur ce que l\'offre ne précise pas', () => {
     const cv = { id: 'c1', sourceId: 'u1', roles: ['Chef de projet'], skills: [], city: 'Lille' }
     assert.equal(preScore({ title: '', skills: [] }, cv), 0.45 * 0.5 + 0.45 * 0.5 + 0.1 * 0.5)
+  })
+})
+
+describe('préfiltre avec le classement de l\'offre (ADR 0061)', () => {
+  // Titre d'un lot d'appel d'offres, loin du métier demandé : le classement en donne les métiers usuels.
+  const tender = {
+    title: 'Lot 2. Expert données fiscales', skills: ['SQL', 'Reporting'], location: 'Paris',
+    classification: { jobFamily: 'data_ia', sectors: ['secteur_public'], roles: ['Data analyst', 'Expert données fiscales'] },
+  }
+
+  it('cherche aussi les métiers du classement et le titre parmi les CV de la même famille', () => {
+    const queries = offerSearchQueries(tender, 'f', 'cvs')
+    assert.deepEqual(queries.map(q => [q.q, q.filter, q.limit]), [
+      ['Lot 2. Expert données fiscales', 'f', 100],
+      ['Data analyst', 'f', 50],
+      ['Expert données fiscales', 'f', 50],
+      ['SQL', 'f', 50],
+      ['Reporting', 'f', 50],
+      ['Lot 2. Expert données fiscales', 'f AND jobFamily = "data_ia"', 100],
+    ])
+    assert.ok(queries.every(q => q.attributesToRetrieve.includes('sectors')))
+  })
+
+  it('n\'ajoute au filtre qu\'une famille de la liste fermée, jamais « autre »', () => {
+    const injected = offerSearchQueries({ ...tender, classification: { ...tender.classification, jobFamily: 'x" OR kind = "vivier' } }, 'f', 'cvs')
+    const other = offerSearchQueries({ ...tender, classification: { ...tender.classification, jobFamily: 'autre' } }, 'f', 'cvs')
+    for (const queries of [injected, other]) assert.ok(queries.every(q => q.filter === 'f'), JSON.stringify(queries))
+  })
+
+  it('sans classement, mêmes requêtes et même pré-score qu\'avant', () => {
+    const { classification, ...plain } = tender
+    assert.ok(classification)
+    assert.deepEqual(offerSearchQueries(plain, 'f', 'cvs').map(q => q.q), ['Lot 2. Expert données fiscales', 'SQL', 'Reporting'])
+    const cv = { id: 'c1', sourceId: 'u1', roles: ['Data analyst'], skills: ['SQL'], city: 'Paris', jobFamily: 'data_ia', sectors: ['secteur_public'] }
+    assert.equal(preScore(plain, cv), 0.45 * 0 + 0.45 * 0.5 + 0.1 * 1)
+  })
+
+  it('reconnaît le métier par le classement et ajoute le bonus de la famille et d\'un secteur commun', () => {
+    const analyst = { id: 'c1', sourceId: 'u1', roles: ['Data analyst'], skills: ['SQL'], city: 'Paris', jobFamily: 'data_ia', sectors: ['secteur_public', 'banque'] }
+    assert.equal(preScore(tender, analyst), 0.45 * 1 + 0.45 * 0.5 + 0.1 * 1 + CLASSIFICATION_BONUS.family + CLASSIFICATION_BONUS.sector)
+    // Même métier et mêmes compétences, autre famille et autre secteur : classé après.
+    const elsewhere = { ...analyst, sourceId: 'u2', jobFamily: 'developpement', sectors: ['industrie'] }
+    assert.equal(preScore(tender, elsewhere), 0.45 * 1 + 0.45 * 0.5 + 0.1 * 1)
+    assert.deepEqual(rankHits(tender, [[elsewhere, analyst]], 2), ['u1', 'u2'])
+    // Famille « autre » : pas de bonus, elle ne départage rien.
+    const vague = { ...tender, classification: { ...tender.classification, jobFamily: 'autre' } }
+    assert.equal(preScore(vague, { ...analyst, jobFamily: 'autre', sectors: [] }), 0.45 * 1 + 0.45 * 0.5 + 0.1 * 1)
   })
 })

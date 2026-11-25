@@ -11,9 +11,12 @@ export const SCORING_AI = { module: 'matching', moduleDefault: 'claude' } as con
 
 /**
  * Classification des CV (ADR 0044) : ligne « Classification des CV » de Config IA, Claude si elle est sur « Modèle par
- * défaut », puis le repli habituel ; modèles précis de Claude et de GPT dans CLASSIFIER_MODELS (cv-classify.ts).
+ * défaut », puis le repli habituel ; modèles précis de Claude et de GPT dans CLASSIFIER_MODELS.
  */
 export const CLASSIFICATION_AI = { module: 'classification', moduleDefault: 'claude' } as const
+
+/** Modèle précis de Claude et de GPT pour la classification ; TeckiA et les modèles open source gardent celui de Config IA. */
+export const CLASSIFIER_MODELS: Partial<Record<string, string>> = { claude: 'claude-haiku-5-5', gpt4o: 'gpt-4o-mini' }
 
 /**
  * Version publiée d'un appel d'offres (« Préparer la publication », ADR 0060) : ligne « Publication des AO » de Config IA,
@@ -41,7 +44,7 @@ export const AI_MODULES: { id: AIModule; label: string; description: string; mod
   // Sans repli (callLLM strict, src/lib/cv-export/export.ts) : le CV complet du candidat ne part que chez le modèle choisi ici.
   // Modèle CV déposé (template-upload.ts) : cartographié par Claude quand aucun modèle n'est choisi ici (moduleDefault).
   { id: 'cvExport', label: 'Export CV (format cabinet)', description: 'Dossier de compétences anonymisé FR / EN (contenu du CV recopié tel quel) depuis la CV Thèque et le vivier — sans repli : en cas de panne, l’export affiche une erreur. Analyse des modèles CV déposés : Claude si « Modèle par défaut »' },
-  // ADR 0044 : Claude Haiku et GPT-4o mini plutôt que les modèles de leur ligne (CLASSIFIER_MODELS, cv-classify.ts).
+  // ADR 0044 : Claude Haiku et GPT-4o mini plutôt que les modèles de leur ligne (CLASSIFIER_MODELS).
   { id: 'classification', label: 'Classification des CV', description: 'Métiers, compétences, séniorité… de chaque CV déposé, pour le préfiltre du matching et les statistiques — Claude (Haiku) si « Modèle par défaut », puis le repli habituel (GPT : GPT-4o mini) ; aucun modèle disponible : classement par règles, refait par l’IA ensuite', moduleDefault: CLASSIFICATION_AI.moduleDefault },
   // ADR 0060 : Claude Sonnet 5.5 plutôt que le modèle Claude de la ligne (PUBLICATION_AI), choisi par la mesure.
   { id: 'aoPublication', label: 'Publication des AO', description: 'Version anonymisée d’un appel d’offres à relire avant publication (« Préparer la publication ») — Claude (Sonnet 5.5) si « Modèle par défaut », puis le repli habituel ; aucun modèle disponible : version préparée par les règles', moduleDefault: PUBLICATION_AI.moduleDefault },
