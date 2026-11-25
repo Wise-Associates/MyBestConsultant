@@ -6,6 +6,9 @@
 // Le dossier de sortie contient des données personnelles : hors du dépôt, supprimé après l'entraînement.
 //   npm run finetune:cv-dataset -- collect .env --out <dossier>             → DEV : raw-<projet>.jsonl
 //   npm run finetune:cv-dataset -- collect .env --prod --out <dossier>      → production (fichier .env de production)
+//   npm run finetune:cv-dataset -- collect-files .env --dir <dossier de PDF> --out <dossier>
+//                                                                           → CV hors de MBC (2026-11-25) : raw-fichiers.jsonl,
+//                                                                              nom lu et réponse écrite par GPT-4o mini seul
 //   npm run finetune:cv-dataset -- split --out <dossier>                    → train.jsonl, validation.jsonl, test.jsonl,
 //                                                                              test-review.csv (relecture des réponses du test)
 // Aucune donnée de CV ni valeur secrète n'est affichée : seulement des nombres.
@@ -36,10 +39,11 @@ function readEnv(path: string): Record<string, string> {
   return env
 }
 
-const USAGE = 'Usage : npm run finetune:cv-dataset -- collect <fichier .env> [--prod] --out <dossier> | split --out <dossier>'
+const USAGE = 'Usage : npm run finetune:cv-dataset -- collect <fichier .env> [--prod] --out <dossier> | ' +
+  'collect-files <fichier .env> --dir <dossier de PDF> --out <dossier> | split --out <dossier>'
 const [command, ...args] = process.argv.slice(2)
 const outAt = args.indexOf('--out')
-if (!['collect', 'split'].includes(command ?? '') || outAt < 0 || !args[outAt + 1]) {
+if (!['collect', 'collect-files', 'split'].includes(command ?? '') || outAt < 0 || !args[outAt + 1]) {
   console.error(USAGE)
   process.exit(1)
 }
@@ -80,7 +84,8 @@ function ensurePrivateDir(dir: string) {
 interface RawExample {
   key: string
   project: string
-  kind: 'candidate' | 'vivier'
+  /** « file » : CV tiré d'un fichier hors de MBC (collect-files), toujours à l'entraînement (planSplits). */
+  kind: 'candidate' | 'vivier' | 'file'
   sourceId: string
   model: string
   family: string
@@ -174,19 +179,83 @@ if (command === 'collect') {
   console.log(`Projet ${env.APPWRITE_PROJECT_ID} : ${counts.classified} classifications, ${counts.kept} exemples écrits dans ${out}.`)
   console.log(`Écartées : ${counts.noSource} sans CV, ${counts.stale} faites sur une autre version du CV ou par les règles, ${counts.unreadable} illisibles, ${counts.noText} sans texte lisible, ${counts.noName} sans nom connu (impossible à masquer).`)
   console.log(`Gardés dont le nom n'apparaît pas dans le texte (CV anonymisé ou nom écrit autrement) : ${counts.nameNotFound}.`)
+} else if (command === 'collect-files') {
+  // CV fournis en fichiers (archive de PDF, accord du DPO du 2026-11-25) : ni fiche ni classification dans MBC. Le texte
+  // est lu comme MBC le lit (readCvBufferForScoring) ; le nom, que rien d'autre ne donne, est lu par le modèle dans le
+  // début du CV ; la réponse attendue est écrite par GPT-4o mini, auteur des classifications enregistrées dans MBC, sur
+  // le texte déjà masqué (celui de l'entraînement). GPT-4o mini seul, sans repli : ces CV ne vont à aucun autre modèle.
+  const file = args.find((a, i) => !a.startsWith('--') && i !== outAt + 1 && args[i - 1] !== '--dir')
+  const dirAt = args.indexOf('--dir')
+  if (!file || dirAt < 0 || !args[dirAt + 1]) { console.error(USAGE); process.exit(1) }
+  const env = readEnv(file)
+  const missing = ['APPWRITE_ENDPOINT', 'APPWRITE_PROJECT_ID', 'APPWRITE_API_KEY', 'APPWRITE_DB_ID'].filter(name => !env[name])
+  if (missing.length) { console.error(`Variables manquantes dans ${file} : ${missing.join(', ')}.`); process.exit(1) }
+  // Clé OpenAI lue dans Config IA du projet de développement seulement : la production n'a rien à fournir ici.
+  if (env.APPWRITE_PROJECT_ID !== DEV_PROJECT_ID) { console.error(`Projet ${env.APPWRITE_PROJECT_ID} : collect-files lit Config IA du projet de développement seulement.`); process.exit(1) }
+  Object.assign(process.env, env)
+  const inDir = resolve(args[dirAt + 1])
+  const st = lstatSync(inDir)
+  if (!st.isDirectory() || st.isSymbolicLink()) { console.error(`--dir ${inDir} : dossier attendu.`); process.exit(1) }
+  // PDF seulement (choix du 2026-11-25 : les images demanderaient une transcription), fichiers ordinaires de 10 Mo au plus.
+  const pdfs = readdirSync(inDir).filter(f => f.toLowerCase().endsWith('.pdf')).sort()
+    .filter(f => { const s = lstatSync(join(inDir, f)); return s.isFile() && !s.isSymbolicLink() && s.size <= 10_000_000 })
+
+  const { callLLM } = await import('../src/lib/ai/llm-router')
+  const { CLASSIFICATION_SYSTEM, parseClassification } = await import('../src/lib/cv-classification')
+  const { readCvBufferForScoring } = await import('../src/lib/sourcing-core')
+  const { mapLimit } = await import('../src/lib/concurrency')
+  const { NAME_HEADER_CHARS, NAME_SYSTEM, maskClassification, maskLeftoverContacts, maskPersonName, parseNameAnswer, textKey } = await import('../src/lib/finetune/cv-classification-dataset')
+  const { createHash } = await import('node:crypto')
+  const GPT = { provider: 'gpt4o', model: 'gpt-4o-mini', strict: true } as const
+
+  const counts = { files: pdfs.length, unreadable: 0, noText: 0, noName: 0, nameNotFound: 0, badAnswer: 0, aiFailed: 0, kept: 0 }
+  let firstAiError = ''
+  const examples = (await mapLimit(pdfs, CONCURRENCY, async (name): Promise<RawExample | null> => {
+    let text: string
+    try { text = await readCvBufferForScoring(readFileSync(join(inDir, name))) } catch { counts.unreadable++; return null }
+    if (!text) { counts.noText++; return null }
+    try {
+      const header = await callLLM([{ role: 'user', content: text.slice(0, NAME_HEADER_CHARS) }], NAME_SYSTEM, { ...GPT, maxTokens: 100, timeoutMs: 60_000 })
+      const names = parseNameAnswer(header.content)
+      if (!names.length) { counts.noName++; return null }
+      const cvText = maskLeftoverContacts(maskPersonName(text, names))
+      // Nom absent du texte : le masquage ne peut pas être vérifié, l'exemple pourrait garder le nom de la personne.
+      if (!cvText.includes('[NOM]')) { counts.nameNotFound++; return null }
+      const answer = await callLLM([{ role: 'user', content: cvText }], CLASSIFICATION_SYSTEM, { ...GPT, maxTokens: 4000, timeoutMs: 90_000 })
+      const parsed = parseClassification(answer.content)
+      if (!parsed) { counts.badAnswer++; return null }
+      const classification = maskClassification(parsed, names)
+      counts.kept++
+      const key = textKey(cvText)
+      return {
+        key: createHash('sha256').update(`fichiers:${name}:${key}`).digest('hex').slice(0, 24),
+        project: 'fichiers', kind: 'file', sourceId: name, model: 'gpt-4o-mini',
+        family: classification.jobFamily, textKey: key, cvText, classification,
+      }
+    } catch (error) {
+      counts.aiFailed++
+      // Message du fournisseur (quota, clé, délai) : jamais de texte de CV.
+      firstAiError ||= error instanceof Error ? error.message.slice(0, 200) : 'erreur'
+      return null
+    }
+  })).filter((e): e is RawExample => e !== null)
+
+  ensurePrivateDir(outDir)
+  const out = join(outDir, 'raw-fichiers.jsonl')
+  writePrivate(out, examples.map(e => JSON.stringify(e)).join('\n') + '\n')
+  console.log(`${counts.files} PDF : ${counts.kept} exemples écrits dans ${out}.`)
+  console.log(`Écartés : ${counts.unreadable} illisibles, ${counts.noText} sans texte (scannés), ${counts.noName} sans nom lu, ${counts.nameNotFound} nom absent du texte, ${counts.badAnswer} réponses illisibles, ${counts.aiFailed} appels en échec.`)
+  if (firstAiError) console.log(`Premier échec de l'IA : ${firstAiError}`)
+  if (counts.aiFailed === counts.files && counts.files > 0) process.exit(1)
 } else {
   ensurePrivateDir(outDir)
-  const { assignSplits, chatExample, csvCell } = await import('../src/lib/finetune/cv-classification-dataset')
+  const { chatExample, csvCell, planSplits } = await import('../src/lib/finetune/cv-classification-dataset')
   const files = readdirSync(outDir).filter(f => /^raw-.+\.jsonl$/.test(f)).sort()
   if (!files.length) { console.error(`Aucun fichier raw-*.jsonl dans ${outDir} : lancez d'abord « collect ».`); process.exit(1) }
   const raw: RawExample[] = files.flatMap(f => readFileSync(join(outDir, f), 'utf-8').split('\n').filter(Boolean).map(l => JSON.parse(l) as RawExample))
-  // Même CV dans DEV et en production (copie de données) : gardé une fois, sinon il pourrait finir à la fois dans
-  // l'entraînement et dans le test.
-  const seen = new Set<string>()
-  const unique = [...raw].sort((a, b) => a.key.localeCompare(b.key)).filter(e => !seen.has(e.textKey) && seen.add(e.textKey))
-  const splits = assignSplits(unique.map(e => ({ key: e.key, family: e.family })))
-  const bySplit = { train: [] as RawExample[], validation: [] as RawExample[], test: [] as RawExample[] }
-  for (const e of unique) bySplit[splits.get(e.key) ?? 'train'].push(e)
+  // Même CV dans DEV et en production (copie de données), ou fichier déjà dans MBC : gardé une fois, sinon il pourrait finir
+  // à la fois dans l'entraînement et dans le test. CV tirés de fichiers : entraînement seulement (planSplits).
+  const { duplicates, ...bySplit } = planSplits(raw)
   for (const [name, list] of Object.entries(bySplit)) {
     writePrivate(join(outDir, `${name}.jsonl`), list.map(e => JSON.stringify(chatExample(e.cvText, e.classification))).join('\n') + '\n')
   }
@@ -199,7 +268,7 @@ if (command === 'collect') {
   writePrivate(join(outDir, 'test-review.csv'), '﻿' + review.join('\n') + '\n')
   const families = (list: RawExample[]) => Object.entries(list.reduce<Record<string, number>>((acc, e) => ({ ...acc, [e.family]: (acc[e.family] ?? 0) + 1 }), {}))
     .sort((a, b) => b[1] - a[1]).map(([f, n]) => `${f} ${n}`).join(', ')
-  console.log(`${raw.length} exemples lus, ${raw.length - unique.length} doublons écartés.`)
+  console.log(`${raw.length} exemples lus, ${duplicates} doublons écartés.`)
   for (const [name, list] of Object.entries(bySplit)) console.log(`${name} : ${list.length} (${families(list)})`)
   console.log(`Fichiers écrits dans ${outDir} (lisibles par vous seul). test-review.csv : réponses du test à relire.`)
 }

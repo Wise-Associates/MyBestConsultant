@@ -70,8 +70,11 @@ export async function extractCVText(cvFileId: string, maxChars = 3000, bucketId:
 async function cvFileText(cvFileId: string, maxChars: number, bucketId: string): Promise<string> {
   const { storage } = createAdminClient()
   const bytes = await storage.getFileDownload(bucketId, cvFileId)
-  const buffer = Buffer.from(bytes)
+  return cvBufferText(Buffer.from(bytes), maxChars)
+}
 
+/** Texte d'un CV déjà lu (PDF, DOCX ou texte) ; '' s'il n'en a pas (PDF scanné). Lève si le fichier est abîmé. */
+async function cvBufferText(buffer: Buffer, maxChars: number): Promise<string> {
   const isPdf = buffer[0] === 0x25 && buffer[1] === 0x50
   const isDocx = buffer[0] === 0x50 && buffer[1] === 0x4B
 
@@ -105,6 +108,15 @@ async function cvFileText(cvFileId: string, maxChars: number, bucketId: string):
 export async function readCvForScoring(cvFileId: string, bucketId: string = BUCKETS.CVS): Promise<string> {
   // Lu au-delà de la borne : les coordonnées masquées raccourcissent ou allongent le texte avant qu'il soit coupé.
   const text = await cvFileText(cvFileId, CV_CHARS_FOR_SCORING * 2, bucketId)
+  return text.trim().length > 30 ? cvTextForScoring(text) : ''
+}
+
+/**
+ * Même texte que readCvForScoring pour un CV lu hors du stockage : exemples d'affinage tirés de fichiers
+ * (scripts/finetune-cv-dataset.mts, collect-files ; ADR 0058), qui doivent ressembler à ce que MBC classe.
+ */
+export async function readCvBufferForScoring(buffer: Buffer): Promise<string> {
+  const text = await cvBufferText(buffer, CV_CHARS_FOR_SCORING * 2)
   return text.trim().length > 30 ? cvTextForScoring(text) : ''
 }
 
