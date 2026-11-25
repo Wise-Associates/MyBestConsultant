@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  criteriaBreakdown, criteriaJudgedScore, criteriaScoreOf, criteriaSummary, criteriaSystemPrompt, criteriaUserMessage,
+  criteriaBlock, criteriaBreakdown, criteriaJudgedScore, criteriaScoreOf, criteriaSummary, criteriaSystemPrompt, criteriaUserMessage,
   isCriteriaSummary, parseCriteriaJudgements, reasonWithoutCriteria,
 } from './criteria-scoring'
 import { withTitleRelations } from './match-scoring'
@@ -133,11 +133,21 @@ describe('notation sur les critères d’une offre (v3)', () => {
     assert.equal(reasonWithoutCriteria(reason), 'Pas d’Angular.')
   })
 
+  it('le prompt de notation nomme la liste du poste comme le bloc des critères (« Intitulé », ADR 0062)', () => {
+    const set = defaultCriteriaSet({ title: 'Développeur Java', skills: ['Java'], location: 'Paris' })
+    const prompt = criteriaSystemPrompt(set)
+    assert.match(criteriaBlock(set), /^Intitulé \(réponds dans cet ordre\) :\n1\. Développeur Java/)
+    assert.match(prompt, /une par métier de la liste « Intitulé »/)
+    assert.match(prompt, /les métiers de la liste « Intitulé » sont la référence/)
+    assert.ok(!prompt.includes('« Poste »'))
+  })
+
   it('critères par défaut : un lieu éloigné plafonne toujours à 60, comme le barème (revue de code du 2026-11-24)', () => {
-    const set = defaultCriteriaSet({ title: 'Développeur Java', description: '', skills: ['Java', 'Spring'], location: 'Paris' })
+    const set = defaultCriteriaSet({ title: 'Développeur Java', skills: ['Java', 'Spring'], location: 'Paris' })
     const values = new Map(set.criteria.map(c => [c.id, c.id === 'localisation' ? ['non'] : c.labels.length > 0 ? c.labels.map(() => 'oui') : ['oui']] as [string, never]))
     const result = criteriaScoreOf(set, values)
-    assert.equal(result.total, 88)
+    // Tout sauf le lieu (14 sur 100, ADR 0062).
+    assert.equal(result.total, 86)
     assert.equal(result.score, 60)
   })
 

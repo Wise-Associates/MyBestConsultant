@@ -45,6 +45,6 @@ export default async function MatchingPage({ params }: { params: Promise<{ jobId
     jobWeights={isJobWeightsConfigured() ? { weights: jobWeights, unreadable: jobUnreadable, candidates, candidatesUnreadable } : undefined} now={new Date().toISOString()}
     reviewEnabled={isAutoMatchingEnabled() && job.tenantId === user.tenantId}
     criteria={criteria && { general: criteria.general, own: criteria.own, candidates: criteria.candidates }}
-    criteriaStart={defaultCriteriaSet({ title: job.title, description: job.description, skills: job.skills ?? [], location: job.location })}
+    criteriaStart={defaultCriteriaSet({ title: job.title, skills: job.skills ?? [], location: job.location })}
     canEditCriteria={job.tenantId === user.tenantId} />
 }

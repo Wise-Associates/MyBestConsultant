@@ -12,6 +12,7 @@ import { callLLM } from '@/lib/ai/llm-router'
 import { PUBLICATION_AI, SCORING_AI } from '@/lib/ai/models'
 import { CriteriaSetSchema, defaultCriteriaSet, type OfferCriteriaSet } from '@/lib/offer-criteria'
 import { saveOfferCriteria } from '@/lib/offer-criteria-store'
+import { readRevisionInput, reviseCriteria, type RevisionResult } from '@/lib/criteria-assistant'
 import { CRITERIA_PROPOSAL_PROMPT, criteriaProposalRequest, parseCriteriaProposal } from './criteria-proposal'
 import { findIdentifiers } from './name-match'
 import { llmUnavailableReason } from './ai-failures'
@@ -423,6 +424,28 @@ export async function saveAoCriteriaOf(tenantId: string, id: string, criteria: u
     return {}
   } catch (err) {
     return { error: `Critères non enregistrés : ${errorOf(err)}` }
+  }
+}
+
+/**
+ * Assistant des critères d'un AO pas encore publié (ADR 0062) : critères modifiés par l'IA selon la demande du
+ * navigateur, sur l'AO aux noms du client remplacés (comme leur proposition) ; rien n'est enregistré. `beforeAi` : place
+ * du quota du jour des recruteurs, prise après la validation de la demande (son message de refus).
+ */
+export async function reviseAoCriteriaOf(tenantId: string, id: string, input: unknown, beforeAi?: () => Promise<string | null>): Promise<RevisionResult> {
+  const read = readRevisionInput(input)
+  if ('error' in read) return read
+  try {
+    const offer = await aoAccessFor(tenantId).offer(id)
+    if (!offer) return { error: 'Offre introuvable : rechargez la page.' }
+    if (offer.status === 'published' || offer.jobId) return { error: 'Offre déjà publiée : ses critères ne se modifient plus ici.' }
+    const refusal = (await beforeAi?.()) ?? null
+    if (refusal) return { error: refusal }
+    const { names } = await hiddenNamesFor(offer)
+    return await reviseCriteria(cleanedAo(offer, names), read.input, offer.$id)
+  } catch (err) {
+    console.error('AO: assistant des critères en échec', id, errorOf(err))
+    return { error: 'Assistant indisponible pour le moment : modifiez les critères à la main, ou réessayez.' }
   }
 }
 

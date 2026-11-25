@@ -5,8 +5,9 @@ import { getCurrentUser } from '@/lib/appwrite/auth'
 import type { PublicationDraft, PublicationMode } from '@/lib/ao/dashboard-types'
 import {
   addAoOfferCommentOf, aoOfferSourcingOf, assignAoOfferOf, deleteAoOfferCommentOf, deleteAoOfferOf, deleteAoOffersOf, listAoOfferCommentsOf, previewAoPublicationOf,
-  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, stopAoPublicationTasksOf, saveAoCriteriaOf,
+  publishAoOfferOf, retryAoEmailOf, reviseAoCriteriaOf, setAoOfferStatusOf, stopAoPublicationTasksOf, saveAoCriteriaOf,
 } from '@/lib/ao/offer-actions'
+import { suggestTitles, takeCriteriaChatSlot } from '@/lib/criteria-assistant'
 import { AO_RETRY_DAILY_LIMITS, RETRY_QUOTA_MESSAGE } from '@/lib/ao/attempts'
 import { AO_PUBLICATION_AI_DAILY_LIMITS, PUBLICATION_AI_QUOTA_MESSAGE } from '@/lib/ao/publication-copy'
 import { SOCIAL_AI_QUOTA_MESSAGE } from '@/lib/ao/publication-social'
@@ -178,6 +179,27 @@ export async function saveRecruiterAoCriteria(id: string, criteria: OfferCriteri
   const me = await recruiter()
   if (!me) return { error: SESSION_EXPIRED }
   return saveAoCriteriaOf(me.tenantId, id, criteria)
+}
+
+/**
+ * Assistant des critères d'un AO de l'organisation pas encore publié (ADR 0062) : offre visible par ce recruteur, suivi
+ * des appels d'offres compris dans la formule, puis une place du quota du jour de l'assistant. Rien n'est enregistré.
+ */
+export async function reviseRecruiterAoCriteria(id: string, input: unknown) {
+  const me = await recruiter()
+  if (!me) return { error: SESSION_EXPIRED }
+  if (!(await viewerCanUseAoOffer(me.user, id))) return { error: 'Offre introuvable : rechargez la page.' }
+  return reviseAoCriteriaOf(me.tenantId, id, input, async () => {
+    const denial = aoDenial(me.tenantId, await loadTenantAccess(me.tenantId))
+    return denial ?? takeCriteriaChatSlot(!!me.user.emailVerification, me.tenantId)
+  })
+}
+
+/** Autres intitulés proposés (ADR 0062), comptés sur la base candidats et le vivier personnel du recruteur ; sans IA. */
+export async function suggestRecruiterAoTitles(input: unknown) {
+  const me = await recruiter()
+  if (!me) return { error: SESSION_EXPIRED }
+  return suggestTitles(input, { kind: 'recruiter', tenantId: me.tenantId, ownerId: me.user.$id })
 }
 
 export async function setRecruiterAoOfferStatus(id: string, status: 'to_review' | 'ignored') {

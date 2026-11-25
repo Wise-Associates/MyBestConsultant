@@ -45,7 +45,7 @@ const dedupe = (texts: string[]) => {
 
 /** Ce que le filtre retient d'une offre : ses critères (ADR 0061) ou, sans eux, ses critères par défaut. */
 export function searchProfileOf(offer: OfferForSearch, criteria?: OfferCriteriaSet | null): SearchProfile {
-  const set = criteria ?? defaultCriteriaSet({ title: offer.title, description: '', skills: offer.skills, location: offer.location })
+  const set = criteria ?? defaultCriteriaSet({ title: offer.title, skills: offer.skills, location: offer.location })
   const by = (id: string) => set.criteria.find(c => c.id === id)
   const roles = labelsOf(by('poste'))
   const weightOf = (id: (typeof STANDARD_KEYS)[number]) => by(id)?.weight ?? 0

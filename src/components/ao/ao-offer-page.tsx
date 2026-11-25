@@ -26,7 +26,7 @@ interface Props {
   neighbours: AoOfferNeighbours
   /** Filtres de la liste (forme canonique), gardés d'une offre à l'autre et au retour à la liste. */
   query: string
-  actions: Pick<AoDashboardActions, 'setStatus' | 'sourcing' | 'stopTasks' | 'saveCriteria'>
+  actions: Pick<AoDashboardActions, 'setStatus' | 'sourcing' | 'stopTasks' | 'saveCriteria' | 'reviseCriteria' | 'suggestTitles'>
   paths: Pick<AoDashboardPaths, 'list' | 'originalApi' | 'jobs'>
   copy: Pick<AoDashboardCopy, 'title' | 'publishNote' | 'social'>
   /** Hauteur des barres fixes de l'espace au-dessus du contenu, où se colle la barre du haut de l'offre. */

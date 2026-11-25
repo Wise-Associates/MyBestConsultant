@@ -119,6 +119,16 @@ export async function facetCountsMany(queries: { filter: string; facets: readonl
   return res.results
 }
 
+/**
+ * Métiers (facette `roles`) des CV dont les métiers exercés contiennent tous les mots de `q`, avec leur nombre de CV ;
+ * aucun CV renvoyé. Autres intitulés proposés pour une offre (related-titles.ts).
+ */
+export async function roleCounts(q: string, filter: string): Promise<Record<string, number>> {
+  const res = await meili<{ facetDistribution?: { roles?: Record<string, number> } }>('POST', `/indexes/${encodeURIComponent(cvIndexUid())}/search`,
+    { q, filter, attributesToSearchOn: ['roles'], matchingStrategy: 'all', facets: ['roles'], limit: 0 }, 5_000)
+  return res.facetDistribution?.roles ?? {}
+}
+
 /** Comptes par champ (facettes) et bornes des champs numériques des CV qui répondent au filtre ; aucun CV renvoyé. */
 export async function facetCounts(filter: string, facets: readonly string[]): Promise<RawStats> {
   return meili<RawStats>('POST', `/indexes/${encodeURIComponent(cvIndexUid())}/search`, { q: '', filter, facets, limit: 0 }, 8_000)

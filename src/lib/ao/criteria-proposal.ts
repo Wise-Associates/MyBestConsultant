@@ -4,8 +4,8 @@ import {
   CRITERIA_LIMITS, CriteriaSetSchema, REQUIRED_BY_DEFAULT, STANDARD_KEYS, cleanLabel, weightsSummingTo, type CriterionLabel, type OfferCriteriaSet,
 } from '@/lib/offer-criteria'
 
-// Critères de matching proposés par l'IA pour un appel d'offres (ADR 0061), avant sa publication : les libellés de chaque
-// critère du barème « matching » lus dans l'AO (métiers du poste, technologies, secteur, séniorité…), leur importance
+// Critères de matching proposés par l'IA pour un appel d'offres (ADR 0061), avant sa publication : les libellés des cinq
+// critères par défaut lus dans l'AO (métiers du poste, lieu, séniorité, technologies, secteur ; ADR 0062), leur importance
 // relative, ★ pour ce que l'AO dit indispensable, et d'autres intitulés du même métier pour la recherche des CV. L'IA ne
 // fixe pas les poids des critères (ceux par défaut), seulement l'importance des libellés dans un critère. La personne qui
 // publie relit et modifie tout. L'IA reçoit l'AO aux noms du client déjà remplacés (comme pour la version publiée) : ces
@@ -14,20 +14,15 @@ import {
 export const CRITERIA_PROPOSAL_PROMPT = `Tu prépares les critères de matching d'une offre de mission ou d'emploi, à partir de l'appel d'offres qui l'a fait naître. Ces critères servent à noter les CV des candidats.
 
 Réponds UNIQUEMENT avec un objet JSON valide, sans markdown :
-{"poste":[{"libelle":"…","importance":1-10,"requis":true|false}, …],"autres_intitules":["…"],"competences":[…],"exigences":[…],"projet":[…],"localisation":[…],"niveau":[…],"formation":[…],"domaine":[…],"langue":[…],"tjm":[…]}
+{"poste":[{"libelle":"…","importance":1-10,"requis":true|false}, …],"autres_intitules":["…"],"localisation":[…],"niveau":[…],"competences":[…],"domaine":[…]}
 (chaque liste, sauf "autres_intitules", contient des objets {"libelle","importance","requis"})
 
 - "poste" : le ou les métiers que le titre et la description demandent (${MAX_ROLES} au plus), dans l'ordre d'importance : un métier par élément (« Développeur Java », « Développeur Angular » pour un « développeur Java Angular »). Le métier principal est requis.
 - "autres_intitules" : jusqu'à ${CRITERIA_LIMITS.alternatives} autres intitulés courants du même métier (« Ingénieur études et développement Java »), pour trouver les CV ; jamais un autre métier.
-- "competences" : technologies, outils, langages, méthodes et expertises demandés (${CRITERIA_LIMITS.labels} au plus), un par élément.
-- "exigences" : le contexte et les exigences du poste qui ne sont ni un métier ni une technologie (« Expérience des systèmes de paiement », « Encadrement d'une équipe ») : courtes, 8 au plus.
-- "projet" : le type de projet (« Migration vers le cloud », « Refonte d'une application »), s'il est décrit.
 - "localisation" : la ville ou la région, et le télétravail s'il est dit.
 - "niveau" : la séniorité demandée (« 5 ans d'expérience et plus », « Senior »), si elle est dite.
-- "formation" : diplômes ou certifications exigés, s'il y en a.
+- "competences" : technologies, outils, langages, méthodes et expertises demandés (${CRITERIA_LIMITS.labels} au plus), un par élément.
 - "domaine" : le secteur ou le métier fonctionnel exigé (« Banque de détail », « Assurance vie »), décrit par sa nature, jamais par le nom d'une entreprise.
-- "langue" : les langues exigées et leur niveau, s'il y en a.
-- "tjm" : le TJM ou la rémunération, s'il est indiqué.
 
 Règles :
 - Seulement ce que l'appel d'offres dit : une liste vide plutôt qu'un critère inventé ou déduit du titre.
@@ -74,7 +69,8 @@ function labelsOf(value: unknown, max: number): CriterionLabel[] | null {
 
 /**
  * Critères proposés par l'IA (`content` : sa réponse) appliqués à `fallback` (critères par défaut de l'offre) : chaque
- * liste lue remplace les libellés du critère, une liste absente ou vide les garde ; poids des critères inchangés.
+ * liste lue remplace les libellés du critère, une liste absente ou vide les garde ; poids des critères inchangés. Une
+ * liste d'un critère absent de `fallback` est ignorée.
  * null si la réponse est illisible ou si le résultat ne serait pas valide (l'appelant garde `fallback`).
  */
 export function parseCriteriaProposal(content: string, fallback: OfferCriteriaSet): OfferCriteriaSet | null {

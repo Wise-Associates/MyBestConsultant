@@ -1,5 +1,7 @@
 import type { JobMatchResult } from '@/lib/matching-core'
 import type { OfferCriteriaSet } from '@/lib/offer-criteria'
+import type { RevisionRequest, RevisionResult } from '@/lib/criteria-revision'
+import type { TitleRequest, TitleSuggestionsResult } from '@/lib/search/related-titles'
 import type { SocialEdits } from '@/lib/social-content'
 import type { SocialPreview } from './publication-social'
 import type { BulkDeleteResult, ExpiredSearch } from './bulk-delete'
@@ -188,6 +190,10 @@ export interface AoDashboardActions {
   publish(id: string, input: PublicationDraft): Promise<{ jobId?: string; error?: string; notice?: string }>
   /** Critères de matching d'un AO pas encore publié (ADR 0061), gardés pour sa section Sourcing et sa publication ; null les retire. */
   saveCriteria?: (id: string, criteria: OfferCriteriaSet | null) => Promise<{ error?: string }>
+  /** Assistant des critères (ADR 0062) : critères modifiés par l'IA selon la demande, jamais enregistrés par lui. */
+  reviseCriteria?: (id: string, input: RevisionRequest) => Promise<RevisionResult>
+  /** « Autres intitulés du métier » proposés (ADR 0062) : dictionnaire de la classification et métiers des CV. */
+  suggestTitles?: (input: TitleRequest) => Promise<TitleSuggestionsResult>
   setStatus(id: string, status: 'to_review' | 'ignored'): Promise<{ error?: string }>
   /**
    * « Tout arrêter » du panneau d'une offre publiée : diffusion LinkedIn pas encore remise à Make et e-mails automatiques

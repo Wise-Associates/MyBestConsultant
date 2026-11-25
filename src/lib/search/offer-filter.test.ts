@@ -37,12 +37,12 @@ describe('filtre des CV après le préfiltre (ADR 0061, phase 2)', () => {
     assert.ok(queries.every(q => q.filter === 'kind = "candidate"' && q.attributesToRetrieve.includes('yearsOfExperience')))
   })
 
-  it('sans critères : ceux par défaut de l’offre (métier du titre et ville requis, poids du barème)', () => {
+  it('sans critères : ceux par défaut de l’offre (métier du titre et ville requis, poids du barème ramenés aux cinq critères)', () => {
     const plain = searchProfileOf(OFFER, null)
     assert.deepEqual(plain.roles, [{ label: 'Développeur Java Angular', weight: 100, required: true }])
     assert.deepEqual(plain.location, [{ label: 'Paris', weight: 100, required: true }])
     assert.deepEqual(plain.skills.map(s => [s.label, s.required]), [['Java', false], ['Angular', false], ['Kafka', false]])
-    assert.equal(plain.weights.role, 35)
+    assert.deepEqual(plain.weights, { role: 33, skills: 30, location: 14, seniority: 11, sector: 12, language: 0 })
   })
 
   it('un intitulé court doit être retrouvé entier, un long aux deux tiers', () => {

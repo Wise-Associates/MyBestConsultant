@@ -1,10 +1,10 @@
 import { z } from 'zod'
-import { CRITERION_LABELS, MAX_ROLES, SCALES, offerRequirements, requiredSkills, type CriterionKey } from './match-scoring'
+import { CRITERION_LABELS, MAX_ROLES, SCALES, requiredSkills, type CriterionKey } from './match-scoring'
 import { cleanTitle } from './search/cv-search'
 
 // Critères de matching d'une offre (demande du 2026-11-24, ADR 0061) : avant de publier un appel d'offres, la personne
-// qui publie règle les critères sur lesquels les CV seront notés. Les dix critères du barème « matching » (ADR 0036) en
-// sont le point de départ ; on peut en retirer et en ajouter (« Expérience bancaire »). Chaque critère a un poids (total
+// qui publie règle les critères sur lesquels les CV seront notés. Cinq critères du barème « matching » (ADR 0036) en
+// sont le point de départ (ADR 0062) ; on peut en retirer, ajouter les autres et en créer (« Expérience bancaire »). Chaque critère a un poids (total
 // exactement 100) et des libellés, chacun avec son poids dans le critère (total exactement 100) : pour un poste « Java
 // Angular », Java 70 et Angular 30. Un libellé marqué « requis » (★) plafonne le score sous 65 quand il manque, et sert
 // de filtre avant l'IA. Ces critères sont la pondération générale de l'offre, avant celle de chaque recruteur.
@@ -32,6 +32,27 @@ export const STANDARD_KEYS = Object.keys(SCALES.matching.weights) as CriterionKe
 export type StandardKey = (typeof STANDARD_KEYS)[number]
 
 /**
+ * Critères d'une nouvelle offre, dans l'ordre et sous les noms des suggestions de MBC Search (« Intitulé, Lieu,
+ * Séniorité, Compétences, Secteur », demande du 2026-11-25, ADR 0062). Les cinq
+ * autres (contexte, projet, formation, langue, TJM) s'ajoutent à la main ou par l'assistant des critères.
+ */
+export const DEFAULT_KEYS = ['poste', 'localisation', 'niveau', 'competences', 'domaine'] as const satisfies readonly StandardKey[]
+
+/**
+ * Poids de ces cinq critères (total 100), fixés par l'utilisateur le 2026-11-25 : Intitulé 33 et Compétences 30 ; Lieu,
+ * Séniorité et Secteur gardent ceux du barème « matching » ramenés à cinq critères (14, 11, 12).
+ */
+export const DEFAULT_WEIGHTS: Record<(typeof DEFAULT_KEYS)[number], number> = { poste: 33, localisation: 14, niveau: 11, competences: 30, domaine: 12 }
+
+/**
+ * Nom des critères du barème dans les critères d'une offre (vocabulaire de MBC Search, ADR 0062) ; les tableaux du
+ * barème gardent le leur (CRITERION_LABELS). Appliqué à chaque lecture (CriteriaSetSchema) : des critères enregistrés
+ * sous les anciens noms (« Poste », « Techno ») prennent ceux-ci. Les résumés des scores ne gardent aucun nom
+ * (criteriaSummary) et l'empreinte ignore celui des critères du barème : rien n'est à renoter.
+ */
+export const CRITERION_NAMES: Record<StandardKey, string> = { ...CRITERION_LABELS, poste: 'Intitulé', competences: 'Compétences', localisation: 'Lieu' }
+
+/**
  * Critères « rouges » du barème à une seule valeur (lieu, séniorité, formation, secteur, langue) : sans libellé, leur
  * absence plafonne sous 65 (SCALES.matching.caps) ; avec des libellés, seul un libellé ★ plafonne. Leurs libellés sont
  * donc requis par défaut (critères par défaut et proposés par l'IA) : un lieu ajouté comme libellé ne doit pas lever le
@@ -53,7 +74,7 @@ export interface CriterionLabel {
 export interface OfferCriterion {
   /** Clé du critère du barème (`poste`, `competences`…), ou `x1`… pour un critère ajouté. */
   id: string
-  /** Nom affiché : celui du barème (CRITERION_LABELS), ou celui saisi pour un critère ajouté. */
+  /** Nom affiché : celui du barème (CRITERION_NAMES), ou celui saisi pour un critère ajouté. */
   name: string
   /** Poids du critère : entier de 1 à 100, total 100 pour l'offre. */
   weight: number
@@ -93,13 +114,13 @@ const criterionSchema = z.strictObject({
   name: z.string().transform(v => cleanLabel(v, CRITERIA_LIMITS.name)),
   weight: z.number().int().min(1).max(100),
   labels: z.array(labelSchema).max(CRITERIA_LIMITS.labels),
-}).transform(c => ({ ...c, name: isStandardKey(c.id) ? CRITERION_LABELS[c.id] : c.name }))
+}).transform(c => ({ ...c, name: isStandardKey(c.id) ? CRITERION_NAMES[c.id] : c.name }))
   .superRefine((c, ctx) => {
     if (!c.name) ctx.addIssue({ code: 'custom', message: 'Un critère ajouté doit avoir un nom.' })
     if (c.labels.length > 0 && sum(c.labels.map(l => l.weight)) !== 100) ctx.addIssue({ code: 'custom', message: `Les libellés de « ${c.name} » doivent totaliser 100.` })
     if (new Set(c.labels.map(l => l.label.toLowerCase())).size !== c.labels.length) ctx.addIssue({ code: 'custom', message: `« ${c.name} » a deux fois le même libellé.` })
     // Les métiers d'un poste sont jugés un par un avec leur intitulé dans le CV (parseRoles) : MAX_ROLES au plus.
-    if (c.id === 'poste' && c.labels.length > MAX_ROLES) ctx.addIssue({ code: 'custom', message: `« Poste » : ${MAX_ROLES} métiers au plus.` })
+    if (c.id === 'poste' && c.labels.length > MAX_ROLES) ctx.addIssue({ code: 'custom', message: `« ${c.name} » : ${MAX_ROLES} métiers au plus.` })
   })
 
 /**
@@ -174,28 +195,25 @@ export function evenLabels(texts: string[], required = false): CriterionLabel[] 
 /** Offre telle que les critères par défaut la lisent : publiée, ou appel d'offres pas encore publié. */
 export interface OfferForCriteria {
   title: string
-  description: string
   skills: string[]
   location?: string
 }
 
 /**
- * Critères par défaut d'une offre, sans IA : les dix critères du barème « matching » à leurs poids par défaut, le métier
- * du titre (requis), les compétences demandées et les exigences de la description comme libellés de même poids.
+ * Critères par défaut d'une offre, sans IA (ADR 0062) : les cinq de DEFAULT_KEYS à leurs poids DEFAULT_WEIGHTS ; le
+ * métier du titre (requis), les compétences demandées (poids égaux) et
+ * le lieu (requis) comme libellés.
  */
 export function defaultCriteriaSet(offer: OfferForCriteria): OfferCriteriaSet {
   const title = cleanTitle(offer.title)
   const labelsOf: Partial<Record<StandardKey, CriterionLabel[]>> = {
     poste: title ? evenLabels([title], true) : [],
     competences: evenLabels(requiredSkills(offer.skills)),
-    exigences: evenLabels(offerRequirements(offer.description)),
     localisation: offer.location ? evenLabels([offer.location], true) : [],
   }
   return {
     version: CRITERIA_SET_VERSION,
-    criteria: STANDARD_KEYS.map(key => ({
-      id: key, name: CRITERION_LABELS[key], weight: SCALES.matching.weights[key] ?? 0, labels: labelsOf[key] ?? [],
-    })),
+    criteria: DEFAULT_KEYS.map(key => ({ id: key, name: CRITERION_NAMES[key], weight: DEFAULT_WEIGHTS[key], labels: labelsOf[key] ?? [] })),
     alternativeTitles: [],
   }
 }

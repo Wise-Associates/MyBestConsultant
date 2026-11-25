@@ -27,19 +27,21 @@ import { isCriteriaJudgementsConfigured } from '@/lib/criteria-judgements-store'
 import { judgeOnCriteria, loadCriteriaContext, rescoreGeneral, takeCriteriaJudgeSlot, type JudgeOutcome } from '@/lib/criteria-rescore'
 import { needsJudging } from '@/lib/criteria-view'
 import { saveOwnCriteria } from '@/lib/scoring-weights-store'
+import { readRevisionInput, reviseCriteria, suggestTitles, takeCriteriaChatSlot, type RevisionResult } from '@/lib/criteria-assistant'
+import type { Job } from '@/types'
 
 // Server Actions appelables avec n'importe quel identifiant d'offre (publics : liens /jobs/<id>) : l'offre doit être de
 // l'organisation du recruteur ou partagée par la plateforme (tenantId ''), comme pour la page. `profileId` : le
 // recruteur (users.$id), dont seuls les viviers sont montrés et ajoutés au funnel (un vivier est personnel) ; `userId` :
 // son compte, qui porte ses poids personnels (scoring-weights-store.ts).
-async function requireJobAccess(jobId: string): Promise<{ tenantId: string; profileId: string; userId: string; ownOffer: boolean; emailVerified: boolean }> {
+async function requireJobAccess(jobId: string): Promise<{ tenantId: string; profileId: string; userId: string; ownOffer: boolean; emailVerified: boolean; job: Job }> {
   const user = await requireRecruiter()
   const { tenantId, $id, userId } = user
   const job = await getJobById(jobId)
   // Un membre : ses offres seulement (ADR 0043).
   if (!job || !tenantId || !viewerCanOpenJob(job, await loadOfferViewer(user))) throw new Error('Non autorisé')
   // Offre de l'organisation (et non partagée par la plateforme) : seule à avoir une revue des correspondances (ADR 0047).
-  return { tenantId, profileId: $id, userId, ownOffer: job.tenantId === tenantId, emailVerified: !!user.emailVerification }
+  return { tenantId, profileId: $id, userId, ownOffer: job.tenantId === tenantId, emailVerified: !!user.emailVerification, job }
 }
 
 /**
@@ -403,6 +405,29 @@ export async function saveOfferCriteriaAction(jobId: unknown, input: unknown): P
     console.error('[critères] critères de l\'offre non enregistrés', jobId, errorText(e))
     return { error: 'Enregistrement impossible pour le moment : réessayez dans quelques instants.' }
   }
+}
+
+/**
+ * Assistant des critères (ADR 0062) du Matching IA d'une offre de l'organisation : critères modifiés par l'IA selon la
+ * demande, sur le texte publié de l'offre ; rien n'est enregistré (chaque panneau enregistre ensuite par sa propre action,
+ * avec ses contrôles). Une place du quota du jour, prise après la validation de la demande.
+ */
+export async function reviseCriteriaAction(jobId: unknown, input: unknown): Promise<RevisionResult> {
+  if (!isDocumentId(jobId)) return { error: 'Demande invalide.' }
+  const { ownOffer, emailVerified, tenantId, job } = await requireJobAccess(jobId)
+  if (!ownOffer) return { error: 'Les critères d’une offre partagée par la plateforme ne se modifient pas.' }
+  const read = readRevisionInput(input)
+  if ('error' in read) return read
+  const refusal = await takeCriteriaChatSlot(emailVerified, tenantId)
+  if (refusal) return { error: refusal }
+  return reviseCriteria({ title: job.title, description: job.description, skills: job.skills ?? [], location: job.location ?? '', experience: '' }, read.input, jobId)
+}
+
+/** Autres intitulés proposés (ADR 0062), comptés sur la base candidats et le vivier personnel du recruteur ; sans IA. */
+export async function suggestTitlesAction(jobId: unknown, input: unknown) {
+  if (!isDocumentId(jobId)) return { error: 'Demande invalide.' }
+  const { tenantId, profileId } = await requireJobAccess(jobId)
+  return suggestTitles(input, { kind: 'recruiter', tenantId, ownerId: profileId })
 }
 
 /**

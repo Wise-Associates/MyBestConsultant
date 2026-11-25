@@ -78,6 +78,8 @@ const COUNTER_PREFIX = {
   aoSocialOrg: 'so', aoSocialAll: 'sb',
   // Notation des candidats d'une offre sur les critères propres d'un recruteur (ADR 0061 phase 3) : par organisation, pour toutes.
   criteriaJudgeOrg: 'kj', criteriaJudgeAll: 'kk',
+  // Demandes à l'assistant des critères de matching (ADR 0062) : par organisation, pour toutes.
+  criteriaChatOrg: 'kc', criteriaChatAll: 'kd',
 } as const
 export type DailyCounter = keyof typeof COUNTER_PREFIX
 

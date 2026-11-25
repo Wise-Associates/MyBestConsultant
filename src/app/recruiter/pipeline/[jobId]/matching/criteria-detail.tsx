@@ -4,15 +4,20 @@ import { Loader2, Scale, Star } from 'lucide-react'
 import { CriteriaDrawer } from '@/components/ao/criteria-editor'
 import type { CriteriaBreakdown } from '@/lib/criteria-scoring'
 import type { OfferCriteriaSet } from '@/lib/offer-criteria'
+import type { RevisionRequest } from '@/lib/criteria-revision'
+import type { TitleRequest } from '@/lib/search/related-titles'
 import type { JobMatchResult } from '@/lib/matching-core'
 import { scoreAdjustment } from '@/lib/score-breakdown'
-import { judgeOwnCriteriaAction, saveCandidateCriteriaAction, saveOfferCriteriaAction, saveOwnCriteriaAction } from '../matching-actions'
+import {
+  judgeOwnCriteriaAction, reviseCriteriaAction, saveCandidateCriteriaAction, saveOfferCriteriaAction, saveOwnCriteriaAction, suggestTitlesAction,
+} from '../matching-actions'
 
 // Détail d'un score noté sur les critères de l'offre (ADR 0061) : comme ScoreDetail (score-detail.tsx) pour le barème,
 // mais critères et libellés sont ceux qui s'appliquent au candidat pour ce recruteur, relus dans ses critères
 // (criteriaBreakdown). Et les critères eux-mêmes (phase 3) : ceux de l'offre — modifiables par qui peut modifier l'offre,
 // en lecture sinon —, les miens pour l'offre et pour un candidat ; ils remplacent la pondération par offre de l'ADR 0049.
-// Sans « use client » : importé seulement par matching-client.tsx, composant client.
+// Assistant des critères et autres intitulés proposés (ADR 0062) : offres de l'organisation seulement (le serveur le
+// revérifie). Sans « use client » : importé seulement par matching-client.tsx, composant client.
 
 const muted: CSSProperties = { color: 'var(--color-text-muted)' }
 const strong: CSSProperties = { color: 'var(--color-text)' }
@@ -103,6 +108,12 @@ export interface MatchingCriteria {
  * `canEdit` lui donne alors ses premiers critères (`start`, critères par défaut de l'offre). Un enregistrement relit la
  * page (scores recalculés par le serveur) ; une notation par l'IA tourne en arrière-plan.
  */
+/** Assistant et propositions d'intitulés d'une offre, pour chaque panneau de ses critères. */
+const helpersFor = (jobId: string) => ({
+  revise: (input: RevisionRequest) => reviseCriteriaAction(jobId, input),
+  suggestTitles: (input: TitleRequest) => suggestTitlesAction(jobId, input),
+})
+
 export function CriteriaPanel({ jobId, criteria, start, canEdit, pending, className = '' }: {
   jobId: string; criteria: MatchingCriteria | null; start: OfferCriteriaSet; canEdit: boolean
   /** Candidats dont le score attend un jugement sur mes libellés. */
@@ -115,6 +126,7 @@ export function CriteriaPanel({ jobId, criteria, start, canEdit, pending, classN
   const [judging, setJudging] = useState(false)
   const [judgeNote, setJudgeNote] = useState('')
   if (!criteria && !canEdit) return null
+  const helpers = canEdit ? helpersFor(jobId) : {}
 
   async function saveGeneral(set: OfferCriteriaSet) {
     const res = await saveOfferCriteriaAction(jobId, set)
@@ -164,14 +176,14 @@ export function CriteriaPanel({ jobId, criteria, start, canEdit, pending, classN
         </div>
       )}
       {canEdit ? (
-        <CriteriaDrawer criteria={general} onChange={setGeneral} save={saveGeneral} source={criteria ? undefined : 'default'}
+        <CriteriaDrawer criteria={general} onChange={setGeneral} save={saveGeneral} source={criteria ? undefined : 'default'} {...helpers}
           title={criteria ? 'Critères de l’offre' : 'Critères de l’offre (aucun pour l’instant)'} openLabel={criteria ? 'Configurer' : 'Régler les critères'}
           intro={criteria
             ? 'Pour tous les recruteurs de l’offre. Changer un libellé fait renoter ses candidats en arrière-plan (quota du jour de l’organisation) ; changer un poids ou ★ recalcule leurs scores aussitôt.'
             : 'Cette offre est notée sur le barème par défaut. Réglez ses critères : ses candidats seront renotés sur eux.'} />
       ) : criteria && <OfferCriteriaCard criteria={criteria.general} />}
       {criteria && (
-        <CriteriaDrawer className="mt-4 border-t pt-4" style={{ borderColor: 'var(--color-border)' }} criteria={own} onChange={setOwn} save={saveOwn}
+        <CriteriaDrawer className="mt-4 border-t pt-4" style={{ borderColor: 'var(--color-border)' }} criteria={own} onChange={setOwn} save={saveOwn} {...helpers}
           title="Mes critères pour cette offre" badge={criteria.own ? 'Propres' : 'Ceux de l’offre'} openLabel="Configurer"
           intro="Les vôtres seulement : poids, ★ et libellés. Vos propres libellés font noter vos candidats par l’IA en arrière-plan (quota du jour de l’organisation)."
           reset={criteria.own ? { label: 'Revenir aux critères de l’offre', to: criteria.general, run: () => saveOwn(null) } : undefined} />
@@ -180,8 +192,8 @@ export function CriteriaPanel({ jobId, criteria, start, canEdit, pending, classN
   )
 }
 
-/** « Critères pour ce candidat » (détail d'un candidat du Matching IA) : les miens pour lui seul. */
-export function CandidateCriteriaEditor({ jobId, candidateKey, criteria }: { jobId: string; candidateKey: string; criteria: MatchingCriteria }) {
+/** « Critères pour ce candidat » (détail d'un candidat du Matching IA) : les miens pour lui seul ; `assistant` : offre de l'organisation. */
+export function CandidateCriteriaEditor({ jobId, candidateKey, criteria, assistant }: { jobId: string; candidateKey: string; criteria: MatchingCriteria; assistant: boolean }) {
   const router = useRouter()
   const own = criteria.candidates[candidateKey]
   const [set, setSet] = useState(own ?? criteria.own ?? criteria.general)
@@ -194,7 +206,7 @@ export function CandidateCriteriaEditor({ jobId, candidateKey, criteria }: { job
     }
   }
   return (
-    <CriteriaDrawer compact className="mt-3" criteria={set} onChange={setSet} save={save} title="Critères pour ce candidat"
+    <CriteriaDrawer compact className="mt-3" criteria={set} onChange={setSet} save={save} title="Critères pour ce candidat" {...(assistant ? helpersFor(jobId) : {})}
       badge={own ? 'Propres' : undefined} openLabel="Configurer"
       intro="Pour ce candidat seulement, à vos yeux : poids, ★ et libellés (de nouveaux libellés le font noter par l’IA)."
       reset={own ? { label: 'Revenir à mes critères de l’offre', to: criteria.own ?? criteria.general, run: () => save(null) } : undefined} />

@@ -5,9 +5,10 @@ import { requireAdmin } from '@/lib/appwrite/auth'
 import type { PublicationDraft, PublicationMode, SourcingResult } from '@/lib/ao/dashboard-types'
 import {
   addAoOfferCommentOf, aoOfferSourcingOf, deleteAoOfferCommentOf, deleteAoOfferOf, deleteAoOffersOf, listAoOfferCommentsOf, previewAoPublicationOf,
-  publishAoOfferOf, retryAoEmailOf, setAoOfferStatusOf, stopAoPublicationTasksOf, saveAoCriteriaOf,
+  publishAoOfferOf, retryAoEmailOf, reviseAoCriteriaOf, setAoOfferStatusOf, stopAoPublicationTasksOf, saveAoCriteriaOf,
 } from '@/lib/ao/offer-actions'
 import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
+import { suggestTitles } from '@/lib/criteria-assistant'
 
 // Actions de /admin/candidats : chacune vérifie l'admin elle-même (une Server Action est un point d'entrée public),
 // puis agit sur les seules boîtes de la plateforme (ADR 0005, cœur partagé : src/lib/ao/offer-actions.ts).
@@ -38,6 +39,18 @@ export async function publishAoOffer(id: string, input: PublicationDraft) {
 export async function saveAoCriteria(id: string, criteria: OfferCriteriaSet | null) {
   await requireAdmin()
   return saveAoCriteriaOf(PLATFORM_TENANT_ID, id, criteria)
+}
+
+/** Assistant des critères (ADR 0062) : l'équipe de la plateforme, sans quota (comme la rédaction de la version publiée). */
+export async function reviseAoCriteria(id: string, input: unknown) {
+  await requireAdmin()
+  return reviseAoCriteriaOf(PLATFORM_TENANT_ID, id, input)
+}
+
+/** Autres intitulés proposés (ADR 0062), comptés sur tous les CV de la plateforme. */
+export async function suggestAoTitles(input: unknown) {
+  await requireAdmin()
+  return suggestTitles(input, { kind: 'platform' })
 }
 
 export async function setAoOfferStatus(id: string, status: 'to_review' | 'ignored') {

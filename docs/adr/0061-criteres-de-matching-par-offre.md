@@ -1,7 +1,9 @@
 # 0061. Critères de matching d'une offre, réglés avant la publication d'un AO
 
 Date : 2026-11-24. Statut : accepté, phases 1, 2 et 3 livrées. Complète l'ADR 0036 (barèmes), l'ADR 0044
-(cache et préfiltre) et l'ADR 0049 (poids par offre et par candidat).
+(cache et préfiltre) et l'ADR 0049 (poids par offre et par candidat). Complété par l'ADR 0062 (2026-11-25) : cinq
+critères par défaut sous les noms de MBC Search, assistant des critères, autres intitulés proposés ; l'éditeur décrit
+ci-dessous a pris la forme d'une liste dépliable à côté de l'assistant.
 
 ## Contexte
 

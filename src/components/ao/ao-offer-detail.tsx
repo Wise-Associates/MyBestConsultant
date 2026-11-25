@@ -25,7 +25,7 @@ import {
 
 interface Props {
   row: AoOfferRow
-  actions: Pick<AoDashboardActions, 'setStatus' | 'sourcing' | 'stopTasks' | 'saveCriteria'>
+  actions: Pick<AoDashboardActions, 'setStatus' | 'sourcing' | 'stopTasks' | 'saveCriteria' | 'reviseCriteria' | 'suggestTitles'>
   paths: Pick<AoDashboardPaths, 'originalApi' | 'jobs'>
   /** Sous le formulaire de publication : ce que la publication déclenche dans cet espace. */
   publishNote: string
@@ -69,6 +69,7 @@ export function AoOfferDetail({ row, actions, paths, publishNote, tracking, soci
   // Critères de matching (ADR 0061) : la publication attend des critères valides (refusés aussi par le serveur).
   const criteriaProblem = draft?.criteria ? criteriaSetProblem(draft.criteria) : null
   const saveCriteria = actions.saveCriteria
+  const reviseCriteria = actions.reviseCriteria
   const jobId = publication.jobId ?? row.jobId
 
   function changeStatus(status: 'to_review' | 'ignored') {
@@ -379,6 +380,7 @@ export function AoOfferDetail({ row, actions, paths, publishNote, tracking, soci
             <CriteriaDrawer tone="admin" criteria={draft.criteria} source={preview.criteriaSource} notice={preview.criteriaNotice}
               onChange={criteria => onEdit({ draft: { ...draft, criteria } })}
               save={saveCriteria && (criteria => saveCriteria(row.$id, criteria))}
+              revise={reviseCriteria && (input => reviseCriteria(row.$id, input))} suggestTitles={actions.suggestTitles}
               className="rounded-xl p-4" style={{ background: 'var(--admin-panel-raised)', border: '1px solid var(--admin-line)' }} />
           )}
 

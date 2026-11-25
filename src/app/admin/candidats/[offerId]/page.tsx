@@ -9,7 +9,7 @@ import type { TrackingStep } from '@/lib/ao/tracking'
 import { loadAoTracking } from '@/lib/ao/tracking-store'
 import { Banner } from '@/components/ao/ao-banner'
 import { AoOfferPage } from '@/components/ao/ao-offer-page'
-import { aoOfferSourcing, saveAoCriteria, setAoOfferStatus, stopAoPublicationTasks } from '../actions'
+import { aoOfferSourcing, reviseAoCriteria, saveAoCriteria, setAoOfferStatus, stopAoPublicationTasks, suggestAoTitles } from '../actions'
 
 // Page d'une offre AO de la plateforme : détail, préparation et publication, sourcing, et offres précédente et suivante
 // de la liste filtrée (filtres de la liste gardés dans l'adresse). « Publier » répond tout de suite, la diffusion et le
@@ -58,7 +58,10 @@ export default async function AdminAoOfferPage({ params, searchParams }: {
       trackingError={trackingError}
       neighbours={neighbours}
       query={query}
-      actions={{ setStatus: setAoOfferStatus, sourcing: aoOfferSourcing, stopTasks: stopAoPublicationTasks, saveCriteria: saveAoCriteria }}
+      actions={{
+        setStatus: setAoOfferStatus, sourcing: aoOfferSourcing, stopTasks: stopAoPublicationTasks, saveCriteria: saveAoCriteria,
+        reviseCriteria: reviseAoCriteria, suggestTitles: suggestAoTitles,
+      }}
       paths={{ list: '/admin/candidats', originalApi: '/api/admin/candidats/original', jobs: '/admin/jobs' }}
       copy={{
         title: 'Candidats',

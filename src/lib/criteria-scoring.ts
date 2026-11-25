@@ -35,7 +35,7 @@ function fieldOf(c: OfferCriterion): string {
   const n = labels.length
   if (c.id === 'poste') {
     const role = '{"metier":"…","exerce":"oui"|"partiel"|"non","intitule":"…"}'
-    return n > 0 ? `"poste":[${role}, …] (${n} valeur${n > 1 ? 's' : ''}, une par métier de la liste « Poste », dans l'ordre)` : `"poste":[${role}, …] (un par métier du titre)`
+    return n > 0 ? `"poste":[${role}, …] (${n} valeur${n > 1 ? 's' : ''}, une par métier de la liste ${listName(c)}, dans l'ordre)` : `"poste":[${role}, …] (un par métier du titre)`
   }
   if (isFitCriterion(c)) {
     const value = `"oui"|"partiel"|"non"|"${NEUTRAL[c.id]}"`
@@ -48,7 +48,7 @@ function fieldOf(c: OfferCriterion): string {
 function ruleOf(c: OfferCriterion): string {
   const listed = c.labels.length > 0
   if (c.id === 'poste' && listed) {
-    return `"poste" : les métiers de la liste « Poste » sont la référence (le titre de l'offre les réunit). Un élément par métier, dans l'ordre, avec "intitule" : l'intitulé exact, recopié du CV, du poste du candidat qui se rapproche le plus de ce métier. "oui" si le candidat a occupé ce métier (intitulé équivalent), "partiel" pour un métier de la même famille ou exercé peu de temps, "non" sinon. Travailler dans une équipe agile ou avec des développeurs n'est pas exercer ces métiers.`
+    return `"poste" : les métiers de la liste ${listName(c)} sont la référence (le titre de l'offre les réunit). Un élément par métier, dans l'ordre, avec "intitule" : l'intitulé exact, recopié du CV, du poste du candidat qui se rapproche le plus de ce métier. "oui" si le candidat a occupé ce métier (intitulé équivalent), "partiel" pour un métier de la même famille ou exercé peu de temps, "non" sinon. Travailler dans une équipe agile ou avec des développeurs n'est pas exercer ces métiers.`
   }
   if (c.id === 'exigences' && listed) {
     return `"exigences" : pour chaque élément de la liste « ${c.name} » (contexte, exigences de l'offre), dans l'ordre : "oui" si une expérience du CV y répond, "partiel" si elle y répond en partie ou de loin, "non" sinon.`

@@ -33,8 +33,9 @@ describe('critères proposés par l’IA pour un AO', () => {
     ])
     assert.deepEqual(by('competences')?.labels.map(l => [l.label, l.weight, l.required]), [['Java', 50, true], ['Angular', 50, false]])
     assert.equal(by('domaine')?.labels[0].label, 'Paiements monétique cartes')
-    // Liste vide ou absente : libellés par défaut gardés (exigences tirées de la description : aucune ici).
-    assert.deepEqual(by('langue')?.labels, [])
+    // Liste vide ou absente : libellés par défaut gardés ; liste d'un critère absent des critères par défaut : ignorée.
+    assert.deepEqual(by('niveau')?.labels, [])
+    assert.equal(by('langue'), undefined)
     assert.deepEqual(set.criteria.map(c => c.weight), fallback().criteria.map(c => c.weight))
     assert.deepEqual(set.alternativeTitles, ['Ingénieur Java'])
   })
@@ -50,19 +51,19 @@ describe('critères proposés par l’IA pour un AO', () => {
     assert.ok((poste?.labels[0].weight ?? 0) > (poste?.labels[1].weight ?? 0))
   })
 
-  it('lieu, séniorité, formation, secteur, langue : libellés requis comme dans le barème ; poste : le premier au moins', () => {
+  it('lieu, séniorité, secteur : libellés requis comme dans le barème ; poste : le premier au moins ; seuls les cinq critères par défaut', () => {
     const answer = JSON.stringify({
       poste: [{ libelle: 'Développeur Java', importance: 8 }, { libelle: 'Développeur Angular', importance: 2 }],
-      localisation: [{ libelle: 'Lyon', requis: false }], niveau: [{ libelle: '5 ans et plus' }],
-      langue: [{ libelle: 'Anglais courant' }, { libelle: 'Allemand' }], projet: [{ libelle: 'Refonte' }],
+      localisation: [{ libelle: 'Lyon', requis: false }], niveau: [{ libelle: '5 ans et plus' }], domaine: [{ libelle: 'Paiements' }],
+      langue: [{ libelle: 'Anglais courant' }], projet: [{ libelle: 'Refonte' }],
     })
     const set = parseCriteriaProposal(answer, fallback())
     const required = (id: string) => set?.criteria.find(c => c.id === id)?.labels.map(l => l.required)
     assert.deepEqual(required('poste'), [true, false])
     assert.deepEqual(required('localisation'), [true])
     assert.deepEqual(required('niveau'), [true])
-    assert.deepEqual(required('langue'), [true, true])
-    assert.deepEqual(required('projet'), [false])
+    assert.deepEqual(required('domaine'), [true])
+    assert.deepEqual(set?.criteria.map(c => c.id), ['poste', 'localisation', 'niveau', 'competences', 'domaine'])
   })
 
   it('réponse illisible : null (l’appelant garde les critères par défaut)', () => {

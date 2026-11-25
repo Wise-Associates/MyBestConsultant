@@ -580,7 +580,7 @@ export function MatchingClient({
           {focused.score != null && focusedBreakdown && <ScoreCriteriaList breakdown={focusedBreakdown} match={{ ...focused, score: focused.score }} />}
           {focused.score != null && focusedCriteria && <CriteriaScoreDetail breakdown={focusedCriteria} match={{ ...focused, score: focused.score }} variant="list" />}
           {criteria && focused.score != null && focused.source !== 'application' && isCriteriaSummary(focused.reason) && (
-            <CandidateCriteriaEditor key={keyOf(focused)} jobId={jobId} candidateKey={candidateWeightsKey(focused)} criteria={criteria} />
+            <CandidateCriteriaEditor key={keyOf(focused)} jobId={jobId} candidateKey={candidateWeightsKey(focused)} criteria={criteria} assistant={canEditCriteria} />
           )}
           {jobWeights && focused.score != null && focusedBreakdown && focusedBreakdown.scale !== 'legacy' && (
             <CandidateWeightsPanel key={keyOf(focused)} className="mt-3" jobId={jobId} candidateKey={candidateWeightsKey(focused)} scale={focusedBreakdown.scale}

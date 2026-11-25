@@ -1150,7 +1150,7 @@ describe('publication non anonymisée (« Publier sans anonymiser »)', () => {
   })
 
   it('critères de matching (ADR 0061) : facultatifs, validés, jamais dans les champs de l’offre publique', () => {
-    const criteria = defaultCriteriaSet({ title: 'Chef de projet', description: '', skills: ['SAFe'] })
+    const criteria = defaultCriteriaSet({ title: 'Chef de projet', skills: ['SAFe'] })
     const parsed = parsePublishInput({ ...draft, criteria })
     assert.equal(parsed.error, undefined)
     assert.deepEqual(parsed.error === undefined && parsed.criteria, criteria)

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  CRITERIA_LIMITS, CriteriaSetSchema, STANDARD_KEYS, cleanLabel, criteriaFingerprint, criteriaSetProblem, defaultCriteriaSet,
+  CRITERIA_LIMITS, CriteriaSetSchema, cleanLabel, criteriaFingerprint, criteriaSetProblem, defaultCriteriaSet,
   evenLabels, nextCustomId, parseCriteriaSet, requiredLabels, weightsSummingTo, type OfferCriteriaSet,
 } from './offer-criteria'
 
@@ -24,19 +24,17 @@ const javaAngular = (): OfferCriteriaSet => ({
 })
 
 describe('critères de matching d’une offre', () => {
-  it('critères par défaut : les dix du barème, total 100, métier du titre requis', () => {
+  it('critères par défaut : les cinq de MBC Search (Intitulé 33, Compétences 30), métier du titre et lieu requis', () => {
     const set = defaultCriteriaSet(OFFER)
-    assert.deepEqual(set.criteria.map(c => c.id), STANDARD_KEYS)
-    assert.equal(set.criteria.reduce((s, c) => s + c.weight, 0), 100)
+    assert.deepEqual(set.criteria.map(c => [c.id, c.name, c.weight]), [
+      ['poste', 'Intitulé', 33], ['localisation', 'Lieu', 14], ['niveau', 'Séniorité', 11], ['competences', 'Compétences', 30], ['domaine', 'Secteur', 12],
+    ])
     const poste = set.criteria.find(c => c.id === 'poste')
     assert.deepEqual(poste?.labels, [{ label: 'Développeur Java Angular', weight: 100, required: true }])
     // Compétences sans doublon (« Java » / « java »), poids égaux de total 100.
     const techno = set.criteria.find(c => c.id === 'competences')
     assert.deepEqual(techno?.labels.map(l => l.label), ['Java', 'Angular', 'Spring Boot'])
     assert.deepEqual(techno?.labels.map(l => l.weight), [34, 33, 33])
-    assert.deepEqual(set.criteria.find(c => c.id === 'exigences')?.labels.map(l => l.label), [
-      '5 ans d’expérience en développement Java', 'Expérience du secteur bancaire', 'Développer les écrans Angular',
-    ])
     // Lieu : requis par défaut, comme le critère rouge du barème qu'il remplace.
     assert.deepEqual(set.criteria.find(c => c.id === 'localisation')?.labels, [{ label: 'Paris', weight: 100, required: true }])
     assert.equal(criteriaSetProblem(set), null)
@@ -66,7 +64,7 @@ describe('critères de matching d’une offre', () => {
     assert.equal(criteriaSetProblem(offer), 'Les poids des critères doivent totaliser 100.')
     const labels = javaAngular()
     labels.criteria[0].labels[1].weight = 20
-    assert.equal(criteriaSetProblem(labels), 'Les libellés de « Poste » doivent totaliser 100.')
+    assert.equal(criteriaSetProblem(labels), 'Les libellés de « Intitulé » doivent totaliser 100.')
   })
 
   it('refuse un critère inconnu, en double, un critère ajouté sans nom, un libellé en double ou vide', () => {
@@ -81,13 +79,13 @@ describe('critères de matching d’une offre', () => {
     assert.equal(criteriaSetProblem(unnamed), 'Un critère ajouté doit avoir un nom.')
     const duplicate = javaAngular()
     duplicate.criteria[1].labels[1].label = 'JAVA'
-    assert.equal(criteriaSetProblem(duplicate), '« Techno » a deux fois le même libellé.')
+    assert.equal(criteriaSetProblem(duplicate), '« Compétences » a deux fois le même libellé.')
     const empty = javaAngular()
     empty.criteria[1].labels[1].label = ' , '
     assert.equal(criteriaSetProblem(empty), 'Un libellé est vide.')
   })
 
-  it('refuse un champ inattendu et un poids non entier ; garde le nom du barème pour un critère standard', () => {
+  it('refuse un champ inattendu et un poids non entier ; nom de MBC Search pour un critère du barème, même enregistré sous l’ancien', () => {
     assert.notEqual(criteriaSetProblem({ ...javaAngular(), extra: 1 }), null)
     const decimal = javaAngular()
     decimal.criteria[0].weight = 59.5
@@ -95,7 +93,11 @@ describe('critères de matching d’une offre', () => {
     assert.notEqual(criteriaSetProblem(decimal), null)
     const renamed = javaAngular()
     renamed.criteria[0].name = 'Autre nom'
-    assert.equal(CriteriaSetSchema.parse(renamed).criteria[0].name, 'Poste')
+    assert.equal(CriteriaSetSchema.parse(renamed).criteria[0].name, 'Intitulé')
+    // Critères enregistrés avant l'ADR 0062 (« Poste », « Techno ») : relus sous les noms actuels, même empreinte.
+    const parsed = CriteriaSetSchema.parse(javaAngular())
+    assert.deepEqual(parsed.criteria.map(c => c.name), ['Intitulé', 'Compétences', 'Expérience bancaire'])
+    assert.equal(criteriaFingerprint(parsed), criteriaFingerprint(javaAngular()))
   })
 
   it('borne le nombre de critères et de libellés', () => {
