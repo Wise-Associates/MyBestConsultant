@@ -46,6 +46,15 @@ avec l'accord du DPO pour les CV de DEV et de production. L'affinage lui-même s
   et les identifiants des sources (les exemples envoyés dans le seau sont supprimés par le déployeur).
 - **Viviers des organisations clientes compris** : décision de l'utilisateur du 2026-11-24, ces CV étant couverts par
   les contrats des clients et l'accord du DPO (MBC est sous-traitant de ces organisations pour leur vivier).
+- **CV fournis en fichiers** (complément du 2026-11-25 : archive de 100 CV hors de MBC, couverte par l'accord du DPO
+  selon l'utilisateur) : `collect-files <env DEV> --dir <dossier de PDF> --out <dossier>` écrit `raw-fichiers.jsonl`.
+  PDF seulement (choix de l'utilisateur : pas de transcription d'images, ni de PDF scannés). Texte lu comme MBC le lit
+  (`readCvBufferForScoring`, même code que `readCvForScoring`). Aucune fiche ne donnant le nom, GPT-4o mini le lit dans
+  les 1 500 premiers caractères, coordonnées déjà masquées (`NAME_SYSTEM`, `parseNameAnswer`) ; nom absent du texte :
+  exemple écarté. Réponse attendue écrite par GPT-4o mini, auteur des classifications enregistrées dans MBC, sur le texte
+  **déjà masqué** ; GPT-4o mini seul (`provider`, `model`, `strict` de `callLLM`), aucun autre modèle ne reçoit ces CV.
+  Ces CV vont **tous à l'entraînement** (`planSplits`) : ils ne déplacent aucun CV de MBC entre les parts, et un fichier
+  identique à un CV de MBC est écarté ; le test reste celui des affinages précédents.
 
 ## Conséquences
 
@@ -57,3 +66,5 @@ avec l'accord du DPO pour les CV de DEV et de production. L'affinage lui-même s
   aussi ses erreurs, d'où la relecture du test ; l'utilisateur vérifie que les conditions d'OpenAI permettent cet usage.
 - Changer les consignes ou le format de la classification (`CLASSIFICATION_VERSION`) rend les exemples périmés : refaire
   l'export et l'affinage.
+- Export du 2026-11-25 avec l'archive : 66 PDF, 50 exemples (8 scannés, 8 sans nom lisible écartés), 1 doublon d'un CV
+  de MBC ; 522 d'entraînement, 60 de contrôle, **60 de test identiques octet pour octet** à ceux du 2026-11-24.
