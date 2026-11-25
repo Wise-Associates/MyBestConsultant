@@ -87,8 +87,10 @@ un candidat d'une autre ville passait de 60 à 78). Retirer ★ reste possible, 
   la même place du quota** ; IA refusée ou en échec, ou « Publier sans anonymiser » (sans IA) : critères par défaut
   (métier du titre requis, compétences, exigences de la description).
 - Éditeur « Critères de matching » (`src/components/ao/criteria-editor.tsx`) dans le formulaire de relecture : poids,
-  libellés, ★, critères ajoutés ou rétablis ; ajouter ou retirer garde le total à 100 (les autres en proportion) ; « Ramener
-  à 100 ». « Enregistrer les critères » (`saveCriteria`, appelant vérifié dans les deux fichiers d'actions, AO de son
+  libellés, ★, critères ajoutés ou rétablis ; ajouter ou retirer garde le total à 100 (les autres en proportion) ;
+  « Répartir », « Ramener le total à 100 ». Depuis le 2026-11-25 (maquette de l'utilisateur) : un résumé dans le
+  formulaire (total, répartition des poids, « Configurer les critères ») et l'éditeur dans un panneau qui glisse depuis
+  la droite (voir « Éditeur » ci-dessous). « Enregistrer les critères » (`saveCriteria`, appelant vérifié dans les deux fichiers d'actions, AO de son
   organisation, pas encore publié) les garde pour la section Sourcing. « Publier » attend des critères valides ; ils ne
   sont jamais publiés, les modifier ne décoche pas « J'ai relu ».
 - À la publication, les critères sont validés (`parsePublishInput`), puis enregistrés pour l'offre publique et pour l'AO
@@ -156,7 +158,7 @@ IA, `preScore`), le vivier général.
 Sur le Matching IA d'une offre (`/recruiter/pipeline/<offre>/matching`), colonne de droite (`CriteriaPanel`,
 `criteria-detail.tsx`) :
 
-- **Critères de l'offre** (onglet « De l'offre ») : modifiables par ceux qui peuvent modifier l'offre (même règle que
+- **Critères de l'offre** : modifiables par ceux qui peuvent modifier l'offre (même règle que
   « Modifier » : offre de l'organisation, un membre seulement les siennes ; `saveOfferCriteriaAction`), en lecture pour
   les autres. Une offre publiée sans critères (AO d'avant, offre saisie, importée) en reçoit ainsi, à partir de ses
   critères par défaut. Après l'enregistrement, en arrière-plan (`rescoreGeneral`, `src/lib/criteria-rescore.ts`) :
@@ -167,7 +169,7 @@ Sur le Matching IA d'une offre (`/recruiter/pipeline/<offre>/matching`), colonne
   sans IA avant la réponse (`rescoredStored`) pour que les seuils automatiques (65, 70) suivent. Tant qu'un score est
   noté sur les anciens libellés (renotation en cours, ou interrompue par la durée de la requête), il reste affiché, marqué
   « Score calculé sur les anciens critères de l'offre » (`criteriaStale`) : « Rafraîchir » termine la renotation.
-- **Mes critères** (onglet « Les miens ») et **critères pour un candidat** (détail d'un candidat, « Critères pour ce
+- **Mes critères** et **critères pour un candidat** (détail d'un candidat, « Critères pour ce
   candidat ») : propres au recruteur, poids, ★ **et libellés** (choix de l'utilisateur). Ordre : candidat, sinon les
   miens pour l'offre, sinon ceux de l'offre (`rowCriteria`, `src/lib/criteria-view.ts`, testé). Gardés dans
   `job_scoring_weights`, documents `jk…` (à part des poids `jw…` : retirer ses poids ne retire pas ses critères),
@@ -185,7 +187,7 @@ Sur le Matching IA d'une offre (`/recruiter/pipeline/<offre>/matching`), colonne
   ce recruteur (`needsJudging` : changer un poids ou ★ de
   ses libellés ne coûte rien), rendue si l'enregistrement échoue ou s'il n'y a personne à juger ; « Noter la suite » ne la
   prend que s'il reste quelqu'un à juger. La page reprend la liste du serveur après chaque enregistrement ou « Actualiser »
-  (sans se remonter : onglet et messages gardés).
+  (sans se remonter : messages gardés).
 - Les scores enregistrés (seuils automatiques, e-mails, alertes, top 5 du sourcing) restent ceux des critères de l'offre ;
   les critères propres ne changent que ce que voit le recruteur (comme ses poids, ADR 0049).
 - Jugements effacés avec l'offre (les deux chemins de suppression) et avec le candidat (compte : `p:`, CV du vivier :
@@ -194,8 +196,22 @@ Sur le Matching IA d'une offre (`/recruiter/pipeline/<offre>/matching`), colonne
 - Critères propres : seulement sur une offre de l'organisation du recruteur ; ses jugements ne sont donc jamais partagés
   avec une autre organisation.
 
-L'éditeur (`src/components/ao/criteria-editor.tsx`) sert aux deux pages : chaque couleur lit le jeton du back-office
-clair (`--admin-*`), sinon celui du site.
+### Éditeur (2026-11-25, maquette de l'utilisateur « criteres-matching.html »)
+
+`CriteriaDrawer` (`src/components/ao/criteria-editor.tsx`) sert aux deux pages : sur la page, un résumé (pastille
+d'origine, total des poids, barre de répartition colorée par critère, problème ou « Modifications non enregistrées ») et
+« Configurer » ; l'éditeur s'ouvre dans un panneau à droite (`src/components/ui/sheet.tsx`, même primitive que les
+fenêtres : focus gardé, Échap, retour du focus). Panneau : en-tête (légende ★ / totaux, « Jamais montrés aux
+candidats »), barre collée en haut (total, répartition, « Enregistrer » grisé tant qu'un problème reste), alerte qui
+liste les problèmes, critères avec libellés en cartes sur deux colonnes (poids −/+, part de chaque libellé, ★ Requis,
+« Répartir », autres intitulés du métier en étiquettes sur la carte Poste), critères sans libellé en petites cartes,
+« Ajouter un critère » et suggestions (critères du barème retirés, Disponibilité, Certifications, Mobilité). Une
+couleur par critère (palette de la maquette) ; sinon chaque couleur lit le jeton du back-office clair (`--admin-*`),
+sinon celui du site ; dans le back-office le panneau, rendu dans `<body>`, porte la classe `admin-light`. Sur le
+Matching IA, le résumé des critères de l'offre et celui de « Mes critères » sont l'un sous l'autre (plus d'onglets) ;
+« Critères pour ce candidat » est une ligne avec « Configurer ». Les poids ramenés à un autre total (ajout ou retrait
+d'un critère, « Ramener le total à 100 ») gardent leurs proportions (`weightsSummingTo`, testé : le minimum de 1 n'est
+plus réservé avant le partage, il gonflait les petits poids).
 
 ## Limites connues
 

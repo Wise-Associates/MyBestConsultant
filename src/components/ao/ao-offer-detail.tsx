@@ -13,7 +13,7 @@ import { linkedInPostOf, splitSkills, type SocialPreview } from '@/lib/ao/public
 import { SOCIAL_CONTEXT_MAX, type SocialEdits } from '@/lib/social-content'
 import { Skeleton, SkeletonRegion } from '@/components/shared/skeleton'
 import { AoDescription } from './ao-description'
-import { CriteriaEditor } from './criteria-editor'
+import { CriteriaDrawer } from './criteria-editor'
 import { criteriaSetProblem } from '@/lib/offer-criteria'
 import { WorkBadge, type OfferPublication } from './offer-publications'
 import { TrackingStepper } from './offer-tracking'
@@ -371,11 +371,12 @@ export function AoOfferDetail({ row, actions, paths, publishNote, tracking, soci
             <PublicationPreviewTabs draft={draft} skills={skillsText} social={preview.social} hiddenNames={preview.hiddenNames} onSocial={editSocial} />
           </div>
 
-          {/* Jamais publiés : les modifier ne remet pas en cause la relecture de la version. */}
+          {/* Jamais publiés : les modifier ne remet pas en cause la relecture de la version. Éditeur dans un panneau à droite. */}
           {draft.criteria && (
-            <CriteriaEditor criteria={draft.criteria} source={preview.criteriaSource} notice={preview.criteriaNotice}
+            <CriteriaDrawer tone="admin" criteria={draft.criteria} source={preview.criteriaSource} notice={preview.criteriaNotice}
               onChange={criteria => onEdit({ draft: { ...draft, criteria } })}
-              save={saveCriteria && (criteria => saveCriteria(row.$id, criteria))} />
+              save={saveCriteria && (criteria => saveCriteria(row.$id, criteria))}
+              className="rounded-xl p-4" style={{ background: 'var(--admin-panel-raised)', border: '1px solid var(--admin-line)' }} />
           )}
 
           <label className="flex items-start gap-3 p-3 rounded-lg cursor-pointer text-sm text-admin-fg" style={{ background: 'var(--admin-panel-raised)', border: '1px solid var(--admin-line)' }}>

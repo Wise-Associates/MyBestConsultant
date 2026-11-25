@@ -136,24 +136,30 @@ export function parseCriteriaSet(raw: unknown): OfferCriteriaSet | null {
 
 /**
  * `count` poids entiers dont le total fait `total`, proportionnels à `shares` (tous égaux sans `shares`) : la méthode
- * des plus forts restes, chaque poids valant au moins 1. Vide si `count` est 0.
+ * des plus forts restes, puis chaque poids arrondi à 0 prend 1 au plus gros (le schéma exige au moins 1). Le minimum
+ * n'est pas réservé avant le partage : avec dix critères, il gonflait les petits poids et rognait les gros à chaque
+ * ajout ou retrait (Poste 35 → 28 après deux ajustements, vu dans l'éditeur le 2026-11-25). Vide si `count` est 0 ;
+ * `total` doit valoir au moins `count`.
  */
 export function weightsSummingTo(count: number, total = 100, shares?: number[]): number[] {
   if (count <= 0) return []
   const raw = Array.from({ length: count }, (_, i) => Math.max(shares?.[i] ?? 1, 0))
   const parts = sum(raw) > 0 ? raw : raw.map(() => 1)
-  // Chaque poids vaut au moins 1 : seul le reste est réparti selon les parts.
-  const spare = total - count
-  const exact = parts.map(v => (v / sum(parts)) * spare)
-  const floors = exact.map(v => Math.floor(v))
-  let left = spare - sum(floors)
-  const order = exact.map((v, i) => ({ i, rest: v - floors[i] })).sort((a, b) => b.rest - a.rest || a.i - b.i)
+  const exact = parts.map(v => (v / sum(parts)) * total)
+  const weights = exact.map(v => Math.floor(v))
+  let left = total - sum(weights)
+  const order = exact.map((v, i) => ({ i, rest: v - weights[i] })).sort((a, b) => b.rest - a.rest || a.i - b.i)
   for (const { i } of order) {
     if (left <= 0) break
-    floors[i] += 1
+    weights[i] += 1
     left -= 1
   }
-  return floors.map(v => v + 1)
+  for (let i = 0; i < count; i++) {
+    if (weights[i] >= 1) continue
+    weights[i] = 1
+    weights[weights.indexOf(Math.max(...weights))] -= 1
+  }
+  return weights
 }
 
 /** Libellés de même poids (total 100), sans doublon ni vide, CRITERIA_LIMITS.labels au plus. */

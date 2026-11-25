@@ -122,6 +122,15 @@ describe('critères de matching d’une offre', () => {
     }
   })
 
+  it('poids ramenés à un autre total : proportions gardées, petits poids non gonflés', () => {
+    // Place faite à un critère ajouté (5 points) : les dix critères passent de 100 à 95.
+    assert.deepEqual(weightsSummingTo(10, 95, [35, 20, 12, 11, 10, 3, 3, 2, 2, 2]), [33, 19, 11, 10, 10, 3, 3, 2, 2, 2])
+    // Déjà à 100 : rien ne bouge.
+    assert.deepEqual(weightsSummingTo(10, 100, [35, 20, 12, 11, 10, 3, 3, 2, 2, 2]), [35, 20, 12, 11, 10, 3, 3, 2, 2, 2])
+    // Une part nulle reçoit 1, pris au premier des plus gros poids.
+    assert.deepEqual(weightsSummingTo(3, 100, [0, 50, 50]), [1, 49, 50])
+  })
+
   it('empreinte : change avec les libellés et le nom d’un critère ajouté, pas avec les poids ni ★', () => {
     const base = criteriaFingerprint(javaAngular())
     const weights = javaAngular()

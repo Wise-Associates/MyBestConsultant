@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2, Scale, Star } from 'lucide-react'
-import { CriteriaEditor } from '@/components/ao/criteria-editor'
+import { CriteriaDrawer } from '@/components/ao/criteria-editor'
 import type { CriteriaBreakdown } from '@/lib/criteria-scoring'
 import type { OfferCriteriaSet } from '@/lib/offer-criteria'
 import type { JobMatchResult } from '@/lib/matching-core'
@@ -97,12 +97,11 @@ export interface MatchingCriteria {
   candidates: Record<string, OfferCriteriaSet>
 }
 
-const tabButton = 'h-8 px-3 rounded-lg text-[12.5px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-1'
-
 /**
- * Critères de l'offre et les miens, dans la colonne de droite du Matching IA (ADR 0061 phase 3). `criteria` null : offre
- * encore notée sur le barème ; `canEdit` lui donne alors ses premiers critères (`start`, critères par défaut de l'offre).
- * Un enregistrement relit la page (scores recalculés par le serveur) ; une notation par l'IA tourne en arrière-plan.
+ * Critères de l'offre et les miens, dans la colonne de droite du Matching IA (ADR 0061 phase 3) : un résumé de chacun et
+ * « Configurer », qui ouvre l'éditeur dans un panneau à droite. `criteria` null : offre encore notée sur le barème ;
+ * `canEdit` lui donne alors ses premiers critères (`start`, critères par défaut de l'offre). Un enregistrement relit la
+ * page (scores recalculés par le serveur) ; une notation par l'IA tourne en arrière-plan.
  */
 export function CriteriaPanel({ jobId, criteria, start, canEdit, pending, className = '' }: {
   jobId: string; criteria: MatchingCriteria | null; start: OfferCriteriaSet; canEdit: boolean
@@ -111,7 +110,6 @@ export function CriteriaPanel({ jobId, criteria, start, canEdit, pending, classN
   className?: string
 }) {
   const router = useRouter()
-  const [tab, setTab] = useState<'offer' | 'own'>(criteria?.own ? 'own' : 'offer')
   const [general, setGeneral] = useState(criteria?.general ?? start)
   const [own, setOwn] = useState(criteria?.own ?? criteria?.general ?? start)
   const [judging, setJudging] = useState(false)
@@ -131,11 +129,7 @@ export function CriteriaPanel({ jobId, criteria, start, canEdit, pending, classN
 
   async function saveOwn(set: OfferCriteriaSet | null) {
     const res = await saveOwnCriteriaAction(jobId, set)
-    if (!res.error) {
-      // Retour aux critères de l'offre : l'éditeur les montre de nouveau.
-      if (!set && criteria) setOwn(criteria.general)
-      router.refresh()
-    }
+    if (!res.error) router.refresh()
     return {
       error: res.error,
       message: !set ? 'Critères de l’offre de nouveau appliqués.' : res.judging
@@ -156,17 +150,7 @@ export function CriteriaPanel({ jobId, criteria, start, canEdit, pending, classN
   }
 
   return (
-    <section aria-label="Critères de l’offre" className={`rounded-[20px] p-4 ${className}`} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-      {criteria && (
-        <div role="group" aria-label="Critères affichés" className="flex gap-1 mb-3">
-          {([['offer', 'De l’offre'], ['own', 'Les miens']] as const).map(([key, label]) => (
-            <button key={key} type="button" aria-pressed={tab === key} onClick={() => setTab(key)} className={tabButton}
-              style={tab === key ? { background: 'color-mix(in srgb, var(--color-primary) 12%, transparent)', color: 'var(--color-text)' } : { color: 'var(--color-text-muted)' }}>
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
+    <section aria-label="Critères de matching" className={`rounded-[20px] p-4 ${className}`} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
       {pending > 0 && (
         <div role="status" className="mb-3 rounded-xl px-3 py-2 text-[12px]" style={{ background: 'rgba(180,83,9,0.08)', color: '#b45309' }}>
           {pending} candidat{pending > 1 ? 's' : ''} pas encore noté{pending > 1 ? 's' : ''} sur vos critères : leur score est celui de l’offre.
@@ -179,20 +163,18 @@ export function CriteriaPanel({ jobId, criteria, start, canEdit, pending, classN
           {judgeNote && <span className="block mt-1">{judgeNote}</span>}
         </div>
       )}
-      {(!criteria || tab === 'offer') && (canEdit ? (
-        <CriteriaEditor key="offer" criteria={general} onChange={setGeneral} save={saveGeneral}
-          title={criteria ? 'Critères de l’offre' : 'Critères de l’offre (aucun pour l’instant)'}
+      {canEdit ? (
+        <CriteriaDrawer criteria={general} onChange={setGeneral} save={saveGeneral} source={criteria ? undefined : 'default'}
+          title={criteria ? 'Critères de l’offre' : 'Critères de l’offre (aucun pour l’instant)'} openLabel={criteria ? 'Configurer' : 'Régler les critères'}
           intro={criteria
             ? 'Pour tous les recruteurs de l’offre. Changer un libellé fait renoter ses candidats en arrière-plan (quota du jour de l’organisation) ; changer un poids ou ★ recalcule leurs scores aussitôt.'
-            : 'Cette offre est notée sur le barème par défaut. Réglez ses critères : ses candidats seront renotés sur eux.'}
-          saveLabel="Enregistrer pour l’offre" invalidSuffix="" />
-      ) : criteria && <OfferCriteriaCard criteria={criteria.general} />)}
-      {criteria && tab === 'own' && (
-        <CriteriaEditor key="own" criteria={own} onChange={setOwn} save={set => saveOwn(set)}
-          title="Mes critères pour cette offre"
+            : 'Cette offre est notée sur le barème par défaut. Réglez ses critères : ses candidats seront renotés sur eux.'} />
+      ) : criteria && <OfferCriteriaCard criteria={criteria.general} />}
+      {criteria && (
+        <CriteriaDrawer className="mt-4 border-t pt-4" style={{ borderColor: 'var(--color-border)' }} criteria={own} onChange={setOwn} save={saveOwn}
+          title="Mes critères pour cette offre" badge={criteria.own ? 'Propres' : 'Ceux de l’offre'} openLabel="Configurer"
           intro="Les vôtres seulement : poids, ★ et libellés. Vos propres libellés font noter vos candidats par l’IA en arrière-plan (quota du jour de l’organisation)."
-          saveLabel="Enregistrer mes critères" invalidSuffix=""
-          reset={criteria.own ? { label: 'Revenir aux critères de l’offre', run: () => saveOwn(null) } : undefined} />
+          reset={criteria.own ? { label: 'Revenir aux critères de l’offre', to: criteria.general, run: () => saveOwn(null) } : undefined} />
       )}
     </section>
   )
@@ -205,26 +187,16 @@ export function CandidateCriteriaEditor({ jobId, candidateKey, criteria }: { job
   const [set, setSet] = useState(own ?? criteria.own ?? criteria.general)
   async function save(next: OfferCriteriaSet | null) {
     const res = await saveCandidateCriteriaAction(jobId, candidateKey, next)
-    if (!res.error) {
-      if (!next) setSet(criteria.own ?? criteria.general)
-      router.refresh()
-    }
+    if (!res.error) router.refresh()
     return {
       error: res.error,
       message: !next ? 'Critères de l’offre de nouveau appliqués.' : res.judging ? 'Enregistrés : ce candidat est noté sur ces libellés en arrière-plan.' : 'Enregistrés : score recalculé.',
     }
   }
   return (
-    <details className="mt-3">
-      <summary className="cursor-pointer text-[12.5px] font-semibold" style={{ color: 'var(--color-text)' }}>
-        Critères pour ce candidat{own ? ' · propres' : ''}
-      </summary>
-      <div className="mt-2">
-        <CriteriaEditor criteria={set} onChange={setSet} save={next => save(next)} title="Critères pour ce candidat"
-          intro="Pour ce candidat seulement, à vos yeux : poids, ★ et libellés (de nouveaux libellés le font noter par l’IA)."
-          saveLabel="Enregistrer pour ce candidat" invalidSuffix=""
-          reset={own ? { label: 'Revenir à mes critères de l’offre', run: () => save(null) } : undefined} />
-      </div>
-    </details>
+    <CriteriaDrawer compact className="mt-3" criteria={set} onChange={setSet} save={save} title="Critères pour ce candidat"
+      badge={own ? 'Propres' : undefined} openLabel="Configurer"
+      intro="Pour ce candidat seulement, à vos yeux : poids, ★ et libellés (de nouveaux libellés le font noter par l’IA)."
+      reset={own ? { label: 'Revenir à mes critères de l’offre', to: criteria.own ?? criteria.general, run: () => save(null) } : undefined} />
   )
 }
