@@ -18,6 +18,7 @@
     "matching:explain": "tsx --network-family-autoselection-attempt-timeout=2000 scripts/matching-explain.mts",
     "cv:classify": "tsx --network-family-autoselection-attempt-timeout=2000 scripts/cv-classify.mts",
     "finetune:cv-dataset": "tsx --network-family-autoselection-attempt-timeout=2000 scripts/finetune-cv-dataset.mts",
+    "finetune:mbc-dataset": "tsx --network-family-autoselection-attempt-timeout=2000 scripts/finetune-mbc-dataset.mts",
     "search:sync": "tsx --network-family-autoselection-attempt-timeout=2000 scripts/search-sync.mts",
     "ao:poll": "node scripts/ao-poll.mjs",
     "ao:poll:start": "node scripts/ao-poll.mjs start",

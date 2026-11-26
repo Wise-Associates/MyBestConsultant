@@ -1,3 +1,4 @@
+import type { CvContent } from './cv-data'
 import type { AnonymizationMode, CvLang } from './types'
 
 // Consignes de l'IA pour l'export de CV au format ESN : étapes 3 à 5 de la skill cv-esn-anonymise (extraction fidèle,
@@ -86,4 +87,29 @@ Réponds UNIQUEMENT avec le JSON traduit, sans markdown ni texte autour : mêmes
 - "titre" : traduire l'intitulé au plus près.
 - Un élément de "realisations" qui commence par « ## » (sous-titre) garde ce début.
 - ${toEnglish ? '"[À COMPLÉTER]" devient "[TO BE COMPLETED]"' : '"[TO BE COMPLETED]" devient "[À COMPLÉTER]"'}.`
+}
+
+/** CV lu pour l'export : au-delà, sa fin est coupée et l'IA en est prévenue (extractionRequest). */
+export const MAX_CV_CHARS = 40_000
+/** En dessous (espaces exclus), le CV n'a pas de texte lisible : document scanné. */
+export const MIN_CV_CHARS = 200
+
+/**
+ * Texte d'un CV tel que l'export le confie à l'IA : coupé à MAX_CV_CHARS (lu avec un caractère de plus pour le savoir) ;
+ * null s'il n'a pas de texte lisible. Partagé avec l'export des exemples d'affinage (ADR 0063).
+ */
+export function cvTextForExport(text: string): { text: string; truncated: boolean } | null {
+  if (text.replace(/\s/g, '').length < MIN_CV_CHARS) return null
+  return { text: text.slice(0, MAX_CV_CHARS), truncated: text.length > MAX_CV_CHARS }
+}
+
+/** Message de la lecture du CV : son texte entre balises, précédé d'un avertissement quand sa fin a été coupée. */
+export function extractionRequest(cv: { text: string; truncated: boolean }): string {
+  const cutNotice = cv.truncated ? 'Le CV est trop long : sa fin manque ci-dessous. N\'invente rien pour la compléter.\n' : ''
+  return `${cutNotice}<cv>\n${cv.text}\n</cv>`
+}
+
+/** Message de la traduction : le dossier lu, en JSON. */
+export function translationRequest(source: CvContent): string {
+  return `<dossier>\n${JSON.stringify(source)}\n</dossier>`
 }

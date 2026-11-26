@@ -7,9 +7,10 @@ import { updateApplicationStatus, updateApplicationCard, deleteApplication, getJ
 import { logFunnelEvent, getFunnelEvents, getStagesForJob, replaceStages, ensureColumns, funnelMoveRefusal } from '@/lib/appwrite/funnel'
 import {
   alignToColumn, columnOf, currentIndex, customizedFunnel, funnelForCandidate, sanitizeFunnel, serializeFunnel, stepColumn,
-  STEP_TYPES, type FunnelStep, type StepResult, type StepStatus,
+  type FunnelStep, type StepResult, type StepStatus,
 } from '@/lib/candidate-funnel'
 import { callLLM } from '@/lib/ai/llm-router'
+import { cleanStepReport, stepReportPrompt, type InterviewAnalysisFacts } from '@/lib/step-report-prompt'
 import { sanitizeStageInputs } from '@/lib/funnel-config'
 import { screenAllApplications, sendInterviewInvitationEmail } from '@/app/recruiter/screening/actions'
 import { createInterviewSession, type InterviewQuestion } from '@/app/recruiter/interviews/actions'
@@ -398,9 +399,6 @@ export async function validateStepAction(applicationId: string, jobId: string, s
   }
 }
 
-const REPORT_SYSTEM = `Tu es un assistant de recrutement. Rédige un COMPTE RENDU D'ÉTAPE en français, factuel et professionnel, de 80 à 140 mots, en 3 courts paragraphes : « Synthèse », « Points forts », « Points de vigilance ». Termine par une ligne « Recommandation : » (favorable, réservée ou défavorable) cohérente avec le résultat indiqué.
-Appuie-toi UNIQUEMENT sur les éléments fournis. N'invente aucun fait. S'il y a peu d'éléments, rédige un compte rendu court et termine par « À compléter par le recruteur ». Pas de markdown, pas d'emoji.`
-
 /** Compte rendu d'étape proposé par l'IA à partir de ce que l'on sait du candidat (screening, entretien IA, notes). Rien n'est enregistré : le recruteur relit, corrige, valide. */
 export async function generateStepReportAction(applicationId: string, jobId: string, stepId: string, draft?: { result?: StepResult; notes?: string }): Promise<{ report?: string; error?: string }> {
   try {
@@ -410,31 +408,29 @@ export async function generateStepReportAction(applicationId: string, jobId: str
     if (!step) return { error: 'Étape introuvable.' }
     const job = await getJobById(jobId)
 
-    // Ce que l'on sait déjà : screening IA et dernier entretien IA analysé
-    const facts: string[] = []
-    if (typeof app.aiScore === 'number') facts.push(`Screening IA : score ${app.aiScore}/100. ${(app.aiSummary as string) ?? ''}`.trim())
+    // Analyses des derniers entretiens IA, lues jusqu'à la première illisible
+    const interviewAnalyses: (InterviewAnalysisFacts | null)[] = []
     try {
       const { Query } = await import('node-appwrite')
       const res = await databases.listDocuments(DB_ID, COLLECTIONS.INTERVIEWS, [Query.equal('applicationId', applicationId), Query.orderDesc('$createdAt'), Query.limit(3)])
       for (const d of res.documents) {
-        const a = d.analysis ? JSON.parse(d.analysis as string) as { overallScore?: number; summary?: string; recommendation?: string } : null
-        if (a?.summary) facts.push(`Entretien IA : score ${a.overallScore ?? '?'}/100, recommandation ${a.recommendation ?? '?'}. ${a.summary}`)
+        interviewAnalyses.push(d.analysis ? JSON.parse(d.analysis as string) as InterviewAnalysisFacts : null)
       }
     } catch { /* les entretiens IA sont un plus */ }
-    const prior = f.steps.filter(s => s.status === 'validated' && s.report).map(s => `${s.label} : ${s.report}`).slice(-3)
-    const resultLabel = draft?.result === 'positive' ? 'favorable' : draft?.result === 'neutral' ? 'réservé' : draft?.result === 'negative' ? 'défavorable' : 'non précisé'
 
-    const content = [
-      `Poste : ${job?.title ?? ''}`,
-      `Étape : ${step.label} (${STEP_TYPES[step.type].description})`,
-      `Résultat indiqué par le recruteur : ${resultLabel}`,
-      draft?.notes?.trim() ? `Notes du recruteur : ${draft.notes.trim().slice(0, 800)}` : '',
-      (app.note as string) ? `Note sur la candidature : ${(app.note as string).slice(0, 400)}` : '',
-      facts.length ? `Éléments connus :\n${facts.join('\n').slice(0, 1800)}` : '',
-      prior.length ? `Comptes rendus des étapes précédentes :\n${prior.join('\n').slice(0, 900)}` : '',
-    ].filter(Boolean).join('\n')
-    const { content: text } = await callLLM([{ role: 'user', content }], REPORT_SYSTEM)
-    const report = text.replace(/\*\*/g, '').trim().slice(0, 1200)
+    const { system, user: content } = stepReportPrompt({
+      jobTitle: job?.title,
+      step,
+      funnelSteps: f.steps,
+      result: draft?.result,
+      notes: draft?.notes,
+      applicationNote: app.note as string | null | undefined,
+      aiScore: app.aiScore as number | null | undefined,
+      aiSummary: app.aiSummary as string | null | undefined,
+      interviewAnalyses,
+    })
+    const { content: text } = await callLLM([{ role: 'user', content }], system)
+    const report = cleanStepReport(text)
     if (!report) return { error: 'L’IA n’a pas pu rédiger de compte rendu. Réessayez.' }
     return { report }
   } catch (e) {

@@ -124,3 +124,16 @@ export const INTERVIEW_AI_REFUSAL = {
   organisation: (limit: number) => `Limite de ${limit} analyses par l'IA (entretiens et screening) par jour atteinte pour votre organisation : réessayez demain.`,
   platform: 'Trop d\'analyses par l\'IA aujourd\'hui sur la plateforme : réessayez demain.',
 } as const
+
+/**
+ * Questions par défaut d'une organisation qui n'a pas enregistré les siennes (`tenants.genericQuestions`). Ici plutôt que
+ * dans generic-questions-actions.ts ('use server', qui n'exporte que des fonctions) : les exemples d'affinage (ADR 0063)
+ * construisent les mêmes consignes de génération des questions.
+ */
+export const DEFAULT_GENERIC_QUESTIONS: { id: string; text: string; category: 'intro' | 'technical' | 'behavioral' | 'motivation' | 'closing'; enabled: boolean }[] = [
+  { id: 'gq-1', text: 'Pouvez-vous vous présenter et résumer votre parcours ?', category: 'intro', enabled: true },
+  { id: 'gq-2', text: 'Qu\'est-ce qui vous motive à postuler à ce poste ?', category: 'motivation', enabled: true },
+  { id: 'gq-3', text: 'Décrivez une situation professionnelle difficile et comment vous l\'avez gérée.', category: 'behavioral', enabled: true },
+  { id: 'gq-4', text: 'Quelles sont vos disponibilités et vos attentes salariales ?', category: 'closing', enabled: true },
+  { id: 'gq-5', text: 'Avez-vous des questions pour nous ?', category: 'closing', enabled: true },
+]

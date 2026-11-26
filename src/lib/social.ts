@@ -1,4 +1,3 @@
-import { parseModelJson } from '@/lib/ai/model-json'
 import { createHash, createHmac, timingSafeEqual } from 'crypto'
 import { AppwriteException, ID, Query, type Models } from 'node-appwrite'
 import { createAdminClient } from '@/lib/appwrite/client'
@@ -9,9 +8,10 @@ import { listAllDocuments } from '@/lib/appwrite/list-all'
 import { callLLM } from '@/lib/ai/llm-router'
 import { CALENDLY_URL } from '@/lib/site-links'
 import {
-  DEFAULT_SOCIAL_CONFIG, NETWORKS, SAMPLE_JOB, WISE_POLES, brandPresentation, buildContent, fallbackCopy, jobLiteOf, normalizeCopy, sanitizeSocialConfig,
+  DEFAULT_SOCIAL_CONFIG, NETWORKS, SAMPLE_JOB, brandPresentation, buildContent, fallbackCopy, jobLiteOf, normalizeCopy, sanitizeSocialConfig,
   type CopyDraft, type JobLite, type Network, type PostImage, type SocialConfig, type SocialContent, type SocialEdits,
 } from '@/lib/social-content'
+import { parseSocialCopy, socialCopyPrompt } from '@/lib/social-copy-prompt'
 import { SAMPLE_POSTER_ID, SCENE_DAILY_LIMITS, isQueuedOverdue, parsePosterImage, posterUrl, sceneTimeoutMs } from '@/lib/social-poster/rules'
 import { isPublicationStopped } from '@/lib/ao/state'
 import type { BufferResult } from '@/lib/buffer'
@@ -235,14 +235,10 @@ export function jobToLite(job: Job, company: string, about = ''): JobLite {
 export async function generateCopy(job: JobLite): Promise<CopyDraft> {
   if (process.env.SOCIAL_COPY_AI === 'off') return fallbackCopy(job) // coupe-circuit (tests / recette)
   try {
-    const { content } = await callLLM([{
-      role: 'user',
-      content: `Offre : ${job.title}\nEntreprise : ${job.company}\nLieu : ${job.location}\nCompétences : ${job.skills.join(', ')}\nDescription : ${job.description}`,
-    }], `Tu es community manager d'une plateforme de recrutement IT. À partir d'une offre d'emploi, rédige en français un contenu pour les réseaux sociaux : percutant, sobre, sans emoji, sans promesse inventée, uniquement des informations présentes dans l'offre.
-Réponds UNIQUEMENT avec un JSON valide, sans markdown :
-{"hook":"accroche de 70 caractères maximum","tagline":"une phrase d'accroche inspirante de 85 caractères maximum, propre à ce poste, sans point d'exclamation","pitch":"2 à 3 phrases de présentation","missionBullets":["3 puces de 80 caractères maximum sur la mission"],"profileBullets":["3 à 5 compétences ou qualités clés, 35 caractères maximum chacune"],"context":"1 à 2 phrases, 300 caractères maximum, qui présentent le projet ou la mission : l'organisation telle que l'offre la désigne, ce qu'elle entreprend et dans quel cadre ; sans t'adresser au candidat","pole":"le pôle d'expertise de Wise Associates dont relève ce poste, exactement l'un de : ${WISE_POLES.join(', ')} ; chaîne vide si aucun ne convient","hashtags":["3 à 6 hashtags des principales expertises techniques ou métier demandées par l'offre (compétences, technologies, domaines), dans l'ordre d'importance, chacun en un seul mot sans accent ni espace ni #, écrit avec les mots de l'offre (ex. RisqueDeLiquidite, Java, AWS) ; aucun hashtag générique (recrutement, emploi, job) ni absent de l'offre"]}`, { timeoutMs: 30_000 })
-    const m = content.match(/\{[\s\S]*\}/)
-    return normalizeCopy(m ? parseModelJson(m[0]) : null, job)
+    // Consignes, message et lecture de la réponse : social-copy-prompt.ts (pur, reproduit par les exemples d'affinage).
+    const { system, user } = socialCopyPrompt(job)
+    const { content } = await callLLM([{ role: 'user', content: user }], system, { timeoutMs: 30_000 })
+    return parseSocialCopy(content, job)
   } catch (e) {
     // Repli prévu : la publication ne dépend jamais de l'IA, mais l'admin doit pouvoir savoir pourquoi.
     console.warn('[social] textes par repli, IA indisponible :', e instanceof Error ? e.message.slice(0, 200) : e)

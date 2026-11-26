@@ -21,6 +21,7 @@ import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
 import { AppwriteException, Query, type Models } from 'node-appwrite'
 import { isDocumentId } from '@/lib/ao/access'
 import { creatorReplyTo, escapeHtml, outreachEmailBody } from '@/lib/outreach-email'
+import { outreachMessagePrompt, parseOutreachAnswer } from '@/lib/outreach-prompt'
 import { sendSmtpEmail, type MailAddress } from '@/lib/smtp'
 import {
   CV_CHARS_FOR_SCORING, criteriaCounts, cvTextForScoring, judgedScore, judgementSummary, offerCriteria, offerDetails, parseJudgements,
@@ -495,19 +496,16 @@ export async function generateOutreachMessageCore(candidateId: string, jobId: st
       databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId),
     ])
 
-    const SYSTEM = `Tu rédiges un premier message de prise de contact d'un recruteur vers un candidat, pour lui proposer une mission. Ton : professionnel, chaleureux, direct, pas de flatterie excessive. 5-8 phrases maximum. Signe "L'équipe MyBestConsultant".
+    const { system, user: userMsg } = outreachMessagePrompt({
+      candidateFirstName: candidate.firstName as string,
+      candidateLastName: candidate.lastName as string,
+      jobTitle: job.title as string,
+      jobSkills: job.skills as string[] | null,
+      jobLocation: job.location as string,
+    })
 
-Réponds UNIQUEMENT avec un JSON valide : {"subject":"...", "message":"..."}
-- "subject" est OBLIGATOIRE et JAMAIS vide : une ligne d'objet courte et concrète (ex: "Opportunité — Développeur Fullstack .NET chez [client]")
-- "message" en texte brut, sauts de ligne avec \\n`
-    const userMsg = `Candidat : ${candidate.firstName} ${candidate.lastName}\nOffre : ${job.title}\nCompétences recherchées : ${((job.skills as string[]) ?? []).join(', ')}\nLieu : ${job.location}`
-
-    const { content } = await callLLM([{ role: 'user', content: userMsg }], SYSTEM)
-    const jsonMatch = content.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return { subject: '', message: '', error: 'Réponse IA invalide' }
-    const parsed = parseModelJson(jsonMatch[0]) as Record<string, unknown>
-    const subject = String(parsed.subject ?? '').trim() || `Opportunité — ${job.title}`
-    return { subject, message: String(parsed.message ?? '') }
+    const { content } = await callLLM([{ role: 'user', content: userMsg }], system)
+    return parseOutreachAnswer(content, job.title as string)
   } catch (e) {
     return { subject: '', message: '', error: e instanceof Error ? e.message : 'Erreur inconnue' }
   }

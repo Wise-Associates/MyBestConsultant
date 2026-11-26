@@ -1,6 +1,5 @@
 'use server'
 
-import { parseModelJson } from '@/lib/ai/model-json'
 import { callLLM } from '@/lib/ai/llm-router'
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
@@ -12,20 +11,12 @@ import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 import { extractTextFromFile } from '@/lib/import-file-extract'
 import { parseSpreadsheetJobs } from '@/lib/job-import'
+import {
+  improveImportedJobPrompt, jobImportPrompt, parseImprovedJobAnswer, parseJobImportAnswer, type ExtractedJob, type ImprovableJobFields,
+} from '@/lib/job-import-prompts'
 import { activeJobsLimitDenial } from '@/lib/tenant-access'
 
-export interface ExtractedJob {
-  id: string            // temp client-side id
-  title: string
-  location: string
-  contractType: 'cdi' | 'cdd' | 'freelance' | 'mission'
-  remote: 'onsite' | 'hybrid' | 'remote'
-  salary: number | null
-  skills: string[]
-  description: string
-  companyName: string
-  confidence: 'high' | 'medium' | 'low'
-}
+export type { ExtractedJob } from '@/lib/job-import-prompts'
 
 export interface ParseResult {
   jobs: ExtractedJob[]
@@ -81,57 +72,17 @@ export async function parseFileWithLLM(formData: FormData): Promise<ParseResult>
 
     const rawPreview = text.slice(0, 500)
 
-    const SYSTEM = `Tu es un extracteur d'offres d'emploi expert. À partir du texte fourni, extrais TOUTES les offres d'emploi et retourne un JSON valide.
-
-Réponds UNIQUEMENT avec un tableau JSON valide, sans markdown, sans explication. Format exact :
-[
-  {
-    "title": "string — intitulé du poste",
-    "location": "string — ville ou région, '' si non précisé",
-    "contractType": "cdi|cdd|freelance|mission",
-    "remote": "onsite|hybrid|remote",
-    "salary": number|null — montant en € : salaire annuel brut pour CDI/CDD (un salaire mensuel est multiplié par 12), TJM pour freelance/mission, null si non précisé ou si l'unité est inconnue,
-    "skills": ["string"] — liste de compétences techniques,
-    "description": "string — description complète et détaillée du poste, reprends l'intégralité du contenu pertinent du document source (contexte, missions, profil recherché, compétences) — ne jamais résumer ni tronquer",
-    "companyName": "string — nom de l'entreprise, '${defaultCompany}' si non précisé",
-    "confidence": "high|medium|low"
-  }
-]
-
-Règles :
-- Si le texte contient plusieurs offres, extrais-les toutes
-- contractType par défaut : "mission" pour IT consulting
-- remote par défaut : "hybrid"
-- confidence = "high" si toutes les infos clés sont présentes, "medium" si certaines manquent, "low" si beaucoup d'infos manquent
-- Ne jamais inventer des informations qui ne sont pas dans le texte (sauf defaults ci-dessus)
-- Si aucune offre n'est détectable, retourne []`
-
+    const prompt = jobImportPrompt({ text, filename, defaultCompany })
     const { content: raw } = await callLLM(
-      [{ role: 'user', content: `Contenu à analyser (source: ${filename}):\n\n${text}` }],
-      SYSTEM,
+      [{ role: 'user', content: prompt.user }],
+      prompt.system,
       llmProvider,
     )
 
-    // Extract JSON array from response
-    const jsonMatch = raw.match(/\[[\s\S]*\]/)
-    if (!jsonMatch) return { jobs: [], rawPreview, error: 'Le modèle n\'a pas retourné de JSON valide' }
+    const answer = parseJobImportAnswer(raw)
+    if ('error' in answer) return { jobs: [], rawPreview, error: answer.error }
 
-    let parsed: Omit<ExtractedJob, 'id'>[]
-    try {
-      parsed = parseModelJson(jsonMatch[0]) as Omit<ExtractedJob, 'id'>[]
-    } catch {
-      // Réponse tronquée ou malformée (ex. document trop long) — message clair plutôt
-      // que l'erreur brute de JSON.parse (illisible pour un recruteur).
-      return { jobs: [], rawPreview, error: 'Le document est trop long ou trop complexe pour être analysé en une fois. Essayez avec un fichier plus court, ou changez de modèle IA.' }
-    }
-
-    const jobs: ExtractedJob[] = parsed.map(j => ({
-      ...j,
-      id: Math.random().toString(36).slice(2, 9),
-      salary: typeof j.salary === 'number' ? j.salary : null,
-      skills: Array.isArray(j.skills) ? j.skills.slice(0, 10) : [],
-      description: String(j.description ?? ''),
-    }))
+    const jobs: ExtractedJob[] = answer.jobs.map(j => ({ ...j, id: Math.random().toString(36).slice(2, 9) }))
 
     return { jobs, rawPreview, source: 'ai' }
   } catch (e) {
@@ -139,22 +90,6 @@ Règles :
     return { jobs: [], rawPreview: '', error: msg }
   }
 }
-
-const IMPROVE_CONTRACT_TYPES = new Set(['cdi', 'cdd', 'freelance', 'mission'])
-const IMPROVE_REMOTE_TYPES = new Set(['onsite', 'hybrid', 'remote'])
-
-type ImprovableJobFields = Pick<ExtractedJob, 'title' | 'description' | 'skills' | 'location' | 'contractType' | 'remote' | 'salary'>
-
-const IMPROVE_SYSTEM = `Tu es un expert en rédaction d'annonces d'emploi pour un cabinet de conseil en recrutement.
-On te donne une offre extraite automatiquement (titre, description, compétences, localisation, type de contrat, télétravail, salaire/TJM) et une demande d'amélioration du recruteur.
-Applique la demande aux champs concernés (un ou plusieurs) et renvoie TOUS les champs, en recopiant à l'identique ceux qui ne sont pas concernés.
-Réponds UNIQUEMENT avec un objet JSON valide, sans markdown, sans texte avant ou après :
-{"title":"...","description":"...","skills":["compétence1","compétence2"],"location":"...","contractType":"cdi|cdd|freelance|mission","remote":"onsite|hybrid|remote","salary":number|null}
-
-Règles :
-- Les sauts de ligne dans "description" doivent être de vrais \\n
-- 5 à 10 compétences clés maximum dans "skills"
-- Ne modifie QUE ce que la demande implique, recopie le reste sans y toucher`
 
 // "Améliorer avec l'IA" sur une offre extraite pendant la revue, avant import — permet de
 // corriger le ton, compléter des infos manquantes, changer la localisation/contrat/salaire
@@ -170,23 +105,9 @@ export async function improveExtractedJob(
   if (!trimmed) return { error: 'Décrivez ce que l\'IA doit améliorer' }
 
   try {
-    const userMsg = `Offre actuelle :\n${JSON.stringify(job)}\n\nDemande d'amélioration du recruteur : "${trimmed}"`
-    const { content } = await callLLM([{ role: 'user', content: userMsg }], IMPROVE_SYSTEM)
-    const jsonMatch = content.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return { error: 'Réponse IA invalide, réessayez' }
-
-    const parsed = parseModelJson(jsonMatch[0]) as Partial<ImprovableJobFields>
-    const result: ImprovableJobFields = {
-      title: String(parsed.title ?? job.title).slice(0, 200),
-      description: String(parsed.description ?? job.description),
-      skills: Array.isArray(parsed.skills) ? parsed.skills.slice(0, 10).map(String) : job.skills,
-      location: String(parsed.location ?? job.location),
-      contractType: parsed.contractType && IMPROVE_CONTRACT_TYPES.has(String(parsed.contractType)) ? parsed.contractType : job.contractType,
-      remote: parsed.remote && IMPROVE_REMOTE_TYPES.has(String(parsed.remote)) ? parsed.remote : job.remote,
-      salary: typeof parsed.salary === 'number' ? parsed.salary : job.salary,
-    }
-    if (!result.title || !result.description) return { error: 'Réponse IA incomplète, réessayez' }
-    return result
+    const { system, user: userMsg } = improveImportedJobPrompt({ job, request: trimmed })
+    const { content } = await callLLM([{ role: 'user', content: userMsg }], system)
+    return parseImprovedJobAnswer(content, job)
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur d\'amélioration' }
   }

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { extractionPrompt, translationPrompt } from './prompt'
+import { MAX_CV_CHARS, cvTextForExport, extractionPrompt, extractionRequest, translationPrompt, translationRequest } from './prompt'
 import type { AnonymizationMode } from './types'
 
 const MODES: AnonymizationMode[] = ['standard', 'renforcee']
@@ -65,5 +65,24 @@ describe('translationPrompt', () => {
     assert.match(translationPrompt('en'), /ni résumé/)
     assert.match(translationPrompt('en'), /même forme/)
     assert.match(translationPrompt('fr'), /même forme/)
+  })
+})
+
+describe('messages envoyés à l\'IA (partagés avec les exemples d\'affinage)', () => {
+  it('délimite le CV et prévient quand sa fin a été coupée', () => {
+    assert.equal(extractionRequest({ text: 'CV', truncated: false }), '<cv>\nCV\n</cv>')
+    assert.equal(extractionRequest({ text: 'CV', truncated: true }), 'Le CV est trop long : sa fin manque ci-dessous. N\'invente rien pour la compléter.\n<cv>\nCV\n</cv>')
+  })
+
+  it('envoie le dossier à traduire en JSON', () => {
+    const source = { titre: 'Développeur' } as unknown as Parameters<typeof translationRequest>[0]
+    assert.equal(translationRequest(source), '<dossier>\n{"titre":"Développeur"}\n</dossier>')
+  })
+
+  it('coupe un CV trop long et écarte un CV sans texte', () => {
+    assert.equal(cvTextForExport('  court  '), null)
+    const long = cvTextForExport('x'.repeat(MAX_CV_CHARS + 1))
+    assert.deepEqual(long && { length: long.text.length, truncated: long.truncated }, { length: MAX_CV_CHARS, truncated: true })
+    assert.equal(cvTextForExport('y'.repeat(500))?.truncated, false)
   })
 })

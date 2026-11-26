@@ -57,53 +57,73 @@ const foldChar = (c: string) => c.normalize('NFD').replace(/\p{M}/gu, '').toLowe
 const INSIDE_WORD_MIN = 5
 const HEADER_CHARS = 300
 
+/** Parties d'un nom recherchées dans un texte (sans casse ni accents), particules et lettres seules exclues. */
+export const nameParts = (names: string[]): string[] =>
+  [...new Set(names.flatMap(n => fold(n.normalize('NFC')).split(/[^\p{L}]+/u)).filter(p => p.length >= 2 && !NAME_PARTICLES.has(p)))]
+
+/** Texte qui remplace une partie de nom trouvée : `part` = la partie (sans casse ni accents), `found` = le texte trouvé. */
+export type NameReplacer = (part: string, found: string) => string
+
 /**
- * Remplace par « [NOM] » chaque occurrence d'une partie de nom dans un mot (« ElodieDupré » → « [NOM][NOM] »,
+ * Remplace chaque occurrence d'une partie de nom dans un mot (« ElodieDupré » → « [NOM][NOM] »,
  * « Mansourisoft » → « [NOM]soft »). Pas en dessous de 4 lettres : « Eric » masquerait « numérique ».
  */
-function maskInsideWord(word: string, parts: string[]): string {
+function replaceInsideWord(word: string, parts: string[], replace: NameReplacer): string {
   const chars = [...word]
   let folded = ''
   const owner: number[] = []
   chars.forEach((c, i) => { for (const f of foldChar(c)) { folded += f; owner.push(i) } })
   const tag = new Array<number>(chars.length).fill(-1)
-  let occurrence = 0
+  const partOf: string[] = []
   for (const part of parts) {
     for (let at = folded.indexOf(part); at >= 0; at = folded.indexOf(part, at + part.length)) {
-      for (let k = at; k < at + part.length; k++) tag[owner[k]] = occurrence
-      occurrence++
+      for (let k = at; k < at + part.length; k++) tag[owner[k]] = partOf.length
+      partOf.push(part)
     }
   }
-  if (occurrence === 0) return word
+  if (partOf.length === 0) return word
   let out = ''
   for (let i = 0; i < chars.length;) {
     if (tag[i] < 0) { out += chars[i]; i++; continue }
     const id = tag[i]
-    out += '[NOM]'
+    const start = i
     while (i < chars.length && tag[i] === id) i++
+    out += replace(partOf[id], chars.slice(start, i).join(''))
   }
   return out
 }
 
 /**
- * Nom du candidat remplacé par « [NOM] » dans le texte du CV : chaque partie du prénom et du nom (« Zineb-Amina »,
- * « El Mansouri »), sans casse ni accents (accents décomposés par la lecture du PDF compris), en mot entier, en
- * lettres espacées (« D U P R É »), et collée à un autre mot (voir maskInsideWord). Le texte envoyé à l'IA garde le nom
- * (seules les coordonnées sont masquées, cvTextForScoring) ; les poids d'un modèle affiné gardent des traces de ses
- * exemples, d'où ce masquage (revue de sécurité du 2026-11-24).
+ * Chaque partie du nom d'une personne (« Zineb-Amina », « El Mansouri ») remplacée dans un texte, sans casse ni accents
+ * (accents décomposés par la lecture du PDF compris), en mot entier, en lettres espacées (« D U P R É »), et collée à un
+ * autre mot (voir replaceInsideWord). Remplacement choisi par `replace` : « [NOM] » (maskPersonName) ou un nom inventé
+ * (pseudonymize.ts).
  */
-export function maskPersonName(text: string, names: string[]): string {
-  const parts = new Set(names.flatMap(n => fold(n.normalize('NFC')).split(/[^\p{L}]+/u)).filter(p => p.length >= 2 && !NAME_PARTICLES.has(p)))
+export function replacePersonName(text: string, names: string[], replace: NameReplacer): string {
+  const parts = new Set(nameParts(names))
   if (!parts.size) return text
   const anywhere = [...parts].filter(p => p.length >= INSIDE_WORD_MIN)
   const inHeader = [...parts].filter(p => p.length >= 4)
   return text
     .normalize('NFC')
-    .replace(/(?<!\p{L})(?:\p{L} ){2,}\p{L}(?!\p{L})/gu, run => (parts.has(fold(run.replace(/ /g, ''))) ? '[NOM]' : run))
-    .replace(/[\p{L}\p{M}]+/gu, (word, offset: number) => {
-      if (parts.has(fold(word))) return '[NOM]'
-      return maskInsideWord(word, offset < HEADER_CHARS ? inHeader : anywhere)
+    .replace(/(?<!\p{L})(?:\p{L} ){2,}\p{L}(?!\p{L})/gu, run => {
+      const part = fold(run.replace(/ /g, ''))
+      return parts.has(part) ? replace(part, run) : run
     })
+    .replace(/[\p{L}\p{M}]+/gu, (word, offset: number) => {
+      const part = fold(word)
+      if (parts.has(part)) return replace(part, word)
+      return replaceInsideWord(word, offset < HEADER_CHARS ? inHeader : anywhere, replace)
+    })
+}
+
+/**
+ * Nom du candidat remplacé par « [NOM] » dans le texte du CV (voir replacePersonName). Le texte envoyé à l'IA garde le
+ * nom (seules les coordonnées sont masquées, cvTextForScoring) ; les poids d'un modèle affiné gardent des traces de ses
+ * exemples, d'où ce masquage (revue de sécurité du 2026-11-24).
+ */
+export function maskPersonName(text: string, names: string[]): string {
+  return replacePersonName(text, names, () => '[NOM]')
 }
 
 const YEAR = /^(19|20)\d\d$/

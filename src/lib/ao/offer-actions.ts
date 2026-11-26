@@ -15,10 +15,11 @@ import { saveOfferCriteria } from '@/lib/offer-criteria-store'
 import { CRITERIA_PROPOSAL_PROMPT, criteriaProposalRequest, parseCriteriaProposal } from './criteria-proposal'
 import { findIdentifiers } from './name-match'
 import { llmUnavailableReason } from './ai-failures'
-import { distinctNames, namesToHide, publicLabel, rawPublicOffer, scrubContacts, toPublicOffer } from './anonymize'
+import { distinctNames, publicLabel, rawPublicOffer, toPublicOffer } from './anonymize'
+import { cleanedAo, hiddenNamesOf, publicationAiRequest, type HiddenNames } from './ai-input'
 import {
   PLATFORM_NAMES, PUBLICATION_PROMPT, descriptionFromCopy, maskNames, maskTermsOf, modalityLines, parsePublicationCopy, platformMentions,
-  publicationRequest, type PublicationCopy,
+  type PublicationCopy,
 } from './publication-copy'
 import { manualRetryPatch } from './attempts'
 import { deleteEach, parseBulkDeleteIds } from './bulk-delete'
@@ -30,7 +31,6 @@ import { offerDetails } from '@/lib/match-scoring'
 import { bestMatches } from '@/lib/sourcing-rules'
 import type { AoCommentView, AoDashboardActions, AoSyncPassResult, PublicationDraft, PublicationMode, PublicationPreview, SourcingResult } from './dashboard-types'
 import { cityKey, titleKey } from './fingerprint'
-import { parseSender } from './origin'
 import { filtersFromSearchParams, listSizeFromSearchParams, listToSearchParams } from './filters'
 import { aoAccessFor, loadAoView } from './platform-view'
 import { checkAssignee, getAoAssignee, notifyAssigneeWarning, setAoAssignee, setJobRecruiter } from '@/lib/recruiter-assignment'
@@ -57,28 +57,14 @@ const errorOf = (err: unknown) => (err instanceof Error ? err.message : String(e
 
 
 /**
- * Noms à masquer : client de l'offre et clients cités par l'appel d'offres (avec leurs sigles), nom et domaine de
- * l'expéditeur de l'e-mail, de celui du message d'origine et de l'interlocuteur lu par l'IA (sauf ceux de
- * l'organisation qui lit la boîte). `clients` : les clients seuls, tels qu'écrits, pour la consigne donnée à l'IA.
- * `people` : les noms de ces personnes seules, signalés à la relecture d'une version non anonymisée.
+ * Noms à masquer de l'offre (hiddenNamesOf, ai-input.ts), à partir de son e-mail d'origine, de ses détails et de sa
+ * boîte, lus ici.
  */
-async function hiddenNamesFor(offer: AoOffer): Promise<{ clients: string[]; names: string[][]; people: string[][] }> {
+async function hiddenNamesFor(offer: AoOffer): Promise<HiddenNames> {
   const [emails, details] = await Promise.all([listAoEmailsByIds([offer.emailId]), listAoOfferDetails([offer.$id])])
   const email = emails.get(offer.emailId)
-  const contact = details.get(offer.$id)?.contact
   const source = email?.sourceId ? await getAoSource(email.sourceId) : null
-  const clients = [offer.companyName, ...(email?.citedClients ?? [])].filter(Boolean)
-  const senders = [
-    { name: email?.fromName, address: email?.fromAddress },
-    parseSender(email?.origin ?? '') ?? {},
-    ...(contact ? [{ name: contact.name, address: contact.email }] : []),
-  ]
-  return {
-    clients,
-    names: namesToHide(clients, senders, source?.ownDomains ?? []),
-    // Sans adresse : seulement les noms (pas les domaines, qui nomment des sociétés).
-    people: namesToHide([], senders.map(sender => ({ name: sender.name }))),
-  }
+  return hiddenNamesOf({ companyName: offer.companyName, email, contact: details.get(offer.$id)?.contact, ownDomains: source?.ownDomains ?? [] })
 }
 
 /**
@@ -273,15 +259,6 @@ async function publisherNameOf(jobTenantId: string): Promise<string> {
   return brand?.name.trim() ?? ''
 }
 
-/** Texte de l'AO aux noms du client remplacés (« le client »), comme l'IA de la version publiée le reçoit. */
-const cleanedAo = (offer: AoOffer, names: string[][]) => {
-  const clean = (text: string) => scrubContacts(text, names, 'le client')
-  return {
-    title: clean(offer.title), description: clean(offer.description), skills: offer.skills.map(clean), location: clean(offer.location),
-    experience: clean(offer.experience),
-  }
-}
-
 /** Critères par défaut d'un AO (sans IA, ADR 0061), sur son texte aux noms du client remplacés. */
 const defaultAoCriteria = (offer: AoOffer, names: string[][]) => defaultCriteriaSet(cleanedAo(offer, names))
 
@@ -314,8 +291,7 @@ const criteriaNaming = (set: OfferCriteriaSet, names: string[][]) => findIdentif
 /** Version rédigée par l'IA, ou la raison pour laquelle elle n'a pas pu l'être (affichée à la relecture). */
 async function rewriteForPublication(offer: AoOffer, clients: string[], names: string[][]): Promise<PublicationCopy | string> {
   // L'IA reçoit l'offre déjà nettoyée : coordonnées et références retirées, clients connus remplacés.
-  const clean = (text: string) => scrubContacts(text, names, 'le client')
-  const request = publicationRequest({ ...offer, title: clean(offer.title), location: clean(offer.location), description: clean(offer.description) }, clients)
+  const request = publicationAiRequest(offer, clients, names)
   try {
     // 8 000 jetons : la réflexion de Claude (adaptative) compte dans la limite, la réponse en fait environ 1 500.
     const { content } = await callLLM([{ role: 'user', content: request }], PUBLICATION_PROMPT, { ...PUBLICATION_AI, maxTokens: 8000, timeoutMs: 60_000 })

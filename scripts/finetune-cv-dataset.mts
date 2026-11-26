@@ -13,31 +13,13 @@
 //                                                                              test-review.csv (relecture des réponses du test)
 // Aucune donnée de CV ni valeur secrète n'est affichée : seulement des nombres.
 
-import { spawnSync } from 'node:child_process'
-import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, writeSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { isInsideDir } from '../src/lib/finetune/cv-classification-dataset'
+import { lstatSync, readFileSync, readdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { ensurePrivateDir, readEnv, refuseGitOutDir, writePrivate } from './finetune-shared.mjs'
 
 const DEV_PROJECT_ID = 'bestconsultant-dev'
 /** CV lus en même temps dans le stockage : comme cv:classify. */
 const CONCURRENCY = 4
-
-/** Lecture d'un fichier .env : fins de ligne Windows, guillemets simples ou doubles, commentaire en fin de valeur. */
-function readEnv(path: string): Record<string, string> {
-  const env: Record<string, string> = {}
-  for (const raw of readFileSync(path, 'utf-8').split('\n')) {
-    const line = raw.replace(/\r$/, '')
-    const m = line.match(/^\s*(?:export\s+)?([A-Z0-9_]+)\s*=\s*(.*)$/)
-    if (!m) continue
-    let value = m[2].trim()
-    const quoted = value.match(/^(['"])(.*)\1$/)
-    if (quoted) value = quoted[2]
-    else value = value.replace(/\s+#.*$/, '')
-    env[m[1]] = value
-  }
-  return env
-}
 
 const USAGE = 'Usage : npm run finetune:cv-dataset -- collect <fichier .env> [--prod] --out <dossier> | ' +
   'collect-files <fichier .env> --dir <dossier de PDF> --out <dossier> | split --out <dossier>'
@@ -48,38 +30,7 @@ if (!['collect', 'collect-files', 'split'].includes(command ?? '') || outAt < 0 
   process.exit(1)
 }
 const outDir = resolve(args[outAt + 1])
-// Données personnelles : jamais dans un dépôt, où un « git add . » les publierait. Racine de ce dépôt d'après ce
-// fichier (pas le dossier courant, qui varie), puis n'importe quel dépôt git (celui du déployeur par exemple).
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-let ancestor = outDir
-while (!existsSync(ancestor) && dirname(ancestor) !== ancestor) ancestor = dirname(ancestor)
-const inGit = spawnSync('git', ['-C', ancestor, 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf-8' }).stdout.trim() === 'true'
-if (isInsideDir(repoRoot, outDir) || inGit) {
-  console.error(`--out ${outDir} : choisissez un dossier hors de tout dépôt git (les exemples contiennent des CV).`)
-  process.exit(1)
-}
-
-/**
- * Fichier lisible par son seul propriétaire, écrit d'un coup : créé à part (refusé s'il existe déjà, sans suivre de
- * lien), puis renommé ; un fichier ou un lien préparé par quelqu'un d'autre n'est jamais réutilisé.
- */
-function writePrivate(path: string, content: string) {
-  const tmp = `${path}.${process.pid}.tmp`
-  const fd = openSync(tmp, 'wx', 0o600)
-  try { writeSync(fd, content) } finally { closeSync(fd) }
-  renameSync(tmp, path)
-}
-
-/** Dossier de sortie à soi seul (0700) : sinon un autre utilisateur du poste pourrait lire ou remplacer les fichiers. */
-function ensurePrivateDir(dir: string) {
-  mkdirSync(dir, { recursive: true, mode: 0o700 })
-  const st = lstatSync(dir)
-  const mine = process.platform === 'win32' || (st.uid === process.getuid?.() && (st.mode & 0o077) === 0)
-  if (!st.isDirectory() || st.isSymbolicLink() || !mine) {
-    console.error(`--out ${dir} : dossier partagé ou lien ; prenez un dossier neuf, à vous seul (chmod 700).`)
-    process.exit(1)
-  }
-}
+refuseGitOutDir(outDir)
 
 interface RawExample {
   key: string

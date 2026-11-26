@@ -16,12 +16,9 @@ import { STRATEGY_LIMITS, parseStrategies, titleKey, titlePairs, type MbcStrateg
 import { takeBurstSlot } from '@/lib/mbc-search/burst'
 // Cause de chaque modèle essayé dans les journaux (jamais le texte envoyé à l'IA) : « claude : crédits épuisés ; gpt4o : HTTP 400 … ».
 import { llmFailureDetail } from '@/lib/ao/ai-failures'
-import {
-  APOLLO_EVALUATION_ADDENDUM, evaluationOf, needAsOffer, parseEvaluationExtras, profileText, similarBrief, similarNeed, type MbcEvaluation,
-} from '@/lib/mbc-search/evaluation'
-import {
-  criteriaCounts, cvTextForScoring, parseJudgements, parseScoringNotes, scoringSystemPrompt, scoringUserMessage,
-} from '@/lib/match-scoring'
+import { evaluationOf, parseEvaluationExtras, similarBrief, similarNeed, type MbcEvaluation } from '@/lib/mbc-search/evaluation'
+import { evaluationPrompt } from '@/lib/mbc-search/prompts'
+import { parseJudgements, parseScoringNotes } from '@/lib/match-scoring'
 import { withCheckedTitles } from '@/lib/title-check'
 import { loadRecruiterWeights } from '@/lib/scoring-weights-store'
 import {
@@ -668,10 +665,10 @@ export async function evaluateMbcProfile(input: unknown): Promise<{ evaluation?:
   const failed = 'L\'IA n\'a pas pu évaluer ce profil : réessayez dans quelques instants.'
   try {
     const { weights } = await loadRecruiterWeights(user.userId)
-    const { offer, judged } = needAsOffer(brief, criteria)
-    const cvText = cvTextForScoring(profileText(profile))
-    const system = `${scoringSystemPrompt('matching', criteriaCounts(judged))}\n\n${APOLLO_EVALUATION_ADDENDUM}`
-    const content = await evaluationText({ system, user: scoringUserMessage(offer, judged, cvText) })
+    // Consignes et message de prompts.ts (ceux des exemples d'affinage) ; judged et cvText servent à lire la réponse.
+    const prompt = evaluationPrompt({ brief, criteria, profile })
+    const { judged, cvText } = prompt
+    const content = await evaluationText(prompt)
     // Lu comme une notation de CV (cvScorer, sourcing-core.ts) : jugements vérifiés dans le texte lu, intitulés comparés.
     const json = content.match(/\{[\s\S]*\}/)
     let answer: unknown = null

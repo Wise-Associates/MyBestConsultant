@@ -10,6 +10,7 @@ import { wrapEmailHtml } from '@/lib/email-template'
 import type { Recommendation } from '@/types'
 import { docToRecommendation } from '@/lib/appwrite/recommendations'
 import { RELATIONSHIP_LABEL } from '@/lib/recommendation-boost'
+import { cleanRecommendationMessage, recommendationMessagePrompt } from '@/lib/recommendation-prompt'
 
 // Drafts the personal note that goes inside the recommendation request email — the
 // candidate reviews and can freely edit it before sending, this is just a starting point.
@@ -26,13 +27,17 @@ export async function generateRecommendationMessage(data: {
   if (!recipientName) return { error: 'Indiquez le nom du destinataire avant de générer un message' }
 
   try {
-    const candidateName = `${user.firstName} ${user.lastName}`.trim()
-    const { content } = await callLLM([{
-      role: 'user',
-      content: `Rédige un court message personnalisé (3-4 phrases maximum) que ${candidateName} envoie à ${recipientName}${data.recipientCompany ? ` (${data.recipientCompany})` : ''}, un ancien employeur ou client, pour lui demander une recommandation professionnelle sur la plateforme MyBestConsultant${data.experience ? `, en rapport avec cette expérience commune : ${data.experience.trim().slice(0, 200)}${data.period ? ` (${data.period.trim().slice(0, 60)})` : ''}` : ''}. Le ton doit être chaleureux, sincère et professionnel — pas de formule de politesse d'ouverture/fermeture (ex: "Bonjour", "Cordialement"), juste le corps du message. Réponds uniquement avec le texte du message, sans guillemets.`,
-    }], 'Tu es un assistant qui aide un consultant à rédiger un message court et sincère pour demander une recommandation professionnelle.')
+    const prompt = recommendationMessagePrompt({
+      candidateFirstName: user.firstName,
+      candidateLastName: user.lastName,
+      recipientName,
+      recipientCompany: data.recipientCompany,
+      experience: data.experience,
+      period: data.period,
+    })
+    const { content } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system)
 
-    const message = content.trim().replace(/^["«]|["»]$/g, '')
+    const message = cleanRecommendationMessage(content)
     if (!message) return { error: 'Réponse IA vide, réessayez' }
     return { message }
   } catch (e) {

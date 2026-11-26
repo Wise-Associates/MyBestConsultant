@@ -12,6 +12,7 @@ import type { InterviewQuestion, TranscriptEntry } from '@/app/recruiter/intervi
 import { ROOM_LIMITS } from '@/lib/interview-room'
 import { forgetRoomSession, roomSession, takeRoomSlot } from '@/lib/interview-room-access'
 import { transcriptTurnsSchema } from '@/lib/interview-rules'
+import { candidateFollowUpPrompt, closingAnswerPrompt, nullableReply } from '@/lib/interview-prompts'
 import { EdgeTTS } from 'node-edge-tts'
 import { mkdtemp, readFile, rm } from 'fs/promises'
 import { tmpdir } from 'os'
@@ -57,17 +58,9 @@ export async function answerClosingQuestion(
     const session = await roomSession(sessionId, 'live')
     if (!session || typeof candidateMessage !== 'string' || !(await takeRoomSlot(session, true))) return { answer: null }
     // Poste lu sur l'entretien, jamais dans la demande.
-    const jobTitle = String(session.jobTitle ?? '').slice(0, 200)
-    const message = candidateMessage.slice(0, ROOM_LIMITS.answer)
-    const { content } = await callLLM([{
-      role: 'user',
-      content: `Message du candidat en réponse à "Avez-vous des questions ?" : "${message}"`,
-    }], `Tu es Alex, un recruteur IA bienveillant pour le poste de "${jobTitle}".
-Si le message contient une vraie question du candidat, réponds-y brièvement et utilement (2-3 phrases maximum), sans poser de nouvelle question en retour.
-Si le candidat n'a pas de question (ex: "non merci", "pas de question"), réponds exactement : null.
-Réponds uniquement avec la réponse à donner au candidat (texte simple, sans guillemets), ou le mot "null".`)
-    const text = content.trim()
-    return { answer: text === 'null' || text === '' ? null : text }
+    const prompt = closingAnswerPrompt({ jobTitle: String(session.jobTitle ?? ''), candidateMessage })
+    const { content } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system)
+    return { answer: nullableReply(content) }
   } catch (err) {
     console.error('[interview] réponse de l\'IA à la question du candidat impossible', err instanceof Error ? err.message : String(err))
     return { answer: null }
@@ -87,15 +80,9 @@ export async function getCandidateAIFollowUp(
     try { questions = JSON.parse(String(session.questions ?? '[]')) } catch { questions = [] }
     const question = Array.isArray(questions) ? questions.find(q => q?.id === currentQuestion?.id) : undefined
     if (!question || !(await takeRoomSlot(session, true))) return { followUp: null }
-    const { content } = await callLLM([{
-      role: 'user',
-      content: `Question posée : "${String(question.text).slice(0, 1000)}"\nRéponse du candidat : "${candidateAnswer.slice(0, ROOM_LIMITS.answer)}"`,
-    }], `Tu es un interviewer IA expert et bienveillant. Analyse la réponse du candidat.
-Si la réponse est incomplète ou mérite d'être approfondie, génère UNE courte question de relance.
-Si la réponse est complète, réponds exactement : null
-Réponds soit avec la question de relance (texte simple, sans guillemets), soit avec le mot "null".`)
-    const text = content.trim()
-    return { followUp: text === 'null' || text === '' ? null : text }
+    const prompt = candidateFollowUpPrompt({ question: String(question.text), answer: candidateAnswer })
+    const { content } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system)
+    return { followUp: nullableReply(content) }
   } catch (err) {
     console.error('[interview] relance de l\'IA impossible', err instanceof Error ? err.message : String(err))
     return { followUp: null }

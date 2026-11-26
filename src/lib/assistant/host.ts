@@ -9,7 +9,7 @@ import { COLLECTIONS, DB_ID } from '@/lib/appwrite/config'
 import { purgeDailyState, takeDailySlot } from '@/lib/ao/state'
 import { createTicket } from '@/lib/support'
 import type { UserProfile } from '@/types'
-import { assistantKnowledge } from './knowledge'
+import { assistantKnowledge, ASSISTANT_RETENTION_DAYS } from './knowledge'
 
 // Branchement du module assistant (src/assistant, portable) sur MyBestConsultant : session Appwrite, collection
 // ASSISTANT_TURNS (sans permission client : seule la clé serveur y accède), quotas en compteurs atomiques, modèle de
@@ -18,12 +18,8 @@ import { assistantKnowledge } from './knowledge'
 /** Rôles qui ont l'assistant (v1) : ni les chasseurs, ni l'admin, ni les visiteurs. */
 const ASSISTANT_ROLES = new Set(['candidate', 'recruiter'])
 
-/**
- * Conversations supprimées après 30 jours (décision du 2026-10-23, ADR 0007) par la purge quotidienne
- * (/api/cron/assistant-purge). Affichée dans la fenêtre de chat : la changer ici suffit, puis mettre à jour l'ADR,
- * AGENTS.md et la politique de confidentialité.
- */
-export const ASSISTANT_RETENTION_DAYS = 30
+// Durée de conservation des conversations : définie avec le contenu d'aide (knowledge.ts), qui l'annonce.
+export { ASSISTANT_RETENTION_DAYS }
 
 /** Messages par jour (UTC) : par utilisateur, et pour toute la plateforme (plafond de coût). */
 export const ASSISTANT_DAILY_LIMITS = { perUser: 30, platform: 1000 } as const

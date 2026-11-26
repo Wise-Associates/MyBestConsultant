@@ -12,7 +12,7 @@ import {
   exportNotes, fitToTemplate, initialsOf, parseExtraction, parseTranslation, splitFullName, untranslatedCount, zipNameOf, type CvContent,
 } from './cv-data'
 import { findLeaks, leakMessage, leakTerms } from './leak-check'
-import { extractionPrompt, translationPrompt } from './prompt'
+import { MAX_CV_CHARS, cvTextForExport, extractionPrompt, extractionRequest, translationPrompt, translationRequest } from './prompt'
 import { renderCv } from './render'
 import { ownsVivierCv } from './stored'
 import type { EsnTemplate } from './templates'
@@ -33,10 +33,6 @@ const AI_DEADLINE_MS = 265_000
 const MIN_TRANSLATION_MS = 30_000
 // Un CV complet en JSON dépasse les 4 096 jetons par défaut de callLLM.
 const MAX_ANSWER_TOKENS = 16_000
-// Au-delà, le CV est coupé : 40 000 caractères couvrent un CV d'une dizaine de pages.
-const MAX_CV_CHARS = 40_000
-// En dessous, le PDF n'a pas de couche texte (scan, photo).
-const MIN_CV_CHARS = 200
 
 const LANG_SUFFIX: Record<CvLang, string> = { fr: 'FR', en: 'EN' }
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -160,10 +156,11 @@ async function readCvText(logId: string, bucket: string, cvFileId: string): Prom
     console.warn('[cv-export] CV illisible', logId, kind, err instanceof Error ? err.constructor.name : typeof err)
     throw new CvExportError('Le CV n\'a pas pu être lu (fichier protégé par mot de passe, abîmé, ou d\'un autre format que PDF / Word) : demandez une autre version au candidat.', 422, { cause: err })
   }
-  if (text.replace(/\s/g, '').length < MIN_CV_CHARS) {
+  const cv = cvTextForExport(text)
+  if (!cv) {
     throw new CvExportError('Le CV ne contient pas de texte lisible (document scanné ?) : demandez au candidat une version PDF texte ou Word.', 422)
   }
-  return { text: text.slice(0, MAX_CV_CHARS), truncated: text.length > MAX_CV_CHARS }
+  return cv
 }
 
 const PROBLEM_MESSAGE: Record<AiProblem, string> = {
@@ -242,8 +239,7 @@ async function exportCv(logId: string, candidate: Candidate, options: CvExportOp
   const cv = await readCvText(logId, candidate.bucket, candidate.cvFileId)
 
   await beforeAi?.()
-  const cutNotice = cv.truncated ? 'Le CV est trop long : sa fin manque ci-dessous. N\'invente rien pour la compléter.\n' : ''
-  const extraction = await askModel(extractionPrompt(options.mode), `${cutNotice}<cv>\n${cv.text}\n</cv>`,
+  const extraction = await askModel(extractionPrompt(options.mode), extractionRequest(cv),
     Math.min(EXTRACTION_TIMEOUT_MS, deadline - Date.now()), parseExtraction)
   const source = contentOf(extraction)
   const coverage = contentCoverage(cv.text, source)
@@ -259,7 +255,7 @@ async function exportCv(logId: string, candidate: Candidate, options: CvExportOp
     if (remaining < MIN_TRANSLATION_MS) {
       throw new CvExportError('La lecture du CV a pris trop de temps pour le traduire dans la même demande : exportez une seule langue, ou réessayez.', 504)
     }
-    const translated = await askModel(translationPrompt(lang), `<dossier>\n${JSON.stringify(source)}\n</dossier>`,
+    const translated = await askModel(translationPrompt(lang), translationRequest(source),
       Math.min(TRANSLATION_TIMEOUT_MS, remaining), raw => parseTranslation(raw, source))
     const count = untranslatedCount(source, translated, sourceLang)
     if (count > 0) untranslated.push({ lang, count })

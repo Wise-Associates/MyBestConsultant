@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { getCurrentUser } from '@/lib/appwrite/auth'
 import { revalidatePath } from 'next/cache'
+import { DEFAULT_GENERIC_QUESTIONS } from '@/lib/interview-rules'
 
 export interface GenericQuestion {
   id: string
@@ -12,13 +13,6 @@ export interface GenericQuestion {
   enabled: boolean
 }
 
-const DEFAULT_GENERIC_QUESTIONS: GenericQuestion[] = [
-  { id: 'gq-1', text: 'Pouvez-vous vous présenter et résumer votre parcours ?', category: 'intro', enabled: true },
-  { id: 'gq-2', text: 'Qu\'est-ce qui vous motive à postuler à ce poste ?', category: 'motivation', enabled: true },
-  { id: 'gq-3', text: 'Décrivez une situation professionnelle difficile et comment vous l\'avez gérée.', category: 'behavioral', enabled: true },
-  { id: 'gq-4', text: 'Quelles sont vos disponibilités et vos attentes salariales ?', category: 'closing', enabled: true },
-  { id: 'gq-5', text: 'Avez-vous des questions pour nous ?', category: 'closing', enabled: true },
-]
 
 export async function getGenericQuestions(): Promise<GenericQuestion[]> {
   const user = await getCurrentUser()

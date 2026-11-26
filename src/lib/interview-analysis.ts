@@ -1,9 +1,9 @@
-import { parseModelJson } from '@/lib/ai/model-json'
 import 'server-only'
 
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS } from '@/lib/appwrite/config'
 import { callLLMForModule } from '@/lib/ai/llm-router'
+import { interviewEndAnalysisPrompt, parseInterviewEndAnalysis } from '@/lib/interview-prompts'
 import { revalidatePath } from 'next/cache'
 import type { InterviewDetail } from '@/app/admin/interviews/actions'
 
@@ -27,36 +27,10 @@ export async function performInterviewAnalysis(id: string): Promise<{ analysis?:
 
     if (transcript.length === 0) return { error: 'Aucune transcription à analyser' }
 
-    const convo = transcript.map(t =>
-      `${t.role === 'interviewer' ? 'Alex (recruteur)' : 'Candidat'}: ${t.content}`
-    ).join('\n\n')
+    const prompt = interviewEndAnalysisPrompt({ jobTitle: doc.jobTitle as string, transcript })
+    const { content } = await callLLM([{ role: 'user', content: prompt.user }])
 
-    const { content } = await callLLM([{
-      role: 'user',
-      content: `Tu es un expert RH. Analyse cette transcription d'entretien pour le poste "${doc.jobTitle as string}".
-
-TRANSCRIPTION:
-${convo}
-
-Réponds UNIQUEMENT avec ce JSON valide (sans markdown, sans commentaires):
-{
-  "overallScore": <0-100>,
-  "communicationScore": <0-100>,
-  "technicalScore": <0-100>,
-  "motivationScore": <0-100>,
-  "culturalFitScore": <0-100>,
-  "recommendation": <"hire"|"consider"|"reject">,
-  "summary": "<résumé en 2-3 phrases>",
-  "keyInsights": ["<point fort 1>", "<point fort 2>", "<point fort 3>"],
-  "redFlags": ["<point attention 1>"],
-  "nextSteps": ["<étape 1>", "<étape 2>"],
-  "analysedBy": "Claude AI"
-}`,
-    }])
-
-    // Strip markdown code fences if present
-    const raw = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
-    const analysis = parseModelJson(raw) as InterviewDetail['analysis']
+    const analysis = parseInterviewEndAnalysis(content)
 
     await databases.updateDocument(DB_ID, COLLECTIONS.INTERVIEWS, id, {
       analysis: JSON.stringify(analysis),

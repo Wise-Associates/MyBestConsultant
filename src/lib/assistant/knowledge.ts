@@ -2,7 +2,15 @@
 // Rédigé d'après le code au 2026-10-22. À tenir à jour quand une page, un libellé ou une règle change : l'assistant
 // répète ce qui est écrit ici. Ne rien promettre que le code n'applique pas (ex. limites d'annonces des formules).
 
-/** Règles communes aux deux rôles ; la durée de conservation vient du site (ASSISTANT_RETENTION_DAYS, host.ts). */
+/**
+ * Conversations supprimées après 30 jours (décision du 2026-10-23, ADR 0007) par la purge quotidienne
+ * (/api/cron/assistant-purge). Affichée dans la fenêtre de chat et annoncée par ce contenu : la changer ici suffit, puis
+ * mettre à jour l'ADR, AGENTS.md et la politique de confidentialité. Ici plutôt que dans host.ts (server-only) : les
+ * exemples d'affinage (ADR 0063) construisent les mêmes consignes hors de l'application.
+ */
+export const ASSISTANT_RETENTION_DAYS = 30
+
+/** Règles communes aux deux rôles ; la durée de conservation vient du site (ASSISTANT_RETENTION_DAYS). */
 const common = (retentionDays: number) => `COMPTE ET CONNEXION
 - Inscription sur /register : onglet Candidat ou Recruteur, prénom, nom, e-mail, mot de passe de 8 caractères minimum. Un recruteur indique aussi le nom de son entreprise et un téléphone. « Continuer avec Google / LinkedIn » existe pour les candidats. Une adresse déjà utilisée est refusée.
 - Un recruteur qui s'inscrit crée toujours sa propre organisation. Pour rejoindre l'équipe d'un collègue, il faut une invitation de son propriétaire de compte (lien valable 7 jours).

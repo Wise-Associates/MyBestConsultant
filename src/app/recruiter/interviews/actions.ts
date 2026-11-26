@@ -1,6 +1,5 @@
 'use server'
 
-import { parseModelJson } from '@/lib/ai/model-json'
 import { callLLMForModule } from '@/lib/ai/llm-router'
 
 // Tous les appels IA de ce fichier relèvent du module « Entretiens IA » (modèle réglable dans /admin/llm-config).
@@ -14,6 +13,7 @@ import { getEnabledGenericQuestions } from './generic-questions-actions'
 import { updateApplicationStatus } from '@/lib/appwrite/jobs'
 import { aiInterviewRecruiter, takeInterviewAiSlot } from '@/lib/interview-access'
 import { aiQuestionPlan, analysisInputSchema, followUpInputSchema, questionsInputSchema, sessionInputSchema } from '@/lib/interview-rules'
+import { nullableReply, parseGeneratedQuestions, parseRecruiterAnalysis, questionGenerationPrompt, recruiterAnalysisPrompt, recruiterFollowUpPrompt } from '@/lib/interview-prompts'
 import { applicationOfOrganisation } from '@/lib/screening-core'
 import { loadOfferViewer } from '@/lib/offer-viewer'
 import { funnelMoveRefusal } from '@/lib/appwrite/funnel'
@@ -137,42 +137,11 @@ export async function generateInterviewQuestions(
     const refused = await takeInterviewAiSlot(me)
     if (refused) return { error: refused }
 
-    const mix = Object.entries(plan.mix).map(([category, n]) => `- ${n} ${category}`).join('\n')
-    const SYSTEM = `Tu es un expert RH spécialisé dans les entretiens IT et conseil.
-Génère des questions d'entretien pertinentes et retourne un JSON valide.
+    const prompt = questionGenerationPrompt({ ...ask, defaultQuestions: genericQuestions, plan })
+    const { content } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system)
 
-Réponds UNIQUEMENT avec un tableau JSON :
-[
-  {
-    "id": "q1",
-    "text": "string — question claire et précise",
-    "category": "intro"|"technical"|"behavioral"|"motivation"|"closing"
-  }
-]
-
-Répartition des ${plan.count} questions :
-${mix}
-
-Adapte les questions techniques aux compétences requises.
-Utilise la méthode STAR pour les questions comportementales.`
-
-    const already = genericQuestions.length > 0
-      ? `\n\nQUESTIONS DÉJÀ POSÉES (ne les répète pas) :\n${genericQuestions.map(q => `- ${q.text}`).join('\n')}`
-      : ''
-    const { content } = await callLLM([{
-      role: 'user',
-      content: `POSTE : ${ask.jobTitle}\nCompétences : ${ask.jobSkills.join(', ')}\nDescription : ${ask.jobDescription}\n\nRÉSUMÉ CV : ${ask.cvSummary}${already}\n\nGénère exactement ${plan.count} questions.`,
-    }], SYSTEM)
-
-    const jsonMatch = content.match(/\[[\s\S]*\]/)
-    if (!jsonMatch) return { error: 'Génération échouée' }
-
-    // L'IA peut en rendre plus que demandé : l'entretien garde exactement le nombre choisi.
-    const aiQuestions: InterviewQuestion[] = (parseModelJson(jsonMatch[0]) as InterviewQuestion[]).slice(0, plan.count).map((q: InterviewQuestion, i: number) => ({
-      ...q,
-      id: q.id ?? `q${i + 1}`,
-      aiGenerated: true,
-    }))
+    const aiQuestions = parseGeneratedQuestions(content, plan.count)
+    if (!aiQuestions) return { error: 'Génération échouée' }
 
     return [...genericQuestions, ...aiQuestions]
   } catch (e) {
@@ -194,19 +163,13 @@ export async function getAIFollowUp(
     if (!input.success) return { followUp: null }
     // Quota du jour atteint ou adresse non vérifiée : l'entretien continue, sans relance.
     if (await takeInterviewAiSlot(me)) return { followUp: null }
-    const lastAnswers = input.data.transcript.map(t => `${t.role === 'interviewer' ? 'Q' : 'R'}: ${t.content}`).join('\n')
-
-    const { content } = await callLLM([{
-      role: 'user',
-      content: `Question posée : "${input.data.currentQuestion.text}"\nRéponse du candidat : "${input.data.candidateAnswer}"\n\nContexte récent :\n${lastAnswers}`,
-    }], `Tu es un interviewer IA expert. Analyse la réponse du candidat.
-Si la réponse est incomplète, vague ou mérite d'être approfondie, génère UNE question de relance courte et précise.
-Si la réponse est complète et satisfaisante, réponds exactement : null
-
-Réponds soit avec la question de relance (texte simple), soit avec le mot "null".`)
-
-    const text = content.trim()
-    return { followUp: text === 'null' || text === '' ? null : text }
+    const prompt = recruiterFollowUpPrompt({
+      question: input.data.currentQuestion.text,
+      answer: input.data.candidateAnswer,
+      recentTurns: input.data.transcript,
+    })
+    const { content } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system)
+    return { followUp: nullableReply(content) }
   } catch (err) {
     // L'entretien continue sans relance ; la panne est journalisée.
     console.error('[entretiens] relance de l\'IA impossible', err instanceof Error ? err.message : String(err))
@@ -234,47 +197,11 @@ export async function analyseInterview(
     const refused = await takeInterviewAiSlot(me)
     if (refused) return { error: refused }
 
-    const transcriptText = job.transcript
-      .map(t => `[${t.role === 'interviewer' ? 'INTERVIEWER' : 'CANDIDAT'}] ${t.content}`)
-      .join('\n')
+    const prompt = recruiterAnalysisPrompt(job)
+    const { content, provider } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system)
 
-    const SYSTEM = `Tu es un expert RH analysant la retranscription d'un entretien. Retourne un JSON valide uniquement.
-
-{
-  "overallScore": number (0-100),
-  "communicationScore": number (0-100),
-  "technicalScore": number (0-100),
-  "motivationScore": number (0-100),
-  "culturalFitScore": number (0-100),
-  "recommendation": "hire"|"consider"|"reject",
-  "keyInsights": ["string"] (max 5 observations clés positives),
-  "redFlags": ["string"] (max 3 signaux d'alerte),
-  "summary": "string (3-4 phrases de synthèse)",
-  "nextSteps": ["string"] (2-3 recommandations d'actions)
-}`
-
-    const { content, provider } = await callLLM([{
-      role: 'user',
-      content: `POSTE : ${job.jobTitle}\nCompétences requises : ${job.jobSkills.join(', ')}\n\nRETRANSCRIPTION :\n${transcriptText}`,
-    }], SYSTEM)
-
-    const jsonMatch = content.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return { error: 'Analyse échouée' }
-
-    const parsed = parseModelJson(jsonMatch[0]) as Partial<InterviewAnalysis>
-    const analysis: InterviewAnalysis = {
-      overallScore: Math.min(100, Math.max(0, Number(parsed.overallScore) || 0)),
-      communicationScore: Math.min(100, Math.max(0, Number(parsed.communicationScore) || 0)),
-      technicalScore: Math.min(100, Math.max(0, Number(parsed.technicalScore) || 0)),
-      motivationScore: Math.min(100, Math.max(0, Number(parsed.motivationScore) || 0)),
-      culturalFitScore: Math.min(100, Math.max(0, Number(parsed.culturalFitScore) || 0)),
-      recommendation: parsed.recommendation ?? 'consider',
-      keyInsights: Array.isArray(parsed.keyInsights) ? parsed.keyInsights.slice(0, 5) : [],
-      redFlags: Array.isArray(parsed.redFlags) ? parsed.redFlags.slice(0, 3) : [],
-      summary: String(parsed.summary ?? ''),
-      nextSteps: Array.isArray(parsed.nextSteps) ? parsed.nextSteps.slice(0, 3) : [],
-      analysedBy: provider,
-    }
+    const analysis = parseRecruiterAnalysis(content, provider)
+    if (!analysis) return { error: 'Analyse échouée' }
 
     // Enregistrée avec la retranscription ; un échec est dit au recruteur (avant : avalé, l'analyse se perdait au rechargement).
     try {
