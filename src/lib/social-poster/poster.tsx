@@ -4,27 +4,27 @@ import { ImageResponse } from 'next/og'
 import type { PostImage } from '../social-content'
 import { POSTER_HEIGHT, POSTER_WIDTH, titleFontSize } from './rules'
 
-// Affiche des publications sur les réseaux (ADR 0015), dessinée par la plateforme : logo exact, textes exacts (accents
-// compris), charte My Best Consultant. La scène photo (scene.ts) est facultative : sans elle, l'affiche reste complète.
+// Affiche des publications sur les réseaux (ADR 0015), dessinée par la plateforme : textes exacts (accents compris),
+// couleurs de la charte. Sans logo ni nom du site : l'offre ne nomme que l'organisation qui la publie (demande du
+// 2026-11-26). La scène photo (scene.ts) est facultative : sans elle, l'affiche reste complète.
 // Rendu par next/og (Satori) : flexbox et positionnement absolu seulement, pas de grid.
 
 const ANTHRACITE = '#2C2C2E'
 const GOLD = '#E8A33D'
 const SCENE_HEIGHT = 640
 
-// Lus sur disque à la première affiche : next.config.ts les inclut dans la fonction de la route (outputFileTracingIncludes).
+// Lues sur disque à la première affiche : next.config.ts les inclut dans la fonction de la route (outputFileTracingIncludes).
 const FONT_DIR = path.join(process.cwd(), 'src', 'lib', 'social-poster', 'fonts')
-const LOGO_PATH = path.join(process.cwd(), 'public', 'logo.png')
 
 type PosterFonts = NonNullable<NonNullable<ConstructorParameters<typeof ImageResponse>[1]>['fonts']>
 
-let assets: Promise<{ fonts: PosterFonts; logo: string }> | null = null
+let assets: Promise<{ fonts: PosterFonts }> | null = null
 
 function loadAssets() {
   assets ??= (async () => {
     const font = (file: string) => readFile(path.join(FONT_DIR, file)).then(b => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer)
-    const [regular, semibold, extrabold, italic, logo] = await Promise.all([
-      font('Inter-Regular.ttf'), font('Inter-SemiBold.ttf'), font('Inter-ExtraBold.ttf'), font('Inter-Italic.ttf'), readFile(LOGO_PATH),
+    const [regular, semibold, extrabold, italic] = await Promise.all([
+      font('Inter-Regular.ttf'), font('Inter-SemiBold.ttf'), font('Inter-ExtraBold.ttf'), font('Inter-Italic.ttf'),
     ])
     return {
       fonts: [
@@ -33,7 +33,6 @@ function loadAssets() {
         { name: 'Inter', data: extrabold, weight: 800 as const, style: 'normal' as const },
         { name: 'Inter', data: italic, weight: 400 as const, style: 'italic' as const },
       ],
-      logo: `data:image/png;base64,${logo.toString('base64')}`,
     }
   })().catch(err => {
     assets = null // nouvel essai à la prochaine affiche plutôt qu'un échec mémorisé
@@ -45,7 +44,7 @@ function loadAssets() {
 /** Scène photo déjà générée (JPEG ou PNG), en data URI. */
 export interface PosterScene { bytes: Uint8Array; mime: 'image/jpeg' | 'image/png' }
 
-function Poster({ image, logo, scene }: { image: PostImage; logo: string; scene: string | null }) {
+function Poster({ image, scene }: { image: PostImage; scene: string | null }) {
   const where = [image.company, image.location].filter(Boolean).join(' — ')
   return (
     <div style={{ width: POSTER_WIDTH, height: POSTER_HEIGHT, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', background: ANTHRACITE, fontFamily: 'Inter', color: '#FFFFFF' }}>
@@ -62,12 +61,7 @@ function Poster({ image, logo, scene }: { image: PostImage; logo: string; scene:
         )}
       </div>
 
-      {/* Disque sombre derrière le logo sur une photo : il reste lisible quelle que soit la scène. */}
-      <div style={{ display: 'flex', marginTop: 48, padding: 8, borderRadius: 90, background: scene ? 'rgba(32,32,34,0.6)' : 'transparent' }}>
-        {/* eslint-disable-next-line @next/next/no-img-element -- Satori (next/og) ne dessine que des <img>, pas next/image */}
-        <img src={logo} alt="" width={156} height={156} style={{ width: 156, height: 156 }} />
-      </div>
-      <div style={{ display: 'flex', width: 120, height: 3, marginTop: 28, background: GOLD }} />
+      <div style={{ display: 'flex', width: 120, height: 3, marginTop: 72, background: GOLD }} />
 
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: scene ? 'flex-end' : 'center', flexGrow: 1, width: '100%', padding: '0 80px', marginTop: scene ? 0 : 24 }}>
         <div style={{ display: 'flex', textAlign: 'center', justifyContent: 'center', fontSize: titleFontSize(image.title), fontWeight: 800, lineHeight: 1.08, letterSpacing: -1 }}>{image.title}</div>
@@ -88,12 +82,7 @@ function Poster({ image, logo, scene }: { image: PostImage; logo: string; scene:
           </div>
         )}
         {image.tagline && <div style={{ display: 'flex', marginTop: 22, fontSize: 32, fontStyle: 'italic', textAlign: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.92)', lineHeight: 1.3 }}>{image.tagline}</div>}
-        <div style={{ display: 'flex', marginTop: 36, marginBottom: 40, padding: '20px 46px', borderRadius: 50, background: GOLD, color: ANTHRACITE, fontSize: 30, fontWeight: 800 }}>Postulez sur mybestconsultant.fr</div>
-      </div>
-
-      <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', padding: '22px 64px', background: '#202022', fontSize: 22, color: 'rgba(255,255,255,0.75)' }}>
-        <span style={{ fontWeight: 600 }}>My Best Consultant</span>
-        <span>mybestconsultant.fr</span>
+        <div style={{ display: 'flex', marginTop: 36, marginBottom: 40, padding: '20px 46px', borderRadius: 50, background: GOLD, color: ANTHRACITE, fontSize: 30, fontWeight: 800 }}>Postulez en ligne</div>
       </div>
     </div>
   )
@@ -101,8 +90,8 @@ function Poster({ image, logo, scene }: { image: PostImage; logo: string; scene:
 
 /** Affiche PNG 1080 × 1350 d'une publication (ou de l'exemple), avec la scène photo si elle existe. */
 export async function renderPoster(image: PostImage, scene: PosterScene | null): Promise<Uint8Array> {
-  const { fonts, logo } = await loadAssets()
+  const { fonts } = await loadAssets()
   const sceneUri = scene ? `data:${scene.mime};base64,${Buffer.from(scene.bytes).toString('base64')}` : null
-  const response = new ImageResponse(<Poster image={image} logo={logo} scene={sceneUri} />, { width: POSTER_WIDTH, height: POSTER_HEIGHT, fonts })
+  const response = new ImageResponse(<Poster image={image} scene={sceneUri} />, { width: POSTER_WIDTH, height: POSTER_HEIGHT, fonts })
   return new Uint8Array(await response.arrayBuffer())
 }

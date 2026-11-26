@@ -80,3 +80,27 @@ Demandes du 2026-11-23 :
 - Les autres publications (« Publier » du tableau de bord, offres importées, « Relancer ») rédigent toujours les textes
   au moment de la diffusion, avec le nouveau contexte des organisations. L'affiche, Facebook, Instagram et X ne sont pas
   prévisualisés.
+
+## Mise à jour du 2026-11-26 : seule l'organisation qui publie est nommée
+
+- La ligne « 📣 Offre diffusée via MyBestConsultant, la plateforme de recrutement de Wise Associates. » (point 3 du
+  contexte des offres d'organisation) est retirée : une offre ne nomme que l'organisation qui la publie, jamais Wise
+  Associates ni MyBestConsultant, sauf quand c'est la plateforme qui publie (sa présentation et sa phrase de
+  recrutement restent).
+- Même règle pour tout le post : le lien Calendly (celui d'un consultant de Wise Associates par défaut) n'est mis que
+  sur les posts de la plateforme ; la légende Instagram renvoie au « lien dans la bio » sans nommer le site ; l'affiche
+  n'a plus le logo MBC ni la bande « My Best Consultant · mybestconsultant.fr », et son bouton dit « Postulez en
+  ligne ». Le lien de l'offre reste sur le site, qui l'héberge.
+- La consigne de rédaction d'un AO ne cite plus le site et interdit de le mentionner ; « MyBestConsultant » et « My Best
+  Consultant » rejoignent « Wise Associates » parmi les noms signalés en rouge à la relecture et refusés à la
+  publication d'une version anonymisée (`PLATFORM_NAMES`, `publication-copy.ts`).
+- **Ouverture au nom de l'organisation qui publie** (demande de David du 2026-11-25) : dans la version de l'IA, la
+  première phrase du contexte, « <client décrit> recrute un profil pour … » (ADR 0060), devient « <organisation> recrute
+  pour <client décrit> un profil pour … » : « Altrion recrute pour un grand groupe bancaire… », « Wise Associates recrute
+  pour… » pour la plateforme (`withRecruiterOpening`, `recruiter-opening.ts`, sans appel d'IA ; nom du document de
+  l'organisation, comme le post ; autre forme : laissée telle quelle). Ajoutée après l'anonymisation. Ce nom ne doit être
+  ni masqué (le domaine de l'expéditeur, Wise Associates quand il transfère l'e-mail, fait partie des noms à masquer) ni
+  refusé comme mention de la plateforme : seule cette ouverture est mise de côté pendant l'anonymisation
+  (`takeOpening` / `putOpening` dans `publicVersion`, partagée par l'aperçu et la publication), dans le contrôle des
+  mentions de la plateforme et dans le signalement en rouge de la relecture ; ailleurs, la règle de l'ADR 0060 reste.
+  Le post s'ouvre ainsi par cette phrase (première phrase du contexte).

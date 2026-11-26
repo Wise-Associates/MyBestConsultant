@@ -21,7 +21,7 @@ export interface SocialConfig {
   autoPublish: boolean
   networks: Record<Network, boolean>
   includeCalendly: boolean
-  /** Lien Calendly de My Best Consultant (vide = lien par défaut du site). Jamais celui du recruteur. */
+  /** Lien Calendly de la plateforme (vide = lien par défaut du site), sur ses posts seulement. Jamais celui du recruteur. */
   calendlyUrl: string
   hashtags: string[]
   /** Présentation de Wise Associates en tête des publications LinkedIn des offres de la plateforme (vide = aucune). */
@@ -399,9 +399,6 @@ function orgRecruitLine(job: JobLite): string {
   return `Dans le cadre de son développement, ${job.company || 'l’entreprise'} recherche un consultant ${recruitTitle(job.title)} pour ${purpose}.`
 }
 
-/** Offre d'une organisation cliente : la plateforme diffuse pour son compte. */
-const ORG_DIFFUSION_LINE = '📣 Offre diffusée via MyBestConsultant, la plateforme de recrutement de Wise Associates.'
-
 // ── Hashtags d'expertise ──
 
 const HASHTAG_MAX_CHARS = 30
@@ -515,7 +512,9 @@ export function xLength(text: string): number {
 }
 
 export function buildContent(job: JobLite, copy: CopyDraft, cfg: SocialConfig, opts: { baseUrl: string; calendlyUrl: string }): SocialContent {
-  const calendly = cfg.includeCalendly ? opts.calendlyUrl : ''
+  // Lien Calendly de la plateforme (celui d'un consultant de Wise Associates par défaut) : sur ses posts seulement, le post
+  // d'une organisation ne nommant qu'elle (demande du 2026-11-26).
+  const calendly = cfg.includeCalendly && job.fromPlatform ? opts.calendlyUrl : ''
   const conditions = conditionLines(job)
   const tags = networkHashtags(job, copy.hashtags, cfg)
   const urls = Object.fromEntries(NETWORKS.map(n => [n, jobUrl(opts.baseUrl, job.id, n)])) as Record<Network, string>
@@ -551,17 +550,18 @@ export function buildContent(job: JobLite, copy: CopyDraft, cfg: SocialConfig, o
   const project = copy.context ? `🧭 Le projet : ${copy.context}` : lead && `🧭 ${lead}`
   // Texte de la direction (David, 2026-11-17), chacun son paragraphe : offre de la plateforme, présentation de Wise
   // (réglage de /admin/social) et sa phrase de recrutement ; organisation cliente, sur le même modèle (ADR 0058), sa
-  // présentation (marque employeur), sa phrase de recrutement et la ligne de diffusion. Puis le projet.
+  // présentation (marque employeur) et sa phrase de recrutement, sans mention de Wise Associates ni de MyBestConsultant :
+  // seule l'organisation qui publie est nommée (demande du 2026-11-26). Puis le projet.
   // Appel d'offres (isTenderJob), de la plateforme ou d'une organisation, même logique (ADR 0060) : offre anonymisée,
   // publiée au nom de l'entreprise affichée (jobLiteOf), sans présentation ni phrase de recrutement de Wise Associates ou
-  // de l'organisation qui le publie, ni ligne de diffusion. Qui recrute y est dit par la première phrase de « Le contexte » (« Un organisme
+  // de l'organisation qui le publie. Qui recrute y est dit par la première phrase de « Le contexte » (« Un organisme
   // public chargé de … recrute un profil pour … ») ; sans « Le projet », la section reste entière dans le corps.
   const opening = copy.context ? contextOpening(job.description) : ''
   const context = isTenderJob(job.id)
     ? join(opening, project)
     : job.fromPlatform
       ? join(cfg.publisherIntro, recruitLine(job, copy.pole), project)
-      : join(job.publisherAbout ?? '', orgRecruitLine(job), ORG_DIFFUSION_LINE, project)
+      : join(job.publisherAbout ?? '', orgRecruitLine(job), project)
   const liEnd = join([cta(urls.linkedin), rdv].filter(Boolean).join('\n'), tags.linkedin.join(' '))
   const liTop = hasDescription ? join(head, meta, context) : join(head, copy.tagline, meta, context)
   // « Le projet » rédigé par l'IA tient lieu des sections de contexte de la description, qui ne sont pas répétées.
@@ -569,8 +569,9 @@ export function buildContent(job: JobLite, copy: CopyDraft, cfg: SocialConfig, o
   const liBody = hasDescription ? fitDescription(liText, LINKEDIN_MAX_CHARS - liTop.length - liEnd.length - 4) : join(program, profile)
   const linkedin = clip(join(liTop, liBody, liEnd), LINKEDIN_MAX_CHARS)
   const facebook = clip(join(head, copy.tagline, meta, program, [cta(urls.facebook), rdv].filter(Boolean).join('\n'), tags.facebook.join(' ')), 2900)
-  // Instagram : les liens des légendes ne sont pas cliquables → on renvoie vers le lien de la bio.
-  const instagram = clip(join(head, copy.tagline, meta, program, profile, ['👉 Postuler : lien dans la bio 🔗 mybestconsultant.fr', rdv].filter(Boolean).join('\n'), tags.instagram.join(' ')), 2100)
+  // Instagram : les liens des légendes ne sont pas cliquables → on renvoie vers le lien de la bio, sans nommer le site
+  // (demande du 2026-11-26).
+  const instagram = clip(join(head, copy.tagline, meta, program, profile, ['👉 Postuler : lien dans la bio', rdv].filter(Boolean).join('\n'), tags.instagram.join(' ')), 2100)
 
   // X : on retire progressivement les éléments optionnels jusqu'à tenir dans 280 caractères.
   const xLink = `👉 ${urls.x}`

@@ -56,7 +56,7 @@ describe('texte LinkedIn d’une offre', () => {
     ].join('\n')), linkedin)
     assert.ok(linkedin.startsWith(`🚀 ${boldText('Accompagnement du projet Gouvernance des données')} — Entreprise exemple\n\n📍 Paris (75) · Mission · Présentiel\n\nDans le cadre de son développement, Entreprise exemple recherche`), linkedin)
     assert.ok(!linkedin.includes('###') && !linkedin.includes('**') && !linkedin.includes('…') && !linkedin.includes('➕'), linkedin)
-    assert.ok(linkedin.endsWith(`${applyLine}\n📅 Envie d’en discuter ? Réservez un échange : https://calendly.com/exemple\n\n${tagLine}`), linkedin)
+    assert.ok(linkedin.endsWith(`${applyLine}\n\n${tagLine}`), linkedin)
   })
 
   it('raccourcit une offre trop longue section par section, la plus longue d’abord, et dit où lire la suite', () => {
@@ -64,11 +64,11 @@ describe('texte LinkedIn d’une offre', () => {
     const description = `Intro de l’offre.\n\n### Au programme\n${list('Tâche', 120)}\n\n### Profil recherché\n${list('Compétence', 60)}\n\n### Modalités\n- Démarrage : janvier 2027\n- Durée : 12 mois`
     const { linkedin } = buildContent({ ...job, description }, copy, DEFAULT_SOCIAL_CONFIG, opts).captions
     assert.ok(linkedin.length <= 3000, `${linkedin.length} caractères`)
-    assert.ok(linkedin.includes('Wise Associates.\n\n🧭 Intro de l’offre.\n\n🎯 Au programme'), linkedin)
+    assert.ok(linkedin.includes('intervenir sur une mission.\n\n🧭 Intro de l’offre.\n\n🎯 Au programme'), linkedin)
     assert.ok(linkedin.includes('\n\n🎯 Au programme\n• Tâche numéro 1 attendue du consultant\n'), linkedin)
     assert.ok(linkedin.includes('\n\n🧩 Profil recherché\n• Compétence numéro 1 attendue du consultant\n'), linkedin)
     assert.ok(linkedin.includes('\n\n📋 Modalités\n• Démarrage : janvier 2027\n• Durée : 12 mois\n\n➕ Suite de l’offre sur le lien ci-dessous\n\n'), linkedin)
-    assert.ok(linkedin.endsWith(`${applyLine}\n📅 Envie d’en discuter ? Réservez un échange : https://calendly.com/exemple\n\n${tagLine}`))
+    assert.ok(linkedin.endsWith(`${applyLine}\n\n${tagLine}`))
     // Premières puces de chaque section, entières et dans l'ordre ; les deux longues sections gardent une place comparable.
     for (const label of ['Tâche', 'Compétence']) {
       const kept = linkedin.split('\n').filter(l => l.startsWith(`• ${label} `))
@@ -112,6 +112,19 @@ describe('contexte en tête de la publication LinkedIn', () => {
     ].join('\n')), linkedin)
     assert.ok(!linkedin.includes('Une direction des systèmes d’information structure'), 'accroche répétée')
     assert.ok(!linkedin.includes('Pourquoi cette publication'), linkedin)
+  })
+
+  it('lien Calendly de la plateforme sur ses posts seulement ; Instagram ne nomme pas le site (demande du 2026-11-26)', () => {
+    const calendlyLine = '📅 Envie d’en discuter ? Réservez un échange : https://calendly.com/exemple'
+    const own = buildContent(platform, copy, DEFAULT_SOCIAL_CONFIG, opts)
+    assert.ok(own.captions.linkedin.includes(calendlyLine), own.captions.linkedin)
+    assert.equal(own.calendlyUrl, 'https://calendly.com/exemple')
+    const org = buildContent({ ...job, company: 'Acme' }, copy, DEFAULT_SOCIAL_CONFIG, opts)
+    for (const caption of Object.values(org.captions)) {
+      assert.ok(!caption.includes('calendly') && !/wise|mybest|my best/i.test(caption), caption)
+    }
+    assert.equal(org.calendlyUrl, '')
+    assert.ok(org.captions.instagram.includes('👉 Postuler : lien dans la bio'), org.captions.instagram)
   })
 
   it('appel d’offres publié par la plateforme : ni présentation de Wise Associates ni phrase de recrutement (ADR 0060)', () => {
@@ -169,15 +182,16 @@ describe('contexte en tête de la publication LinkedIn', () => {
     assert.ok(text.endsWith([
       '📍 Paris (75) · Mission · Présentiel', '', about, '',
       'Dans le cadre de son développement, Acme recherche un consultant SIRH pour intervenir sur une mission.', '',
-      '📣 Offre diffusée via MyBestConsultant, la plateforme de recrutement de Wise Associates.', '',
       '🧭 Une direction des systèmes d’information structure sa gouvernance des données.',
     ].join('\n')), text)
-    assert.ok(!text.includes(DEFAULT_PUBLISHER_INTRO) && !text.includes('Wise Associates recherche') && !text.includes('Pourquoi cette publication'), text)
+    assert.ok(!text.includes(DEFAULT_PUBLISHER_INTRO) && !text.includes('Pourquoi cette publication'), text)
+    // Seule l'organisation qui publie est nommée : ni Wise Associates ni MyBestConsultant (demande du 2026-11-26).
+    assert.ok(!/wise|mybest|my best/i.test(text), text)
   })
 
   it('offre d’une organisation en CDI, sans présentation : « rejoindre ses équipes en CDI », pas de paragraphe vide', () => {
     const text = head({ ...job, company: 'Acme', contractType: 'cdi', title: 'Chef de projet SI' })
-    assert.ok(text.includes('Présentiel\n\nDans le cadre de son développement, Acme recherche un consultant Chef de projet SI pour rejoindre ses équipes en CDI.\n\n📣 Offre diffusée'), text)
+    assert.ok(text.includes('Présentiel\n\nDans le cadre de son développement, Acme recherche un consultant Chef de projet SI pour rejoindre ses équipes en CDI.\n\n🧭 Une direction'), text)
   })
 
   it('présentation vidée par l’admin : aucune ligne de présentation', () => {

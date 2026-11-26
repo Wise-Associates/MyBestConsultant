@@ -23,11 +23,11 @@ export const PUBLICATION_AI_QUOTA_MESSAGE = {
   platform: 'trop de rédactions par l\'IA aujourd\'hui sur la plateforme',
 } as const
 
-export const PUBLICATION_PROMPT = `Tu rédiges la version publique d'une offre de mission IT reçue d'un client (appel d'offres), pour le site de recrutement My Best Consultant et ses réseaux sociaux.
+export const PUBLICATION_PROMPT = `Tu rédiges la version publique d'une offre de mission IT reçue d'un client (appel d'offres), pour un site de recrutement et les réseaux sociaux.
 
 Anonymat, règle absolue :
 - L'entreprise ou l'organisme qui recrute, son groupe, ses filiales et marques, le client final, les partenaires et prestataires cités : jamais nommés, chacun décrit par sa nature ou son secteur (« BNP Paribas » → « un grand groupe bancaire », « la CNAF » → « un organisme national de protection sociale »), jamais simplement supprimé.
-- Wise Associates (cabinet qui transmet l'offre) : aucune mention, ni de rien qui lui soit propre (signature, ses clients, son activité).
+- Wise Associates (cabinet qui transmet l'offre) et My Best Consultant (site de recrutement) : aucune mention, ni de rien qui leur soit propre (signature, clients, activité).
 - Les directions et départements dont le nom ne désigne pas une entreprise restent tels quels : DSI, DPII, DRH, direction des opérations, MOA, MOE. Ne les cite pas dans "removed".
 - Un service au nom trop spécifique et un lieu précis (site, bâtiment, centre nommé) sont reformulés par leur rôle ou leur activité : « SNSSI de Nantes » → « une équipe nationale chargée de l'exploitation et du support informatiques » ; cite le nom d'origine dans "removed". La ville de la mission va dans "location".
 - Un nom que l'offre présente comme un outil, une application, un logiciel, une plateforme ou un programme du client (« l'outil ORION », « ORION (outil d'instruction) », « projet B-STEADY ») est interne, même s'il ressemble au nom d'une entreprise connue : remplacé partout par sa fonction (« l'outil d'instruction », « un programme de transformation ») et cité dans "removed".
@@ -138,8 +138,11 @@ export function isGenericUnit(term: string): boolean {
   return GENERIC_UNIT_HEAD.test(name) && !/[\p{Lu}\p{N}]/u.test(name.slice(1))
 }
 
-/** Nom de la plateforme, jamais dans une version anonymisée (ADR 0060) ; même nom que PLATFORM_NAME (tenancy.ts, serveur). */
-export const PLATFORM_NAMES: string[][] = [words('Wise Associates')]
+/**
+ * Noms de la plateforme, jamais dans une version anonymisée (ADR 0060) : Wise Associates (même nom que PLATFORM_NAME,
+ * tenancy.ts) et le site MyBestConsultant. L'offre ne nomme que l'organisation qui la publie (demande du 2026-11-26).
+ */
+export const PLATFORM_NAMES: string[][] = [words('Wise Associates'), words('MyBestConsultant'), words('My Best Consultant')]
 
 /** Mentions de la plateforme restées dans les textes d'une version anonymisée, telles qu'écrites. */
 export function platformMentions(texts: string[]): string[] {

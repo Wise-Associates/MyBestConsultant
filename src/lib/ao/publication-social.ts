@@ -2,6 +2,7 @@ import { buildContent, fallbackCopy, jobLiteOf, normalizeCopy, type SocialConfig
 import { publicLabel, rawPublicOffer, rawPublicSocial, toPublicOffer, toPublicSocial } from './anonymize'
 import { maskNames } from './publication-copy'
 import { parseDraftFields, type PublicationFields } from './publication-input'
+import { PLATFORM_RECRUITER, putOpening, takeOpening } from './recruiter-opening'
 import type { PublicationDraft } from './dashboard-types'
 
 // Post LinkedIn d'un AO relu avant sa publication (ADR 0058). Le post est construit dans le navigateur, à chaque
@@ -27,6 +28,11 @@ export interface VersionMode {
   /** Noms du client et des expéditeurs (hiddenNamesFor, offer-actions.ts), tels que les règles les cherchent. */
   names: string[][]
   maskTerms: string[]
+  /**
+   * Organisation qui publie : l'ouverture « <organisation> recrute pour » du contexte est mise de côté pendant
+   * l'anonymisation (son nom peut être parmi ceux à masquer, comme domaine de l'expéditeur), puis remise.
+   */
+  recruiter?: string
 }
 
 /**
@@ -42,8 +48,10 @@ export function publicVersion(fields: PublicationFields, mode: VersionMode, soci
   // Le client reste masqué sur le site, même si son nom (ou celui de l'expéditeur) ou des coordonnées ont été saisis
   // comme libellé.
   const label = publicLabel(fields.companyName, [...mode.names, ...extra])
+  const kept = takeOpening(edited.description, mode.recruiter)
+  const job = { ...fields, ...toPublicOffer({ ...edited, description: kept.description }, mode.names, label, extra) }
   return {
-    job: { ...fields, ...toPublicOffer(edited, mode.names, label, extra) },
+    job: { ...job, description: putOpening(job.description, kept.opening) },
     social: social && toPublicSocial(social, mode.names, label, extra),
   }
 }
@@ -106,7 +114,8 @@ export function linkedInPostOf(
 ): string | null {
   const fields = parseDraftFields({ ...draft, skills: splitSkills(skillsText) })
   if (!fields || !draft.social) return null
-  const version = publicVersion(fields, { anonymized: draft.anonymized, names: hiddenNames, maskTerms: draft.maskTerms }, draft.social)
+  const recruiter = settings.fromPlatform ? PLATFORM_RECRUITER : settings.tenantName
+  const version = publicVersion(fields, { anonymized: draft.anonymized, names: hiddenNames, maskTerms: draft.maskTerms, recruiter }, draft.social)
   const lite = liteOfPublished(version.job, settings)
   const copy = normalizeCopy({ ...fallbackCopy(lite), ...version.social }, lite)
   return buildContent(lite, copy, settings.config, { baseUrl: settings.baseUrl, calendlyUrl: settings.calendlyUrl }).captions.linkedin

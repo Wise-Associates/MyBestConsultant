@@ -160,3 +160,28 @@ describe('textes du post envoyés avec la version à publier', () => {
     assert.equal(rawPublicSocial({ ...edits, context: 'Écrire à jean.martin@exemple.test' }).context.includes('jean.martin@exemple.test'), false)
   })
 })
+
+describe('ouverture au nom de l’organisation qui publie (demande de David)', () => {
+  const opened = (org: string) => ({
+    ...draft, social: { ...edits, context: '' },
+    description: `Accroche.\n\n### Le contexte\n${org} recrute pour un grand groupe bancaire un profil pour structurer ses données. Wise Associates transmet l’offre.\n\n### Au programme\n- Animer les comités.`,
+  })
+  // Wise Associates parmi les noms masqués : l'expéditeur qui a transféré l'e-mail.
+  const withSender = [...names, ...namesToHide(['Wise Associates'])]
+
+  it('plateforme : « Wise Associates recrute pour » gardé en tête du post et de l’offre publiée, masqué ailleurs', () => {
+    const post = postOf(opened('Wise Associates'), platform, withSender)
+    assert.ok(post.includes('Wise Associates recrute pour un grand groupe bancaire un profil pour structurer ses données.'), post)
+    assert.ok(!post.includes('Wise Associates transmet'), post)
+    const parsed = accepted({ ...opened('Wise Associates'), skills: splitSkills(skillsText), reviewed: true })
+    const job = publicVersion(parsed.fields, { anonymized: true, names: withSender, maskTerms: [], recruiter: 'Wise Associates' }, parsed.social).job
+    assert.ok(job.description.includes('### Le contexte\nWise Associates recrute pour un grand groupe bancaire'), job.description)
+    assert.ok(!job.description.includes('Wise Associates transmet'), job.description)
+  })
+
+  it('organisation : son nom ouvre le post, sans Wise Associates, MyBestConsultant ni Calendly', () => {
+    const post = postOf(opened('Cabinet Exemple'), organisation, withSender)
+    assert.ok(post.includes('Cabinet Exemple recrute pour un grand groupe bancaire'), post)
+    assert.ok(!/wise|mybest|my best|calendly/i.test(post), post)
+  })
+})

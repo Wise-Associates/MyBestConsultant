@@ -116,7 +116,7 @@ function PosterPanel({ env }: { env: { openai: boolean; scenes: boolean } }) {
         <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: env.openai && env.scenes ? 'rgba(52,211,153,0.15)' : 'rgba(232,163,61,0.15)', color: env.openai && env.scenes ? '#34d399' : '#e8a33d' }}>{env.openai && env.scenes ? '● Avec photo' : '● Sans photo'}</span>
       </div>
       <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
-        La plateforme dessine l’affiche (logo, textes, charte) ; OpenAI ne génère que la photo de la scène. Sans clé OpenAI ou sans stockage, ou si OpenAI échoue (crédits, délai), l’affiche part sans photo et la raison s’affiche sur la publication.
+        La plateforme dessine l’affiche (textes, charte) ; OpenAI ne génère que la photo de la scène. Sans clé OpenAI ou sans stockage, ou si OpenAI échoue (crédits, délai), l’affiche part sans photo et la raison s’affiche sur la publication.
       </p>
       <div className="grid sm:grid-cols-2 gap-3">
         {checks.map(c => (
