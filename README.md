@@ -32,6 +32,8 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 ## Déploiement
 
 - **Previews** : Vercel déploie `pre-dev` et `dev`, branchées sur le projet Appwrite DEV.
+- **Modèle 3B affiné (facultatif)** : Ministral 3 3B loué sur Nosana, branché dans Config IA comme modèle open source ;
+  déployer, brancher, arrêter et refaire l'affinage : [docs/modele-3b-affine.md](docs/modele-3b-affine.md) (ADR 0063).
 - **Pull requests** : toutes vers `main`, fusionnées par « Rebase and merge ». Une fusion dans `main` ne déploie rien.
 - **Mise en production** : à la main, GitHub → Actions → **Déployer en production** → Run workflow, branche `main`,
   champ vide. Le workflow (`.github/workflows/deploy-vps.yml`) vérifie `main` (types, tests), place `prod` sur `main`

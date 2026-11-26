@@ -1,6 +1,6 @@
 # 0063. Affinage multi-tâches de Ministral 3 3B pour toutes les fonctions d'IA
 
-Date : 2026-11-25. Statut : en cours (jeu d'exemples construit ; enseignant, entraînement et mesure à venir).
+Date : 2026-11-25. Statut : accepté (adaptateur v3 entraîné et mesuré ; passage en production à décider par un humain).
 
 ## Contexte
 
@@ -89,3 +89,22 @@ notations, mêmes relations pour les intitulés, part du CV reprise pour l'expor
   faible, à garder en tête en lisant les mesures.
 - Le passage d'une fonction au 3B se fait dans Config IA, fonction par fonction, quand la mesure sur le test montre
   qu'il vaut le modèle actuel ; en production, par un humain.
+
+## Résultats (2026-11-25)
+
+- Enseignant : 3 409 réponses gardées sur 3 413 (lot Batch API), **23,57 $** sur la clé dédiée.
+- Entraînement : affinage `20261125-1730-0239` (rang 32, 2 passages, 16 384 jetons au plus, aucun exemple écarté),
+  7 568 s sur une RTX A6000 (≈ 0,85 $) ; perte d'entraînement 0,32, de contrôle 0,43.
+- Mesure sur 463 demandes de test (RTX 4090, cache KV 16 bits, température 0,15) : **100 % de réponses lisibles par
+  l'application sur les 32 tâches** (3B sans affinage : notation sur critères 14 %, comparaison des intitulés 31 %,
+  traduction des dossiers 0 %, analyses d'entretien 75 %…) ; même décision « correspond » que Sonnet : score final
+  63 → 81 %, vivier général 92 → 98 % ; écart de score matching 13 → 4 points ; plus rapide. Classification : 49/60
+  (v2 : 51/60, écart non significatif). **Export CV : 75 % du CV repris contre 84 % pour Sonnet** : Claude garde cette
+  ligne.
+- Adaptateur copié dans le dépôt privé Hugging Face `herilala19/ministral-3-3b-mbc-classification-cv-lora` (version 3,
+  commit `59469654`).
+- Page de résultats : https://claude.ai/artifact/HwLfx2bVALon2rPN5BeXAu ; exploitation (déployer, brancher dans Config
+  IA, arrêter, refaire) : [docs/modele-3b-affine.md](../modele-3b-affine.md).
+- Reste à faire : juger la qualité des textes libres (par Sonnet, sur les mêmes demandes) ; vérifier les conditions
+  d'Anthropic et d'OpenAI sur l'entraînement à partir de leurs réponses ; lecture des e-mails d'appels d'offres.
+
