@@ -41,6 +41,9 @@ import {
   saveAoOfferSourcing, updateAoEmail, updateAoOffer,
 } from './repo'
 import { getAoSource } from './sources'
+import { getBrandByTenantId } from '@/lib/appwrite/brand'
+import { PLATFORM_RECRUITER, takeOpening, withRecruiterOpening } from './recruiter-opening'
+import { PLATFORM_TENANT_ID } from './tenancy'
 import { requestPublicationStop } from './state'
 import { syncAoEmail, syncAoInbox, type AoSyncReport } from './sync'
 import type { AoOffer } from './types'
@@ -171,6 +174,7 @@ export async function previewAoPublicationOf(
     const terms = { contractType: offer.contractType, remote: offer.remote, salary: offer.salary, reviewed: false }
 
     const { clients, names, people } = await hiddenNamesFor(offer)
+    const recruiter = await publisherNameOf(tenantId)
     // Critères de matching (ADR 0061) : ceux déjà enregistrés pour cet AO, sinon proposés par l'IA (version anonymisée,
     // même place du quota que sa rédaction), sinon ceux par défaut.
     const saved = await getAoOfferCriteria(offer.$id)
@@ -180,7 +184,7 @@ export async function previewAoPublicationOf(
       // l'accroche de l'offre en tient lieu ; aucun pôle ; hashtags tirés des compétences).
       const draft = { ...rawPublicOffer(offer), ...terms, maskTerms: [], anonymized: false, criteria: saved ?? defaultAoCriteria(offer, names) }
       const preview = {
-        draft, similarJobs, rewrite: 'raw' as const, notice: '', watchNames: people, maskedNames: [], hiddenNames: [],
+        draft, similarJobs, rewrite: 'raw' as const, notice: '', watchNames: people, maskedNames: [], hiddenNames: [], recruiter,
         criteriaSource: saved ? 'saved' as const : 'default' as const, criteriaNotice: '',
       }
       return { preview: await withSocialPreview(tenantId, offer.$id, preview, null) }
@@ -201,7 +205,7 @@ export async function previewAoPublicationOf(
       // IA refusée (quota) ou indisponible : textes du post sans IA non plus.
       const preview = {
         draft, similarJobs, rewrite: 'rules' as const, notice: copy, watchNames: [...names, ...PLATFORM_NAMES], maskedNames: distinctNames(clients),
-        hiddenNames: names, ...criteriaFields,
+        hiddenNames: names, recruiter, ...criteriaFields,
       }
       return { preview: await withSocialPreview(tenantId, offer.$id, preview, null) }
     }
@@ -213,9 +217,13 @@ export async function previewAoPublicationOf(
       ...offer, title: copy.title, description: descriptionFromCopy(copy, modalityLines(offer)), location: copy.location || offer.location, skills: copy.skills,
       duration: '', startDate: '', experience: '', // déjà dans la section « Modalités », écrite par le code
     }, names, label, extra)
+    // « Altrion recrute pour un grand groupe bancaire… » (demande de David) : après l'anonymisation, qui masquerait le nom
+    // de l'organisation s'il est aussi celui d'un expéditeur (Wise Associates qui transfère l'e-mail).
+    const description = withRecruiterOpening(pub.description, recruiter)
     const preview = {
-      draft: { ...pub, ...terms, maskTerms, anonymized: true, criteria }, similarJobs, rewrite: 'ai' as const, notice: '',
-      watchNames: [...names, ...extra, ...PLATFORM_NAMES], maskedNames: distinctNames([...clients, ...maskTerms]), hiddenNames: names, ...criteriaFields,
+      draft: { ...pub, description, ...terms, maskTerms, anonymized: true, criteria }, similarJobs, rewrite: 'ai' as const, notice: '',
+      watchNames: [...names, ...extra, ...PLATFORM_NAMES], maskedNames: distinctNames([...clients, ...maskTerms]), hiddenNames: names, recruiter,
+      ...criteriaFields,
     }
     return { preview: await withSocialPreview(tenantId, offer.$id, preview, beforeSocialAi ?? (async () => null)) }
   } catch (err) {
@@ -251,6 +259,18 @@ async function withSocialPreview(
   const context = preview.draft.anonymized ? tenderProject(lite.description) : copy.context
   const edits = { context, pole: copy.pole, hashtags: copy.hashtags }
   return { ...preview, draft: { ...preview.draft, social: edits }, social: { ...social, notice: refusal ?? '' } }
+}
+
+/**
+ * Organisation qui publie une offre de `jobTenantId`, nommée en ouverture du contexte (recruiter-opening.ts) : la
+ * plateforme sous le nom de Wise Associates, sinon l'organisation (nom de son document, comme le post LinkedIn :
+ * tenantForSocial). Illisible : vide, l'offre garde la phrase de l'IA (« Un grand groupe bancaire recrute… »).
+ */
+async function publisherNameOf(jobTenantId: string): Promise<string> {
+  if (jobTenantId === PLATFORM_TENANT_ID) return PLATFORM_RECRUITER
+  const brand = await getBrandByTenantId(jobTenantId)
+  if (!brand) console.warn('AO: nom de l’organisation illisible, contexte sans ouverture à son nom', jobTenantId)
+  return brand?.name.trim() ?? ''
 }
 
 /** Texte de l'AO aux noms du client remplacés (« le client »), comme l'IA de la version publiée le reçoit. */
@@ -328,7 +348,9 @@ export async function publishAoOfferOf(
   // Version anonymisée : aucune mention de la plateforme (ADR 0060), signalée en rouge à la relecture ; refusée ici
   // plutôt que remplacée, un libellé à sa place changerait le sens de la phrase (« Transmis par … »).
   const platform = parsed.anonymized
-    ? platformMentions([fields.title, fields.companyName, fields.location, fields.description, ...fields.skills, parsed.social?.context ?? ''])
+    // L'ouverture « Wise Associates recrute pour » d'une offre de la plateforme est la seule mention permise.
+    ? platformMentions([fields.title, fields.companyName, fields.location,
+      takeOpening(fields.description, jobTenantId === PLATFORM_TENANT_ID ? PLATFORM_RECRUITER : '').description, ...fields.skills, parsed.social?.context ?? ''])
     : []
   if (platform.length > 0) return { error: `La version mentionne encore « ${platform[0]} » : retirez-le, puis publiez.` }
   try {
@@ -340,7 +362,8 @@ export async function publishAoOfferOf(
     // l'anonymisation, ou par le retrait des coordonnées personnelles pour une version non anonymisée. Même fonction que
     // l'aperçu du post (publication-social.ts).
     const names = parsed.anonymized ? (await hiddenNamesFor(offer)).names : []
-    const version = publicVersion(fields, { anonymized: parsed.anonymized, names, maskTerms: parsed.maskTerms }, parsed.social)
+    const recruiter = parsed.anonymized ? await publisherNameOf(jobTenantId) : ''
+    const version = publicVersion(fields, { anonymized: parsed.anonymized, names, maskTerms: parsed.maskTerms, recruiter }, parsed.social)
     // Critères montrés à ceux qui ouvrent l'offre publiée : version anonymisée, jamais le client (mêmes noms que le texte).
     const naming = parsed.criteria ? criteriaNaming(parsed.criteria, [...names, ...maskNames(parsed.maskTerms)]) : []
     if (naming.length > 0) return { error: `Les critères de matching nomment encore « ${naming[0]} » : retirez-le, puis publiez.` }

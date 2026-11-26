@@ -10,6 +10,7 @@ import { pageFillText } from '@/lib/ao/source-page/page-fill'
 import type { AoDashboardActions, AoDashboardPaths, PublicationDraft, PublicationMode, SourcedCandidate, SourcingResult } from '@/lib/ao/dashboard-types'
 import type { AoContract, AoRemote } from '@/lib/ao/types'
 import { linkedInPostOf, splitSkills, type SocialPreview } from '@/lib/ao/publication-social'
+import { takeOpening } from '@/lib/ao/recruiter-opening'
 import { SOCIAL_CONTEXT_MAX, type SocialEdits } from '@/lib/social-content'
 import { Skeleton, SkeletonRegion } from '@/components/shared/skeleton'
 import { AoDescription } from './ao-description'
@@ -87,7 +88,9 @@ export function AoOfferDetail({ row, actions, paths, publishNote, tracking, soci
   const risks = useMemo(() => {
     if (!draft || !preview) return []
     const fields: [string, string][] = [
-      ['titre', draft.title], ['entreprise affichée', draft.companyName], ['ville', draft.location], ['compétences', skillsText], ['description', draft.description],
+      // L'ouverture « <organisation> recrute pour » nomme l'organisation qui publie : seule place où son nom est permis.
+      ['titre', draft.title], ['entreprise affichée', draft.companyName], ['ville', draft.location], ['compétences', skillsText],
+      ['description', takeOpening(draft.description, preview.recruiter).description],
       ['post LinkedIn, « Le projet »', draft.social?.context ?? ''],
       // Jamais publiés, mais montrés à ceux qui ouvrent l'offre : refusés aussi à la publication s'ils nomment le client.
       ['critères de matching', draft.criteria ? [...draft.criteria.criteria.flatMap(c => [c.name, ...c.labels.map(l => l.label)]), ...draft.criteria.alternativeTitles].join(' · ') : ''],
@@ -514,8 +517,8 @@ function LinkedInPostPreview({ draft, skills, social, hiddenNames, onSocial }: {
       <p className="text-xs" style={{ color: 'var(--admin-fg-muted)' }}>
         {post !== null && `${post.length.toLocaleString('fr-FR')} caractères sur 3 000 (limite de LinkedIn). Une offre trop longue est raccourcie section par section, avec un renvoi vers l’offre. `}
         {settings.fromPlatform
-          ? 'Appel d’offres anonymisé : ni présentation de Wise Associates ni phrase de recrutement. Hashtags par défaut : réglages « Réseaux sociaux » de la plateforme.'
-          : 'Appel d’offres anonymisé : publié au nom de l’entreprise affichée, sans la présentation de votre organisation ni la ligne « Offre diffusée via MyBestConsultant ».'}
+          ? 'Appel d’offres anonymisé : le contexte s’ouvre par « Wise Associates recrute pour… », sans la présentation de Wise Associates. Hashtags par défaut : réglages « Réseaux sociaux » de la plateforme.'
+          : 'Appel d’offres anonymisé : le contexte s’ouvre par « <votre organisation> recrute pour… », sans la présentation de votre organisation.'}
         {' '}Les noms du client restés dans le texte sont masqués comme à la publication.
       </p>
       <label className="block" htmlFor={projectId}>

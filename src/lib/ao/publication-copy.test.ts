@@ -93,6 +93,12 @@ describe('« Préparer la publication » : réponse de l\'IA', () => {
     assert.deepEqual(findIdentifiers('Offre relayée par Wise Associates.', PLATFORM_NAMES), ['Wise Associates'])
   })
 
+  it('repère aussi MyBestConsultant, écrit en un mot, en trois ou comme adresse (demande du 2026-11-26)', () => {
+    assert.deepEqual(platformMentions(['Offre diffusée via MyBestConsultant.', 'Postulez sur mybestconsultant.fr', 'Le site My Best Consultant.']),
+      ['MyBestConsultant', 'mybestconsultant', 'My Best Consultant'])
+    assert.deepEqual(platformMentions(['Le meilleur consultant du marché.']), [])
+  })
+
   it('place « Le contexte » en paragraphe après l\'accroche, lu comme le contexte de l\'offre', () => {
     const context = 'Un grand groupe bancaire international modernise le pilotage de ses achats informatiques. '
       + 'Le projet vise à centraliser les demandes de prestations et à suivre les fournisseurs.'

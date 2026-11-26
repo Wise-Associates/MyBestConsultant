@@ -69,6 +69,11 @@ export interface PublicationPreview {
    * exactement les mêmes règles (publicVersion) ; vide pour une version non anonymisée.
    */
   hiddenNames: string[][]
+  /**
+   * Organisation qui publie (« Wise Associates » pour la plateforme) : son nom ouvre le contexte de la version de l'IA
+   * (« Altrion recrute pour… », recruiter-opening.ts) et n'est pas signalé à cette place ; vide s'il n'a pas pu être lu.
+   */
+  recruiter: string
   /** Post LinkedIn que la publication fera partir, construit dans le navigateur à partir de la version (ADR 0058). */
   social: SocialPreview
   /**

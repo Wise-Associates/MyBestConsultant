@@ -109,7 +109,7 @@ export function SocialClient({ initialConfig, initialPosts, jobs, env, devPanel 
           </div>
           <div>
             <p className="text-sm font-semibold text-white/90 mb-1.5">Visuel</p>
-            <p className="text-xs leading-relaxed rounded-lg px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.5)' }}>Une affiche portrait (1080 × 1350) dessinée par la plateforme, avec le logo My Best Consultant, les textes de l’offre et une photo de scène propre à chaque poste (générée par OpenAI, facultative), identique sur tous les réseaux. YouTube Shorts (vidéo) viendra dans une seconde étape.</p>
+            <p className="text-xs leading-relaxed rounded-lg px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.5)' }}>Une affiche portrait (1080 × 1350) dessinée par la plateforme, avec les textes de l’offre (sans logo ni nom du site) et une photo de scène propre à chaque poste (générée par OpenAI, facultative), identique sur tous les réseaux. YouTube Shorts (vidéo) viendra dans une seconde étape.</p>
           </div>
         </div>
         <div>
