@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { scaleKeys } from '../match-scoring'
-import { TASKS, chatExample, estimateCost, followUpItems, itemId, splitOf, teacherAnswer, titleCheckItem, type DatasetItem, type TaskContext } from './mbc-dataset'
+import { TASKS, chatExample, cvTextOfRequest, estimateCost, exampleRefusal, followUpItems, itemId, splitOf, teacherAnswer, titleCheckItem, type DatasetItem, type TaskContext } from './mbc-dataset'
 
 // CV et offre inventés pour l'exemple.
 const CV = `Développeur Java senior chez Exemple Banque (2019-2024).
@@ -122,6 +122,21 @@ describe("export CV : lecture puis traduction, comme l'application", () => {
     // Traduction qui perd une expérience : refusée (même structure exigée).
     const lost = { ...extraction, titre: 'DevOps Engineer', experiences: [] }
     assert.ok('reason' in teacherAnswer(next.ctx, JSON.stringify(lost)))
+  })
+
+  it('écarte des exemples un dossier qui perd une partie du CV, garde un dossier fidèle', () => {
+    const cv = [
+      'Claire Morel', 'Ingénieur DevOps', '7 ans d’expérience', 'Ingénieur DevOps orienté automatisation.',
+      '2021 – Aujourd’hui Exemple Banque Ingénieur DevOps', 'Migration cloud.', 'Migration vers Kubernetes.', 'Kubernetes, Terraform',
+      '2018 Master informatique Université Imaginaire', 'Anglais courant', 'Cloud : AWS, Kubernetes',
+    ].join('\n')
+    const request: DatasetItem = { ...item, messages: [{ role: 'user', content: `Dossier à lire.\n<cv>\n${cv}\n</cv>` }] }
+    assert.equal(cvTextOfRequest(request), cv)
+    assert.equal(exampleRefusal(request, JSON.stringify(extraction)), null)
+    const partial = { ...extraction, experiences: [], formations: [], competences: [] }
+    assert.equal(exampleRefusal(request, JSON.stringify(partial)), 'dossier incomplet')
+    // Les autres tâches ne passent pas par cette règle.
+    assert.equal(exampleRefusal({ ...request, ctx: { task: 'assistant', role: 'candidate' } }, 'Réponse.'), null)
   })
 })
 

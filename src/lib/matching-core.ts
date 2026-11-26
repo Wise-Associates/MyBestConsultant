@@ -26,6 +26,7 @@ import { offerDetails } from '@/lib/match-scoring'
 import { rescoreForRecruiter, type RecruiterWeights, type WeightsOverride } from '@/lib/scoring-weights'
 import { alertIdealCandidates } from '@/lib/recruiter-alerts-store'
 import { parseMatchOrigin, parseReviewStatus, type MatchOrigin, type ReviewStatus } from '@/lib/match-review'
+import { organisationOf } from '@/lib/ai/usage'
 
 export interface JobMatchResult {
   source: 'pool' | 'vivier' | 'application'
@@ -79,9 +80,10 @@ const RESCORE_MAX = 120
 // Population 1 — scores the platform candidate pool against this job and stores the results (job_matches). Runs
 // automatically right after a job is created; the recruiter can also trigger it again later from the Matching page.
 // `computed`: a ranking already made for this job by matchCandidatesForJob (automatic sourcing at
-// creation), stored as is instead of paying a second AI call on the same CVs.
+// creation), stored as is instead of paying a second AI call on the same CVs. `tenantId`: organisation that triggers the
+// scoring, for the AI usage log (ADR 0064); default: the job's.
 export async function runPoolMatching(
-  jobId: string, computed?: MatchResult, mode: PoolMatchingMode = 'all',
+  jobId: string, computed?: MatchResult, mode: PoolMatchingMode = 'all', tenantId?: string,
 ): Promise<{ matched: number; error?: string }> {
   try {
     const { databases } = createAdminClient()
@@ -99,14 +101,14 @@ export async function runPoolMatching(
       result = computed
       scope = new Set(scored)
     } else if (mode === 'new') {
-      result = await matchCandidatesForJob(jobId, { exclude: new Set(scored) })
+      result = await matchCandidatesForJob(jobId, { exclude: new Set(scored), tenantId })
       scope = new Set()
     } else if (scored.length > 0) {
       const only = scored.slice(0, RESCORE_MAX)
-      result = await matchCandidatesForJob(jobId, { only })
+      result = await matchCandidatesForJob(jobId, { only, tenantId })
       scope = new Set(only)
     } else {
-      result = await matchCandidatesForJob(jobId)
+      result = await matchCandidatesForJob(jobId, { tenantId })
       scope = new Set()
     }
     const { matches, error } = result
@@ -172,6 +174,8 @@ export async function matchVivierCvAgainstJob(jobId: string, vivierCvId: string,
     const scored = await matchingScorer({
       title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? ''), details: offerDetails(job),
       sourceContext: await aoSourceContext(job), criteria: await loadOfferCriteria(jobId),
+      // Organisation du recruteur qui a importé le CV (journal de consommation, ADR 0064).
+      tenantId: organisationOf(String(doc.tenantId || job.tenantId || '')),
     })(cvText)
     // Réponse sans jugement : CV non noté (jamais un score inventé).
     if (!scored) {
@@ -193,13 +197,14 @@ export async function matchVivierCvAgainstJob(jobId: string, vivierCvId: string,
  * Vivier général : note un CV de 0 à 100 pour chacune des `offers`, par lots envoyés en parallèle, avec le modèle de
  * toute notation (SCORING_AI) et le texte du CV (`cvText` : vivierCvText). Un lot en échec laisse ses offres non comparées
  * (elles le seront à la synchronisation suivante) et donne `failed`, détaillé dans les journaux seulement.
+ * `tenantId` : organisation du recruteur, pour le journal de consommation de l'IA (ADR 0064).
  */
-export async function scoreCvAgainstOffers(cvText: string, offers: OfferToScore[]): Promise<{ scores: OfferScore[]; failed: boolean }> {
+export async function scoreCvAgainstOffers(cvText: string, offers: OfferToScore[], tenantId: string): Promise<{ scores: OfferScore[]; failed: boolean }> {
   const batches = await Promise.all(offerBatches(offers).map(async batch => {
     try {
       const { content } = await callLLM([{ role: 'user', content: vivierMatchingPrompt(cvText, batch) }], VIVIER_MATCHING_SYSTEM, {
         // 5 offres, une preuve par élément jugé de chacune : réponse plus longue qu'une note par offre.
-        ...SCORING_AI, maxTokens: 8000, timeoutMs: 120_000,
+        ...SCORING_AI, maxTokens: 8000, timeoutMs: 120_000, usage: { feature: 'vivier-matching', tenantId },
       })
       const judged = parseVivierMatching(content, batch, cvText)
       if (!judged) {
@@ -207,7 +212,7 @@ export async function scoreCvAgainstOffers(cvText: string, offers: OfferToScore[
         return null
       }
       // Métiers du titre de chaque offre confirmés par une seule comparaison des intitulés (title-check.ts).
-      const checked = await withCheckedTitles(judged.map(j => j.judgements))
+      const checked = await withCheckedTitles(judged.map(j => j.judgements), { feature: 'title-check', tenantId })
       return judged.map((item, i) => vivierScore({ ...item, judgements: checked[i] }))
     } catch (e) {
       console.error('Vivier : comparaison CV / offres en échec :', e instanceof Error ? e.message : e)

@@ -10,6 +10,8 @@ import { BUILTIN_MODEL_IDS, sanitizeOpenSourceModels, sanitizeRouting, sanitizeT
 import { invalidateLLMConfigCache } from '@/lib/ai/llm-router'
 import { forgetRecentLLMConfig, getLLMConfig as readLLMConfig } from '@/lib/ai/llm-config-store'
 import { requireAdmin } from '@/lib/appwrite/auth'
+import { claudeTokens, directCallRecord, openAiTokens, outcomeOf } from '@/lib/ai/usage'
+import { recordLlmUsage } from '@/lib/ai/usage-store'
 
 // LLM config is stored inside TEMPLATES_CONFIG's customColors JSON under __llm key
 // (avoids needing new Appwrite attributes — collection is at its 16-attr limit)
@@ -95,10 +97,14 @@ export async function testProvider(
     }
   }
   const start = Date.now()
+  // Journal de consommation (ADR 0064) : un test fait depuis Config IA compte pour la plateforme.
+  const usage = { feature: 'llm-config-test', tenantId: 'admin' }
+  let direct: { model: string } | null = null
   try {
     if (overrides?.model && (overrides.apiUrl || overrides.apiKey)) {
       const apiKey = (overrides.apiKey || '').trim()
       const model = overrides.model.trim()
+      direct = { model }
 
       // Claude uses Anthropic SDK — NOT OpenAI-compatible endpoint
       if (provider === 'claude') {
@@ -110,6 +116,7 @@ export async function testProvider(
           messages: [{ role: 'user', content: 'Say hello' }],
         })
         const text = response.content[0]?.type === 'text' ? response.content[0].text : ''
+        recordLlmUsage(directCallRecord(usage, { provider, model, durationMs: Date.now() - start, tokens: claudeTokens(response.usage), outcome: 'ok' }))
         return { ok: text.length > 0, latencyMs: Date.now() - start }
       }
 
@@ -133,11 +140,13 @@ export async function testProvider(
       })
       if (!res.ok) {
         const body = await res.text()
+        recordLlmUsage(directCallRecord(usage, { provider, model, durationMs: Date.now() - start, tokens: null, outcome: `http-${res.status}` }))
         return { ok: false, latencyMs: Date.now() - start, error: `HTTP ${res.status}: ${body}` }
       }
       const data = await res.json()
       const msg = data.choices?.[0]?.message
       const content: string = msg?.content || msg?.reasoning || ''
+      recordLlmUsage(directCallRecord(usage, { provider, model, durationMs: Date.now() - start, tokens: openAiTokens(data.usage), outcome: 'ok' }))
       return { ok: content.length > 0, latencyMs: Date.now() - start }
     }
 
@@ -147,10 +156,12 @@ export async function testProvider(
       [{ role: 'user', content: 'Reply with exactly: OK' }],
       'You are a test assistant.',
       // strict : sans repli, pour que le test reflète VRAIMENT ce modèle et pas un modèle de secours
-      { provider, strict: true },
+      { provider, strict: true, usage },
     )
     return { ok: content.includes('OK'), latencyMs: Date.now() - start }
   } catch (e) {
+    // Échec d'un test avec des valeurs saisies (SDK ou réseau) ; ceux de callLLM sont déjà notés par le routeur.
+    if (direct) recordLlmUsage(directCallRecord(usage, { provider, model: direct.model, durationMs: Date.now() - start, tokens: null, outcome: outcomeOf(e) }))
     return { ok: false, latencyMs: Date.now() - start, error: e instanceof Error ? e.message : 'Erreur' }
   }
 }

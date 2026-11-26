@@ -46,13 +46,14 @@ export function readRevisionInput(input: unknown): { input: RevisionInput } | { 
 
 /**
  * Critères modifiés par l'IA de la notation (« Matching IA » de Config IA) selon la demande du recruteur, pour `offer`
- * (texte que voient ceux qui ouvrent l'offre : AO aux noms du client remplacés). Rien n'est enregistré.
+ * (texte que voient ceux qui ouvrent l'offre : AO aux noms du client remplacés). Rien n'est enregistré. `tenantId` :
+ * organisation du recruteur, « admin » pour la plateforme (journal de consommation de l'IA, ADR 0064).
  */
-export async function reviseCriteria(offer: AoForCriteria, input: RevisionInput, offerId: string): Promise<RevisionResult> {
+export async function reviseCriteria(offer: AoForCriteria, input: RevisionInput, offerId: string, tenantId: string): Promise<RevisionResult> {
   try {
     // 6 000 jetons : la réflexion de Claude (adaptative) compte dans la limite ; des critères complets en font 1 500 environ.
     const { content } = await callLLM([{ role: 'user', content: criteriaRevisionRequest(offer, input) }], CRITERIA_REVISION_PROMPT, {
-      ...SCORING_AI, maxTokens: 6000, timeoutMs: 60_000,
+      ...SCORING_AI, maxTokens: 6000, timeoutMs: 60_000, usage: { feature: 'criteria-assistant', tenantId },
     })
     const revised = parseCriteriaRevision(content, input.criteria)
     if (!revised) {

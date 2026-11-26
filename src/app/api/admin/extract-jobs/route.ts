@@ -5,6 +5,8 @@ import { getCurrentUser } from '@/lib/appwrite/auth'
 import { extractTextFromFile } from '@/lib/import-file-extract'
 import { AO_EXTRACTION_PROMPT } from '@/lib/ao/prompt'
 import { manualImportRequest, parseManualImportResponse } from '@/lib/ao/manual-import'
+import { claudeTokens, directCallRecord, outcomeOf } from '@/lib/ai/usage'
+import { recordLlmUsage } from '@/lib/ai/usage-store'
 
 const SYSTEM = AO_EXTRACTION_PROMPT
 
@@ -32,18 +34,28 @@ export async function POST(req: NextRequest) {
     const llmCfg = await getLLMConfig()
     const chosenProvider = (provider as 'claude' | 'teckia' | undefined) ?? llmCfg.activeProvider as 'claude' | 'teckia'
 
+    // Journal de consommation (ADR 0064) : import fait par un admin, pour la plateforme.
+    const usage = { feature: 'admin-job-import', tenantId: 'admin' }
     let result: { content: string; provider: string }
     if (chosenProvider === 'claude') {
       const Anthropic = (await import('@anthropic-ai/sdk')).default
       const apiKey = llmCfg.claudeApiKey || process.env.ANTHROPIC_API_KEY || ''
       if (!apiKey) throw new Error('Clé API Claude non configurée — allez dans Admin → Config IA')
       const client = new Anthropic({ apiKey })
+      const model = llmCfg.claudeModel || 'claude-sonnet-4-6'
+      const started = Date.now()
       const resp = await client.messages.create({
-        model: llmCfg.claudeModel || 'claude-sonnet-4-6',
+        model,
         max_tokens: 8000,
         system: SYSTEM,
         messages: [{ role: 'user', content: manualImportRequest(text) }],
+      }).catch((err: unknown) => {
+        recordLlmUsage(directCallRecord(usage, { provider: 'claude', model, durationMs: Date.now() - started, tokens: null, outcome: outcomeOf(err) }))
+        throw err
       })
+      recordLlmUsage(directCallRecord(usage, {
+        provider: 'claude', model, durationMs: Date.now() - started, tokens: claudeTokens(resp.usage), outcome: 'ok', truncated: resp.stop_reason === 'max_tokens',
+      }))
       const text2 = resp.content[0]?.type === 'text' ? resp.content[0].text : ''
       result = { content: text2, provider: 'claude' }
     } else {
@@ -54,7 +66,7 @@ export async function POST(req: NextRequest) {
       result = await callLLM(
         [{ role: 'user', content: manualImportRequest(text) }],
         SYSTEM,
-        'teckia',
+        { provider: 'teckia', usage },
       )
       void apiKey // used via callLLM internal config
     }

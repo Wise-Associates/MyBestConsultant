@@ -201,7 +201,7 @@ export async function attachVivierCv(jobIdInput: string | null, fileIdInput: str
     })
 
     // Profil créé automatiquement à partir du CV (identité, compétences, expériences…) puis Matching IA.
-    const profile = await buildProfile(doc.$id, fileId)
+    const profile = await buildProfile(doc.$id, fileId, tenantId)
     const notice = profile ? await matchProfile(user, tenantId, jobId, doc.$id, profile) : null
     // Classification du CV (ADR 0044), en arrière-plan : jamais bloquante.
     after(() => classifySourceInBackground('vivier', doc.$id))
@@ -295,11 +295,11 @@ export async function addMbcProfileToVivier(input: unknown): Promise<{ id?: stri
 }
 
 /** Extraction du profil, best-effort : un CV reste importé et consultable même si l'analyse échoue (null). */
-async function buildProfile(docId: string, fileId: string): Promise<CvProfile | null> {
+async function buildProfile(docId: string, fileId: string, tenantId: string): Promise<CvProfile | null> {
   try {
     const { databases } = createAdminClient()
     const { extractCvProfile } = await import('@/lib/cv-profile-extract')
-    const profile = await extractCvProfile(fileId, BUCKETS.VIVIER_CVS)
+    const profile = await extractCvProfile(fileId, BUCKETS.VIVIER_CVS, tenantId)
     if (!profile) return null
     await databases.updateDocument(DB_ID, COLLECTIONS.VIVIER_CVS, docId, {
       cvProfileJson: JSON.stringify(profile),
@@ -349,7 +349,7 @@ async function compareWithNewOffers(user: UserProfile, tenantId: string, docId: 
   const cvText = await vivierCvText(doc.cvFileId as string | undefined, profile)
   const { scores, failed } = await scoreCvAgainstOffers(cvText, toCompare.map(j => ({
     $id: j.$id, title: j.title ?? '', skills: j.skills, location: j.location ?? '', description: j.description ?? '',
-  })))
+  })), tenantId)
 
   // Relu juste avant l'écriture : une autre comparaison du même CV a pu se terminer pendant l'appel à l'IA.
   const latest = await databases.getDocument(DB_ID, COLLECTIONS.VIVIER_CVS, docId)
@@ -412,7 +412,7 @@ export async function reanalyseVivierCv(jobId: string | null, docId: string): Pr
     const doc = await ownVivierDoc(user, tenantId, jobId, docId)
     // Seulement pour un CV dont l'analyse a échoué (bouton affiché dans ce cas) : chaque analyse est un appel à l'IA.
     if (docToVivierCv(doc as never).profileReady) return { error: 'Le profil de ce CV est déjà créé.' }
-    const profile = await buildProfile(docId, doc.cvFileId as string)
+    const profile = await buildProfile(docId, doc.cvFileId as string, tenantId)
     if (!profile) return { error: 'Le CV n’a pas pu être analysé (fichier illisible ou service IA indisponible). Réessayez dans un instant.' }
     const notice = await matchProfile(user, tenantId, jobId, docId, profile)
     revalidateVivier(jobId)

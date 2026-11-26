@@ -35,7 +35,7 @@ export async function generateRecommendationMessage(data: {
       experience: data.experience,
       period: data.period,
     })
-    const { content } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system)
+    const { content } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system, { usage: { feature: 'recommendation-message' } })
 
     const message = cleanRecommendationMessage(content)
     if (!message) return { error: 'Réponse IA vide, réessayez' }

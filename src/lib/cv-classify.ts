@@ -28,11 +28,12 @@ export const CLASSIFIER_MODELS: Partial<Record<string, string>> = { claude: 'cla
  * Classe le texte d'un CV par le modèle de la ligne « Classification des CV », puis la chaîne de repli ; null si la
  * réponse est illisible. Lève LLMChainError (cause de chaque modèle, à journaliser par llmFailureDetail) quand toute la
  * chaîne a échoué. `model` enregistré : celui de CLASSIFIER_MODELS, sinon l'identifiant du fournisseur (« teckia »,
- * « os-… »).
+ * « os-… »). `tenantId` : organisation du CV du vivier, vide pour un candidat ou un chasseur (journal de consommation de
+ * l'IA, ADR 0064).
  */
-export async function classifyCvText(cvText: string): Promise<{ classification: CvClassification; model: string } | null> {
+export async function classifyCvText(cvText: string, tenantId = ''): Promise<{ classification: CvClassification; model: string } | null> {
   const { content, provider } = await callLLM([{ role: 'user', content: cvText }], CLASSIFICATION_SYSTEM, {
-    ...CLASSIFICATION_AI, providerModels: CLASSIFIER_MODELS, maxTokens: 4000, timeoutMs: 90_000,
+    ...CLASSIFICATION_AI, providerModels: CLASSIFIER_MODELS, maxTokens: 4000, timeoutMs: 90_000, usage: { feature: 'cv-classify', tenantId },
     // Classement de champs : réflexion courte (Haiku 5.5 réfléchit par défaut, effort moyen) ; ignoré hors Claude.
     effort: 'low',
   })
@@ -160,9 +161,10 @@ export async function classifySource(kind: ClassifiedKind, sourceId: string, { r
   const text = fileId ? await readCvForScoring(fileId, kind === 'vivier' ? BUCKETS.VIVIER_CVS : BUCKETS.CVS) : profileText(doc.cvProfileJson)
   if (!text) return 'no_text'
 
-  const result = rulesOnly ? await byRules(text, ruleVocabulary, new Date()) : await classifyWithFallback(text, kind, sourceId)
-  if (!result) return 'invalid_answer'
   const tenantId = kind === 'vivier' ? str(doc.tenantId) : ''
+  const result = rulesOnly ? await byRules(text, ruleVocabulary, new Date())
+    : await classifyWithFallback(text, kind, sourceId, { ...DEFAULT_DEPS, byAi: t => classifyCvText(t, tenantId) })
+  if (!result) return 'invalid_answer'
   const ownerId = kind === 'vivier' ? str(doc.recruiterId) : str(doc.hunterUserId)
   await saveClassification({ kind, sourceId, sourceKey, model: result.model, classification: result.classification, tenantId, ownerId })
   // Index de recherche (phase 2) : jamais bloquant, rattrapé par la synchronisation de l'index (src/lib/search/sync.ts).

@@ -81,7 +81,8 @@ export async function scanCandidateCv(candidateId: string): Promise<{ ok?: boole
     if (!cvFileId) return { error: 'Ce candidat n\'a pas encore de CV' }
 
     const { extractCvProfile } = await import('@/lib/cv-profile-extract')
-    const profile = await extractCvProfile(cvFileId)
+    // Relance par un admin : comptée pour la plateforme (journal de consommation de l'IA, ADR 0064).
+    const profile = await extractCvProfile(cvFileId, undefined, 'admin')
     if (!profile) return { error: 'Impossible d\'extraire les informations de ce CV' }
 
     const existing: Partial<CvProfile> = doc.cvProfileJson ? JSON.parse(doc.cvProfileJson as string) : {}

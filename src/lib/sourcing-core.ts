@@ -30,6 +30,7 @@ import {
 import { listAllByValues, listAllDocuments } from '@/lib/appwrite/list-all'
 import { mapLimit } from '@/lib/concurrency'
 import { withCheckedTitles } from '@/lib/title-check'
+import { organisationOf, type UsageContext } from '@/lib/ai/usage'
 
 export function wrapEmailHtml(title: string, bodyHtml: string): string {
   return `
@@ -145,9 +146,10 @@ export type MatchResult = { matches: CandidateMatch[]; scanned: number; consider
 
 /**
  * `exclude` : candidats à ne pas noter en plus de ceux qui ont déjà postulé (déjà notés, mode 'new') ; `only` : les
- * seuls candidats à noter (mode 'all' : ceux déjà notés pour l'offre).
+ * seuls candidats à noter (mode 'all' : ceux déjà notés pour l'offre) ; `tenantId` : organisation qui déclenche la
+ * notation (journal de consommation de l'IA, ADR 0064), par défaut celle de l'offre.
  */
-export async function matchCandidatesForJob(jobId: string, { exclude: alsoExclude = new Set<string>(), only }: { exclude?: Set<string>; only?: string[] } = {}): Promise<MatchResult> {
+export async function matchCandidatesForJob(jobId: string, { exclude: alsoExclude = new Set<string>(), only, tenantId }: { exclude?: Set<string>; only?: string[]; tenantId?: string } = {}): Promise<MatchResult> {
   try {
     const { databases } = createAdminClient()
     const [job, applicants] = await Promise.all([
@@ -160,6 +162,7 @@ export async function matchCandidatesForJob(jobId: string, { exclude: alsoExclud
         title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? ''), details: offerDetails(job),
         sourceContext: await aoSourceContext(job),
         criteria: await loadOfferCriteria(jobId),
+        tenantId: tenantId ?? organisationOf(String(job.tenantId ?? '')),
       },
       exclude,
       only,
@@ -190,6 +193,11 @@ export interface OfferForMatching {
   sourceContext?: string
   /** Critères de l'offre (ADR 0061) : notation « matching » sur eux (v3) ; absents, sur le barème (v2). */
   criteria?: OfferCriteriaSet | null
+  /**
+   * Organisation pour qui la notation est faite (journal de consommation de l'IA, ADR 0064) : celle du recruteur qui la
+   * déclenche, sinon celle de l'offre (« admin » pour la plateforme). N'entre pas dans le message envoyé à l'IA.
+   */
+  tenantId?: string
 }
 
 const CANDIDATE_FIELDS = ['$id', 'firstName', 'lastName', 'email', 'cvFileId', 'optedOutOfOutreach']
@@ -314,12 +322,12 @@ export function cvScorer(offer: OfferForMatching, scale: ActiveScale, { useCache
     // Score et résumé refaits d'après les jugements gardés : les poids par défaut ont pu changer depuis (ADR 0049).
     if (cached) return { ...cached, ...scoredFrom(cached.judgements, cached.notes), criteria }
 
-    const { answer, provider } = await askScoring(system, user, offerPrefix)
+    const { answer, provider } = await askScoring(system, user, offerPrefix, { feature: `scoring-${scale}`, tenantId: offer.tenantId })
     // Jugements vérifiés dans le texte du CV que l'IA a lu (citations, intitulés), métiers du titre confirmés par la
     // comparaison des intitulés (title-check.ts).
     const parsed = parseJudgements(answer, criteria, cvText, scale)
     if (!parsed) return null
-    const [judgements] = await withCheckedTitles([parsed])
+    const [judgements] = await withCheckedTitles([parsed], { feature: 'title-check', tenantId: offer.tenantId })
     const notes = parseScoringNotes(answer)
     const scored: CvScore = { ...scoredFrom(judgements, notes), judgements, criteria, notes, provider, answer }
     // Gardée seulement si elle vient du modèle choisi : la réponse d'un modèle de repli n'est pas reprise ensuite.
@@ -331,9 +339,9 @@ export function cvScorer(offer: OfferForMatching, scale: ActiveScale, { useCache
 }
 
 /** Appel de la notation : objet JSON de la réponse (null si illisible) et modèle qui a répondu. */
-async function askScoring(system: string, user: string, offerPrefix: string): Promise<{ answer: unknown; provider: string }> {
+async function askScoring(system: string, user: string, offerPrefix: string, usage: UsageContext): Promise<{ answer: unknown; provider: string }> {
   // Une preuve par élément jugé : réponse plus longue qu'une note (et la réflexion du modèle compte dans la limite).
-  const { content, provider } = await callLLM([{ role: 'user', content: user }], system, { ...SCORING_AI, maxTokens: 8000, timeoutMs: 120_000, cachePrefix: offerPrefix })
+  const { content, provider } = await callLLM([{ role: 'user', content: user }], system, { ...SCORING_AI, maxTokens: 8000, timeoutMs: 120_000, cachePrefix: offerPrefix, usage })
   const json = content.match(/\{[\s\S]*\}/)
   let answer: unknown = null
   try { answer = json ? parseModelJson(json[0]) : null } catch { answer = null }
@@ -374,10 +382,10 @@ export function criteriaScorer(offer: OfferForMatching, set: OfferCriteriaSet, {
     const cached = cacheId ? await readCachedCriteriaScore(cacheId, fingerprint) : null
     if (cached) return { ...cached, ...scoredOnCriteria(cached.judgements, set, cached.notes), set }
 
-    const { answer, provider } = await askScoring(system, user, offerPrefix)
+    const { answer, provider } = await askScoring(system, user, offerPrefix, { feature: 'scoring-criteria', tenantId: offer.tenantId })
     const parsed = parseCriteriaJudgements(answer, set, cvText)
     if (!parsed) return null
-    const [judgements] = await withCheckedTitles([parsed])
+    const [judgements] = await withCheckedTitles([parsed], { feature: 'title-check', tenantId: offer.tenantId })
     const notes = parseScoringNotes(answer)
     const scored: CriteriaCvScore = { ...scoredOnCriteria(judgements, set, notes), judgements, set, notes, provider, answer }
     if (cacheId && model && provider === model.provider) {
@@ -504,7 +512,7 @@ export async function generateOutreachMessageCore(candidateId: string, jobId: st
       jobLocation: job.location as string,
     })
 
-    const { content } = await callLLM([{ role: 'user', content: userMsg }], system)
+    const { content } = await callLLM([{ role: 'user', content: userMsg }], system, { usage: { feature: 'sourcing-outreach', tenantId: organisationOf(String(job.tenantId ?? '')) } })
     return parseOutreachAnswer(content, job.title as string)
   } catch (e) {
     return { subject: '', message: '', error: e instanceof Error ? e.message : 'Erreur inconnue' }

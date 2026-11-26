@@ -5,7 +5,7 @@ import { parseCriteriaJudgements } from '../criteria-scoring'
 import { offerCriteria, parseJudgements, parseTitleRelations, rolePairs, titleCheckPrompt, type ActiveScale, type MatchJudgements } from '../match-scoring'
 import type { OfferCriteriaSet } from '../offer-criteria'
 import { parseVivierMatching, type OfferToScore } from '../vivier-matching'
-import { InvalidAnswerError, TruncatedAnswerError, contentOf, dominantLang, parseExtraction, parseTranslation, type CvContent } from '../cv-export/cv-data'
+import { InvalidAnswerError, TruncatedAnswerError, contentCoverage, contentOf, dominantLang, parseExtraction, parseTranslation, type CvContent } from '../cv-export/cv-data'
 import { translationPrompt, translationRequest } from '../cv-export/prompt'
 import type { AnonymizationMode, CvLang } from '../cv-export/types'
 import { cleanAnswer } from '../../assistant/core/rules'
@@ -412,6 +412,23 @@ export type Split = 'train' | 'validation' | 'test'
 export function splitOf(group: string): Split {
   const n = parseInt(createHash('sha256').update(`split:${group}`).digest('hex').slice(0, 8), 16) % 10
   return n === 0 ? 'test' : n === 1 ? 'validation' : 'train'
+}
+
+/** Texte du CV d'une demande de l'export (entre les balises du message, extractionRequest). */
+export const cvTextOfRequest = (item: DatasetItem) => item.messages[0]?.content.match(/<cv>\n([\s\S]*)\n<\/cv>$/)?.[1] ?? ''
+
+/**
+ * Part du CV qu'un dossier de l'enseignant doit reprendre pour servir d'exemple (entraînement et contrôle). L'enseignant
+ * en perd parfois une partie (v3 : 14 dossiers sur 93 sous 85 %, 5 sous 70 %) et l'élève apprenait à en perdre autant,
+ * alors que l'export recopie le CV mot pour mot (ADR 0024) et signale tout dossier sous 90 % (MIN_CONTENT_COVERAGE).
+ * 85 % plutôt que 90 % : un dossier fidèle laisse de côté l'identité et les coordonnées. Le test garde tous les dossiers.
+ */
+export const MIN_EXAMPLE_COVERAGE = 0.85
+
+/** Raison d'écarter une réponse acceptée des exemples d'entraînement et de contrôle ; null si elle y va. */
+export function exampleRefusal(item: DatasetItem, answer: string): string | null {
+  if (item.ctx.task !== 'cv-export-extract') return null
+  return contentCoverage(cvTextOfRequest(item), contentOf(parseExtraction(answer))) < MIN_EXAMPLE_COVERAGE ? 'dossier incomplet' : null
 }
 
 /**

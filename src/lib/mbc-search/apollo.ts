@@ -142,43 +142,44 @@ export async function pollApolloPhone(requestId: string): Promise<{ state: 'pend
 /**
  * Un appel à l'IA de MBC Search (ligne « Matching IA » de Config IA, Claude par défaut, SCORING_AI ; repli sur les autres
  * modèles configurés) : consignes et message construits par prompts.ts, réponse brute à lire par l'appelant.
+ * `tenantId` : organisation du recruteur, pour le journal de consommation de l'IA (ADR 0064, fonction « mbc-search-… »).
  */
-async function askAi({ system, user }: MbcPrompt, maxTokens: number, timeoutMs: number = BRIEF_TIMEOUT_MS): Promise<string> {
-  const { content } = await callLLM([{ role: 'user', content: user }], system, { ...SCORING_AI, maxTokens, timeoutMs })
+async function askAi(step: string, tenantId: string, { system, user }: MbcPrompt, maxTokens: number, timeoutMs: number = BRIEF_TIMEOUT_MS): Promise<string> {
+  const { content } = await callLLM([{ role: 'user', content: user }], system, { ...SCORING_AI, maxTokens, timeoutMs, usage: { feature: `mbc-search-${step}`, tenantId } })
   return content
 }
 
 /** Critères tirés d'un brief (briefCriteriaPrompt), à lire avec parseBriefCriteria. */
-export async function briefToCriteriaText(brief: string): Promise<string> {
-  return askAi(briefCriteriaPrompt(brief), 600)
+export async function briefToCriteriaText(brief: string, tenantId: string): Promise<string> {
+  return askAi('criteria', tenantId, briefCriteriaPrompt(brief), 600)
 }
 
 /** Autres requêtes pour le même besoin (strategiesPrompt), à lire avec parseStrategies. */
-export async function strategiesText(input: { brief: string; criteria: MbcCriteria }): Promise<string> {
-  return askAi(strategiesPrompt(input), 800)
+export async function strategiesText(input: { brief: string; criteria: MbcCriteria }, tenantId: string): Promise<string> {
+  return askAi('strategies', tenantId, strategiesPrompt(input), 800)
 }
 
 /**
  * Comparaison des intitulés d'une page de profils au métier demandé (même consigne que la notation des candidats,
  * title-check.ts), à lire avec parseTitleRelations. Une seule question pour toute la page.
  */
-export async function titleFitsText(pairs: TitlePair[]): Promise<string> {
-  return askAi(titleCheckPrompt(pairs), 2000)
+export async function titleFitsText(pairs: TitlePair[], tenantId: string): Promise<string> {
+  return askAi('title-fit', tenantId, titleCheckPrompt(pairs), 2000)
 }
 
 /** Questions avant la recherche (briefQuestionsPrompt), à lire avec parseQuestionsAnswer. */
-export async function briefQuestionsText(brief: string): Promise<string> {
-  return askAi(briefQuestionsPrompt(brief), 700)
+export async function briefQuestionsText(brief: string, tenantId: string): Promise<string> {
+  return askAi('questions', tenantId, briefQuestionsPrompt(brief), 700)
 }
 
 /** Critères ajustés après un message du recruteur (refinePrompt), à lire avec parseRefinement. */
-export async function refineCriteriaText(input: { brief: string; criteria: string; message: string }): Promise<string> {
-  return askAi(refinePrompt(input), 800)
+export async function refineCriteriaText(input: { brief: string; criteria: string; message: string }, tenantId: string): Promise<string> {
+  return askAi('refine', tenantId, refinePrompt(input), 800)
 }
 
 /** Brouillon du message d'approche (outreachPrompt), nettoyé par cleanOutreachDraft, relu et envoyé par le recruteur. */
-export async function outreachDraftText(input: { need: string; recruiter: string; person: string; channel: OutreachChannel }): Promise<string> {
-  return askAi(outreachPrompt(input), 700)
+export async function outreachDraftText(input: { need: string; recruiter: string; person: string; channel: OutreachChannel }, tenantId: string): Promise<string> {
+  return askAi('outreach', tenantId, outreachPrompt(input), 700)
 }
 
 /**
@@ -186,6 +187,6 @@ export async function outreachDraftText(input: { need: string; recruiter: string
  * matching), plus ce qu'est un profil Apollo ; réponse brute, lue par l'action comme celle de cvScorer. Réponse longue
  * (jugements, preuves, notes) : 8 000 jetons et 120 s.
  */
-export async function evaluationText(prompt: MbcPrompt): Promise<string> {
-  return askAi(prompt, 8000, 120_000)
+export async function evaluationText(prompt: MbcPrompt, tenantId: string): Promise<string> {
+  return askAi('evaluation', tenantId, prompt, 8000, 120_000)
 }

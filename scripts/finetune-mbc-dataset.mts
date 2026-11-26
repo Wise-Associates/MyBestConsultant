@@ -12,6 +12,9 @@
 //   npm run finetune:mbc-dataset -- split --out <dossier> [--classification <dossier>]
 //        → train.jsonl, validation.jsonl, test.jsonl (format du déployeur), test-items.jsonl (évaluation) ; les exemples
 //          de classification déjà répartis (ADR 0058) sont ajoutés tels quels, test inchangé
+//   npm run finetune:mbc-dataset -- judge-assistant --out <dossier> --url <…/v1> --model <id> --label ft3b --max-usd 5
+//        → assistant IA : questions de mesure (assistant-judge.ts) posées au modèle déployé (ou à l'enseignant avec
+//          --teacher), chaque réponse jugée par Claude Opus 5.5 (payant, clé FT_ANTHROPIC_API_KEY) ; judge-assistant-<nom>-*.json
 // Aucune donnée de CV ni valeur secrète n'est affichée : seulement des nombres.
 import Anthropic from '@anthropic-ai/sdk'
 import { appendFileSync, existsSync, readFileSync, readdirSync, renameSync } from 'node:fs'
@@ -19,18 +22,21 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ensurePrivateDir, readEnv, refuseGitOutDir, writePrivate } from './finetune-shared.mjs'
 import {
-  TASKS, TEACHER, chatExample, estimateCost, estimateTokens, followUpItems, splitOf, teacherAnswer, type DatasetItem,
+  TASKS, TEACHER, chatExample, estimateCost, estimateTokens, exampleRefusal, followUpItems, splitOf, teacherAnswer, type DatasetItem,
 } from '../src/lib/finetune/mbc-dataset'
 import { claudeProblem, openAiProblem } from '../src/lib/ao/ai-failures'
 import { mapLimit } from '../src/lib/concurrency'
 
 const DEV_PROJECT_ID = 'bestconsultant-dev'
-const USAGE = 'Usage : npm run finetune:mbc-dataset -- collect <fichier .env> [--prod] [--tasks scoring,cv-export,assistant,interviews,jobs,content,ao,mbc-search] --out <dossier> | ' +
-  'teach --out <dossier> [--sample N] [--apply --max-usd <dollars>] [--teacher openai] [--key-env <fichier>] | split --out <dossier> [--classification <dossier>]'
+const USAGE = 'Usage : npm run finetune:mbc-dataset -- collect <fichier .env> [--prod] [--tasks scoring,cv-export,assistant,interviews,jobs,content,ao,mbc-search] [--cv-limit N] --out <dossier> | ' +
+  'teach --out <dossier> [--sample N] [--apply --max-usd <dollars>] [--teacher openai] [--key-env <fichier>] | split --out <dossier> [--classification <dossier>] | ' +
+  'eval --out <dossier> --url <…/v1> --model <id> --label <nom> [--tasks a,b] [--limit N] [--temperature T] | ' +
+  'judge-assistant --out <dossier> (--url <…/v1> --model <id> | --teacher) --label <nom> --max-usd <dollars>'
 /** Familles de tâches exportées par `collect` (--tasks), et leurs demandes par projet (avant le retrait des doublons). */
 const FAMILIES = {
   scoring: async (project: string) => (await import('../src/lib/finetune/collect-scoring')).collectScoring(project, { matching: 160, final: 120, criteria: 80, vivierBatch: 60 }),
-  'cv-export': async (project: string) => (await import('../src/lib/finetune/collect-cv')).collectCvExport(project, 50),
+  // --cv-limit N : CV par projet (50 pour la v3 ; davantage pour un affinage qui manque de dossiers, ADR 0063).
+  'cv-export': async (project: string) => (await import('../src/lib/finetune/collect-cv')).collectCvExport(project, cvLimit()),
   assistant: async (project: string) => (await import('../src/lib/finetune/collect-assistant')).collectAssistant(project),
   interviews: async (project: string) => (await import('../src/lib/finetune/collect-interviews')).collectInterviews(project),
   jobs: async (project: string) => (await import('../src/lib/finetune/collect-jobs')).collectJobs(project),
@@ -46,7 +52,12 @@ const OPENAI = { model: 'gpt-4o', inputPerMTok: 2.5, outputPerMTok: 10 } as cons
 const [command, ...args] = process.argv.slice(2)
 const option = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined }
 const outArg = option('--out')
-if (!['collect', 'teach', 'split', 'eval'].includes(command ?? '') || !outArg) {
+function cvLimit(): number {
+  const n = Number(option('--cv-limit') ?? '50')
+  if (!Number.isInteger(n) || n < 1) { console.error('--cv-limit : nombre entier de CV par projet attendu.'); process.exit(1) }
+  return n
+}
+if (!['collect', 'teach', 'split', 'eval', 'judge-assistant'].includes(command ?? '') || !outArg) {
   console.error(USAGE)
   process.exit(1)
 }
@@ -257,9 +268,13 @@ if (command === 'split') {
   const out: Record<'train' | 'validation' | 'test', string[]> = { train: [], validation: [], test: [] }
   const testItems: string[] = []
   const counts: Record<string, Record<string, number>> = {}
+  const refused: Record<string, number> = {}
   for (const item of items) {
     const answer = answers.get(item.id)?.answer ?? ''
     const split = splitOf(item.group)
+    // Réponse acceptée mais mauvais exemple (dossier de l'export incomplet) : ni entraînement ni contrôle, gardée au test.
+    const refusal = split === 'test' ? null : exampleRefusal(item, answer)
+    if (refusal) { refused[`${item.ctx.task} : ${refusal}`] = (refused[`${item.ctx.task} : ${refusal}`] ?? 0) + 1; continue }
     out[split].push(JSON.stringify(chatExample(item, answer)))
     if (split === 'test') testItems.push(JSON.stringify({ ...item, teacher: answer }))
     const c = (counts[item.ctx.task] ??= { train: 0, validation: 0, test: 0 })
@@ -284,6 +299,7 @@ if (command === 'split') {
   }
   writePrivate(join(outDir, 'test-items.jsonl'), testItems.join('\n') + '\n')
   for (const [task, c] of Object.entries(counts)) console.log(`  ${task.padEnd(18)} entraînement ${c.train}, contrôle ${c.validation}, test ${c.test}`)
+  for (const [reason, n] of Object.entries(refused)) console.log(`  écartées des exemples : ${n} × ${reason}`)
   process.exit(0)
 }
 
@@ -333,6 +349,103 @@ if (command === 'eval') {
   for (const s of summary) {
     console.log(`  ${TASKS[s.task].label.padEnd(44)} ${String(s.items).padStart(4)}  valides ${pct(s.validRate).padStart(5)}  accord ${pct(s.agreement).padStart(5)}${s.meanScoreGap === null ? '' : `  écart ${s.meanScoreGap.toFixed(1)}`}${s.meanCoverage === null ? '' : `  CV repris ${pct(s.meanCoverage)}`}  ${(s.medianLatencyMs / 1000).toFixed(1)} s`)
   }
+  process.exit(0)
+}
+
+if (command === 'judge-assistant') {
+  const { ASSISTANT_EVAL_QUESTIONS, JUDGE, acceptable, judgeCostUsd, judgeSystem, judgeUser, parseVerdict, summarizeVerdicts } = await import('../src/lib/finetune/assistant-judge')
+  const { assistantSystemPrompt } = await import('../src/lib/finetune/assistant-questions')
+  type Turn = import('../src/lib/finetune/assistant-judge').Turn
+  type Verdict = import('../src/lib/finetune/assistant-judge').AssistantVerdict
+  const teacherMode = args.includes('--teacher')
+  const url = (option('--url') ?? '').replace(/\/+$/, '')
+  const model = teacherMode ? TEACHER.model : option('--model') ?? ''
+  const label = option('--label') ?? ''
+  const maxUsd = Number(option('--max-usd'))
+  if (!/^[\w.-]+$/.test(label) || !(maxUsd > 0) || (!teacherMode && (!/^https:\/\/[^\s]+\/v1$/.test(url) || !model))) { console.error(USAGE); process.exit(1) }
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+  const keyFile = resolve(option('--key-env') ?? join(repoRoot, '..', 'nosana-llm-deployer', '.env'))
+  const env = existsSync(keyFile) ? readEnv(keyFile) : {}
+  const anthropicKey = env.FT_ANTHROPIC_API_KEY?.trim()
+  const gatewayKey = env.LLM_API_KEY?.trim()
+  if (!anthropicKey) { console.error(`FT_ANTHROPIC_API_KEY absente de ${keyFile} : clé dédiée à l'affinage, jamais celle de Config IA.`); process.exit(1) }
+  if (!teacherMode && !gatewayKey) { console.error(`LLM_API_KEY (clé de la passerelle du déploiement) absente de ${keyFile}.`); process.exit(1) }
+  const client = new Anthropic({ apiKey: anthropicKey, maxRetries: 3, timeout: 180_000 })
+  let spent = 0
+  const textOf = (content: Anthropic.ContentBlock[]) => content.flatMap(b => (b.type === 'text' ? [b.text] : [])).join('')
+  const cached = (text: string) => [{ type: 'text' as const, text, cache_control: { type: 'ephemeral' as const } }]
+
+  /** Réponse lue comme l'assistant la lit (teacherAnswer : nettoyée, bornée) ; vide si l'application la refuserait. */
+  async function ask(role: 'candidate' | 'recruiter', conversation: Turn[]): Promise<{ text: string; latencyMs: number }> {
+    const started = Date.now()
+    const system = assistantSystemPrompt(role)
+    let raw: string
+    if (teacherMode) {
+      const res = await client.messages.create({
+        model: TEACHER.model, max_tokens: Math.min(32000, TASKS.assistant.appMaxTokens + 8000), system: cached(system), messages: conversation,
+        output_config: { effort: TASKS.assistant.effort },
+      })
+      const u = res.usage
+      spent += (u.input_tokens * TEACHER.inputPerMTok + (u.cache_creation_input_tokens ?? 0) * TEACHER.inputPerMTok * 1.25 +
+        (u.cache_read_input_tokens ?? 0) * TEACHER.inputPerMTok * 0.1 + u.output_tokens * TEACHER.outputPerMTok) / 1e6
+      raw = textOf(res.content)
+    } else {
+      // Mêmes réglages que l'application pour un modèle open source (température de Config IA, limite du module).
+      const res = await fetch(`${url}/chat/completions`, {
+        method: 'POST', headers: { Authorization: `Bearer ${gatewayKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, ...conversation], max_tokens: TASKS.assistant.appMaxTokens, temperature: 0.15 }),
+        signal: AbortSignal.timeout(120_000),
+      })
+      if (!res.ok) throw new Error(`modèle déployé : HTTP ${res.status}`)
+      const data = await res.json() as { choices?: { message?: { content?: string } }[] }
+      raw = data.choices?.[0]?.message?.content ?? ''
+    }
+    const verdict = teacherAnswer({ task: 'assistant', role }, raw)
+    return { text: 'answer' in verdict ? verdict.answer : '', latencyMs: Date.now() - started }
+  }
+
+  async function judge(role: 'candidate' | 'recruiter', conversation: Turn[]): Promise<Verdict | null> {
+    const res = await client.messages.create({
+      model: JUDGE.model, max_tokens: 4000, system: cached(judgeSystem(role)), messages: [{ role: 'user', content: judgeUser(conversation) }],
+      output_config: { effort: 'low' },
+    })
+    spent += judgeCostUsd(res.usage)
+    return res.stop_reason === 'end_turn' ? parseVerdict(textOf(res.content)) : null
+  }
+
+  interface Line { role: string; question: string; turn: 1 | 2; answer: string; latencyMs: number; verdict: Verdict | null; error?: string }
+  const lines: Line[] = []
+  let stopped = ''
+  console.log(`${ASSISTANT_EVAL_QUESTIONS.length} conversations, réponses de « ${model} », juge ${JUDGE.model}, plafond ${maxUsd} $…`)
+  await mapLimit(ASSISTANT_EVAL_QUESTIONS, 2, async q => {
+    const conversation: Turn[] = []
+    for (const [turn, question] of [[1, q.question], [2, q.followUp]] as const) {
+      if (!question) break
+      if (spent >= maxUsd) { stopped = `plafond --max-usd ${maxUsd} atteint`; return }
+      conversation.push({ role: 'user', content: question })
+      try {
+        const a = await ask(q.role, conversation)
+        // Réponse refusée par l'application (vide) : comptée, non jugée, et pas de second tour sans première réponse.
+        if (!a.text) { lines.push({ role: q.role, question, turn, answer: '', latencyMs: a.latencyMs, verdict: null }); return }
+        conversation.push({ role: 'assistant', content: a.text })
+        lines.push({ role: q.role, question, turn, answer: a.text, latencyMs: a.latencyMs, verdict: await judge(q.role, conversation) })
+      } catch (err) {
+        lines.push({ role: q.role, question, turn, answer: '', latencyMs: 0, verdict: null, error: err instanceof Error ? err.message : String(err) })
+        return
+      }
+    }
+  })
+  ensurePrivateDir(outDir)
+  const summary = summarizeVerdicts(lines.map(l => l.verdict))
+  writePrivate(join(outDir, `judge-assistant-${label}-${Date.now()}.json`), JSON.stringify({ label, model, judge: JUDGE.model, at: new Date().toISOString(), spentUsd: spent, summary, lines }, null, 1))
+  for (const l of lines) {
+    const v = l.verdict
+    console.log(`  ${v ? (acceptable(v) ? 'OK ' : 'NON') : '—  '} ${l.role.padEnd(9)} t${l.turn} ${l.question.slice(0, 70).padEnd(70)} ${v ? `${v.exactitude}${v.invention ? ', invention' : ''}${v.consignes ? '' : ', hors consignes'}` : l.error ?? 'réponse vide ou non jugée'}`)
+  }
+  const pct = (n: number) => `${Math.round((100 * n) / Math.max(1, summary.judged))} %`
+  console.log(`\n${summary.answers} réponses, ${summary.judged} jugées : utilisables ${summary.acceptable} (${pct(summary.acceptable)}) ; justes ${summary.juste}, incomplètes ${summary.incomplete}, fausses ${summary.fausse} ; inventions ${summary.inventions} ; hors consignes ${summary.offRules}.`)
+  const latencies = lines.filter(l => l.latencyMs).map(l => l.latencyMs).sort((a, b) => a - b)
+  console.log(`Temps médian d'une réponse ${((latencies[Math.floor(latencies.length / 2)] ?? 0) / 1000).toFixed(1)} s ; coût Claude ${spent.toFixed(2)} $${stopped ? ` ; arrêt : ${stopped}` : ''}.`)
   process.exit(0)
 }
 

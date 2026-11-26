@@ -76,7 +76,7 @@ export async function parseFileWithLLM(formData: FormData): Promise<ParseResult>
     const { content: raw } = await callLLM(
       [{ role: 'user', content: prompt.user }],
       prompt.system,
-      llmProvider,
+      { provider: llmProvider, usage: { feature: 'job-import-extract', tenantId: user.tenantId } },
     )
 
     const answer = parseJobImportAnswer(raw)
@@ -106,7 +106,7 @@ export async function improveExtractedJob(
 
   try {
     const { system, user: userMsg } = improveImportedJobPrompt({ job, request: trimmed })
-    const { content } = await callLLM([{ role: 'user', content: userMsg }], system)
+    const { content } = await callLLM([{ role: 'user', content: userMsg }], system, { usage: { feature: 'job-import-improve', tenantId: user.tenantId } })
     return parseImprovedJobAnswer(content, job)
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur d\'amélioration' }

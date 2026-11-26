@@ -47,6 +47,8 @@ export const COLLECTIONS = {
   // Jugements de l'IA pour les critères propres d'un recruteur (ADR 0061, phase 3) ; vide : critères propres sans libellé
   // nouveau seulement (poids et ★ des mêmes libellés).
   CRITERIA_JUDGEMENTS: process.env.APPWRITE_COLLECTION_CRITERIA_JUDGEMENTS ?? '',
+  // Consommation de l'IA, une ligne par essai d'un modèle (ADR 0064) ; vide : lignes « [llm-usage] » des journaux seulement.
+  LLM_USAGE: process.env.APPWRITE_COLLECTION_LLM_USAGE ?? '',
   // Classifications des CV (ADR 0044) ; vide : pas de classification (rien d'autre ne change).
   CV_CLASSIFICATIONS: process.env.APPWRITE_COLLECTION_CV_CLASSIFICATIONS ?? '',
   // Alertes « profil idéal » des recruteurs (ADR 0045) ; vide : aucune alerte ni e-mail, la page « Alertes » le dit.

@@ -182,7 +182,8 @@ export function createAssistantHost(): AssistantHost {
     async complete(system, messages) {
       try {
         // strict : pas de repli sur les autres modèles configurés, qui recevraient alors les conversations (ADR 0007).
-        const { content, provider } = await callLLM(messages, system, { module: 'assistant', strict: true })
+        // Organisation du recruteur ; aucune pour un candidat (journal de consommation, ADR 0064).
+        const { content, provider } = await callLLM(messages, system, { module: 'assistant', strict: true, usage: { feature: 'assistant', tenantId: profile?.tenantId } })
         return { text: content, provider }
       } catch (err) {
         // Le corps d'une erreur HTTP peut recopier la requête (certains serveurs compatibles OpenAI), donc le texte de

@@ -19,6 +19,7 @@ import type { SocialPreview } from '@/lib/ao/publication-social'
 import { PLATFORM_TENANT_ID } from '@/lib/ao/tenancy'
 import { STOPPED_DIFFUSION_ERROR, diffusionStopOutcome, isStoppedDiffusion, stopsDelivery } from '@/lib/publication-stop'
 import type { Job } from '@/types'
+import { organisationOf } from '@/lib/ai/usage'
 
 // Publication multi-réseaux (Modules 9 et 15) — orchestration côté plateforme.
 // Flux (ADR 0015) : offre créée → contenu préparé (lib/social-content, textes par l'IA de Config IA) et publication
@@ -231,13 +232,16 @@ export function jobToLite(job: Job, company: string, about = ''): JobLite {
   return jobLiteOf({ ...job, id: job.$id }, company || job.companyName || '', isPlatformTenant(job.tenantId), about)
 }
 
-/** L'IA reformule l'offre en accroche + puces ; en cas d'échec, repli automatique (la publication ne dépend jamais de l'IA). */
-export async function generateCopy(job: JobLite): Promise<CopyDraft> {
+/**
+ * L'IA reformule l'offre en accroche + puces ; en cas d'échec, repli automatique (la publication ne dépend jamais de l'IA).
+ * `tenantId` : organisation de l'offre, « admin » pour la plateforme (journal de consommation de l'IA, ADR 0064).
+ */
+export async function generateCopy(job: JobLite, tenantId: string): Promise<CopyDraft> {
   if (process.env.SOCIAL_COPY_AI === 'off') return fallbackCopy(job) // coupe-circuit (tests / recette)
   try {
     // Consignes, message et lecture de la réponse : social-copy-prompt.ts (pur, reproduit par les exemples d'affinage).
     const { system, user } = socialCopyPrompt(job)
-    const { content } = await callLLM([{ role: 'user', content: user }], system, { timeoutMs: 30_000 })
+    const { content } = await callLLM([{ role: 'user', content: user }], system, { timeoutMs: 30_000, usage: { feature: 'social-copy', tenantId } })
     return parseSocialCopy(content, job)
   } catch (e) {
     // Repli prévu : la publication ne dépend jamais de l'IA, mais l'admin doit pouvoir savoir pourquoi.
@@ -412,7 +416,7 @@ async function prepareLocked(job: Job, opts: PrepareOptions, cfg: SocialConfig):
   const lite = jobToLite(job, tenant.name, tenant.about)
   // Textes relus avant la publication (aperçu du post d'un AO, ADR 0058) : ils remplacent ceux de l'IA, bornés de
   // nouveau ; le post LinkedIn est alors celui de l'aperçu.
-  const generated = await generateCopy(lite)
+  const generated = await generateCopy(lite, organisationOf(job.tenantId))
   const copy = opts.edits ? normalizeCopy({ ...generated, ...opts.edits }, lite) : generated
   const site = await canonicalOrigin()
   const content = buildContent(lite, copy, cfg, { baseUrl: site, calendlyUrl: resolveCalendly(cfg) })

@@ -8,6 +8,7 @@ import type { Sender } from './origin'
 import { AO_EMAIL_ADDENDUM, AO_EXTRACTION_PROMPT, AO_PAGE_ADDENDUM, clientFromSender, clientFromText } from './prompt'
 import { readTableAttachment } from './spreadsheet'
 import type { ExtractedOffer } from './types'
+import type { UsageContext } from '@/lib/ai/usage'
 
 // Préparation d'un e-mail : les tableaux d'offres joints sont lus directement (spreadsheet.ts) ; le reste
 // (corps + autres pièces jointes, lues par la chaîne d'extracteurs) devient le texte confié à l'IA.
@@ -66,16 +67,18 @@ export async function buildEmailContent(message: InboxMessage, ctx: ExtractionCo
  * `origin` : expéditeur d'origine (origin.ts), dont l'IA lit l'entreprise dans la signature ; null si le corps de
  * l'e-mail ne lui est pas confié ou si l'expéditeur est inconnu (l'IA prend alors le client cité dans le texte).
  * `orgName` : organisation qui lit la boîte, jamais retenue comme client. `receivedAt` : date de réception de l'e-mail
- * (année des dates écrites sans, dates.ts).
+ * (année des dates écrites sans, dates.ts). `tenantId` : organisation de la boîte (journal de consommation de l'IA,
+ * ADR 0064).
  * AiUnavailable si tous les modèles ont échoué sans frais (crédits épuisés, clé refusée, service en panne…).
  */
-export async function extractOffersFromEmail(content: string, timeoutMs: number, origin: Sender | null, orgName: string, receivedAt: Date): Promise<ParsedOffers> {
+export async function extractOffersFromEmail(content: string, timeoutMs: number, origin: Sender | null, orgName: string, receivedAt: Date, tenantId: string): Promise<ParsedOffers> {
   const originLine = origin ? `Domaine de l'expéditeur d'origine : ${origin.address.split('@')[1]}\n\n` : ''
   return extractOffers(
     `Voici l'e-mail reçu (corps et pièces jointes) :\n\n${originLine}${content}`,
     AO_EXTRACTION_PROMPT + AO_EMAIL_ADDENDUM + (origin ? clientFromSender(orgName) : clientFromText(orgName)),
     timeoutMs,
     receivedAt,
+    { feature: 'ao-extract', tenantId },
   )
 }
 
@@ -83,7 +86,7 @@ export async function extractOffersFromEmail(content: string, timeoutMs: number,
  * Offres de la page web de l'annonce d'origine (ADR 0031), lue sous une consigne qui la traite comme une donnée non
  * fiable (AO_PAGE_ADDENDUM). Même validation que pour un e-mail ; AiUnavailable dans les mêmes cas.
  */
-export async function extractOffersFromPage(pageText: string, timeoutMs: number, orgName: string, receivedAt: Date): Promise<ParsedOffers> {
+export async function extractOffersFromPage(pageText: string, timeoutMs: number, orgName: string, receivedAt: Date, tenantId: string): Promise<ParsedOffers> {
   // Les délimiteurs ne peuvent pas être imités par la page pour en « sortir ».
   const page = pageText.replace(/<<<|>>>/g, ' ')
   return extractOffers(
@@ -91,17 +94,18 @@ export async function extractOffersFromPage(pageText: string, timeoutMs: number,
     AO_EXTRACTION_PROMPT + AO_PAGE_ADDENDUM + clientFromText(orgName),
     timeoutMs,
     receivedAt,
+    { feature: 'ao-extract-page', tenantId },
   )
 }
 
-async function extractOffers(userContent: string, systemPrompt: string, timeoutMs: number, receivedAt: Date): Promise<ParsedOffers> {
+async function extractOffers(userContent: string, systemPrompt: string, timeoutMs: number, receivedAt: Date, usage: UsageContext): Promise<ParsedOffers> {
   let timer: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(`Pas de réponse de l'IA après ${Math.round(timeoutMs / 1000)} s`)), timeoutMs)
   })
   let raw: string
   try {
-    raw = (await Promise.race([callLLM([{ role: 'user', content: userContent }], systemPrompt), timeout])).content
+    raw = (await Promise.race([callLLM([{ role: 'user', content: userContent }], systemPrompt, { usage }), timeout])).content
   } catch (err) {
     // callLLM a déjà essayé les autres modèles configurés ; son erreur garde l'échec de chacun.
     const reason = llmUnavailableReason(err)

@@ -402,7 +402,7 @@ export async function validateStepAction(applicationId: string, jobId: string, s
 /** Compte rendu d'étape proposé par l'IA à partir de ce que l'on sait du candidat (screening, entretien IA, notes). Rien n'est enregistré : le recruteur relit, corrige, valide. */
 export async function generateStepReportAction(applicationId: string, jobId: string, stepId: string, draft?: { result?: StepResult; notes?: string }): Promise<{ report?: string; error?: string }> {
   try {
-    const { app, databases } = await ownApplication(applicationId, jobId)
+    const { user, app, databases } = await ownApplication(applicationId, jobId)
     const f = funnelForCandidate(app.funnelJson, app.status as string)
     const step = f.steps.find(s => s.id === stepId)
     if (!step) return { error: 'Étape introuvable.' }
@@ -429,7 +429,7 @@ export async function generateStepReportAction(applicationId: string, jobId: str
       aiSummary: app.aiSummary as string | null | undefined,
       interviewAnalyses,
     })
-    const { content: text } = await callLLM([{ role: 'user', content }], system)
+    const { content: text } = await callLLM([{ role: 'user', content }], system, { usage: { feature: 'funnel-step-report', tenantId: user.tenantId } })
     const report = cleanStepReport(text)
     if (!report) return { error: 'L’IA n’a pas pu rédiger de compte rendu. Réessayez.' }
     return { report }

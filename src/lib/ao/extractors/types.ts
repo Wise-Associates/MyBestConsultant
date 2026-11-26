@@ -20,6 +20,8 @@ export interface ExtractionContext {
   releaseVisionCall(): Promise<void>
   /** État partagé par tous les e-mails d'un passage. */
   pass: PassState
+  /** Organisation de la boîte lue (journal de consommation de l'IA, ADR 0064) ; donnée par la synchronisation. */
+  tenantId?: string
 }
 
 export interface PassState {

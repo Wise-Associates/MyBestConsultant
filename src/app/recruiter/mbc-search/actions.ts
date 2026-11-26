@@ -46,6 +46,7 @@ import {
   MbcFollowUnavailableError, countSavedPeople, deleteSavedPerson, isMbcSavedStoreConfigured, saveSavedPerson, saveSavedPhone, savedPeopleAmong, savedPerson, updateSavedFollow,
 } from '@/lib/mbc-search/saved-store'
 import { followSchema, type MbcFollow } from '@/lib/mbc-search/follow'
+import type { UserProfile } from '@/types'
 
 // Actions de MBC Search (/recruiter/mbc-search, ADR 0018). Chacune vérifie elle-même le recruteur : une Server Action
 // est un point d'entrée public. Les pages de résultats ne sont pas enregistrées : seuls sont écrits les places de quota,
@@ -71,7 +72,7 @@ const PHONE_CHECKS_PER_MINUTE = 30
  * actif et adresse vérifiée, puis une place sur les quotas du jour (celui de la formule de l'organisation, puis celui
  * de toutes). Une demande qui échoue ensuite compte quand même (l'IA a pu être facturée, Apollo limite le débit).
  */
-async function searchSlot(): Promise<{ error: string } | null> {
+async function searchSlot(): Promise<{ error: string } | { user: UserProfile & { tenantId: string } }> {
   const user = await getCurrentUser()
   if (!user || user.role !== 'recruiter' || !user.tenantId) return { error: SESSION_EXPIRED }
   if (!takeBurstSlot(recentCalls, user.userId, Date.now())) {
@@ -94,7 +95,7 @@ async function searchSlot(): Promise<{ error: string } | null> {
       await releaseDailySlot(own)
       return { error: MBC_SEARCH_QUOTA_MESSAGE.platform }
     }
-    return null
+    return { user: { ...user, tenantId } }
   } catch (err) {
     console.error('[mbc-search] abonnement ou quota illisible', err instanceof Error ? err.message : String(err))
     return { error: 'Recherche impossible pour le moment : réessayez dans quelques instants.' }
@@ -110,11 +111,12 @@ const briefSchema = z.string().trim().min(20, 'Décrivez le profil en quelques p
 export async function askMbcQuestions(brief: unknown): Promise<{ reply?: string; questions?: MbcQuestion[]; error?: string }> {
   const parsed = briefSchema.safeParse(brief)
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Brief invalide.' }
-  const refused = await searchSlot()
-  if (refused) return refused
+  const slot = await searchSlot()
+  if ('error' in slot) return slot
+  const { user } = slot
   let text: string
   try {
-    text = await briefQuestionsText(parsed.data)
+    text = await briefQuestionsText(parsed.data, user.tenantId)
   } catch (err) {
     console.error('[mbc-search] questions sur le brief impossibles', llmFailureDetail(err))
     return { error: 'L\'IA n\'a pas pu préparer ses questions : réessayez, ou lancez la recherche sans questions.' }
@@ -133,11 +135,12 @@ export async function analyseMbcBrief(brief: unknown, answers: unknown = []): Pr
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Brief invalide.' }
   const replies = answersSchema.safeParse(answers)
   if (!replies.success) return { error: 'Réponses invalides : rechargez la page.' }
-  const refused = await searchSlot()
-  if (refused) return refused
+  const slot = await searchSlot()
+  if ('error' in slot) return slot
+  const { user } = slot
   let text: string
   try {
-    text = await briefToCriteriaText(briefWithAnswers(parsed.data, replies.data))
+    text = await briefToCriteriaText(briefWithAnswers(parsed.data, replies.data), user.tenantId)
   } catch (err) {
     console.error('[mbc-search] analyse du brief impossible', llmFailureDetail(err))
     return { error: 'L\'IA n\'a pas pu lire le brief : réessayez, ou renseignez les critères vous-même.' }
@@ -160,12 +163,13 @@ const refineSchema = z.object({
 export async function refineMbcSearch(input: unknown): Promise<{ reply?: string; criteria?: MbcCriteria; error?: string }> {
   const parsed = refineSchema.safeParse(input)
   if (!parsed.success) return { error: parsed.error.issues.find(i => i.path[0] === 'message')?.message ?? 'Recherche invalide : rechargez la page.' }
-  const refused = await searchSlot()
-  if (refused) return refused
+  const slot = await searchSlot()
+  if ('error' in slot) return slot
+  const { user } = slot
   const { brief, criteria, message } = parsed.data
   let text: string
   try {
-    text = await refineCriteriaText({ brief: briefForAi(brief), criteria: criteriaForAi(criteria), message })
+    text = await refineCriteriaText({ brief: briefForAi(brief), criteria: criteriaForAi(criteria), message }, user.tenantId)
   } catch (err) {
     console.error('[mbc-search] ajustement des critères impossible', llmFailureDetail(err))
     return { error: 'L\'IA n\'a pas pu ajuster la recherche : réessayez, ou modifiez les critères vous-même.' }
@@ -187,11 +191,12 @@ export async function planMbcStrategies(input: unknown): Promise<{ strategies?: 
   if (!parsed.success) return { error: 'Critères invalides : rechargez la page.' }
   const problem = criteriaProblem(parsed.data.criteria)
   if (problem) return { error: problem }
-  const refused = await searchSlot()
-  if (refused) return refused
+  const slot = await searchSlot()
+  if ('error' in slot) return slot
+  const { user } = slot
   const only = 'Je n\'ai pas pu préparer d\'autres recherches : je cherche avec vos critères seulement.'
   try {
-    const strategies = parseStrategies(await strategiesText(parsed.data), parsed.data.criteria)
+    const strategies = parseStrategies(await strategiesText(parsed.data, user.tenantId), parsed.data.criteria)
     return strategies.length > 1 ? { strategies } : { strategies, note: 'Vos critères suffisent : une seule recherche.' }
   } catch (err) {
     console.error('[mbc-search] requêtes supplémentaires impossibles', llmFailureDetail(err))
@@ -215,11 +220,11 @@ const searchSchema = z.object({
  * `titleKey`). `failed` : l'IA indisponible ou illisible (réponse d'une autre longueur que la liste comprise), les mots
  * en commun départagent les intitulés.
  */
-async function titleFits(criteria: MbcCriteria, profiles: MbcProfile[]): Promise<{ fits: Map<string, TitleRelation | null>; failed: boolean }> {
+async function titleFits(criteria: MbcCriteria, profiles: MbcProfile[], tenantId: string): Promise<{ fits: Map<string, TitleRelation | null>; failed: boolean }> {
   const pairs = titlePairs(criteria, profiles)
   if (pairs.length === 0) return { fits: new Map(), failed: false }
   try {
-    const relations = parseTitleRelations(await titleFitsText(pairs), pairs.length, true)
+    const relations = parseTitleRelations(await titleFitsText(pairs, tenantId), pairs.length, true)
     if (relations.every(r => r === null)) console.warn('[mbc-search] comparaison des intitulés illisible : mots en commun')
     return { fits: new Map(pairs.map((p, i) => [titleKey(p.intitule), relations[i]])), failed: relations.every(r => r === null) }
   } catch (err) {
@@ -253,13 +258,13 @@ export async function searchMbcProfiles(input: unknown): Promise<{
   const { criteria, query, page, brief, record } = parsed.data
   const problem = criteriaProblem(criteria) ?? criteriaProblem(query)
   if (problem) return { error: problem }
-  const user = await getCurrentUser()
-  const refused = await searchSlot()
-  if (refused || !user?.tenantId) return { ...(refused ?? { error: SESSION_EXPIRED }), stop: true }
+  const slot = await searchSlot()
+  if ('error' in slot) return { ...slot, stop: true }
+  const { user } = slot
   let found: { total: number; profiles: ScoredProfile[]; titleCheckFailed: boolean; revealed?: MbcRevealed[]; inVivier?: Record<string, string[]> }
   try {
     const { total, profiles } = await searchApolloPeople(query, page, STRATEGY_LIMITS.perPage)
-    const { fits, failed } = await titleFits(criteria, profiles)
+    const { fits, failed } = await titleFits(criteria, profiles, user.tenantId)
     found = { total, titleCheckFailed: failed, profiles: rankProfiles(profiles, criteria, new Date(), p => fits.get(titleKey(p.title)) ?? null) }
   } catch (err) {
     if (err instanceof ApolloSearchError) return err.blocking ? { error: err.message, stop: true } : { error: err.message }
@@ -651,9 +656,9 @@ export async function evaluateMbcProfile(input: unknown): Promise<{ evaluation?:
   const { id, brief, criteria } = parsed.data
   const problem = criteriaProblem(criteria)
   if (problem) return { error: problem }
-  const user = await getCurrentUser()
-  const refused = await searchSlot()
-  if (refused || !user?.tenantId) return refused ?? { error: SESSION_EXPIRED }
+  const slot = await searchSlot()
+  if ('error' in slot) return slot
+  const { user } = slot
   let profile: MbcRevealed | null
   try {
     profile = await revealedFor({ userId: user.userId, tenantId: user.tenantId }, id)
@@ -668,14 +673,14 @@ export async function evaluateMbcProfile(input: unknown): Promise<{ evaluation?:
     // Consignes et message de prompts.ts (ceux des exemples d'affinage) ; judged et cvText servent à lire la réponse.
     const prompt = evaluationPrompt({ brief, criteria, profile })
     const { judged, cvText } = prompt
-    const content = await evaluationText(prompt)
+    const content = await evaluationText(prompt, user.tenantId)
     // Lu comme une notation de CV (cvScorer, sourcing-core.ts) : jugements vérifiés dans le texte lu, intitulés comparés.
     const json = content.match(/\{[\s\S]*\}/)
     let answer: unknown = null
     try { answer = json ? parseModelJson(json[0]) : null } catch { answer = null }
     const judgements = parseJudgements(answer, judged, cvText, 'matching')
     if (!judgements) return { error: failed }
-    const [checked] = await withCheckedTitles([judgements])
+    const [checked] = await withCheckedTitles([judgements], { feature: 'title-check', tenantId: user.tenantId })
     return { evaluation: evaluationOf(checked, judged, weights.matching, parseScoringNotes(answer), parseEvaluationExtras(answer), { titleAsked: criteria.titles.length > 0 }) }
   } catch (err) {
     console.error('[mbc-search] évaluation impossible', llmFailureDetail(err))
@@ -691,9 +696,9 @@ export async function evaluateMbcProfile(input: unknown): Promise<{ evaluation?:
 export async function similarMbcCriteria(id: unknown): Promise<{ criteria?: MbcCriteria; brief?: string; error?: string }> {
   const parsed = z.string().regex(APOLLO_PERSON_ID).safeParse(id)
   if (!parsed.success) return { error: 'Profil invalide : rechargez la page.' }
-  const user = await getCurrentUser()
-  const refused = await searchSlot()
-  if (refused || !user?.tenantId) return refused ?? { error: SESSION_EXPIRED }
+  const slot = await searchSlot()
+  if ('error' in slot) return slot
+  const { user } = slot
   let profile: MbcRevealed | null
   try {
     profile = await revealedFor({ userId: user.userId, tenantId: user.tenantId }, parsed.data)
@@ -703,7 +708,7 @@ export async function similarMbcCriteria(id: unknown): Promise<{ criteria?: MbcC
   }
   if (!profile) return { error: NOT_REVEALED }
   try {
-    const criteria = parseBriefCriteria(await briefToCriteriaText(similarBrief(profile)))
+    const criteria = parseBriefCriteria(await briefToCriteriaText(similarBrief(profile), user.tenantId))
     if (!criteria) return { error: 'L\'IA n\'a pas tiré de critères de ce profil : renseignez-les vous-même.' }
     // Le parcours de la personne ne quitte pas le serveur : le besoin gardé est tiré des critères seuls (similarNeed).
     return { criteria, brief: similarNeed(criteria) }
@@ -816,12 +821,12 @@ export async function draftMbcOutreach(input: unknown): Promise<{ message?: stri
   if (!parsed.success) return { error: 'Profil invalide : rechargez la page.' }
   const need = outreachNeedText(parsed.data.brief, parsed.data.criteria)
   if (!need) return { error: 'Décrivez d\'abord le besoin (brief ou critères).' }
-  const user = await getCurrentUser()
-  const refused = await searchSlot()
-  if (refused || !user) return refused ?? { error: SESSION_EXPIRED }
+  const slot = await searchSlot()
+  if ('error' in slot) return slot
+  const { user } = slot
   try {
     const recruiter = [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Le recruteur'
-    const message = cleanOutreachDraft(await outreachDraftText({ need, recruiter, person: outreachPersonText(parsed.data.person), channel: parsed.data.channel }))
+    const message = cleanOutreachDraft(await outreachDraftText({ need, recruiter, person: outreachPersonText(parsed.data.person), channel: parsed.data.channel }, user.tenantId))
     if (!message) return { error: 'L\'IA n\'a pas rédigé de message : réessayez.' }
     return { message }
   } catch (err) {

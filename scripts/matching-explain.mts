@@ -98,6 +98,8 @@ const offer = {
   title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? ''),
   details: scale === 'final' ? await finalOfferDetails(job) : offerDetails(job),
   sourceContext: await aoSourceContext(job),
+  // Lancé à la main par l'équipe : compté pour la plateforme (journal de consommation de l'IA, ADR 0064).
+  tenantId: 'admin',
 }
 // Critères de l'offre (ADR 0061) : la notation « matching » de l'application se fait sur eux.
 const criteriaSet = scale === 'matching' ? await loadOfferCriteria(job.$id) : null

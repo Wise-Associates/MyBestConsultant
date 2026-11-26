@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/appwrite/client'
 import { DB_ID, COLLECTIONS, BUCKETS } from '@/lib/appwrite/config'
 import { callLLMForModule } from '@/lib/ai/llm-router'
+import { organisationOf } from '@/lib/ai/usage'
 
 // Tous les appels IA de ce fichier relèvent du module « Entretiens IA » (modèle réglable dans /admin/llm-config).
 const callLLM = callLLMForModule('interview')
@@ -59,7 +60,7 @@ export async function answerClosingQuestion(
     if (!session || typeof candidateMessage !== 'string' || !(await takeRoomSlot(session, true))) return { answer: null }
     // Poste lu sur l'entretien, jamais dans la demande.
     const prompt = closingAnswerPrompt({ jobTitle: String(session.jobTitle ?? ''), candidateMessage })
-    const { content } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system)
+    const { content } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system, { feature: 'interview-live-answer', tenantId: organisationOf(String(session.tenantId ?? '')) })
     return { answer: nullableReply(content) }
   } catch (err) {
     console.error('[interview] réponse de l\'IA à la question du candidat impossible', err instanceof Error ? err.message : String(err))
@@ -81,7 +82,7 @@ export async function getCandidateAIFollowUp(
     const question = Array.isArray(questions) ? questions.find(q => q?.id === currentQuestion?.id) : undefined
     if (!question || !(await takeRoomSlot(session, true))) return { followUp: null }
     const prompt = candidateFollowUpPrompt({ question: String(question.text), answer: candidateAnswer })
-    const { content } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system)
+    const { content } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system, { feature: 'interview-live-followup', tenantId: organisationOf(String(session.tenantId ?? '')) })
     return { followUp: nullableReply(content) }
   } catch (err) {
     console.error('[interview] relance de l\'IA impossible', err instanceof Error ? err.message : String(err))

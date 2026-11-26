@@ -4,7 +4,7 @@ import { parseModelJson } from '../ai/model-json'
 import { judgedScore, offerCriteria, parseJudgements, parseTitleRelations } from '../match-scoring'
 import { SOURCING_MIN_SCORE } from '../sourcing-rules'
 import { parseVivierMatching, vivierScore } from '../vivier-matching'
-import { teacherAnswer, type DatasetItem, type TaskId } from './mbc-dataset'
+import { cvTextOfRequest, teacherAnswer, type DatasetItem, type TaskId } from './mbc-dataset'
 
 // Mesure d'un modèle élève sur les exemples de test (ADR 0063) : sa réponse lue par l'application (teacherAnswer), puis
 // comparée à celle de l'enseignant, tâche par tâche. Règles pures, testées dans mbc-eval.test.ts.
@@ -49,9 +49,6 @@ function scoreOf(item: TestItem, raw: string): number | null {
   return null
 }
 
-/** Texte du CV d'une demande de l'export (entre les balises du message). */
-const cvTextOf = (item: TestItem) => item.messages[0]?.content.match(/<cv>\n([\s\S]*)\n<\/cv>$/)?.[1] ?? ''
-
 /** Réponse de l'élève à une demande de test, comparée à celle de l'enseignant. */
 export function judgeStudent(item: TestItem, student: string, latencyMs: number): ItemResult {
   const task = item.ctx.task
@@ -79,7 +76,7 @@ export function judgeStudent(item: TestItem, student: string, latencyMs: number)
     const t = parseTitleRelations(item.teacher, ctx.count, true)
     result.agreement = s.filter((r, i) => r === t[i]).length / ctx.count
   } else if (ctx.task === 'cv-export-extract') {
-    result.coverage = contentCoverage(cvTextOf(item), contentOf(parseExtraction(verdict.answer)))
+    result.coverage = contentCoverage(cvTextOfRequest(item), contentOf(parseExtraction(verdict.answer)))
   }
   return result
 }

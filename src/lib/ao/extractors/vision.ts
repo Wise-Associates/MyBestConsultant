@@ -2,6 +2,8 @@ import Anthropic from '@anthropic-ai/sdk'
 import { claudeProblem, describeAiProblem } from '../ai-failures'
 import { AiUnavailable, RetryLater, SkipAttachment, formatOf, type Attachment, type AttachmentExtractor, type ExtractionContext } from './types'
 import { transcribeWithOpenAI } from './vision-openai'
+import { claudeTokens, directCallRecord, outcomeOf, type UsageContext } from '@/lib/ai/usage'
+import { recordLlmUsage } from '@/lib/ai/usage-store'
 
 // Images (photo ou capture d'un appel d'offres) et PDF scannés : l'IA lit le document et en transcrit le
 // texte, qui suit ensuite le même chemin que le reste de l'e-mail (extraction des offres, validation).
@@ -52,10 +54,11 @@ export function visionBlockFor(file: Attachment): VisionBlock | null {
  * Transcrit le document avec Claude. AiUnavailable : refus sans frais (crédits épuisés, clé refusée, service
  * saturé…) ; RetryLater : délai dépassé ; SkipAttachment : document refusé.
  */
-async function transcribeWithClaude(block: VisionBlock, apiKey: string, wait: number): Promise<string> {
+async function transcribeWithClaude(block: VisionBlock, apiKey: string, wait: number, usage: UsageContext): Promise<string> {
   // Pas de nouvel essai dans le SDK (son délai s'appliquerait à chaque essai) : un échec passager
   // fait reprendre tout l'e-mail plus tard (RetryLater), dans un passage qui a le temps.
   const client = new Anthropic({ apiKey, maxRetries: 0 })
+  const started = Date.now()
   let response: Anthropic.Beta.Messages.BetaMessage
   try {
     response = await client.beta.messages.create({
@@ -68,6 +71,7 @@ async function transcribeWithClaude(block: VisionBlock, apiKey: string, wait: nu
       messages: [{ role: 'user', content: [block, { type: 'text', text: TRANSCRIBE_PROMPT }] }],
     }, { signal: AbortSignal.timeout(wait) })
   } catch (err) {
+    recordLlmUsage(directCallRecord(usage, { provider: 'claude', model: VISION_MODEL, durationMs: Date.now() - started, tokens: null, outcome: outcomeOf(err) }))
     // Refus sans frais (crédits, clé, modèle, service saturé) : le service suivant prend le relais.
     const problem = claudeProblem(err)
     if (problem) throw new AiUnavailable(describeAiProblem(problem, err))
@@ -82,6 +86,11 @@ async function transcribeWithClaude(block: VisionBlock, apiKey: string, wait: nu
     }
     throw err
   }
+  // Modèle qui a répondu : celui de repli du serveur (FALLBACK_MODEL) quand le premier a refusé.
+  recordLlmUsage(directCallRecord(usage, {
+    provider: 'claude', model: response.model || VISION_MODEL, durationMs: Date.now() - started, tokens: claudeTokens(response.usage),
+    outcome: 'ok', truncated: response.stop_reason === 'max_tokens',
+  }))
   if (response.stop_reason === 'refusal') throw new SkipAttachment('lecture refusée par l\'IA')
   return response.content.flatMap(b => (b.type === 'text' ? [b.text] : [])).join('\n')
 }
@@ -179,12 +188,14 @@ export const visionExtractor: AttachmentExtractor = {
     // Une seule clé configurée : l'autre service compte comme indisponible, et le message de l'e-mail en
     // attente indique à l'admin qu'ajouter cette clé suffirait.
     const noKey = async (): Promise<string> => { throw new AiUnavailable('aucune clé dans Config IA') }
+    // Journal de consommation de l'IA (ADR 0064) : organisation de la boîte lue.
+    const usage: UsageContext = { feature: 'ao-vision', tenantId: ctx.tenantId }
     return readWithFallback([
-      { name: 'Claude', read: claudeKey ? wait => transcribeWithClaude(block, claudeKey, wait) : noKey },
+      { name: 'Claude', read: claudeKey ? wait => transcribeWithClaude(block, claudeKey, wait, usage) : noKey },
       {
         name: 'OpenAI',
         read: openAiKey
-          ? wait => transcribeWithOpenAI(file, { apiKey: openAiKey, model: config.gpt4oModel || DEFAULT_OPENAI_MODEL, prompt: TRANSCRIBE_PROMPT, maxTokens: MAX_OUTPUT_TOKENS, wait })
+          ? wait => transcribeWithOpenAI(file, { apiKey: openAiKey, model: config.gpt4oModel || DEFAULT_OPENAI_MODEL, prompt: TRANSCRIBE_PROMPT, maxTokens: MAX_OUTPUT_TOKENS, wait, usage })
           : noKey,
       },
     ], ctx)

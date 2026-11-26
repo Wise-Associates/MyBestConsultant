@@ -74,8 +74,11 @@ export async function loadCriteriaContext(jobId: string, saved: { criteria: Offe
   return { ...base, judgements }
 }
 
-/** L'offre telle que la notation la lit (comme matchCandidatesForJob), ou null si elle n'existe plus. */
-async function offerOf(jobId: string): Promise<OfferForMatching | null> {
+/**
+ * L'offre telle que la notation la lit (comme matchCandidatesForJob), ou null si elle n'existe plus. `tenantId` :
+ * organisation du recruteur qui déclenche la notation (journal de consommation de l'IA, ADR 0064).
+ */
+async function offerOf(jobId: string, tenantId: string): Promise<OfferForMatching | null> {
   const job = await createAdminClient().databases.getDocument(DB_ID, COLLECTIONS.JOBS, jobId).catch(err => {
     if ((err as { code?: unknown }).code === 404) return null
     throw err
@@ -83,7 +86,7 @@ async function offerOf(jobId: string): Promise<OfferForMatching | null> {
   if (!job) return null
   return {
     title: String(job.title ?? ''), skills: (job.skills as string[]) ?? [], description: String(job.description ?? ''),
-    details: offerDetails(job), sourceContext: await aoSourceContext(job),
+    details: offerDetails(job), sourceContext: await aoSourceContext(job), tenantId,
   }
 }
 
@@ -143,10 +146,10 @@ export interface JudgeOutcome {
  * les autres.
  */
 export async function judgeOnCriteria(
-  jobId: string, set: OfferCriteriaSet, scope: { vivierOwner: string; only?: string[] }, beforeAi?: () => Promise<string | null>,
+  jobId: string, set: OfferCriteriaSet, scope: { vivierOwner: string; tenantId: string; only?: string[] }, beforeAi?: () => Promise<string | null>,
 ): Promise<JudgeOutcome> {
   if (!isCriteriaJudgementsConfigured()) return { judged: 0, failed: 0, remaining: 0 }
-  const offer = await offerOf(jobId)
+  const offer = await offerOf(jobId, scope.tenantId)
   if (!offer) return { judged: 0, failed: 0, remaining: 0 }
   const fingerprint = criteriaFingerprint(set)
   const [done, all] = await Promise.all([loadJudgements(jobId, [fingerprint]), candidatesOf(jobId, scope.vivierOwner)])
@@ -189,14 +192,14 @@ export async function judgeOnCriteria(
  * scores enregistrés recalculés sans IA. Ne lève jamais (journalisé) : la page montre les scores à renoter, et
  * « Rafraîchir » termine ce qu'un passage interrompu (durée de la requête) n'a pas fait.
  */
-export async function rescoreGeneral(jobId: string, previous: OfferCriteriaSet | null, next: OfferCriteriaSet): Promise<void> {
+export async function rescoreGeneral(jobId: string, previous: OfferCriteriaSet | null, next: OfferCriteriaSet, tenantId: string): Promise<void> {
   const { databases } = createAdminClient()
   try {
     const vivier = await listAllDocuments(databases, DB_ID, COLLECTIONS.VIVIER_CVS, [
       Query.equal('jobId', jobId), Query.select(['$id', 'matchScore', 'matchReason', 'cvProfileJson']),
     ])
     if (!previous || criteriaFingerprint(previous) !== criteriaFingerprint(next)) {
-      const pool = await runPoolMatching(jobId, undefined, 'all')
+      const pool = await runPoolMatching(jobId, undefined, 'all', tenantId)
       if (pool.error) console.error('[critères] renotation de la base candidats incomplète', jobId, pool.error)
       // Viviers : au plus autant que la base (RESCORE_MAX de matching-core.ts), les autres restent « à renoter ».
       await mapLimit(vivier.slice(0, VIVIER_RESCORE_MAX), CONCURRENCY, async v => {

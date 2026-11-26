@@ -43,7 +43,8 @@ export async function getJobsForSourcing(): Promise<SourcingJob[]> {
 
 export async function findMatchingCandidates(jobId: string): Promise<{ matches: CandidateMatch[]; scanned: number; error?: string }> {
   await requireAdmin()
-  return matchCandidatesForJob(jobId)
+  // Recherche lancée par un admin : comptée pour la plateforme (journal de consommation de l'IA, ADR 0064).
+  return matchCandidatesForJob(jobId, { tenantId: 'admin' })
 }
 
 export async function generateOutreachMessage(candidateId: string, jobId: string): Promise<{ subject: string; message: string; error?: string }> {

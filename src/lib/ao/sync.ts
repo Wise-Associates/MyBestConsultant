@@ -378,6 +378,7 @@ async function processEnvelope(
       deadline: Date.now() + timeLeft() - EXTRACTION_RESERVE_MS,
       canDefer,
       pass,
+      tenantId: org.tenantId,
       reserveVisionCall: async () => {
         if (visionCalls >= MAX_VISION_CALLS_PER_EMAIL || !(await takeDailyVisionCall(org.tenantId, now, MAX_VISION_CALLS_PER_DAY))) return false
         visionCalls++
@@ -403,7 +404,7 @@ async function processEnvelope(
     if (content.text.trim().length >= 50) {
       const llmWait = Math.min(MAX_LLM_WAIT_MS, timeLeft() - 10_000)
       if (llmWait < MIN_LLM_WAIT_MS) throw new RetryLater('plus assez de temps pour l\'extraction : e-mail repris au prochain passage', !canDefer)
-      fromAi = (await extractOffersFromEmail(content.text, llmWait, aiOrigin, org.name, message.receivedAt)).offers
+      fromAi = (await extractOffersFromEmail(content.text, llmWait, aiOrigin, org.name, message.receivedAt, org.tenantId)).offers
         .map(o => keepCitedAliases(keepCitedContact(o, content.text, source.ownDomains), content.text))
     }
     // Le client est l'entreprise de l'expéditeur d'origine, pour toutes les offres de l'e-mail (origin.ts). Les noms

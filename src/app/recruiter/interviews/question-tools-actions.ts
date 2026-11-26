@@ -119,7 +119,7 @@ export async function tuneInterviewQuestions(input: {
     if (refused) return { error: refused }
     const ask = parsed.data
 
-    const { content } = await callLLM([{ role: 'user', content: tuningUserMessage({ ...ask, targetCount: ask.questionCount }) }], tuningSystemPrompt())
+    const { content } = await callLLM([{ role: 'user', content: tuningUserMessage({ ...ask, targetCount: ask.questionCount }) }], tuningSystemPrompt(), { feature: 'interview-questions-tune', tenantId: me.tenantId })
     const tuned = parseTunedQuestions(content, ask.questions.length, ask.questionCount)
     if (!tuned) return { error: 'L’IA n’a pas rendu une liste exploitable : vos questions sont inchangées, réessayez.' }
 

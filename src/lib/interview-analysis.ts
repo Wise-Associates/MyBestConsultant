@@ -6,6 +6,7 @@ import { callLLMForModule } from '@/lib/ai/llm-router'
 import { interviewEndAnalysisPrompt, parseInterviewEndAnalysis } from '@/lib/interview-prompts'
 import { revalidatePath } from 'next/cache'
 import type { InterviewDetail } from '@/app/admin/interviews/actions'
+import { organisationOf } from '@/lib/ai/usage'
 
 // Tous les appels IA de ce fichier relèvent du module « Entretiens IA » (modèle réglable dans /admin/llm-config).
 const callLLM = callLLMForModule('interview')
@@ -28,7 +29,7 @@ export async function performInterviewAnalysis(id: string): Promise<{ analysis?:
     if (transcript.length === 0) return { error: 'Aucune transcription à analyser' }
 
     const prompt = interviewEndAnalysisPrompt({ jobTitle: doc.jobTitle as string, transcript })
-    const { content } = await callLLM([{ role: 'user', content: prompt.user }])
+    const { content } = await callLLM([{ role: 'user', content: prompt.user }], undefined, { feature: 'interview-analysis-auto', tenantId: organisationOf(String(doc.tenantId ?? '')) })
 
     const analysis = parseInterviewEndAnalysis(content)
 

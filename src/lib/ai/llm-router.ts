@@ -1,8 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { LLMMessage, LLMResponse } from '@/types'
 import { fallbackOrder, pickPrimary, requestedModel, sanitizeOpenSourceModels, type AIModule, type OpenSourceModel } from './models'
+import { builtinPrice, openSourcePrice, type Price, type TokenCounts } from './prices'
+import { claudeTokens, openAiTokens, outcomeOf, promptTokens, usageRecord, type LlmUsageRecord, type UsageContext } from './usage'
+import { recordLlmUsage } from './usage-store'
 
-interface RuntimeConfig {
+export interface RuntimeConfig {
   // Modèle par défaut : 'claude' | 'gpt4o' | 'teckia' ou l'id d'un modèle open source (os-…).
   provider: string
   claudeModel: string
@@ -89,7 +92,7 @@ async function loadRuntimeConfig(): Promise<RuntimeConfig> {
  * Bornes d'un appel : longueur de la réponse et délai (défauts : 4096 jetons ; 55 s, ou le délai du SDK pour Claude), et
  * début du premier message à mettre en cache chez Claude (`cachePrefix`, voir CallLLMOptions).
  */
-interface CallLimits {
+export interface CallLimits {
   maxTokens?: number
   timeoutMs?: number
   cachePrefix?: string
@@ -99,7 +102,14 @@ interface CallLimits {
   effort?: 'low' | 'medium' | 'high'
 }
 
-async function callClaude(messages: LLMMessage[], systemPrompt: string | undefined, model: string, apiKey: string, limits: CallLimits): Promise<string> {
+/** Réponse d'un essai : texte, jetons (null si le fournisseur ne les donne pas) et réponse coupée à la longueur maximale. */
+export interface AttemptOutput {
+  content: string
+  tokens: TokenCounts | null
+  truncated: boolean
+}
+
+async function callClaude(messages: LLMMessage[], systemPrompt: string | undefined, model: string, apiKey: string, limits: CallLimits): Promise<AttemptOutput> {
   // Claude est le dernier recours de pickPrimary, même sans clé : échec explicite plutôt qu'une erreur du SDK.
   if (!apiKey) throw new LLMNotConfiguredError('Claude non configuré (clé manquante dans /admin/llm-config)')
   const client = new Anthropic({ apiKey })
@@ -125,7 +135,8 @@ async function callClaude(messages: LLMMessage[], systemPrompt: string | undefin
     }),
   }, requestOptions)
   // Tous les blocs de texte, dans l'ordre ; une réponse sans texte (refus, contenu vide) donne une chaîne vide.
-  return response.content.flatMap(block => (block.type === 'text' ? [block.text] : [])).join('')
+  const content = response.content.flatMap(block => (block.type === 'text' ? [block.text] : [])).join('')
+  return { content, tokens: claudeTokens(response.usage), truncated: response.stop_reason === 'max_tokens' }
 }
 
 /**
@@ -149,7 +160,10 @@ export class LLMUnreachableError extends Error {
 }
 
 /** Modèle choisi mais pas configuré (clé ou URL manquante, modèle désactivé) : aucun appel n'a été fait. */
-export class LLMNotConfiguredError extends Error {}
+export class LLMNotConfiguredError extends Error {
+  // Lu par outcomeOf (usage.ts) : le nom de la classe ne survit pas à la minification du serveur.
+  readonly notConfigured = true
+}
 
 /**
  * Le modèle choisi et tous ses replis ont échoué. Le message reste celui du premier modèle (ce que les
@@ -173,7 +187,7 @@ async function callOpenAICompat(
   // Température du modèle open source dans Config IA ; absente : aucune envoyée, le serveur applique la sienne (GPT,
   // TeckiA, modèle sans réglage — comportement d'avant l'ADR 0057).
   temperature?: number | null,
-): Promise<string> {
+): Promise<AttemptOutput> {
   const timeoutMs = limits.timeoutMs ?? 55_000
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
@@ -210,9 +224,10 @@ async function callOpenAICompat(
   }
   if (!res.ok) throw new LLMHttpError(res.status, await res.text())
   const data = await res.json()
-  const msg = data.choices?.[0]?.message
+  const choice = data.choices?.[0]
+  const msg = choice?.message
   // qwen3 thinking mode returns content="" with answer in reasoning — accept either
-  return msg?.content || msg?.reasoning || ''
+  return { content: msg?.content || msg?.reasoning || '', tokens: openAiTokens(data.usage), truncated: choice?.finish_reason === 'length' }
 }
 
 /** Nature d'un échec, pour les journaux : jamais le message d'erreur, qui peut citer la demande ou la réponse. */
@@ -235,13 +250,32 @@ function isAvailable(id: string, cfg: RuntimeConfig): boolean {
   return !!m && !!m.apiUrl && !!m.model
 }
 
+/** Modèle qu'un essai de `provider` demandera (`forced` : celui imposé par l'appelant) ; vide pour un modèle open source retiré. */
+function modelOf(provider: string, cfg: RuntimeConfig, forced?: string): string {
+  if (forced) return forced
+  if (isCustomId(provider)) return findCustom(cfg, provider)?.model ?? ''
+  if (provider === 'gpt4o') return cfg.gpt4oModel
+  if (provider === 'teckia') return cfg.teckiaModel
+  return cfg.claudeModel
+}
+
+/** Prix de l'essai (prices.ts) : tarif public pour Claude et OpenAI, prix de Config IA pour un modèle open source. */
+function priceOf(provider: string, model: string, cfg: RuntimeConfig, tokens: TokenCounts | null): Price | null {
+  if (isCustomId(provider)) {
+    const m = findCustom(cfg, provider)
+    return m ? openSourcePrice(m.priceInput, m.priceOutput) : null
+  }
+  // Tout autre id est servi par Claude (`default` de tryCall).
+  return builtinPrice(provider === 'gpt4o' || provider === 'teckia' ? provider : 'claude', model, promptTokens(tokens))
+}
+
 async function tryCall(
   provider: string,
   cfg: RuntimeConfig,
   messages: LLMMessage[],
   systemPrompt: string | undefined,
   limits: CallLimits,
-): Promise<string> {
+): Promise<AttemptOutput> {
   if (isCustomId(provider)) {
     const m = findCustom(cfg, provider)
     if (!m) throw new LLMNotConfiguredError(`Modèle ${provider} introuvable ou désactivé (voir /admin/llm-config)`)
@@ -293,6 +327,8 @@ export interface CallLLMOptions {
   providerModels?: Partial<Record<string, string>>
   /** Effort de réflexion de Claude (`output_config.effort`) ; ignoré par les autres fournisseurs. */
   effort?: 'low' | 'medium' | 'high'
+  /** Fonction de l'application et organisation de l'appel, pour le journal de consommation de l'IA (ADR 0064). */
+  usage?: UsageContext
 }
 
 /**
@@ -303,19 +339,19 @@ export async function primaryModel(opts: Pick<CallLLMOptions, 'provider' | 'modu
   const cfg = await getRuntimeConfig()
   const provider = pickPrimary(cfg, opts)
   const custom = isCustomId(provider) ? findCustom(cfg, provider) : undefined
-  const model = isCustomId(provider) ? custom?.model ?? ''
-    : provider === 'gpt4o' ? cfg.gpt4oModel
-    : provider === 'teckia' ? cfg.teckiaModel
-    : cfg.claudeModel
+  const model = modelOf(provider, cfg)
   // Température d'un modèle open source comprise (ADR 0057) : la changer refait ses notations au lieu de reprendre
   // celles du cache. Sans température, signature d'avant : les notations gardées restent valables.
   const temperature = typeof custom?.temperature === 'number' ? `@t${custom.temperature}` : ''
   return { provider, signature: `${provider}:${model}${temperature}` }
 }
 
-/** callLLM lié à un module : `const callLLM = callLLMForModule('interview')` suffit à router tout un fichier. */
+/**
+ * callLLM lié à un module : `const callLLM = callLLMForModule('interview')` suffit à router tout un fichier ; chaque appel
+ * donne sa fonction et son organisation (`usage`).
+ */
 export function callLLMForModule(module: AIModule) {
-  return (messages: LLMMessage[], systemPrompt?: string) => callLLM(messages, systemPrompt, { module })
+  return (messages: LLMMessage[], systemPrompt?: string, usage?: UsageContext) => callLLM(messages, systemPrompt, { module, usage })
 }
 
 export async function callLLM(
@@ -326,20 +362,67 @@ export async function callLLM(
 ): Promise<LLMResponse> {
   const opts: CallLLMOptions = typeof options === 'string' ? { provider: options } : options ?? {}
   const cfg = await getRuntimeConfig()
+  return callWithConfig(cfg, opts, {
+    attempt: (provider, limits) => tryCall(provider, cfg, messages, systemPrompt, limits),
+    record: recordLlmUsage,
+    now: Date.now,
+  })
+}
+
+/** Ce que callWithConfig fait faire au-dehors : un essai de modèle, l'écriture du journal et l'heure (remplacés en test). */
+export interface CallDeps {
+  attempt: (provider: string, limits: CallLimits) => Promise<AttemptOutput>
+  record: (record: LlmUsageRecord) => void
+  now: () => number
+}
+
+/**
+ * Choix du modèle, replis et journal de consommation d'un appel, la configuration déjà lue. Une ligne de journal par essai
+ * (le modèle choisi, puis chaque repli), réussi ou non, et pour un appel strict refusé avant tout essai.
+ */
+export async function callWithConfig(cfg: RuntimeConfig, opts: CallLLMOptions, deps: CallDeps): Promise<LLMResponse> {
+  const log = (provider: string, model: string, attempt: number, startedAt: number, out: AttemptOutput | null, outcome: string) => {
+    try {
+      deps.record(usageRecord(opts.usage, opts.module, {
+        provider, model, attempt, durationMs: deps.now() - startedAt, tokens: out?.tokens ?? null, truncated: out?.truncated ?? false,
+        outcome, price: out ? priceOf(provider, model, cfg, out.tokens) : null,
+      }))
+    } catch (err) {
+      // Le journal ne doit jamais faire échouer l'appel d'IA.
+      console.error('[llm-usage] ligne non écrite', err instanceof Error ? err.message : String(err))
+    }
+  }
+  const run = async (provider: string, attempt: number, limits: CallLimits): Promise<string> => {
+    const model = modelOf(provider, cfg, limits.model)
+    const startedAt = deps.now()
+    try {
+      const out = await deps.attempt(provider, limits)
+      log(provider, model, attempt, startedAt, out, 'ok')
+      return out.content
+    } catch (err) {
+      log(provider, model, attempt, startedAt, null, outcomeOf(err))
+      throw err
+    }
+  }
 
   const primary = pickPrimary(cfg, opts)
   if (opts.strict) {
     // Strict (assistant IA, test d'un modèle) : jamais un autre modèle que celui demandé — ni celui des valeurs par
     // défaut quand Config IA est illisible, ni le modèle par défaut quand celui demandé a été retiré ou désactivé.
-    if (!cfg.loaded) throw new LLMNotConfiguredError('Config IA illisible : appel refusé (mode sans repli)')
     const requested = opts.provider ?? (opts.module ? cfg.moduleRouting[opts.module] : undefined)
-    if (requested && requested !== primary) throw new LLMNotConfiguredError(`Modèle ${requested} introuvable ou désactivé (voir /admin/llm-config)`)
+    const refusal = !cfg.loaded ? new LLMNotConfiguredError('Config IA illisible : appel refusé (mode sans repli)')
+      : requested && requested !== primary ? new LLMNotConfiguredError(`Modèle ${requested} introuvable ou désactivé (voir /admin/llm-config)`)
+      : null
+    if (refusal) {
+      log(requested ?? primary, '', 0, deps.now(), null, outcomeOf(refusal))
+      throw refusal
+    }
   }
 
   const limits: CallLimits = { maxTokens: opts.maxTokens, timeoutMs: opts.timeoutMs, cachePrefix: opts.cachePrefix, model: requestedModel(primary, primary, opts), effort: opts.effort }
   // Try primary provider first
   try {
-    const content = await tryCall(primary, cfg, messages, systemPrompt, limits)
+    const content = await run(primary, 0, limits)
     return { content, provider: primary }
   } catch (primaryErr) {
     if (opts.strict) throw primaryErr
@@ -349,11 +432,11 @@ export async function callLLM(
     const fallbacks = fallbackOrder(cfg, primary, id => isAvailable(id, cfg))
     const failures: { provider: string; error: unknown }[] = [{ provider: primary, error: primaryErr }]
 
-    for (const fallback of fallbacks) {
+    for (const [i, fallback] of fallbacks.entries()) {
       try {
         // Le modèle forcé (`model`) est celui du fournisseur demandé : un modèle de repli garde le sien, sauf s'il est
         // précisé dans `providerModels` (GPT-4o mini pour la classification des CV).
-        const content = await tryCall(fallback, cfg, messages, systemPrompt, { ...limits, model: requestedModel(fallback, primary, opts) })
+        const content = await run(fallback, i + 1, { ...limits, model: requestedModel(fallback, primary, opts) })
         // Un repli réussi ne doit pas cacher que le modèle choisi ne répond pas (hébergeur qui refuse un paramètre, clé
         // expirée…) : la nature de chaque échec seulement, jamais le message, qui peut citer la demande.
         console.warn('[llm] repli :', failures.map(f => `${f.provider} (${failureKind(f.error)})`).join(', '), '→ réponse de', fallback)

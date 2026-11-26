@@ -11,6 +11,7 @@ import { recommendationFor, type Judgement } from '@/lib/match-scoring'
 import { withRecommendationBonus } from '@/lib/recommendation-boost'
 import { alertIdealCandidates } from '@/lib/recruiter-alerts-store'
 import { aoSourceContext, cvScorer, finalOfferDetails, readCvForScoring } from '@/lib/sourcing-core'
+import { organisationOf } from '@/lib/ai/usage'
 
 // Notation des candidatures (screening manuel et automatique) et contrôle d'accès à une candidature. Hors des fichiers
 // « use server » (revue de sécurité du 2026-11-13) : `autoScreenApplication`, appelée sans session après une
@@ -117,6 +118,8 @@ export interface ApplicationToScreen {
   jobSourceContext?: string
   /** CV joint à la candidature ; sans CV lisible, pas de score (jamais une note sur un texte d'erreur). */
   cvFileId?: string
+  /** Organisation pour qui la notation est faite (journal de consommation de l'IA, ADR 0064). */
+  tenantId?: string
 }
 
 
@@ -137,6 +140,7 @@ export async function scoreApplication(app: ApplicationToScreen): Promise<Screen
 
     const scored = await cvScorer({
       title: app.jobTitle, skills: app.jobSkills, description: app.jobDescription, details: app.jobDetails, sourceContext: app.jobSourceContext,
+      tenantId: app.tenantId,
     }, 'final')(cvText)
     if (!scored) return { error: 'Réponse de l\'IA sans jugement lisible : relancez le screening' }
     const jobText = `${app.jobTitle} ${app.jobSkills.join(' ')} ${app.jobDescription}`
@@ -220,6 +224,7 @@ export async function autoScreenApplication(applicationId: string, { notify = tr
       jobDetails: await finalOfferDetails(jobDoc),
       jobSourceContext: await aoSourceContext(jobDoc),
       cvFileId: appDoc.cvFileId as string | undefined,
+      tenantId: organisationOf(planTenantId),
     })
     if ('error' in result) {
       // La candidature reste sans score : le Matching IA la relance à son ouverture, le recruteur depuis sa carte.

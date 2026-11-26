@@ -21,7 +21,7 @@ export async function generateJobDraft(
 
   try {
     const { system, user: userMsg } = jobDraftPrompt({ need: trimmed, previousDraft: regenerateFrom })
-    const { content } = await callLLM([{ role: 'user', content: userMsg }], system)
+    const { content } = await callLLM([{ role: 'user', content: userMsg }], system, { usage: { feature: 'job-draft', tenantId: user.tenantId } })
     return parseJobDraftAnswer(content)
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur de génération' }
@@ -47,7 +47,7 @@ export async function improveJobDraft(
 
   try {
     const { system, user: userMsg } = jobImprovePrompt({ request: trimmed, currentDraft })
-    const { content } = await callLLM([{ role: 'user', content: userMsg }], system)
+    const { content } = await callLLM([{ role: 'user', content: userMsg }], system, { usage: { feature: 'job-improve', tenantId: user.tenantId } })
     return parseJobDraftAnswer(content)
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erreur d\'amélioration' }

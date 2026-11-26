@@ -179,7 +179,7 @@ export async function previewAoPublicationOf(
     const refusal = (await beforeAi?.()) ?? null
     const [copy, proposal] = refusal !== null
       ? [refusal, null]
-      : await Promise.all([rewriteForPublication(offer, clients, names), saved ? null : proposeCriteria(offer, names)])
+      : await Promise.all([rewriteForPublication(offer, clients, names, tenantId), saved ? null : proposeCriteria(offer, names, tenantId)])
     const criteria = saved ?? proposal?.set ?? defaultAoCriteria(offer, names)
     const criteriaFields = {
       criteriaSource: saved ? 'saved' as const : proposal && !proposal.notice ? 'ai' as const : 'default' as const,
@@ -240,7 +240,7 @@ async function withSocialPreview(
   if (!social.settings) return { ...preview, social }
   const lite = liteOfPublished(parseDraftFields(preview.draft) ?? preview.draft, social.settings)
   const refusal = beforeSocialAi ? await beforeSocialAi() : null
-  const copy = beforeSocialAi && !refusal ? await generateCopy(lite) : fallbackCopy(lite)
+  const copy = beforeSocialAi && !refusal ? await generateCopy(lite, tenantId) : fallbackCopy(lite)
   // Version anonymisée : « Le projet » = la suite de « Le contexte », déjà relue avec l'offre (ADR 0060) ; rédigé à part
   // par l'IA, il répétait la phrase qui ouvre le post. Vide : le post reprend la section « Le contexte » entière.
   const context = preview.draft.anonymized ? tenderProject(lite.description) : copy.context
@@ -265,13 +265,14 @@ const defaultAoCriteria = (offer: AoOffer, names: string[][]) => defaultCriteria
 
 /**
  * Critères de matching proposés par l'IA de la notation (« Matching IA » de Config IA) à partir de l'AO aux noms du client
- * remplacés (ADR 0061) ; sinon les critères par défaut et la raison, affichée à la relecture.
+ * remplacés (ADR 0061) ; sinon les critères par défaut et la raison, affichée à la relecture. `tenantId` : organisation
+ * de la boîte de l'AO (journal de consommation de l'IA, ADR 0064).
  */
-async function proposeCriteria(offer: AoOffer, names: string[][]): Promise<{ set: OfferCriteriaSet; notice: string }> {
+async function proposeCriteria(offer: AoOffer, names: string[][], tenantId: string): Promise<{ set: OfferCriteriaSet; notice: string }> {
   const fallback = defaultAoCriteria(offer, names)
   try {
     const { content } = await callLLM([{ role: 'user', content: criteriaProposalRequest(cleanedAo(offer, names)) }], CRITERIA_PROPOSAL_PROMPT, {
-      ...SCORING_AI, maxTokens: 4000, timeoutMs: 60_000,
+      ...SCORING_AI, maxTokens: 4000, timeoutMs: 60_000, usage: { feature: 'ao-criteria-proposal', tenantId },
     })
     const set = parseCriteriaProposal(content, fallback)
     return set ? { set, notice: '' } : { set: fallback, notice: 'réponse de l\'IA illisible' }
@@ -289,13 +290,16 @@ const criteriaNaming = (set: OfferCriteriaSet, names: string[][]) => findIdentif
   [...set.criteria.flatMap(c => [c.name, ...c.labels.map(l => l.label)]), ...set.alternativeTitles].join(' · '), names,
 )
 
-/** Version rédigée par l'IA, ou la raison pour laquelle elle n'a pas pu l'être (affichée à la relecture). */
-async function rewriteForPublication(offer: AoOffer, clients: string[], names: string[][]): Promise<PublicationCopy | string> {
+/**
+ * Version rédigée par l'IA, ou la raison pour laquelle elle n'a pas pu l'être (affichée à la relecture). `tenantId` :
+ * organisation de la boîte de l'AO (journal de consommation de l'IA, ADR 0064).
+ */
+async function rewriteForPublication(offer: AoOffer, clients: string[], names: string[][], tenantId: string): Promise<PublicationCopy | string> {
   // L'IA reçoit l'offre déjà nettoyée : coordonnées et références retirées, clients connus remplacés.
   const request = publicationAiRequest(offer, clients, names)
   try {
     // 8 000 jetons : la réflexion de Claude (adaptative) compte dans la limite, la réponse en fait environ 1 500.
-    const { content } = await callLLM([{ role: 'user', content: request }], PUBLICATION_PROMPT, { ...PUBLICATION_AI, maxTokens: 8000, timeoutMs: 60_000 })
+    const { content } = await callLLM([{ role: 'user', content: request }], PUBLICATION_PROMPT, { ...PUBLICATION_AI, maxTokens: 8000, timeoutMs: 60_000, usage: { feature: 'ao-publication-rewrite', tenantId } })
     return parsePublicationCopy(content) ?? 'réponse de l\'IA illisible'
   } catch (err) {
     console.error('AO: rédaction de la version publiée par l\'IA impossible', offer.$id, errorOf(err))
@@ -442,7 +446,7 @@ export async function reviseAoCriteriaOf(tenantId: string, id: string, input: un
     const refusal = (await beforeAi?.()) ?? null
     if (refusal) return { error: refusal }
     const { names } = await hiddenNamesFor(offer)
-    return await reviseCriteria(cleanedAo(offer, names), read.input, offer.$id)
+    return await reviseCriteria(cleanedAo(offer, names), read.input, offer.$id, tenantId)
   } catch (err) {
     console.error('AO: assistant des critères en échec', id, errorOf(err))
     return { error: 'Assistant indisponible pour le moment : modifiez les critères à la main, ou réessayez.' }
@@ -516,7 +520,7 @@ export async function aoOfferSourcingOf(
         if (refused) return { error: refused }
       }
       // Une partie des CV non notés (IA indisponible) : les notes enregistrées s'affichent, avec l'avertissement.
-      const run = recompute ? await runPoolMatching(offer.jobId, undefined, 'all') : null
+      const run = recompute ? await runPoolMatching(offer.jobId, undefined, 'all', tenantId) : null
       if (run?.error && run.matched === 0) return { error: run.error }
       const { matches, poolComputedAt } = await getJobMatches(offer.jobId, tenantId, vivierOwner)
       const kept = bestMatches(matches).map(m => ({ id: `${m.source}:${m.id}`, name: m.name, score: m.score, reason: m.reason, origin: m.source }))
@@ -540,6 +544,7 @@ export async function aoOfferSourcingOf(
         ].filter(Boolean),
         // Critères enregistrés pour cet AO (ADR 0061) : les mêmes que ceux de l'offre une fois publiée.
         criteria: await getAoOfferCriteria(offer.$id),
+        tenantId,
       })
       if (result.error) return { error: result.error, scanned: result.scanned }
       record = {

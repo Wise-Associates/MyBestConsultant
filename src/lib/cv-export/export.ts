@@ -17,6 +17,7 @@ import { renderCv } from './render'
 import { ownsVivierCv } from './stored'
 import type { EsnTemplate } from './templates'
 import type { AnonymizationMode, CvLang } from './types'
+import type { UsageContext } from '@/lib/ai/usage'
 
 // Export d'un candidat d'une CV Thèque, ou d'un CV du vivier d'un recruteur (ADR 0016), au format de l'ESN (ADR 0009,
 // 0010) : CV lu dans le stockage, extrait et
@@ -47,6 +48,8 @@ export class CvExportError extends Error {
 export interface CvExportOptions {
   langs: CvLang[]
   mode: AnonymizationMode
+  /** Organisation qui exporte, « admin » pour la plateforme (journal de consommation de l'IA, ADR 0064). */
+  tenantId?: string
 }
 
 /** Dossier d'une langue, tel que rendu et contrôlé. */
@@ -200,10 +203,10 @@ function aiFailure(err: unknown): CvExportError | null {
   return null
 }
 
-async function askModel<T>(system: string, content: string, timeoutMs: number, parse: (raw: string) => T): Promise<T> {
+async function askModel<T>(system: string, content: string, timeoutMs: number, parse: (raw: string) => T, usage: UsageContext): Promise<T> {
   try {
     const answer = await callLLM([{ role: 'user', content }], system, {
-      module: 'cvExport', strict: true, maxTokens: MAX_ANSWER_TOKENS, timeoutMs,
+      module: 'cvExport', strict: true, maxTokens: MAX_ANSWER_TOKENS, timeoutMs, usage,
     })
     return parse(answer.content)
   } catch (err) {
@@ -240,7 +243,7 @@ async function exportCv(logId: string, candidate: Candidate, options: CvExportOp
 
   await beforeAi?.()
   const extraction = await askModel(extractionPrompt(options.mode), extractionRequest(cv),
-    Math.min(EXTRACTION_TIMEOUT_MS, deadline - Date.now()), parseExtraction)
+    Math.min(EXTRACTION_TIMEOUT_MS, deadline - Date.now()), parseExtraction, { feature: 'cv-export-extract', tenantId: options.tenantId })
   const source = contentOf(extraction)
   const coverage = contentCoverage(cv.text, source)
   // Journal : la part seulement, jamais le texte du CV.
@@ -256,7 +259,7 @@ async function exportCv(logId: string, candidate: Candidate, options: CvExportOp
       throw new CvExportError('La lecture du CV a pris trop de temps pour le traduire dans la même demande : exportez une seule langue, ou réessayez.', 504)
     }
     const translated = await askModel(translationPrompt(lang), translationRequest(source),
-      Math.min(TRANSLATION_TIMEOUT_MS, remaining), raw => parseTranslation(raw, source))
+      Math.min(TRANSLATION_TIMEOUT_MS, remaining), raw => parseTranslation(raw, source), { feature: 'cv-export-translate', tenantId: options.tenantId })
     const count = untranslatedCount(source, translated, sourceLang)
     if (count > 0) untranslated.push({ lang, count })
     contents.set(lang, translated)

@@ -28,9 +28,11 @@ function storageError(err: unknown, action: string): string {
  * Sans repli, comme l'export : le modèle déposé peut être le dossier d'un vrai candidat. Deux tentatives de 120 s au
  * plus tiennent dans les 300 s des pages de CV Thèque (maxDuration).
  */
-const askExportModel: AskModel = async (system, user) => {
+const askExportModel = (tenantId: string): AskModel => async (system, user) => {
   const { content } = await callLLM([{ role: 'user', content: user }], system, {
     module: 'cvExport', moduleDefault: 'claude', strict: true, maxTokens: 8000, timeoutMs: 120_000,
+    // Organisation qui dépose le modèle (journal de consommation de l'IA, ADR 0064).
+    usage: { feature: 'cv-template-mapping', tenantId },
   })
   return content
 }
@@ -55,7 +57,7 @@ export async function saveUploadedTemplate(input: { tenantId: string; esn: strin
   let mapped: Awaited<ReturnType<typeof mapTemplate>>
   const bytes = new Uint8Array(await input.files.docx.arrayBuffer())
   try {
-    mapped = await mapTemplate({ bytes, esn: input.esn, example: await mappingExample(), ask: askExportModel })
+    mapped = await mapTemplate({ bytes, esn: input.esn, example: await mappingExample(), ask: askExportModel(input.tenantId) })
   } catch (err) {
     if (err instanceof TemplateError) return { error: err.message }
     // Ni contenu du modèle ni réponse de l'IA dans le journal : le modèle peut être le dossier d'un vrai candidat.

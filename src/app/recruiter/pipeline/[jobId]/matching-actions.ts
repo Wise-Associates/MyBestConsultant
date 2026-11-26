@@ -83,9 +83,9 @@ export async function runApplicationMatchingAction(jobId: string, applicationId:
 // Population 1 (platform candidate pool) on demand : « Rafraîchir » du Matching IA appelle 'all' (refait les scores
 // déjà calculés) puis 'new' (note seulement les candidats pas encore notés pour l'offre), une requête chacun.
 export async function refreshPoolMatchingAction(jobId: string, mode: unknown = 'new'): Promise<{ matched?: number; error?: string }> {
-  await requireJobAccess(jobId)
+  const { tenantId } = await requireJobAccess(jobId)
   if (mode !== 'new' && mode !== 'all') return { error: 'Demande invalide.' }
-  const result = await runPoolMatching(jobId, undefined, mode)
+  const result = await runPoolMatching(jobId, undefined, mode, tenantId)
   revalidatePath(`/recruiter/pipeline/${jobId}/matching`)
   return result
 }
@@ -397,8 +397,8 @@ export async function saveOfferCriteriaAction(jobId: unknown, input: unknown): P
       throw e
     }
     // Renotation par l'IA : après la réponse ; recalcul des seuls poids : quelques écritures, attendues.
-    if (rescoring) after(() => rescoreGeneral(jobId, previous, parsed.data))
-    else await rescoreGeneral(jobId, previous, parsed.data)
+    if (rescoring) after(() => rescoreGeneral(jobId, previous, parsed.data, access.tenantId))
+    else await rescoreGeneral(jobId, previous, parsed.data, access.tenantId)
     revalidatePath(MATCHING_PATH(jobId))
     return { rescoring }
   } catch (e) {
@@ -420,7 +420,7 @@ export async function reviseCriteriaAction(jobId: unknown, input: unknown): Prom
   if ('error' in read) return read
   const refusal = await takeCriteriaChatSlot(emailVerified, tenantId)
   if (refusal) return { error: refusal }
-  return reviseCriteria({ title: job.title, description: job.description, skills: job.skills ?? [], location: job.location ?? '', experience: '' }, read.input, jobId)
+  return reviseCriteria({ title: job.title, description: job.description, skills: job.skills ?? [], location: job.location ?? '', experience: '' }, read.input, jobId, tenantId)
 }
 
 /** Autres intitulés proposés (ADR 0062), comptés sur la base candidats et le vivier personnel du recruteur ; sans IA. */
@@ -467,7 +467,7 @@ async function saveOwn(jobId: string, candidate: string, input: unknown): Promis
   if (set && slot) {
     after(async () => {
       try {
-        const outcome = await judgeOnCriteria(jobId, set, { vivierOwner: access.profileId, ...(candidate ? { only: [candidate] } : {}) })
+        const outcome = await judgeOnCriteria(jobId, set, { vivierOwner: access.profileId, tenantId: access.tenantId, ...(candidate ? { only: [candidate] } : {}) })
         // Rien à juger (déjà jugés par un collègue aux mêmes libellés, aucun candidat) : la place n'a pas servi.
         if (outcome.judged + outcome.failed === 0) await slot.release()
       } catch (e) {
@@ -521,7 +521,7 @@ export async function judgeOwnCriteriaAction(jobId: unknown): Promise<{ error?: 
     const context = await loadCriteriaContext(jobId, await loadWeightsForJob(access.userId, jobId))
     if (!context?.own || criteriaFingerprint(context.own) === criteriaFingerprint(context.general)) return { outcome: { judged: 0, failed: 0, remaining: 0 } }
     // Place prise seulement s'il reste quelqu'un à juger (judgeOnCriteria) : elle sert donc toujours.
-    const outcome = await judgeOnCriteria(jobId, context.own, { vivierOwner: access.profileId }, async () => {
+    const outcome = await judgeOnCriteria(jobId, context.own, { vivierOwner: access.profileId, tenantId: access.tenantId }, async () => {
       const slot = await takeCriteriaJudgeSlot(access.emailVerified, access.tenantId)
       return 'error' in slot ? slot.error : null
     })

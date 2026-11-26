@@ -22,12 +22,16 @@ async function extractCVText(cvFileId: string, bucketId: string): Promise<string
   }
 }
 
-export async function extractCvProfile(cvFileId: string, bucketId: string = BUCKETS.CVS): Promise<CvProfile | null> {
+/**
+ * Profil tiré du CV par l'IA ; null si le texte est trop court ou l'IA en échec. `tenantId` : organisation du vivier
+ * (« admin » pour la plateforme), vide pour un candidat ou un chasseur (journal de consommation de l'IA, ADR 0064).
+ */
+export async function extractCvProfile(cvFileId: string, bucketId: string = BUCKETS.CVS, tenantId = ''): Promise<CvProfile | null> {
   const text = await extractCVText(cvFileId, bucketId)
   if (text.length < CV_PROFILE_MIN_TEXT) return null
 
   try {
-    const { content } = await callLLM([{ role: 'user', content: text }], CV_PROFILE_SYSTEM)
+    const { content } = await callLLM([{ role: 'user', content: text }], CV_PROFILE_SYSTEM, { usage: { feature: 'cv-profile-extract', tenantId } })
     return parseCvProfileResponse(content, new Date())
   } catch {
     return null

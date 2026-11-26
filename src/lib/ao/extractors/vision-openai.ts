@@ -1,6 +1,9 @@
 import { z } from 'zod'
 import { AI_PROBLEM_LABEL, openAiProblem } from '../ai-failures'
 import { AiUnavailable, RetryLater, SkipAttachment, formatOf, type Attachment } from './types'
+import { directCallRecord, openAiTokens, outcomeOf, type UsageContext } from '@/lib/ai/usage'
+import type { TokenCounts } from '@/lib/ai/prices'
+import { recordLlmUsage } from '@/lib/ai/usage-store'
 
 // Repli de la lecture des images et PDF scannés quand Claude n'est pas utilisable (crédits épuisés, clé
 // refusée) : le modèle OpenAI de Config IA (GPT-4o par défaut) lit le document. Appel direct de l'API
@@ -38,6 +41,8 @@ const ChatCompletion = z.object({
     finish_reason: z.string().nullish(),
     message: z.object({ content: z.string().nullish(), refusal: z.string().nullish() }),
   })).min(1),
+  // Jetons de l'appel, lus par openAiTokens (journal de consommation de l'IA, ADR 0064).
+  usage: z.unknown().optional(),
 })
 
 /** Message d'une réponse d'erreur JSON d'OpenAI, raccourci, sans la clé ; '' si absent. */
@@ -58,10 +63,13 @@ function errorDetail(body: string, apiKey: string): string {
  */
 export async function transcribeWithOpenAI(
   file: Attachment,
-  { apiKey, model, prompt, maxTokens, wait }: { apiKey: string; model: string; prompt: string; maxTokens: number; wait: number },
+  { apiKey, model, prompt, maxTokens, wait, usage = { feature: 'ao-vision' } }: { apiKey: string; model: string; prompt: string; maxTokens: number; wait: number; usage?: UsageContext },
 ): Promise<string> {
   const part = openAiContentPart(file)
   if (!part) return ''
+  const started = Date.now()
+  const note = (outcome: string, tokens: TokenCounts | null = null) =>
+    recordLlmUsage(directCallRecord(usage, { provider: 'gpt4o', model, durationMs: Date.now() - started, tokens, outcome }))
   let res: Response
   try {
     res = await fetch(CHAT_COMPLETIONS_URL, {
@@ -75,6 +83,7 @@ export async function transcribeWithOpenAI(
       }),
     })
   } catch (err) {
+    note(outcomeOf(err))
     // Ni message ni en-tête recopiés (clé). Délai dépassé : la requête a pu être facturée, reprise normale.
     // Connexion impossible : rien n'est parti, l'e-mail sera repris sans user sa reprise.
     const name = err instanceof Error ? err.name : 'réseau'
@@ -83,6 +92,7 @@ export async function transcribeWithOpenAI(
     throw new AiUnavailable(`service injoignable (${code ?? name})`)
   }
   if (!res.ok) {
+    note(`http-${res.status}`)
     const body = await res.text().catch((err: unknown) => {
       console.warn('AO: corps de la réponse d\'erreur OpenAI illisible', res.status, err instanceof Error ? err.name : String(err))
       return '' // seul le statut sert alors à classer l'erreur
@@ -99,10 +109,12 @@ export async function transcribeWithOpenAI(
   try {
     completion = ChatCompletion.parse(await res.json())
   } catch (err) {
+    note('error')
     // Réponse coupée (délai pendant la lecture du corps) ou inattendue : l'e-mail est repris plus tard.
     throw new RetryLater(`réponse d'OpenAI illisible (${err instanceof Error ? err.name : 'format'}) : e-mail repris plus tard`)
   }
   const [choice] = completion.choices
+  note('ok', openAiTokens(completion.usage))
   if (choice.message.refusal || choice.finish_reason === 'content_filter') throw new SkipAttachment('lecture refusée par OpenAI')
   return choice.message.content ?? ''
 }

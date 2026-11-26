@@ -108,3 +108,39 @@ notations, mêmes relations pour les intitulés, part du CV reprise pour l'expor
 - Reste à faire : juger la qualité des textes libres (par Sonnet, sur les mêmes demandes) ; vérifier les conditions
   d'Anthropic et d'OpenAI sur l'entraînement à partir de leurs réponses ; lecture des e-mails d'appels d'offres.
 
+
+## Version 4 (2026-11-26)
+
+Pourquoi : la v3 répondait juste à **47 %** des questions de l'assistant IA (Sonnet : 93 %), d'après un juge
+(Claude Opus 5.5) sur 40 questions jamais vues à l'entraînement : première phrase juste, puis règles d'autres
+rubriques mélangées, rappel des données sensibles oublié, parfois du Markdown. Export CV : sur 26 CV de test, la v3
+reprenait 84 % du CV contre 91 % pour l'enseignant, dont 14 des 93 dossiers d'entraînement repris à moins de 85 %.
+
+Changements (même méthode et mêmes réglages qu'en v3 : rang 32, 2 passages, 16 384 jetons au plus) :
+
+- **Assistant** : 186 questions d'entraînement (72 en v3), 19 avec une question de suite ; elles couvrent chaque
+  règle du contenu d'aide, les données sensibles (IBAN, pièce d'identité, mot de passe), les tentatives de
+  détournement, les demandes hors sujet, les fautes de frappe et l'anglais. Consignes = exactement celles de
+  l'application (`assistantSystemPrompt`, `assistant-questions.ts`) : refaire les réponses quand `knowledge.ts` change.
+- **Mesure de l'assistant** : commande `judge-assistant` (`assistant-judge.ts`, testé) : 40 questions réservées à la
+  mesure (un test vérifie qu'aucune n'est un exemple), juge Opus 5.5 (effort bas) ; réponse acceptable = juste, sans
+  invention, dans les consignes. Coût : ≈ 0,30 $ pour le 3B, ≈ 0,50 $ pour Sonnet.
+- **Export CV** : 449 CV lus (`--cv-limit 300` par projet, 50 en v3) ; un dossier de l'enseignant qui reprend moins
+  de 85 % du CV n'est plus un exemple (`exampleRefusal`, `MIN_EXAMPLE_COVERAGE`), il reste dans le test.
+- Enseignant : deux lots Batch API (≈ 6 $ puis ≈ 8 $ estimés), 4 026 réponses gardées en tout ; 3 617 exemples
+  d'entraînement, 493 de contrôle, 455 demandes de test.
+- Entraînement : affinage `20261126-1127-baf9`, 9 782 s sur une RTX A6000 (≈ 1,10 $) ; perte d'entraînement 0,26, de
+  contrôle 0,41 ; adaptateur vérifié (rang 32, 364 matrices, poids sha256 `a8c8ba92…`).
+- Adaptateur copié dans le même dépôt privé Hugging Face (version 4, commit `aa52c468` ; version 3 : `59469654`).
+- Mesure (mêmes 455 demandes de test que la v3, RTX 4090, cache KV 16 bits, température 0,15) :
+  - **assistant IA : 64 % de réponses utilisables** (v3 : 47 % ; Sonnet : 93 %) d'après le juge, 6 fausses au lieu de 14,
+    9 inventions au lieu de 15, 5 hors consignes au lieu de 2 ;
+  - **export CV : 100 % de dossiers lisibles** (v3 : 93 %), CV repris 84 % (v3 : 85 % ; Sonnet : 91 %) ; traduction
+    100 % (v3 : 89 %) ; Claude garde « Export CV (format cabinet) » ;
+  - analyses d'entretien du recruteur 4/4 (v3 : 3/4) ; écart de score avec Sonnet plus petit (matching 5,0 au lieu de
+    5,6 ; score final 8,3 au lieu de 9,1 ; vivier général 8,1 au lieu de 8,8) ;
+  - en recul : 2 notations matching sur 36 illisibles (v3 : aucune), critères 21/22 même décision (v3 : 22/22),
+    évaluation MBC Search 1/2, comparaison des intitulés 76 % (v3 : 78 %) — écarts d'un ou deux cas.
+- Décision : la v4 remplace la v3 (DEV Config IA sur la v4 depuis le 2026-11-26) ; à surveiller : notations matching
+  illisibles (journaux du serveur « [matching] … sans jugement lisible » : le journal de consommation de l'ADR 0064 compte
+  l'appel réussi, pas la lecture de sa réponse).

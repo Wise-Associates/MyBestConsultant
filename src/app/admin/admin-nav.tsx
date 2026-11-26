@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Palette, Briefcase,
-  Building2, Users, BrainCircuit, Inbox, Home, Layout, PanelTop, Network, Video, Share2, Users2, CreditCard, Radar, FolderSearch, Mic, FileText, Activity, Search, LifeBuoy, Megaphone, Telescope,
+  Building2, Users, BrainCircuit, Inbox, Home, Layout, PanelTop, Network, Video, Share2, Users2, CreditCard, Radar, FolderSearch, Mic, FileText, Activity, Search, LifeBuoy, Megaphone, Telescope, Gauge,
 } from 'lucide-react'
 
 const SECTIONS = [
@@ -46,6 +46,7 @@ const SECTIONS = [
     label: 'INTELLIGENCE',
     items: [
       { href: '/admin/llm-config',      label: 'Config IA',        sub: 'Clés API & modèles',    icon: BrainCircuit },
+      { href: '/admin/ia-consommation', label: 'Consommation IA', sub: 'Jetons, coût, échecs',  icon: Gauge },
       { href: '/admin/linkedin',        label: 'Scraping LinkedIn', sub: 'Offres automatiques',   icon: Network },
       { href: '/admin/social',          label: 'Réseaux sociaux',   sub: 'Diffusion des offres', icon: Megaphone },
       { href: '/admin/linkedin-posts',  label: 'LinkedIn Posts',    sub: 'Diffusion & suivi',     icon: Share2 },

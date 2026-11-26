@@ -7,6 +7,8 @@ import { getLLMConfig } from '@/lib/ai/llm-config-store'
 import { requireAdmin } from '@/lib/appwrite/auth'
 import { ID, Query } from 'node-appwrite'
 import type { Job } from '@/types'
+import { claudeTokens, directCallRecord, outcomeOf } from '@/lib/ai/usage'
+import { recordLlmUsage } from '@/lib/ai/usage-store'
 
 export interface SuggestedGroup {
   name: string
@@ -46,8 +48,13 @@ export async function findLinkedInGroupsForJob(jobId: string): Promise<{ groups:
     const skills = job.skills?.join(', ') || ''
     const contractLabel = job.contractType ? (CONTRACT_LABELS[job.contractType] ?? job.contractType) : ''
 
+    // Journal de consommation (ADR 0064) : recherche lancée par un admin, pour la plateforme. Les recherches web de l'outil
+    // sont facturées à part par Anthropic, hors jetons : non comptées dans le coût estimé.
+    const model = llmCfg.claudeModel || 'claude-sonnet-4-6'
+    const usage = { feature: 'linkedin-groups', tenantId: 'admin' }
+    const started = Date.now()
     const resp = await client.messages.create({
-      model: llmCfg.claudeModel || 'claude-sonnet-4-6',
+      model,
       max_tokens: 2000,
       system: SYSTEM,
       tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
@@ -61,7 +68,13 @@ Télétravail : ${job.remote ?? ''}
 
 Trouve des groupes LinkedIn pertinents pour diffuser cette offre.`,
       }],
+    }).catch((err: unknown) => {
+      recordLlmUsage(directCallRecord(usage, { provider: 'claude', model, durationMs: Date.now() - started, tokens: null, outcome: outcomeOf(err) }))
+      throw err
     })
+    recordLlmUsage(directCallRecord(usage, {
+      provider: 'claude', model, durationMs: Date.now() - started, tokens: claudeTokens(resp.usage), outcome: 'ok', truncated: resp.stop_reason === 'max_tokens',
+    }))
 
     const rawText = resp.content
       .filter((b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text')

@@ -17,6 +17,7 @@ import {
   parseAutoMatchState, pickOffersForCandidate, type AutoMatchState, type AutoMatchTask,
 } from '@/lib/ai-matches'
 import type { ReviewStatus } from '@/lib/match-review'
+import { organisationOf } from '@/lib/ai/usage'
 
 // Correspondances IA des nouveaux candidats (ADR 0047) : file de tâches persistante (un document de AO_STATE par
 // candidat, genre « automatch »), comparaison aux offres actives, association (ligne job_matches « auto »), alerte au
@@ -193,6 +194,7 @@ async function compareWithOffers(candidateId: string, now: Date): Promise<'done'
       const scored = await matchingScorer({
         title: job.title ?? '', skills: job.skills, description: job.description ?? '', details: offerDetails(job),
         sourceContext: await aoSourceContext(job), criteria: await loadOfferCriteria(job.$id),
+        tenantId: organisationOf(job.tenantId),
       })(cvText)
       // Réponse sans jugement lisible : offre non notée (jamais un score inventé).
       if (!scored) {

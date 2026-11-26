@@ -68,7 +68,7 @@ async function readPage(url: string, ctx: PageReadContext): Promise<PageRead> {
   const llmWait = Math.min(PAGE_LLM_MAX_MS, ctx.timeLeft() - AFTER_READ_MS)
   if (llmWait < PAGE_LLM_MIN_MS) return { ok: false, reason: 'temps du passage écoulé' }
   try {
-    const { offers } = await extractOffersFromPage(page.text, llmWait, ctx.orgName, ctx.receivedAt)
+    const { offers } = await extractOffersFromPage(page.text, llmWait, ctx.orgName, ctx.receivedAt, ctx.tenantId)
     // Noms du client lus sur la page (client, client final, autres noms) : masqués à la publication s'ils y sont cités.
     return { ok: true, offers: offers.map(o => withPageClientNames(o, page.text, ctx.orgName)), finalUrl: page.finalUrl }
   } catch (err) {

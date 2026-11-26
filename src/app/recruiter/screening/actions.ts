@@ -352,6 +352,7 @@ export async function screenAllApplications(jobId: string, appIds: string[]): Pr
         jobDetails: job.details,
         jobSourceContext: job.sourceContext,
         cvFileId: appDoc.cvFileId as string | undefined,
+        tenantId: me.tenantId,
       }
 
       const result = await scoreApplication(toScreen)

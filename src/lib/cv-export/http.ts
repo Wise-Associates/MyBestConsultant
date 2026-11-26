@@ -234,7 +234,7 @@ async function generate(req: NextRequest, subject: ExportSubject, scope: Generat
   })
   let result
   try {
-    result = await subject.run(body.data, scope.template, beforeAi)
+    result = await subject.run({ ...body.data, tenantId: scope.tenantId }, scope.template, beforeAi)
   } catch (err) {
     if (release && failedWithoutCost(err)) {
       await release().catch(releaseErr => console.error('[cv-export] places de quota non rendues', key, cvExportErrorName(releaseErr)))

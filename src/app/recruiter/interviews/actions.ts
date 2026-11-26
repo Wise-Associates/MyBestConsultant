@@ -138,7 +138,7 @@ export async function generateInterviewQuestions(
     if (refused) return { error: refused }
 
     const prompt = questionGenerationPrompt({ ...ask, defaultQuestions: genericQuestions, plan })
-    const { content } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system)
+    const { content } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system, { feature: 'interview-questions', tenantId: me.tenantId })
 
     const aiQuestions = parseGeneratedQuestions(content, plan.count)
     if (!aiQuestions) return { error: 'Génération échouée' }
@@ -168,7 +168,7 @@ export async function getAIFollowUp(
       answer: input.data.candidateAnswer,
       recentTurns: input.data.transcript,
     })
-    const { content } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system)
+    const { content } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system, { feature: 'interview-followup', tenantId: me.tenantId })
     return { followUp: nullableReply(content) }
   } catch (err) {
     // L'entretien continue sans relance ; la panne est journalisée.
@@ -198,7 +198,7 @@ export async function analyseInterview(
     if (refused) return { error: refused }
 
     const prompt = recruiterAnalysisPrompt(job)
-    const { content, provider } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system)
+    const { content, provider } = await callLLM([{ role: 'user', content: prompt.user }], prompt.system, { feature: 'interview-analysis', tenantId: me.tenantId })
 
     const analysis = parseRecruiterAnalysis(content, provider)
     if (!analysis) return { error: 'Analyse échouée' }
