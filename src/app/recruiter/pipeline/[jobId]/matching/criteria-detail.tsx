@@ -114,10 +114,12 @@ const helpersFor = (jobId: string) => ({
   suggestTitles: (input: TitleRequest) => suggestTitlesAction(jobId, input),
 })
 
-export function CriteriaPanel({ jobId, criteria, start, canEdit, pending, className = '' }: {
+export function CriteriaPanel({ jobId, criteria, start, canEdit, pending, onScoring, className = '' }: {
   jobId: string; criteria: MatchingCriteria | null; start: OfferCriteriaSet; canEdit: boolean
   /** Candidats dont le score attend un jugement sur mes libellés. */
   pending: number
+  /** Notation lancée sur le serveur : `offre` = renotation sur ses libellés, `mine` = mes libellés jugés (suivie par la page). */
+  onScoring?: (kind: 'offre' | 'mine') => void
   className?: string
 }) {
   const router = useRouter()
@@ -131,10 +133,11 @@ export function CriteriaPanel({ jobId, criteria, start, canEdit, pending, classN
   async function saveGeneral(set: OfferCriteriaSet) {
     const res = await saveOfferCriteriaAction(jobId, set)
     if (!res.error) router.refresh()
+    if (!res.error && res.rescoring) onScoring?.('offre')
     return {
       error: res.error,
       message: res.rescoring
-        ? 'Critères enregistrés : les candidats de l’offre sont renotés en arrière-plan (quelques minutes). Rechargez la page pour voir leurs scores.'
+        ? 'Critères enregistrés : les candidats de l’offre sont renotés en arrière-plan (quelques minutes) ; la liste se met à jour seule.'
         : 'Critères enregistrés : scores recalculés.',
     }
   }
@@ -142,6 +145,7 @@ export function CriteriaPanel({ jobId, criteria, start, canEdit, pending, classN
   async function saveOwn(set: OfferCriteriaSet | null) {
     const res = await saveOwnCriteriaAction(jobId, set)
     if (!res.error) router.refresh()
+    if (!res.error && res.judging) onScoring?.('mine')
     return {
       error: res.error,
       message: !set ? 'Critères de l’offre de nouveau appliqués.' : res.judging
@@ -153,6 +157,7 @@ export function CriteriaPanel({ jobId, criteria, start, canEdit, pending, classN
   async function judgeMore() {
     setJudging(true)
     setJudgeNote('')
+    onScoring?.('mine')
     const res = await judgeOwnCriteriaAction(jobId).catch(() => ({ error: 'Notation interrompue : réessayez.', outcome: undefined }))
     setJudging(false)
     if (res.error || !res.outcome) return setJudgeNote(res.error ?? 'Notation interrompue : réessayez.')
@@ -193,13 +198,18 @@ export function CriteriaPanel({ jobId, criteria, start, canEdit, pending, classN
 }
 
 /** « Critères pour ce candidat » (détail d'un candidat du Matching IA) : les miens pour lui seul ; `assistant` : offre de l'organisation. */
-export function CandidateCriteriaEditor({ jobId, candidateKey, criteria, assistant }: { jobId: string; candidateKey: string; criteria: MatchingCriteria; assistant: boolean }) {
+export function CandidateCriteriaEditor({ jobId, candidateKey, criteria, assistant, onScoring }: {
+  jobId: string; candidateKey: string; criteria: MatchingCriteria; assistant: boolean
+  /** Ses libellés jugés sur le serveur (suivi par la page). */
+  onScoring?: (kind: 'mine') => void
+}) {
   const router = useRouter()
   const own = criteria.candidates[candidateKey]
   const [set, setSet] = useState(own ?? criteria.own ?? criteria.general)
   async function save(next: OfferCriteriaSet | null) {
     const res = await saveCandidateCriteriaAction(jobId, candidateKey, next)
     if (!res.error) router.refresh()
+    if (!res.error && res.judging) onScoring?.('mine')
     return {
       error: res.error,
       message: !next ? 'Critères de l’offre de nouveau appliqués.' : res.judging ? 'Enregistrés : ce candidat est noté sur ces libellés en arrière-plan.' : 'Enregistrés : score recalculé.',

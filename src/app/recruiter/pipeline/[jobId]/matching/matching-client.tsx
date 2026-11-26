@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useTransition, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, useTransition, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { BackLink } from '@/components/recruiter/back-link'
@@ -30,11 +30,32 @@ import { rowCriteria } from '@/lib/criteria-view'
 import { criteriaBreakdown, isCriteriaSummary, reasonWithoutCriteria } from '@/lib/criteria-scoring'
 import type { OfferCriteriaSet } from '@/lib/offer-criteria'
 import { SOURCING_MIN_SCORE } from '@/lib/sourcing-rules'
+import { POLL_MS, nextWatch, startWatch, type ScoringWatch } from '@/lib/matching-progress'
 
 const PAGE_SIZE = 25
 
 // Barre de filtres : mêmes champs que « Mes offres » du tableau de bord (jobs-list-client.tsx).
 const muted: CSSProperties = { color: 'var(--color-text-muted)' }
+
+/** Notations en cours sur une ligne : libellé complet (cartes, panneau du candidat) et court (colonne Score du tableau). */
+const WORK_LABELS = {
+  matching: ['Matching en cours…', 'En cours…'],
+  recalcul: ['Recalcul en cours…', 'Recalcul…'],
+  renotation: ['Renotation en cours…', 'Renotation…'],
+  mine: ['Notation sur vos critères…', 'Notation…'],
+} as const
+type Work = keyof typeof WORK_LABELS
+
+/** Notation en cours pour une ligne ; `pill` : pastille des cartes ; `short` : libellé court, complet au survol. */
+function WorkBadge({ work, pill = false, short = false }: { work: Work; pill?: boolean; short?: boolean }) {
+  const [label, brief] = WORK_LABELS[work]
+  return (
+    <span title={short ? label : undefined} className={`inline-flex items-center gap-1 whitespace-nowrap text-[11px] font-semibold ${pill ? 'px-2 py-0.5 rounded-full' : ''}`}
+      style={{ color: '#1d4ed8', background: pill ? 'rgba(59,130,246,0.12)' : undefined }}>
+      <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden />{short ? brief : label}
+    </span>
+  )
+}
 const field = 'h-11 sm:h-10 px-3 rounded-xl text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-text)'
 const fieldStyle: CSSProperties = { background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }
 const SCORE_OPTIONS: Record<MatchScoreFilter, string> = {
@@ -182,6 +203,7 @@ export function MatchingClient({
     : m.criteriaStale ? 'Score calculé sur les anciens critères de l’offre, renotation en cours ou interrompue'
       : `Détail du score indisponible : score calculé ${isCriteriaSummary(m.reason) ? 'sur d’autres critères de l’offre' : 'avant la notation par critères'}`)
   const pendingCount = matches.filter(m => m.criteriaPending).length
+  const staleCount = matches.filter(m => m.criteriaStale).length
   /** Raison affichée : la phrase de l'IA, sans le résumé des jugements (lettres pour un score noté sur critères). */
   const reasonOf = (m: JobMatchResult, b: { rest: string } | null) => (b ? b.rest : reasonWithoutCriteria(m.reason))
   /** Le candidat a ses propres poids pour le barème de son score. */
@@ -248,6 +270,61 @@ export function MatchingClient({
     }, 8000)
     return () => clearInterval(t)
   }, [anyAnalysing, jobId])
+
+  // Notations lancées depuis cette page qui tournent sur le serveur après la réponse (matching-progress.ts) : renotation
+  // sur les nouveaux libellés de l'offre (lignes `criteriaStale`), jugement de mes libellés (`criteriaPending`). Pendant
+  // leur suivi, ces lignes montrent « … en cours » et la liste est relue ; une relecture à la fois (les Server Actions
+  // passent l'une après l'autre : derrière une action longue, les relectures ne s'empilent pas).
+  const [rescoring, setRescoring] = useState<ScoringWatch | null>(null)
+  const [judgingOwn, setJudgingOwn] = useState<ScoringWatch | null>(null)
+  const rescoringOn = !!rescoring && staleCount > 0
+  const judgingOn = !!judgingOwn && pendingCount > 0
+  const watching = rescoringOn || judgingOn
+  const reading = useRef(false)
+  useEffect(() => {
+    if (!watching) return
+    const t = setInterval(async () => {
+      if (reading.current) return
+      reading.current = true
+      try {
+        const list = await getMatchesAction(jobId)
+        const at = Date.now()
+        setMatches(list)
+        setRescoring(w => nextWatch(w, list.filter(m => m.criteriaStale).length, at))
+        setJudgingOwn(w => nextWatch(w, list.filter(m => m.criteriaPending).length, at))
+      } catch (err) {
+        // Relecture manquée : la suivante réessaie ; l'échéance arrête quand même le suivi.
+        console.warn('[matching] liste non relue pendant une notation', err)
+        const at = Date.now()
+        setRescoring(w => w && nextWatch(w, w.left, at))
+        setJudgingOwn(w => w && nextWatch(w, w.left, at))
+      } finally {
+        reading.current = false
+      }
+    }, POLL_MS)
+    return () => clearInterval(t)
+  }, [watching, jobId])
+  /** Notation lancée par le panneau des critères : `offre` = renotation sur ses libellés, `mine` = mes libellés jugés. */
+  const onScoring = (kind: 'offre' | 'mine') => {
+    if (kind === 'offre') setRescoring(startWatch(Date.now(), false))
+    else setJudgingOwn(startWatch(Date.now(), true))
+  }
+
+  /** Notation en cours pour cette ligne, sinon null. */
+  const workOf = (m: JobMatchResult): Work | null =>
+    analysing(m) || (m.applicationId && running.has(m.applicationId)) ? 'matching'
+      : isRefreshing && m.source === 'pool' ? 'recalcul'
+        : rescoringOn && m.criteriaStale ? 'renotation'
+          : judgingOn && m.criteriaPending ? 'mine'
+            : null
+  const refreshingCount = isRefreshing ? matches.filter(m => m.source === 'pool').length : 0
+  const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`
+  const workStatus = [
+    isRefreshing && `Recalcul des scores en cours (${plural(refreshingCount, 'candidat')} de la base, marqués dans la liste) ; les nouveaux candidats apparaîtront à la fin, dans quelques minutes.`,
+    rescoringOn && `Renotation sur les nouveaux critères de l’offre en cours : ${plural(staleCount, 'candidat')}, marqués dans la liste.`,
+    judgingOn && `Notation sur vos critères en cours : ${plural(pendingCount, 'candidat')} en attente, marqués dans la liste.`,
+    watching && 'La liste se met à jour seule.',
+  ].filter(Boolean).join(' ')
 
   async function runMatching(m: JobMatchResult) {
     if (!m.applicationId) return
@@ -347,6 +424,7 @@ export function MatchingClient({
 
   const keyOf = (m: JobMatchResult) => `${m.source}-${m.id}`
   const focused = pageItems.find(m => keyOf(m) === focusKey) ?? pageItems[0] ?? null
+  const focusedWork = focused && workOf(focused)
   const scoreCounts = (['match', 'below', 'pending'] as const).map(score => ({ score, n: filterMatches(matches, { ...filters, score }).length }))
   // Histogramme des scores (tranches de 10) du rail : où se situe le seuil de 65 pour cette offre.
   const histogram = Array.from({ length: 10 }, (_, i) => matches.filter(m => m.score !== null && Math.min(9, Math.floor(m.score / 10)) === i).length)
@@ -468,6 +546,7 @@ export function MatchingClient({
             const isFocused = focused !== null && keyOf(focused) === keyOf(m)
             const cv = cvHref(m)
             const breakdown = m.score != null ? scoreBreakdown(m.reason, rowWeights(m)) : null
+            const work = workOf(m)
             const reasonText = reasonOf(m, breakdown ?? criteriaDetailOf(m))
             return (
               <tr key={keyOf(m)} onClick={() => setFocusKey(keyOf(m))} aria-selected={isFocused}
@@ -511,9 +590,10 @@ export function MatchingClient({
                         <span className="block h-full rounded-full" style={{ width: `${m.score}%`, background: scoreColor(m.score) }} />
                       </span>
                       {ownWeights(m, breakdown) && <OwnWeightsBadge />}
+                      {work && <WorkBadge work={work} short />}
                     </span>
-                  ) : analysing(m) || (m.applicationId && running.has(m.applicationId)) ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: '#3b82f6' }}><Loader2 className="h-3 w-3 animate-spin" aria-hidden />En cours…</span>
+                  ) : work ? (
+                    <WorkBadge work={work} short />
                   ) : (
                     <span className="text-[11px] font-semibold" style={muted}>Non analysé</span>
                   )}
@@ -552,7 +632,7 @@ export function MatchingClient({
   const panelButton = 'h-10 px-3 rounded-[10px] inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold no-underline transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-text)'
   const panel = (
     <aside aria-label="Candidat et sélection" className="hidden min-[90rem]:flex flex-col gap-3 sticky top-[84px]">
-      <CriteriaPanel jobId={jobId} criteria={criteria} start={criteriaStart} canEdit={canEditCriteria} pending={pendingCount} />
+      <CriteriaPanel jobId={jobId} criteria={criteria} start={criteriaStart} canEdit={canEditCriteria} pending={pendingCount} onScoring={onScoring} />
       {!criteria && jobWeights && <JobWeightsPanel jobId={jobId} global={globalWeights.matching} job={jobWeights.weights} unreadable={jobWeights.unreadable} />}
       {focused && (
         <section aria-label={`Détail de ${focused.name}`} className="rounded-[20px] p-4" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
@@ -573,14 +653,15 @@ export function MatchingClient({
                 {focused.score >= SOURCING_MIN_SCORE ? 'Correspond' : `Sous le seuil de ${SOURCING_MIN_SCORE}`}
               </span>
               {ownWeights(focused, focusedBreakdown) && <OwnWeightsBadge />}
+              {focusedWork && <WorkBadge work={focusedWork} />}
             </p>
           ) : (
-            <p className="text-[13px] mt-3 mb-3" style={muted}>{analysing(focused) ? 'Matching en cours…' : 'Pas encore analysé.'}</p>
+            <p className="text-[13px] mt-3 mb-3" style={muted}>{focusedWork ? <WorkBadge work={focusedWork} /> : 'Pas encore analysé.'}</p>
           )}
           {focused.score != null && focusedBreakdown && <ScoreCriteriaList breakdown={focusedBreakdown} match={{ ...focused, score: focused.score }} />}
           {focused.score != null && focusedCriteria && <CriteriaScoreDetail breakdown={focusedCriteria} match={{ ...focused, score: focused.score }} variant="list" />}
           {criteria && focused.score != null && focused.source !== 'application' && isCriteriaSummary(focused.reason) && (
-            <CandidateCriteriaEditor key={keyOf(focused)} jobId={jobId} candidateKey={candidateWeightsKey(focused)} criteria={criteria} assistant={canEditCriteria} />
+            <CandidateCriteriaEditor key={keyOf(focused)} jobId={jobId} candidateKey={candidateWeightsKey(focused)} criteria={criteria} assistant={canEditCriteria} onScoring={onScoring} />
           )}
           {jobWeights && focused.score != null && focusedBreakdown && focusedBreakdown.scale !== 'legacy' && (
             <CandidateWeightsPanel key={keyOf(focused)} className="mt-3" jobId={jobId} candidateKey={candidateWeightsKey(focused)} scale={focusedBreakdown.scale}
@@ -695,7 +776,7 @@ export function MatchingClient({
           <p className="text-sm mb-3" style={{ color: 'var(--color-text-muted)' }}>
             L&apos;IA a comparé cette offre aux candidatures reçues, à la base de candidats et à votre vivier (celui de l&apos;offre et votre vivier général). Sélectionnez qui vous intéresse puis lancez (ou relancez) le screening.
           </p>
-          <CriteriaPanel className="mb-4" jobId={jobId} criteria={criteria} start={criteriaStart} canEdit={canEditCriteria} pending={pendingCount} />
+          <CriteriaPanel className="mb-4" jobId={jobId} criteria={criteria} start={criteriaStart} canEdit={canEditCriteria} pending={pendingCount} onScoring={onScoring} />
           {!criteria && (
             <>
               {jobWeights && (
@@ -710,6 +791,11 @@ export function MatchingClient({
           <div role="status" className="mb-4 px-4 py-2.5 rounded-lg text-sm font-semibold" style={{ background: 'rgba(232,163,61,0.1)', color: '#b8862f' }}>
             {flash}
           </div>
+        )}
+        {workStatus && (
+          <p role="status" className="mb-4 px-4 py-2.5 rounded-lg text-[13px] flex items-start gap-2" style={{ background: 'rgba(59,130,246,0.08)', color: '#1d4ed8' }}>
+            <Loader2 className="h-4 w-4 mt-px shrink-0 animate-spin motion-reduce:animate-none" aria-hidden />{workStatus}
+          </p>
         )}
         {jobWeights?.candidatesUnreadable && (
           <p role="status" className="mb-4 px-4 py-2.5 rounded-lg text-[13px]" style={{ background: 'rgba(245,158,11,0.12)', color: '#b45309' }}>
@@ -780,6 +866,7 @@ export function MatchingClient({
                 const cv = cvHref(m)
                 const profile = profileHref(m)
                 const breakdown = m.score != null ? scoreBreakdown(m.reason, rowWeights(m)) : null
+                const work = workOf(m)
                 const criteriaDetail = breakdown ? null : criteriaDetailOf(m)
                 const reasonText = reasonOf(m, breakdown ?? criteriaDetail)
                 const disabled = m.alreadyInFunnel
@@ -825,11 +912,10 @@ export function MatchingClient({
                               {m.score}/100
                             </span>
                             {ownWeights(m, breakdown) && <OwnWeightsBadge />}
+                            {work && <WorkBadge work={work} pill />}
                           </span>
-                        ) : analysing(m) || (m.applicationId && running.has(m.applicationId)) ? (
-                          <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(59,130,246,0.12)', color: '#3b82f6' }}>
-                            <Loader2 className="h-3 w-3 animate-spin" /> Matching en cours…
-                          </span>
+                        ) : work ? (
+                          <WorkBadge work={work} pill />
                         ) : (
                           <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(107,114,128,0.12)', color: '#9ca3af' }}>
                             Non analysé

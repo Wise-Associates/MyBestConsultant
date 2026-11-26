@@ -9,6 +9,9 @@ describe('préfiltre des CV avant l\'IA (ADR 0044, phase 2)', () => {
   it('nettoie le titre d\'une offre (recherches : offer-filter.test.ts)', () => {
     assert.equal(cleanTitle('Chef de projet PMO (H/F) – Paris'), 'Chef de projet PMO')
     assert.equal(cleanTitle('Développeur Java F/H - CDI'), 'Développeur Java')
+    assert.equal(cleanTitle('Consultant(e) Cybersécurité (H/F)'), 'Consultant Cybersécurité')
+    assert.equal(cleanTitle('Développeur·se Full Stack · Lyon'), 'Développeur Full Stack · Lyon')
+    assert.equal(cleanTitle('Chef(fe) de projet'), 'Chef de projet')
   })
 
   it('filtre la base candidats et n\'accepte que des identifiants Appwrite', () => {

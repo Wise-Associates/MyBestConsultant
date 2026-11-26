@@ -14,6 +14,8 @@ describe('autres intitulés du métier proposés (ADR 0062)', () => {
     assert.deepEqual(dictionaryTitles('Développeur Full-Stack'), ['Full Stack Developer'])
     assert.deepEqual(dictionaryTitles('Product Owner'), ['Proxy PO'])
     assert.deepEqual(dictionaryTitles('Responsable des plantations'), [])
+    // Écriture inclusive retirée : « Consultant(e) » est le métier « Consultant » du dictionnaire.
+    assert.deepEqual(dictionaryTitles('Consultant(e) Cybersécurité'), ['Consultant sécurité', 'Consultant GRC'])
   })
 
   it('index : métiers portés par 2 CV au moins, ni plus généraux, ni un autre métier connu, ni liés par un mot générique', () => {

@@ -213,7 +213,7 @@ export async function collectScoring(project: string, limits: ScoringLimits): Pr
   // Peu d'offres ont encore leurs critères (fonction récente) : complétées par des offres aux critères par défaut, ceux
   // que l'application leur donne à la publication quand ni l'AO ni l'IA n'en proposent (defaultCriteriaSet).
   const withDefaults = sample(jobList.filter(j => !withCriteria.some(w => w.job.$id === j.$id)), Math.max(0, Math.ceil(limits.criteria / 3) - withCriteria.length), `${seed}:crit-default`, j => j.$id)
-    .map(job => ({ job, set: defaultCriteriaSet({ title: str(job.title), description: maskLeftoverContacts(str(job.description)), skills: Array.isArray(job.skills) ? job.skills.filter((x): x is string => typeof x === 'string') : [], location: str(job.location) || undefined }) }))
+    .map(job => ({ job, set: defaultCriteriaSet({ title: str(job.title), skills: Array.isArray(job.skills) ? job.skills.filter((x): x is string => typeof x === 'string') : [], location: str(job.location) || undefined }) }))
   stats.info.push(`${withCriteria.length} offre(s) à critères sur ${jobList.length}, ${withDefaults.length} aux critères par défaut`)
   const criteriaPairs = sample([...withCriteria, ...withDefaults].flatMap(({ job, set }) => {
     const own = fromMatches.filter(p => p.job.$id === job.$id).map(p => p.cv)

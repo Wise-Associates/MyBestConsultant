@@ -93,8 +93,13 @@ const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCas
 // Mots vides des titres d'offres (« Chef de projet H/F », « Développeur (F/H) – Lyon »).
 const STOP = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'et', 'en', 'au', 'aux', 'a', 'pour', 'sur', 'un', 'une', 'h', 'f', 'hf', 'fh', 'cdi', 'cdd', 'freelance', 'mission', 'senior', 'junior', 'confirme', 'expert'])
 const words = (s: string) => fold(s).split(/[^a-z0-9+#]+/).filter(w => w.length > 1 && !STOP.has(w))
+// Marques d'écriture inclusive collées au mot : « Consultant(e) », « Développeur·se » (le métier se cherche au masculin
+// générique, comme les métiers des CV classés ; 2026-11-26, « Consultant(e) Cybersécurité » ne trouvait rien).
+const INCLUSIVE = /\((?:e|ne|se|fe|le|es|euse|rice|trice|ère)\)|·(?:e|ne|se|fe|le|es|euse|rice|trice|ère)(?![\p{L}])/giu
+
 /** Titre d'offre sans genre, lieu ni contrat : « Chef de projet MOA (H/F) – Paris » → « Chef de projet MOA ». */
-export const cleanTitle = (title: string) => title.replace(/\(([hf]\s*\/\s*[hf])\)|\b[hf]\s*\/\s*[hf]\b/gi, '').split(/\s[–—-]\s/)[0].trim()
+export const cleanTitle = (title: string) =>
+  title.replace(/\(([hf]\s*\/\s*[hf])\)|\b[hf]\s*\/\s*[hf]\b/gi, '').replace(INCLUSIVE, '').split(/\s[–—-]\s/)[0].replace(/\s+/g, ' ').trim()
 
 /** CV trouvé par la recherche, avec ses champs classés. */
 export interface SearchHit {

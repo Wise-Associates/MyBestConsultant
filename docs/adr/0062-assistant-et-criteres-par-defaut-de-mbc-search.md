@@ -50,8 +50,16 @@ Choix de l'utilisateur (questions du même jour) :
   l'échange. Règles pures : `src/lib/criteria-revision.ts` (testé) — consigne, demande, lecture de la réponse,
   changements (`criteriaChanges`). La réponse de l'IA (« Matching IA » de Config IA, `SCORING_AI`) est relue comme une
   donnée non fiable : identifiants inconnus avec un nom → critère créé (`x…`), doublons écartés, libellés bornés (4
-  métiers pour Intitulé, 12 sinon), **poids ramenés à 100 en proportion** si l'IA s'est trompée dans ses additions,
-  puis `CriteriaSetSchema` ; illisible ou invalide → message, critères inchangés.
+  métiers pour Intitulé, 12 sinon), puis `CriteriaSetSchema` ; illisible ou invalide → message, critères inchangés.
+- **Réponse partielle** (2026-11-26) : l'IA ne renvoie que les critères qu'elle ajoute ou modifie (`criteres`) et ceux
+  qu'elle retire (`retires`). Un critère qu'elle ne renvoie pas est **gardé tel quel**, jamais retiré ; un critère
+  renvoyé sans libellés ou sans poids garde les siens. Poids : ceux qu'elle donne sont gardés, les autres critères se
+  partagent le reste en proportion (sinon tout est ramené à 100 en proportion). Cause : Claude indisponible, le repli
+  sur le petit modèle par défaut de Config IA (Ministral 3B affiné pour la classification des CV) ne renvoyait que
+  l'Intitulé, et les six autres critères étaient retirés. Une réponse qui ne change rien, hors question, est signalée
+  en orange sous la phrase de l'IA (« Aucun critère n'a changé… ») : la liste fait foi.
+- Titres d'offre en écriture inclusive (« Consultant(e) », « Développeur·se ») ramenés au masculin générique par
+  `cleanTitle` (`src/lib/search/cv-search.ts`) : libellé d'Intitulé par défaut, recherches de l'index, dictionnaire.
 - Les critères rendus remplacent ceux de l'éditeur ; les critères ajoutés ou modifiés portent « Ajouté / Modifié par
   l'assistant » et se déplient ; la réponse liste les changements et propose « Annuler cette modification » tant que
   les critères n'ont pas été retouchés. Pendant une demande, la liste est désactivée (`<fieldset disabled>`). Rien

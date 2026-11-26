@@ -461,8 +461,20 @@ function EditorHeader({ title, source, badge, intro, notice, busy, reset }: {
 }
 
 /** Ce que la réponse a changé, en une ligne par sorte de changement. */
-function ChangesList({ changes }: { changes: CriteriaChange[] }) {
-  if (changes.length === 0) return <p className="mt-1.5 text-[11.5px]" style={muted}>Aucun critère changé.</p>
+function ChangesList({ changes, reply }: { changes: CriteriaChange[]; reply: string }) {
+  if (changes.length === 0) {
+    // Une question de l'assistant ne change rien, normal ; une réponse qui annonce un changement absent de ses critères
+    // (vu avec un petit modèle de repli, 2026-11-26) est signalée : la liste à droite fait foi.
+    return reply.trim().endsWith('?')
+      ? <p className="mt-1.5 text-[11.5px]" style={muted}>Aucun critère changé.</p>
+      : (
+        <p className="mt-1.5 text-[11.5px] font-semibold" style={{ color: WARN }}>
+          <AlertTriangle size={12} className="-mt-0.5 mr-1 inline" aria-hidden />
+          Aucun critère n’a changé : la réponse de l’assistant ne contenait aucune modification. Reformulez votre demande, ou
+          ajoutez le critère avec « + » sous la liste.
+        </p>
+      )
+  }
   const names = (kind: CriteriaChange['kind']) => changes.filter(c => c.kind === kind).map(c => c.name || 'critère ajouté')
   const lines = [['Ajouté', names('added')], ['Modifié', names('labels')], ['Retiré', names('removed')], ['Poids ajusté', names('weight')]] as const
   return (
@@ -529,7 +541,7 @@ function Assistant({ welcome, chat, draft, onDraft, asking, onAsk, onUndo, curre
         ) : (
           <div key={i} className={`${bubble} self-start rounded-bl-md border`} style={{ background: 'var(--crit-raised)', borderColor: 'var(--crit-line)', ...fg }}>
             <p>{e.text}</p>
-            <ChangesList changes={e.changes} />
+            <ChangesList changes={e.changes} reply={e.text} />
             {i === lastAnswer && e.changes.length > 0 && e.after === current && (
               <button type="button" onClick={() => onUndo(e)} disabled={asking}
                 className={`mt-1.5 inline-flex items-center gap-1 text-[11.5px] font-semibold underline disabled:opacity-50 ${focusRing}`} style={fg}>

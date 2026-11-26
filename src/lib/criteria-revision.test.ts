@@ -51,18 +51,33 @@ describe('assistant des critères (ADR 0062)', () => {
     ])
   })
 
-  it('critère retiré, autres intitulés ; poste borné à 4 métiers ; doublons écartés', () => {
+  it('critère retiré par « retires », autres intitulés ; poste borné à 4 métiers ; doublons écartés', () => {
     const result = parseCriteriaRevision(answer(cs => {
-      cs.splice(4, 1)
       cs[0].libelles = Array.from({ length: 6 }, (_, i) => ({ libelle: `Métier ${i}`, poids: 20, requis: i === 0 }))
       cs.push({ ...cs[1] })
-    }, { autres_intitules: ['Ingénieur Java', 'ingénieur java', ''] }), current())
+    }, { retires: ['domaine', 'inconnu'], autres_intitules: ['Ingénieur Java', 'ingénieur java', ''] }), current())
     assert.ok(result)
     assert.equal(result.criteria.criteria.find(c => c.id === 'poste')?.labels.length, 4)
     assert.deepEqual(result.criteria.criteria.map(c => c.id), ['poste', 'localisation', 'niveau', 'competences'])
     assert.deepEqual(result.criteria.alternativeTitles, ['Ingénieur Java'])
     const kinds = criteriaChanges(current(), result.criteria).map(c => [c.id, c.kind])
     assert.deepEqual(kinds.filter(([, k]) => k !== 'weight'), [['poste', 'labels'], ['domaine', 'removed']])
+  })
+
+  it('critères non rendus gardés : une réponse avec le seul Intitulé ne retire rien (petit modèle, 2026-11-26)', () => {
+    const only = JSON.stringify({ reponse: 'J’ai ajouté les compétences.', criteres: [{ id: 'poste', nom: 'Intitulé', poids: 100, libelles: [{ libelle: 'Développeur Java', poids: 100, requis: true }] }] })
+    const result = parseCriteriaRevision(only, current())
+    assert.deepEqual(result?.criteria.criteria.map(c => c.id), current().criteria.map(c => c.id))
+    assert.equal(result?.criteria.criteria.reduce((s, c) => s + c.weight, 0), 100)
+    assert.deepEqual(result && criteriaChanges(current(), result.criteria).filter(c => c.kind === 'removed'), [])
+  })
+
+  it('poids demandé gardé exactement, les autres se partagent le reste ; libellés absents : ceux d’avant', () => {
+    const reply = JSON.stringify({ reponse: 'Compétences à 40.', criteres: [{ id: 'competences', poids: 40 }] })
+    const result = parseCriteriaRevision(reply, current())
+    const weights = Object.fromEntries(result?.criteria.criteria.map(c => [c.id, c.weight]) ?? [])
+    assert.deepEqual(weights, { poste: 28, localisation: 12, niveau: 10, competences: 40, domaine: 10 })
+    assert.deepEqual(result?.criteria.criteria.find(c => c.id === 'competences')?.labels, current().criteria.find(c => c.id === 'competences')?.labels)
   })
 
   it('un critère créé rendu sans nom garde son nom actuel', () => {
@@ -76,7 +91,11 @@ describe('assistant des critères (ADR 0062)', () => {
   it('réponse sans critères, illisible ou invalide : null ; sans phrase : « Critères mis à jour. »', () => {
     assert.equal(parseCriteriaRevision('Je ne peux pas.', current()), null)
     assert.equal(parseCriteriaRevision(JSON.stringify({ reponse: 'Rien.' }), current()), null)
-    assert.equal(parseCriteriaRevision(JSON.stringify({ criteres: [{ id: 'inconnu' }] }), current()), null)
+    // Rien d'utilisable dans « criteres » : les critères restent tels quels.
+    const unknown = parseCriteriaRevision(JSON.stringify({ criteres: [{ id: 'inconnu' }] }), current())
+    assert.deepEqual(unknown?.criteria, current())
+    // Tout retirer : refusé (un critère au moins).
+    assert.equal(parseCriteriaRevision(JSON.stringify({ criteres: [], retires: current().criteria.map(c => c.id) }), current()), null)
     const same = parseCriteriaRevision(answer(() => undefined, { reponse: '' }), current())
     assert.equal(same?.reply, 'Critères mis à jour.')
     assert.deepEqual(same && criteriaChanges(current(), same.criteria), [])

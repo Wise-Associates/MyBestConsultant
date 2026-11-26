@@ -4,6 +4,12 @@ const nextConfig: NextConfig = {
   // Production sur un VPS (ADR 0027) : le build produit .next/standalone (serveur Node et seulement les modules
   // utilisés), que le Dockerfile copie dans l'image avec public/ et .next/static/.
   output: "standalone",
+  // En développement, Next affiche chaque appel de Server Action avec ses arguments : les clés API de Config IA
+  // (saveLLMConfig), des CV et des coordonnées y apparaissaient en clair (2026-11-26). Désactivé : aucun secret ni
+  // donnée personnelle dans les journaux ; les actions journalisent elles-mêmes leurs erreurs.
+  logging: {
+    serverFunctions: false,
+  },
   experimental: {
     // Server Actions default to a 1MB request body limit — uploadFullInterviewRecording
     // (the interview's merged audio/video recording, sent as one multipart blob) blows
