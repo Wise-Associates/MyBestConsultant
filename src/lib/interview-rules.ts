@@ -95,6 +95,32 @@ export function aiQuestionPlan(total: number, defaults: readonly QuestionCategor
   return { count, mix }
 }
 
+/** Bloc d'une catégorie dans l'entretien : l'introduction d'abord, la clôture à la fin, les autres entre les deux. */
+const QUESTION_BLOCK: Record<QuestionCategory, 0 | 1 | 2> = { intro: 0, technical: 1, behavioral: 1, motivation: 1, closing: 2 }
+
+/**
+ * Questions dans l'ordre de l'entretien (demande du 2026-11-27) : introductions d'abord, clôtures à la fin, les autres
+ * entre les deux ; dans chaque bloc, l'ordre choisi par le recruteur est gardé. Appliqué par l'éditeur des questions et
+ * à la création de l'entretien (createInterviewSession) : le candidat et l'IA qui mène l'entretien suivent l'ordre affiché.
+ */
+export function orderInterviewQuestions<Q extends { category: QuestionCategory }>(questions: readonly Q[]): Q[] {
+  return ([0, 1, 2] as const).flatMap(block => questions.filter(q => QUESTION_BLOCK[q.category] === block))
+}
+
+/**
+ * Questions après avoir déplacé d'un cran (`step` -1 : vers le haut) celle de rang `index` dans l'ordre de l'entretien ;
+ * null si elle sortirait de la liste ou de son bloc (une introduction reste en tête, une clôture à la fin).
+ */
+export function moveInterviewQuestion<Q extends { category: QuestionCategory }>(questions: readonly Q[], index: number, step: -1 | 1): Q[] | null {
+  const ordered = orderInterviewQuestions(questions)
+  const target = index + step
+  if (!ordered[index] || !ordered[target] || QUESTION_BLOCK[ordered[index].category] !== QUESTION_BLOCK[ordered[target].category]) return null
+  const next = [...ordered]
+  next[index] = ordered[target]
+  next[target] = ordered[index]
+  return next
+}
+
 /** Invitations à un entretien envoyées par jour (UTC) et par organisation : chacune part du domaine de la plateforme. */
 export const INTERVIEW_INVITE_DAILY_LIMIT = 100
 

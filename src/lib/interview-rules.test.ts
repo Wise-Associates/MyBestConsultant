@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  INTERVIEW_AI_REFUSAL, INTERVIEW_INPUT_LIMITS, SCREENING_BATCH_MAX, aiQuestionPlan, analysisInputSchema, followUpInputSchema, questionsInputSchema, screeningBatch,
+  INTERVIEW_AI_REFUSAL, INTERVIEW_INPUT_LIMITS, SCREENING_BATCH_MAX, aiQuestionPlan, analysisInputSchema, followUpInputSchema, moveInterviewQuestion,
+  orderInterviewQuestions, questionsInputSchema, screeningBatch,
 } from './interview-rules'
 
 const turn = (content: string) => ({ role: 'candidate' as const, content, timestamp: '2026-11-13T10:00:00.000Z' })
@@ -76,5 +77,27 @@ describe('nombre de questions d\'un entretien (demande du 2026-11-21)', () => {
     assert.equal(plan.mix.intro, 1)
     assert.equal(plan.mix.closing, 1)
     for (const n of [3, 4, 7, 15]) assert.equal(Object.values(aiQuestionPlan(n, []).mix).reduce((a, b) => a + b, 0), n, `${n} questions`)
+  })
+})
+
+describe('ordre des questions d’un entretien (demande du 2026-11-27)', () => {
+  // Questions par défaut de l'organisation, puis questions techniques ajoutées après les clôtures (cas de l'écran).
+  const q = (id: string, category: 'intro' | 'technical' | 'behavioral' | 'motivation' | 'closing') => ({ id, category })
+  const list = [q('intro', 'intro'), q('motiv', 'motivation'), q('comport', 'behavioral'), q('dispo', 'closing'), q('questions', 'closing'), q('react', 'technical'), q('perf', 'technical')]
+  const ids = (l: { id: string }[] | null) => l?.map(x => x.id)
+
+  it('introduction en tête, clôtures à la fin, ordre gardé dans chaque bloc', () => {
+    assert.deepEqual(ids(orderInterviewQuestions(list)), ['intro', 'motiv', 'comport', 'react', 'perf', 'dispo', 'questions'])
+    assert.deepEqual(ids(orderInterviewQuestions([q('fin', 'closing'), q('a', 'technical'), q('debut', 'intro')])), ['debut', 'a', 'fin'])
+  })
+
+  it('déplacer d’un cran dans son bloc, jamais au-dessus de l’introduction ni sous la clôture', () => {
+    // Rangs dans l'ordre de l'entretien : 0 intro, 1 motiv, 2 comport, 3 react, 4 perf, 5 dispo, 6 questions.
+    assert.deepEqual(ids(moveInterviewQuestion(list, 3, -1)), ['intro', 'motiv', 'react', 'comport', 'perf', 'dispo', 'questions'])
+    assert.deepEqual(ids(moveInterviewQuestion(list, 6, -1)), ['intro', 'motiv', 'comport', 'react', 'perf', 'questions', 'dispo'])
+    assert.equal(moveInterviewQuestion(list, 1, -1), null, 'au-dessus de l’introduction')
+    assert.equal(moveInterviewQuestion(list, 4, 1), null, 'sous une clôture')
+    assert.equal(moveInterviewQuestion(list, 0, -1), null)
+    assert.equal(moveInterviewQuestion(list, 6, 1), null)
   })
 })

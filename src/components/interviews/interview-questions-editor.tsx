@@ -1,15 +1,18 @@
 'use client'
 
-import { useRef, useState, useTransition } from 'react'
-import { Edit3, FileUp, Loader2, Plus, Sparkles, Trash2, Undo2 } from 'lucide-react'
+import { useId, useRef, useState, useTransition } from 'react'
+import { ArrowDown, ArrowUp, Edit3, FileUp, Loader2, Plus, Sparkles, Trash2, Undo2 } from 'lucide-react'
 import type { InterviewQuestion } from '@/app/recruiter/interviews/actions'
 import { importInterviewQuestionsFile, tuneInterviewQuestions } from '@/app/recruiter/interviews/question-tools-actions'
 import { IMPORT_LIMITS } from '@/lib/interview-question-parser'
+import { moveInterviewQuestion, orderInterviewQuestions } from '@/lib/interview-rules'
 
 // Questions d'un entretien IA (ADR 0054), même présentation que /recruiter/interviews/new, partagée avec la fenêtre
 // « Entretien IA » du pipeline : questions générées par l'IA ou écrites par le recruteur (champ « Ajouter »), importées
 // d'un fichier PDF ou TXT, puis ajustées par l'IA (« Ajuster avec l'IA », annulable). Les questions par défaut de
-// l'organisation (identifiant « gq- ») ne sont pas retravaillées par l'IA.
+// l'organisation (identifiant « gq- ») ne sont pas retravaillées par l'IA. Ordre de l'entretien (2026-11-27) : toujours
+// introduction en tête et clôture à la fin (orderInterviewQuestions, appliqué à chaque changement et à l'affichage) ;
+// les flèches déplacent une question d'un cran dans son bloc.
 
 export const QUESTION_CATEGORY_LABELS: Record<InterviewQuestion['category'], string> = {
   intro: 'Introduction', technical: 'Technique', behavioral: 'Comportemental', motivation: 'Motivation', closing: 'Clôture',
@@ -52,14 +55,29 @@ export function InterviewQuestionsEditor({ questions, onChange, tuning, disabled
   const [importing, startImport] = useTransition()
   const [tuningPending, startTuning] = useTransition()
   const fileRef = useRef<HTMLInputElement>(null)
+  const fieldId = useId()
 
   const busy = disabled || importing || tuningPending
-  const own = questions.filter(q => !isDefault(q) && q.text.trim())
+  // Liste reçue dans l'ordre de l'entretien, même si le parent l'a composée autrement (questions générées après les clôtures).
+  const ordered = orderInterviewQuestions(questions)
+  const own = ordered.filter(q => !isDefault(q) && q.text.trim())
   const full = questions.length >= MAX_QUESTIONS
 
   function change(next: InterviewQuestion[]) {
     setBeforeTuning(null)
-    onChange(next)
+    onChange(orderInterviewQuestions(next))
+  }
+
+  /** Déplace d'un cran ; le focus suit la question (sur l'autre flèche si celle-ci n'a plus de cran à faire). */
+  function move(index: number, step: -1 | 1) {
+    const next = moveInterviewQuestion(questions, index, step)
+    if (!next) return
+    change(next)
+    const id = ordered[index].id
+    const same = step === -1 ? 'up' : 'down'
+    const other = step === -1 ? 'down' : 'up'
+    const arrow = moveInterviewQuestion(next, index + step, step) ? same : other
+    requestAnimationFrame(() => document.getElementById(`${fieldId}-${arrow}-${id}`)?.focus())
   }
 
   function add() {
@@ -98,7 +116,7 @@ export function InterviewQuestionsEditor({ questions, onChange, tuning, disabled
       const target = Math.max(0, tuning.questionCount - previous.filter(isDefault).length)
       const res = await tuneInterviewQuestions({ ...tuning, questionCount: target, questions: own })
       if ('error' in res) { setNotice({ tone: 'error', text: res.error }); return }
-      onChange([...previous.filter(isDefault), ...res.questions])
+      onChange(orderInterviewQuestions([...previous.filter(isDefault), ...res.questions]))
       setBeforeTuning(previous)
       setEditing(null)
       setNotice({ tone: 'ok', text: 'Questions ajustées par l’IA : relisez-les avant d’envoyer.' })
@@ -146,7 +164,13 @@ export function InterviewQuestionsEditor({ questions, onChange, tuning, disabled
         </div>
       )}
 
-      {questions.map((q, i) => (
+      {ordered.length > 1 && (
+        <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          L’introduction reste toujours en premier et la clôture à la fin ; les flèches changent l’ordre des autres questions.
+        </p>
+      )}
+
+      {ordered.map((q, i) => (
         <div key={q.id} className="p-4 rounded-2xl" style={card}>
           <div className="flex items-start gap-3">
             <span className="text-xs font-bold w-6 shrink-0 mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Q{i + 1}</span>
@@ -171,6 +195,16 @@ export function InterviewQuestionsEditor({ questions, onChange, tuning, disabled
               </p>
             )}
             <div className="flex gap-1 shrink-0">
+              <button type="button" id={`${fieldId}-up-${q.id}`} onClick={() => move(i, -1)} disabled={busy || !moveInterviewQuestion(questions, i, -1)}
+                aria-label={`Monter la question ${i + 1}`} title="Monter"
+                className="p-1.5 rounded-lg transition-all disabled:opacity-30" style={{ color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                <ArrowUp className="h-3.5 w-3.5" aria-hidden />
+              </button>
+              <button type="button" id={`${fieldId}-down-${q.id}`} onClick={() => move(i, 1)} disabled={busy || !moveInterviewQuestion(questions, i, 1)}
+                aria-label={`Descendre la question ${i + 1}`} title="Descendre"
+                className="p-1.5 rounded-lg transition-all disabled:opacity-30" style={{ color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                <ArrowDown className="h-3.5 w-3.5" aria-hidden />
+              </button>
               <button type="button" onClick={() => setEditing(editing === q.id ? null : q.id)} disabled={busy} aria-label={`Modifier la question ${i + 1}`}
                 className="p-1.5 rounded-lg transition-all" style={{ color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
                 <Edit3 className="h-3.5 w-3.5" aria-hidden />

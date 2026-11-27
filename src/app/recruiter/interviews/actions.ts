@@ -12,7 +12,7 @@ import { revalidatePath } from 'next/cache'
 import { getEnabledGenericQuestions } from './generic-questions-actions'
 import { updateApplicationStatus } from '@/lib/appwrite/jobs'
 import { aiInterviewRecruiter, takeInterviewAiSlot } from '@/lib/interview-access'
-import { aiQuestionPlan, analysisInputSchema, followUpInputSchema, questionsInputSchema, sessionInputSchema } from '@/lib/interview-rules'
+import { aiQuestionPlan, analysisInputSchema, followUpInputSchema, orderInterviewQuestions, questionsInputSchema, sessionInputSchema } from '@/lib/interview-rules'
 import { nullableReply, parseGeneratedQuestions, parseRecruiterAnalysis, questionGenerationPrompt, recruiterAnalysisPrompt, recruiterFollowUpPrompt } from '@/lib/interview-prompts'
 import { applicationOfOrganisation } from '@/lib/screening-core'
 import { loadOfferViewer } from '@/lib/offer-viewer'
@@ -253,7 +253,8 @@ export async function createInterviewSession(
       candidateEmail: input.data.candidateEmail,
       jobTitle: input.data.jobTitle,
       status: 'pending',
-      questions: JSON.stringify(input.data.questions),
+      // Introduction en tête, clôture à la fin, quel que soit l'écran d'origine (nouvel entretien, pipeline, screening).
+      questions: JSON.stringify(orderInterviewQuestions(input.data.questions)),
       transcript: '[]',
       createdAt: new Date().toISOString(),
     })
