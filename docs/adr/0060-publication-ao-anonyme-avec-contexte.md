@@ -55,9 +55,12 @@ Autres défauts constatés : un nom masqué après un article masculin devenait 
   DAF, MOA, MOE, PMO… ; « Direction des opérations » sans autre majuscule). Masquées, elles deviendraient le libellé
   affiché partout où elles reviennent. Un intitulé propre au client (« Service Liquidation Aquitaine », « Direction
   Générale des Finances Publiques ») reste masqué.
-- **Wise Associates** (`PLATFORM_NAMES`, `platformMentions`) : signalé en rouge à la relecture de toute version
-  anonymisée, et une version anonymisée qui le mentionne encore est **refusée** à la publication (`publishAoOfferOf`),
-  plutôt que remplacée par le libellé affiché, qui changerait le sens de la phrase (« Transmis par … »).
+- **Wise Associates** (`PLATFORM_NAMES`) : signalé en rouge à la relecture de toute version anonymisée, jamais
+  remplacé par le libellé affiché, qui changerait le sens de la phrase (« Transmis par … »). **Plus refusé à la
+  publication depuis le 2026-11-28** : l'offre doit pouvoir nommer l'organisation qui la publie. Le refus bloquait
+  aussi, sans signalement à la relecture, une organisation nommée « Wise Associates » qui n'est pas la plateforme : son
+  ouverture « Wise Associates recrute pour… » n'était mise de côté que pour les offres de la plateforme (`tenantId`
+  « admin »).
 - **Post LinkedIn d'un AO, publié par la plateforme ou par une organisation** (même logique, décision du 2026-11-24) :
   au nom de l'entreprise affichée (`jobLiteOf`), sans l'organisation qui le publie, sa présentation ni la ligne de
   diffusion. Dans les deux cas (identifiant `ao…`, `isTenderJob`, `buildContent`), ni présentation
