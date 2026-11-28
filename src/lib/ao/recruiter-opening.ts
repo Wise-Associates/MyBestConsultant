@@ -44,7 +44,7 @@ export function withRecruiterOpening(description: string, recruiter: string): st
 /**
  * Description sans l'ouverture « <organisation> recrute pour » de son contexte, et l'ouverture retirée (null s'il n'y en
  * a pas) : le nom de l'organisation qui publie ne doit être ni masqué par l'anonymisation (le domaine de l'expéditeur
- * est parmi les noms à masquer) ni refusé comme mention de la plateforme ; il n'est permis qu'à cette place.
+ * est parmi les noms à masquer) ni signalé en rouge à la relecture comme mention de la plateforme.
  */
 export function takeOpening(description: string, recruiter: string | undefined): { description: string; opening: string | null } {
   const org = one(recruiter ?? '')

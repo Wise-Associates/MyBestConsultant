@@ -17,7 +17,7 @@ import { findIdentifiers } from './name-match'
 import { llmUnavailableReason } from './ai-failures'
 import { distinctNames, namesToHide, publicLabel, rawPublicOffer, scrubContacts, toPublicOffer } from './anonymize'
 import {
-  PLATFORM_NAMES, PUBLICATION_PROMPT, descriptionFromCopy, maskNames, maskTermsOf, modalityLines, parsePublicationCopy, platformMentions,
+  PLATFORM_NAMES, PUBLICATION_PROMPT, descriptionFromCopy, maskNames, maskTermsOf, modalityLines, parsePublicationCopy,
   publicationRequest, type PublicationCopy,
 } from './publication-copy'
 import { manualRetryPatch } from './attempts'
@@ -42,7 +42,7 @@ import {
 } from './repo'
 import { getAoSource } from './sources'
 import { getBrandByTenantId } from '@/lib/appwrite/brand'
-import { PLATFORM_RECRUITER, takeOpening, withRecruiterOpening } from './recruiter-opening'
+import { PLATFORM_RECRUITER, withRecruiterOpening } from './recruiter-opening'
 import { PLATFORM_TENANT_ID } from './tenancy'
 import { requestPublicationStop } from './state'
 import { syncAoEmail, syncAoInbox, type AoSyncReport } from './sync'
@@ -345,14 +345,8 @@ export async function publishAoOfferOf(
   const parsed = parsePublishInput(input)
   if (parsed.error !== undefined) return { error: parsed.error }
   const { fields } = parsed
-  // Version anonymisée : aucune mention de la plateforme (ADR 0060), signalée en rouge à la relecture ; refusée ici
-  // plutôt que remplacée, un libellé à sa place changerait le sens de la phrase (« Transmis par … »).
-  const platform = parsed.anonymized
-    // L'ouverture « Wise Associates recrute pour » d'une offre de la plateforme est la seule mention permise.
-    ? platformMentions([fields.title, fields.companyName, fields.location,
-      takeOpening(fields.description, jobTenantId === PLATFORM_TENANT_ID ? PLATFORM_RECRUITER : '').description, ...fields.skills, parsed.social?.context ?? ''])
-    : []
-  if (platform.length > 0) return { error: `La version mentionne encore « ${platform[0]} » : retirez-le, puis publiez.` }
+  // Une mention de Wise Associates ou de MyBestConsultant n'est plus refusée (décision du 2026-11-28, ADR 0060) :
+  // l'offre doit pouvoir nommer l'organisation qui la publie. La relecture la signale encore en rouge.
   try {
     const offer = await aoAccessFor(tenantId).offer(id)
     if (!offer) return { error: 'Offre introuvable.' }

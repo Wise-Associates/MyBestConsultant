@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { findIdentifiers, findNames, words } from './name-match'
 import {
-  PLATFORM_NAMES, descriptionFromCopy, isGenericUnit, maskNames, maskTermsOf, modalityLines, parsePublicationCopy, platformMentions, type PublicationCopy,
+  PLATFORM_NAMES, descriptionFromCopy, isGenericUnit, maskNames, maskTermsOf, modalityLines, parsePublicationCopy, type PublicationCopy,
 } from './publication-copy'
 import { publicLabel, toPublicOffer } from './anonymize'
 import type { AoOfferFields } from './types'
@@ -87,16 +87,16 @@ describe('« Préparer la publication » : réponse de l\'IA', () => {
     assert.equal(isGenericUnit('Directeur'), false)
   })
 
-  it('repère Wise Associates dans une version anonymisée, quelle que soit la forme écrite (ADR 0060)', () => {
-    assert.deepEqual(platformMentions(['Mission pour une banque.', 'Transmis par WISE-ASSOCIATES.']), ['WISE-ASSOCIATES'])
-    assert.deepEqual(platformMentions(['Faire un choix avisé et sage.']), [])
+  it('signale Wise Associates à la relecture, quelle que soit la forme écrite (ADR 0060)', () => {
+    assert.deepEqual(findNames('Mission pour une banque.\nTransmis par WISE-ASSOCIATES.', PLATFORM_NAMES), ['WISE-ASSOCIATES'])
+    assert.deepEqual(findNames('Faire un choix avisé et sage.', PLATFORM_NAMES), [])
     assert.deepEqual(findIdentifiers('Offre relayée par Wise Associates.', PLATFORM_NAMES), ['Wise Associates'])
   })
 
-  it('repère aussi MyBestConsultant, écrit en un mot, en trois ou comme adresse (demande du 2026-11-26)', () => {
-    assert.deepEqual(platformMentions(['Offre diffusée via MyBestConsultant.', 'Postulez sur mybestconsultant.fr', 'Le site My Best Consultant.']),
+  it('signale aussi MyBestConsultant, écrit en un mot, en trois ou comme adresse (demande du 2026-11-26)', () => {
+    assert.deepEqual(findNames('Offre diffusée via MyBestConsultant.\nPostulez sur mybestconsultant.fr\nLe site My Best Consultant.', PLATFORM_NAMES),
       ['MyBestConsultant', 'mybestconsultant', 'My Best Consultant'])
-    assert.deepEqual(platformMentions(['Le meilleur consultant du marché.']), [])
+    assert.deepEqual(findNames('Le meilleur consultant du marché.', PLATFORM_NAMES), [])
   })
 
   it('place « Le contexte » en paragraphe après l\'accroche, lu comme le contexte de l\'offre', () => {

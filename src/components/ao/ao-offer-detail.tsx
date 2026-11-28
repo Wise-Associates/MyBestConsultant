@@ -88,7 +88,7 @@ export function AoOfferDetail({ row, actions, paths, publishNote, tracking, soci
   const risks = useMemo(() => {
     if (!draft || !preview) return []
     const fields: [string, string][] = [
-      // L'ouverture « <organisation> recrute pour » nomme l'organisation qui publie : seule place où son nom est permis.
+      // L'ouverture « <organisation> recrute pour » nomme l'organisation qui publie : jamais signalée.
       ['titre', draft.title], ['entreprise affichée', draft.companyName], ['ville', draft.location], ['compétences', skillsText],
       ['description', takeOpening(draft.description, preview.recruiter).description],
       ['post LinkedIn, « Le projet »', draft.social?.context ?? ''],

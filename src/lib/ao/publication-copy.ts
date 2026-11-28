@@ -1,7 +1,7 @@
 import { parseModelJson } from '@/lib/ai/model-json'
 import { z } from 'zod'
 import { STANDARD_DAILY_QUOTAS } from '@/lib/plans'
-import { findNames, words } from './name-match'
+import { words } from './name-match'
 import type { AoOfferFields } from './types'
 
 // Version publiée d'une offre AO rédigée par l'IA (« Préparer la publication », ADR 0013) : anonyme (ni client, ni
@@ -139,15 +139,11 @@ export function isGenericUnit(term: string): boolean {
 }
 
 /**
- * Noms de la plateforme, jamais dans une version anonymisée (ADR 0060) : Wise Associates (même nom que PLATFORM_NAME,
- * tenancy.ts) et le site MyBestConsultant. L'offre ne nomme que l'organisation qui la publie (demande du 2026-11-26).
+ * Noms de la plateforme, signalés en rouge à la relecture d'une version anonymisée (ADR 0060) : Wise Associates (même
+ * nom que PLATFORM_NAME, tenancy.ts) et le site MyBestConsultant. Plus refusés à la publication depuis le 2026-11-28 :
+ * l'offre doit pouvoir nommer l'organisation qui la publie.
  */
 export const PLATFORM_NAMES: string[][] = [words('Wise Associates'), words('MyBestConsultant'), words('My Best Consultant')]
-
-/** Mentions de la plateforme restées dans les textes d'une version anonymisée, telles qu'écrites. */
-export function platformMentions(texts: string[]): string[] {
-  return findNames(texts.join('\n'), PLATFORM_NAMES)
-}
 
 /**
  * Noms que l'IA dit avoir retirés, masqués ensuite à la publication et signalés à la relecture — y compris ceux qu'elle
